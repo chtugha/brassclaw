@@ -294,6 +294,19 @@ async fn native_source_inspection_is_registered_nonexecuting_and_uses_live_limit
         panic!("individually fitting sources cannot exceed the total acknowledged ceiling")
     };
     assert_eq!(failure.kind, RuntimeFailureKind::Resource);
+    assert_eq!(
+        failure.message.as_deref(),
+        Some(
+            format!(
+                "source inventory source byte limit exceeded revision {} limit {} actual {}",
+                increased.revision,
+                larger.max_source_bytes,
+                2 * large_source.len(),
+            )
+            .as_str()
+        ),
+        "the actual native aggregate-source guard identifies its selected revision and limit"
+    );
     let RuntimeCapabilityOutcome::Completed(result) = retained
         .invoke(invoke(json!({"source":large_source})))
         .await

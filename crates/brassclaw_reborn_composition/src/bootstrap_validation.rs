@@ -107,6 +107,75 @@ pub(super) async fn settle_closed(admitted: &Admitted) -> Result<(), RebornBuild
     Ok(())
 }
 
+/// Contained source observers may acknowledge a late cancellation only after
+/// the actual model-free worker, host calls and transport have quiesced. Other
+/// contained callers retain their existing cleanup contract.
+pub(super) async fn settle_quiescent_closed(
+    admitted: &Admitted,
+    proof: &crate::bootstrap_recipe_flow::ModelFreeQuiescence,
+) -> Result<(), RebornBuildError> {
+    use brassclaw_turns::{
+        TurnSpawnTreeStateStore, TurnStatus, runner::CancelRunCompletionRequest,
+    };
+    proof.require_run(admitted.attempt.run_id)?;
+    let original = admitted
+        .state
+        .get_run_record(&admitted.host.run_context().scope, admitted.attempt.run_id)
+        .await
+        .map_err(invalid)?
+        .ok_or_else(|| invalid("contained original Turn missing before settlement"))?;
+    if original.native_auth_wait.is_some() {
+        return Err(invalid("contained native custody is unresolved"));
+    }
+    admitted
+        .admission
+        .settle(json!({"status":"failed","reason_kind":"bootstrap_validation_closed"}))
+        .await
+        .map_err(invalid)?;
+    let complete = admitted
+        .state
+        .complete_run(CompleteRunRequest {
+            run_id: admitted.attempt.run_id,
+            runner_id: admitted.attempt.runner_id,
+            lease_token: admitted.attempt.lease_token,
+        })
+        .await;
+    let complete_error = match complete {
+        Ok(_) => return Ok(()),
+        Err(error) => error,
+    };
+    // A failed/lost complete ACK is not permission to invent settlement. Read
+    // the exact original; only CancelRequested with no native-auth custody can
+    // enter the existing fenced cancel transition. Completed ACK loss is left
+    // for the caller's normal immutable original readback.
+    let record = admitted
+        .state
+        .get_run_record(&admitted.host.run_context().scope, admitted.attempt.run_id)
+        .await
+        .map_err(invalid)?
+        .ok_or_else(|| invalid("contained original Turn missing during settlement"))?;
+    if record.status != TurnStatus::CancelRequested || record.native_auth_wait.is_some() {
+        return Err(invalid(complete_error));
+    }
+    #[cfg(test)]
+    crate::validator_inventory_review::installation_test_before_cancel(
+        admitted.attempt.run_id.as_uuid(),
+    )?;
+    admitted
+        .state
+        .cancel_run(CancelRunCompletionRequest {
+            run_id: admitted.attempt.run_id,
+            runner_id: admitted.attempt.runner_id,
+            lease_token: admitted.attempt.lease_token,
+        })
+        .await
+        .map_err(invalid)?;
+    // Cancelled is terminal cleanup, never successful source qualification.
+    Err(invalid(
+        "contained source observation cancelled after quiescence",
+    ))
+}
+
 pub(crate) struct Admitted {
     pub(crate) host: Arc<MontyTaskHost>,
     pub(super) input: Value,
@@ -415,6 +484,12 @@ async fn prepare_admission(
     // (via GlobalMontyDriver::drive_admitted → ports.build) to avoid a double-insert
     // on brassclaw_monty_task_admissions. All other modes persist here.
     if !matches!(mode, AdmissionMode::ValidatorInternal) {
+        #[cfg(test)]
+        if identity == "installation-source-observer" && matches!(mode, AdmissionMode::Contained) {
+            crate::validator_inventory_review::installation_test_before_reservation(
+                attempt.run_id.as_uuid(),
+            )?;
+        }
         admission.persist_reservation().await.map_err(invalid)?;
     }
     if matches!(mode, AdmissionMode::Contained) {

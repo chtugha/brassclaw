@@ -158,7 +158,7 @@ pub fn python_structure_drafts(
             "validates_class_code":22,"consumer_tags":["05:validator"],
             "validator_coverage":{"format":"validator-coverage/1","rules":[
                 {"rule_id":"python_definitions","step_id":"0:4"},{"rule_id":"python_contracts","step_id":"0:5"},{"rule_id":"python_graph","step_id":"0:6"}
-            ],"aggregate_step":"0:8"},
+            ],"aggregate_step":"0:8","receipt_step":"0:9"},
             "variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
             "step_descriptions":[{"desc_idx":0,"label":"Inspect original definitions and contracts","yaml_source":"","steps":[
                 {"stepnumber":1,"knowledge":"orchestrator","goal":"Extract all selected Python sources","content":"","type":"component","include":[extractor]},

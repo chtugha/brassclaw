@@ -25,74 +25,35 @@ pub(super) struct Request {
     pub(super) actor: ActorLimits,
     pub(super) capacity: RecipeCapacity,
     pub(super) source: Arc<dyn InternalRecipeSource>,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    #[cfg(all(test, unix))]
+    fail_worker_after_receipt: bool,
 }
 impl Request {
-    /// Shared physical containment for small closed installation fixtures. The
-    /// caller supplies the retained root and exact selection; this constructs
-    /// transport limits only and cannot choose/approve a workflow.
+    /// The same checked creation policy used by the actual global startup.
+    /// Ordinary private Work continues on the existing live global service.
     pub(super) fn contained(
         worker: PathBuf,
-        limits: brassclaw_monty_host::utility::UtilityLimits,
+        executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
         root: &brassclaw_skills::orchestrator_contract::GlobalRootDefinition,
         source: Arc<dyn InternalRecipeSource>,
     ) -> Result<Self, RebornBuildError> {
-        let mut process = limits.process;
-        let frame = (8 * 1024 * 1024)
-            .min(process.max_frame_bytes)
-            .min(limits.bounds.max_value_bytes);
-        if limits.bounds.max_source_bytes > frame || limits.bounds.max_stdout_bytes > frame {
-            return Err(invalid("closed fixture exceeds configured transport"));
-        }
-        process.max_frame_bytes = frame;
-        let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
-        let heap = process
-            .hard_memory_bytes
-            .checked_sub(2 * frame + adapter)
-            .filter(|n| *n > frame)
-            .ok_or_else(|| invalid("closed fixture exceeds configured memory"))?;
-        let mut bounds = limits.bounds;
-        bounds.max_value_bytes = frame;
         Ok(Self {
             worker,
-            process,
+            boot: executor.boot(root),
+            process: executor.process(),
+            actor: executor.actor(),
+            capacity: executor.capacity(),
             source,
-            actor: ActorLimits {
-                max_unclaimed: 8,
-                max_reserved_frame_bytes: 2 * frame,
-                max_control_unclaimed: 8,
-                max_control_reserved_frame_bytes: 2 * frame,
-            },
-            capacity: RecipeCapacity {
-                revision: 1,
-                max_recipes: 8,
-                data_limits: brassclaw_skills::value_contract::ContractLimits {
-                    max_bytes: frame,
-                    ..brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
-                },
-            },
-            boot: RootBoot {
-                source: root.source().to_owned(),
-                checksum: root.source_checksum(),
-                aliases: root.ports().iter().cloned().collect(),
-                bounds: brassclaw_monty_host::global::GlobalBounds {
-                    values: bounds,
-                    workers: 1,
-                    max_pending_calls: 8,
-                },
-                heap_settings: Some(brassclaw_monty_host::heap::HeapSettings {
-                    revision: 1,
-                    max_vm_bytes: heap,
-                }),
-                adapter_reserve_bytes: adapter,
-                startup_timeout: std::time::Duration::from_secs(10),
-                task_settings: brassclaw_monty_host::process::TaskSettings {
-                    revision: 1,
-                    max_compute_time: std::time::Duration::from_secs(30),
-                    token_budgets_enabled: false,
-                },
-                max_recipe_contexts: 8,
-            },
+            executor,
+            #[cfg(all(test, unix))]
+            fail_worker_after_receipt: false,
         })
+    }
+    #[cfg(all(test, unix))]
+    pub(super) fn with_forced_worker_exit(mut self) -> Self {
+        self.fail_worker_after_receipt = true;
+        self
     }
 }
 struct Capacity(RecipeCapacity);
@@ -103,10 +64,102 @@ impl RecipeCapacitySource for Capacity {
     }
 }
 pub(super) struct Observation {
+    run_id: brassclaw_turns::TurnRunId,
     pub(super) ports: Arc<GlobalRecipePorts>,
     pub(super) receipt: Arc<TaskReceipt>,
     pub(super) report: Value,
     pub(super) exit: ServiceExit,
+}
+/// Only the joined, actually completed model-free execution can create this
+/// scoped lifecycle proof. It is neither a completion nor an approval handle.
+pub(super) struct ModelFreeQuiescence {
+    run_id: brassclaw_turns::TurnRunId,
+}
+impl ModelFreeQuiescence {
+    pub(super) fn require_run(
+        &self,
+        run: brassclaw_turns::TurnRunId,
+    ) -> Result<(), RebornBuildError> {
+        if self.run_id != run {
+            return Err(invalid("contained quiescence belongs to another run"));
+        }
+        Ok(())
+    }
+}
+impl Observation {
+    pub(super) fn quiescence_proof(
+        &self,
+    ) -> Result<(Value, ModelFreeQuiescence), RebornBuildError> {
+        let actual = self.model_free_quiescence()?;
+        Ok((
+            actual,
+            ModelFreeQuiescence {
+                run_id: self.run_id,
+            },
+        ))
+    }
+    /// Actual model-free internal receipt/account/worker facts, before durable
+    /// admission/Turn cleanup. This value alone is deliberately not settlement.
+    pub(super) fn model_free_quiescence(&self) -> Result<Value, RebornBuildError> {
+        use brassclaw_monty_host::{service::TaskOutcome, transport_actor::StopKind};
+        if !matches!(self.receipt.outcome, TaskOutcome::InternalCompleted { .. })
+            || self.exit.failure.is_some()
+            || self.exit.root != self.receipt.root
+            || !self.exit.tasks.is_empty()
+            || self.exit.pending_admission.is_some()
+            || !self.exit.queued_admissions.is_empty()
+            || !self.exit.failed_exchanges.is_empty()
+            || !self.exit.rejected_commands.is_empty()
+            || self.report["root_completed"] != true
+            || self.report["all_selected_recipes_complete"] != true
+            || self.report["withheld_root_answers"] != 0
+            || self.report["withheld_host_answers"] != false
+            || self.report["model_exchange_count"] != 0
+            || !self.report["reply"].is_null()
+            || self.report["semantic_approval"] != false
+            || self.report["catalogue_activation"] != false
+        {
+            return Err(invalid(
+                "model-free contained receipt or quiescence incomplete",
+            ));
+        }
+        let exit = self
+            .exit
+            .transport
+            .as_ref()
+            .map_err(|_| invalid("contained transport unresolved"))?;
+        let status = exit
+            .exit_status
+            .as_ref()
+            .ok_or_else(|| invalid("contained worker has not been reaped"))?;
+        if !status.success()
+            || exit.containment_error.is_some()
+            || exit.reap_error.is_some()
+            || exit.shutdown_failure.is_some()
+        {
+            return Err(invalid("contained worker closure unacknowledged"));
+        }
+        let stop_kind = match exit.kind {
+            StopKind::Graceful => "graceful",
+            StopKind::Requested => "requested",
+            StopKind::TransportFailed | StopKind::InstanceFailed | StopKind::AccountingFailed => {
+                return Err(invalid("contained native worker failed"));
+            }
+        };
+        #[cfg(unix)]
+        let signal = {
+            use std::os::unix::process::ExitStatusExt;
+            status.signal()
+        };
+        #[cfg(not(unix))]
+        let signal: Option<i32> = None;
+        Ok(
+            serde_json::json!({"receipt_root":self.receipt.root,"accounting":self.receipt.accounting,"execution":self.report,
+            "worker_exit":{"root":self.exit.root,"status":{"code":status.code(),"success":status.success(),"signal":signal},"stop_kind":stop_kind,
+                "retained_tasks":self.exit.tasks.len(),"pending_admissions":usize::from(self.exit.pending_admission.is_some()),
+                "queued_admissions":self.exit.queued_admissions.len(),"failed_exchanges":self.exit.failed_exchanges.len(),"rejected_commands":self.exit.rejected_commands.len()}}),
+        )
+    }
 }
 /// Caller owns admission, exact subject validation, semantic/effect oracles,
 /// dispatch intent and final durable settlement. This observer grants none.
@@ -164,12 +217,15 @@ pub(super) async fn execute(
         true,
         Arc::new(Capacity(request.capacity)),
     ));
-    let mut owner = ServiceOwner::start(
+    let live = brassclaw_resources::LiveMontyTaskSettings::new(request.executor.task().into())
+        .map_err(invalid)?;
+    let mut owner = ServiceOwner::start_with_hosting_limits(
         &request.worker,
         request.boot,
         request.process,
         request.actor,
-        1,
+        request.executor.hosting(),
+        live,
     )
     .await
     .map_err(invalid)?;
@@ -208,20 +264,49 @@ pub(super) async fn execute(
             .wait()
             .await
             .map_err(|error| invalid(format!("bootstrap Recipe completion: {error:?}")))?;
-        let report = ports
+        let mut report = ports
             .settlement_report(&receipt)
             .await
             .map_err(|error| invalid(format!("bootstrap Recipe settlement: {error:?}")))?;
+        report["controlled_executor_configuration"] =
+            serde_json::json!(request.executor.exact_bytes());
+        report["controlled_executor_configuration_checksum"] =
+            serde_json::json!(request.executor.checksum());
         Ok::<_, RebornBuildError>((receipt, report))
     }
     .await;
+    #[cfg(all(test, unix))]
+    let forced_exit = if request.fail_worker_after_receipt && completed.is_ok() {
+        // The real child remains owned/parked after receipt. Kill only that
+        // retained worker, then always join its actual transport/OS settlement.
+        match owner.worker_process_id() {
+            Some(pid) => match tokio::time::timeout(
+                request.process.response_timeout,
+                tokio::process::Command::new("/bin/kill")
+                    .arg("-KILL")
+                    .arg(pid.to_string())
+                    .status(),
+            )
+            .await
+            {
+                Ok(Ok(status)) if status.success() => Ok(()),
+                _ => Err(invalid("controlled worker fault injection failed")),
+            },
+            None => Err(invalid("controlled worker process missing")),
+        }
+    } else {
+        Ok(())
+    };
     owner.request_shutdown();
     let exit = owner
         .join()
         .await
         .map_err(|error| invalid(format!("bootstrap Recipe shutdown: {error:?}")))?;
+    #[cfg(all(test, unix))]
+    forced_exit?;
     let (receipt, report) = completed?;
     Ok(Observation {
+        run_id: admitted.attempt.run_id,
         ports,
         receipt,
         report,

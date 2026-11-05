@@ -34,6 +34,29 @@ use uuid::Uuid;
 
 use crate::RebornBuildError;
 
+type InventoryFixtureFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<
+                    brassclaw_host_runtime::RetainedSourceInspectionFixture,
+                    RetainedCapabilityError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+type InventoryPreparationFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = Result<
+                    brassclaw_host_runtime::SourceInspectionPreparationFacts,
+                    RetainedCapabilityError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
 pub(crate) trait MontyKernelSnapshot: Send + Sync {
     fn native_descriptor(
         &self,
@@ -60,6 +83,25 @@ pub(crate) trait MontyKernelSnapshot: Send + Sync {
         &self,
         id: &CapabilityId,
         expected: NativeImplementationRef,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
+    fn inventory_capacity_fixture(
+        &self,
+        expected: NativeImplementationRef,
+        scope: brassclaw_host_api::ResourceScope,
+        sink: Arc<dyn brassclaw_host_runtime::SourceInspectionObservationSink>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> InventoryFixtureFuture<'_>;
+    fn inventory_fixture_preparation(
+        &self,
+        expected: NativeImplementationRef,
+    ) -> InventoryPreparationFuture<'_>;
+    fn source_inspection_observed(
+        &self,
+        expected: NativeImplementationRef,
+        scope: brassclaw_host_api::ResourceScope,
+        arguments: serde_json::Value,
+        sink: Arc<dyn brassclaw_host_runtime::SourceInspectionObservationSink>,
         policy: Arc<dyn InstanceToolPolicySource>,
     ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
     fn child_with_policy(
@@ -210,6 +252,48 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
         self.retain_native_with_authorizer(
             id,
             expected,
+            Arc::new(InstanceToolAuthorizer::new(policy)),
+        )
+    }
+    fn inventory_capacity_fixture(
+        &self,
+        expected: NativeImplementationRef,
+        scope: brassclaw_host_api::ResourceScope,
+        sink: Arc<dyn brassclaw_host_runtime::SourceInspectionObservationSink>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> InventoryFixtureFuture<'_> {
+        Box::pin(async move {
+            self.retain_native_inventory_capacity_fixture(
+                expected,
+                &scope,
+                sink,
+                Arc::new(InstanceToolAuthorizer::new(policy)),
+            )
+            .await
+        })
+    }
+    fn inventory_fixture_preparation(
+        &self,
+        expected: NativeImplementationRef,
+    ) -> InventoryPreparationFuture<'_> {
+        Box::pin(async move {
+            self.capture_native_inventory_fixture_preparation(expected)
+                .await
+        })
+    }
+    fn source_inspection_observed(
+        &self,
+        expected: NativeImplementationRef,
+        scope: brassclaw_host_api::ResourceScope,
+        arguments: serde_json::Value,
+        sink: Arc<dyn brassclaw_host_runtime::SourceInspectionObservationSink>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        self.retain_native_source_inspection_observed(
+            expected,
+            &scope,
+            arguments,
+            sink,
             Arc::new(InstanceToolAuthorizer::new(policy)),
         )
     }

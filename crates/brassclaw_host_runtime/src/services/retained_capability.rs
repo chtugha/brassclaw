@@ -32,6 +32,10 @@ pub enum RetainedCapabilityError {
     NativeIdentity,
     #[error("selected capability has no verified native registration")]
     MissingNativeRegistration,
+    #[error("native fixture preparation is unavailable or inconsistent")]
+    FixturePreparation,
+    #[error("registered source backend has no controlled fixture adapter")]
+    FixtureAdapterUnavailable,
 }
 
 /// One actual host catalogue snapshot plus immutable handler registrations.
@@ -191,6 +195,126 @@ where
             events: self.events.clone(),
         };
         bound.retain_native(capability, expected)
+    }
+
+    /// Bind a finite native guard fixture through the exact registered handler.
+    /// Inputs cannot select this view. It changes neither native registration nor
+    /// current authority; the original resolver must still approve placement.
+    pub async fn retain_native_inventory_capacity_fixture(
+        &self,
+        expected: crate::NativeImplementationRef,
+        scope: &brassclaw_host_api::ResourceScope,
+        sink: Arc<dyn crate::SourceInspectionObservationSink>,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Result<crate::RetainedSourceInspectionFixture, RetainedCapabilityError> {
+        let facts = self
+            .capture_native_inventory_fixture_preparation(expected)
+            .await?;
+        let profile = Arc::new(crate::SourceInspectionFixtureProfile::capture(
+            facts, expected,
+        )?);
+        let capability = CapabilityId::new(crate::SOURCE_INSPECTION_CAPABILITY_ID)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        let bound = Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self.kernel.retain_authorizer(authorizer),
+            builtin_obligations: self.builtin_obligations.clone(),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: Arc::new(crate::source_inspection_fixture::FixtureBoundServices::new(
+                self.services.clone(),
+                scope.clone(),
+                Arc::new(
+                    crate::source_inspection_fixture::SourceInspectionInvocationView::new(
+                        scope.clone(),
+                        profile.arguments().clone(),
+                        Some(profile.clone()),
+                        sink,
+                    ),
+                ),
+            )),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        Ok(crate::RetainedSourceInspectionFixture {
+            capability: bound.retain_native(&capability, expected)?,
+            profile,
+        })
+    }
+    /// Metadata-only adapter availability on the actual native registration.
+    /// No Tool invocation, binding permission or substitute settings source.
+    pub async fn capture_native_inventory_fixture_preparation(
+        &self,
+        expected: crate::NativeImplementationRef,
+    ) -> Result<crate::SourceInspectionPreparationFacts, RetainedCapabilityError> {
+        let capability = CapabilityId::new(crate::SOURCE_INSPECTION_CAPABILITY_ID)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        let (_, selected) = self.declared_binding(&capability)?;
+        let native = selected
+            .native_registration()
+            .filter(|native| native.reference() == expected)
+            .ok_or(RetainedCapabilityError::NativeIdentity)?;
+        native
+            .image()
+            .verify()
+            .await
+            .map_err(|_| RetainedCapabilityError::NativeIdentity)?;
+        let backend = native
+            .source_inspection_preparation()
+            .ok_or(RetainedCapabilityError::FixtureAdapterUnavailable)?;
+        let facts = backend
+            .capture_fixture_preparation()
+            .await
+            .map_err(|error| {
+                if error.kind()
+                    == Some(brassclaw_host_api::RuntimeDispatchErrorKind::UnsupportedRunner)
+                {
+                    RetainedCapabilityError::FixtureAdapterUnavailable
+                } else {
+                    RetainedCapabilityError::FixturePreparation
+                }
+            })?;
+        Ok(facts)
+    }
+
+    /// Observe one normal SourceInspection call through its original native
+    /// binding. The sink receives facts before outer ACK/fencing, not permission.
+    pub fn retain_native_source_inspection_observed(
+        &self,
+        expected: crate::NativeImplementationRef,
+        scope: &brassclaw_host_api::ResourceScope,
+        arguments: serde_json::Value,
+        sink: Arc<dyn crate::SourceInspectionObservationSink>,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let capability = CapabilityId::new(crate::SOURCE_INSPECTION_CAPABILITY_ID)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        self.native_descriptor(&capability, expected)?;
+        let view = Arc::new(
+            crate::source_inspection_fixture::SourceInspectionInvocationView::new(
+                scope.clone(),
+                arguments,
+                None,
+                sink,
+            ),
+        );
+        let bound = Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self.kernel.retain_authorizer(authorizer),
+            builtin_obligations: self.builtin_obligations.clone(),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: Arc::new(crate::source_inspection_fixture::FixtureBoundServices::new(
+                self.services.clone(),
+                scope.clone(),
+                view,
+            )),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        bound.retain_native(&capability, expected)
     }
 
     /// Bind one host-owned child operation to the exact native subagent Tool.

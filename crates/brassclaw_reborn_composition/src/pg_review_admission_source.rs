@@ -5,8 +5,9 @@
 //!
 //! 1. Verify the submission exists and is active before constructing this source.
 //! 2. Supply the exact `RetainedValidatorSelection` read from sealed storage.
-//! 3. Pass the inspected program from `RetainedValidatorCoverage::restore_preparation`
-//!    plus `InspectedRetainedProgram::inspect_with_limits`.
+//! 3. Prepare or restore `PreparedValidatorReview` with the original catalogue
+//!    `PreparationCapture` and retained worker image, then use `from_prepared`.
+//!    That owner restores exact IBS, inspects it and derives typed inputs once.
 //! 4. Call `capture_internal` only on a `trusted_internal_turn` whose `user_input`
 //!    equals `Self::reference_for(submission_id)`.
 //!
@@ -81,6 +82,29 @@ use crate::global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe};
 use crate::pg_retained_q1::StructuralReviewFailure;
 use crate::pg_workflow_review::{WorkflowReview, persist_workflow_review};
 
+#[path = "validator_input_capture.rs"]
+mod validator_input_capture;
+#[cfg(test)]
+pub(crate) use validator_input_capture::assert_original_capture;
+pub(crate) use validator_input_capture::{PreparedValidatorReview, ValidatorInputCapture};
+
+/// Retain and verify the original review worker bytes for both authored task
+/// preparation and contained native source observations.
+pub(crate) async fn verified_worker(
+    worker: &brassclaw_host_runtime::PackagedExecutableImage,
+    max_bytes: u64,
+) -> Result<Arc<brassclaw_host_runtime::PackagedExecutableImage>, crate::RebornBuildError> {
+    let copy = brassclaw_host_runtime::PackagedExecutableImage::capture(&worker.path(), max_bytes)
+        .await
+        .map_err(crate::bootstrap_reply_validation::invalid)?;
+    if copy.checksum() != worker.checksum() {
+        return Err(crate::bootstrap_reply_validation::invalid(
+            "retained review worker bytes changed",
+        ));
+    }
+    Ok(Arc::new(copy))
+}
+
 /// Canonical reference prefix for validator review internal tasks.
 pub(crate) const VALIDATOR_REVIEW_PREFIX: &str = "validator-review:";
 
@@ -99,82 +123,30 @@ pub(crate) fn validator_review_reference(submission_id: Uuid) -> String {
 /// `InstalledMontyCatalogue`. No public API or arbitrary JSON supplies the
 /// sealed fields; the pool and subject come from durable storage reads.
 pub(crate) struct ReviewAdmissionSource {
-    /// Canonical `user_input` reference for this review task.
     reference: String,
-    /// Sealed submission subject (candidate + base + dependencies).
-    subject: Arc<RetainedValidatorSubject>,
-    /// Sealed validator programme selection (recipe + snapshot + variant).
-    selection: Arc<RetainedValidatorSelection>,
-    /// Inspected retained programme ready for execution. Pure-logic only;
-    /// Tool bindings are rejected at construction via validator coverage check.
-    inspected: Arc<InspectedRetainedProgram>,
-    /// Retained coverage declaration, derived once from the sealed programme at
-    /// construction. Storing it here ensures construction-time errors surface
-    /// before any task execution begins.
-    coverage: RetainedValidatorCoverage,
-    /// Typed inputs derived from the sealed subject, matching the validator's
-    /// declared `input_layout`. Constructed once at admission time.
-    inputs: brassclaw_host_api::JsonValue,
-    /// Database pool for `verify_receipt` evidence persistence.
+    prepared: Arc<PreparedValidatorReview>,
     pool: Arc<PgPool>,
-    /// Contract limits for data-bounds checks in `verify_receipt`.
-    limits: ContractLimits,
 }
-
 impl ReviewAdmissionSource {
-    /// Construct a sealed source from an already-read subject and selection.
-    ///
-    /// The caller must have verified that:
-    /// - `subject.submission_id()` matches `selection.submission_id()`
-    /// - `selection` was read from `reborn_component_validator_selections`
-    /// - `inspected` was built from `RetainedValidatorCoverage::restore_preparation`
-    ///   followed by `InspectedRetainedProgram::inspect_with_limits`
-    ///
-    /// Returns `Err` if the inspected program does not satisfy the validator
-    /// coverage contract (e.g. has unexpected Tool bindings for a pure validator).
-    pub(crate) fn new(
-        subject: Arc<RetainedValidatorSubject>,
-        selection: Arc<RetainedValidatorSelection>,
-        inspected: Arc<InspectedRetainedProgram>,
-        inputs: brassclaw_host_api::JsonValue,
+    pub(crate) fn from_prepared(
+        prepared: Arc<PreparedValidatorReview>,
         pool: Arc<PgPool>,
-        limits: ContractLimits,
     ) -> Result<Self, &'static str> {
-        // Verify subject/selection agreement.
-        if selection.submission_id() != subject.submission_id()
-            || selection.subject_checksum() != subject.subject_checksum()
-        {
-            return Err("validator selection subject mismatch");
-        }
-        // Verify the inspected programme satisfies the validator coverage contract
-        // and retain the result — derive once, not on every verify_receipt call.
-        let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
-            .map_err(|_| "validator programme does not satisfy coverage declaration")?;
-        // Verify pure-logic (no Tool bindings) — structural validators must not
-        // dispatch any Tools during execution.
+        let inspected = prepared.inspected();
         let RetainedProgram::Tools(program) = inspected.program() else {
             return Err("validator programme must be a Tools programme");
         };
         if !program.bindings().is_empty() {
             return Err("structural validator must have zero Tool bindings");
         }
-        let reference = validator_review_reference(subject.submission_id());
         Ok(Self {
-            reference,
-            subject,
-            selection,
-            inspected,
-            coverage,
-            inputs,
+            reference: validator_review_reference(prepared.subject().submission_id()),
+            prepared,
             pool,
-            limits,
         })
     }
-
-    /// The sealed submission subject (read-only for callers needing class code).
-    #[allow(dead_code)] // used by routing tests
-    pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
-        &self.subject
+    pub(crate) fn input_capture(&self) -> &ValidatorInputCapture {
+        self.prepared.input_capture()
     }
 }
 
@@ -189,13 +161,13 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     }
 
     fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
-        Some(self.inspected.clone())
+        Some(self.prepared.inspected.clone())
     }
 
     /// Pure validators have zero Tool bindings; binding native runtimes is a
     /// no-op. Already verified at construction, checked again defensively here.
     fn bind_native_runtimes(&self) -> Result<(), PortFailure> {
-        let RetainedProgram::Tools(program) = self.inspected.program() else {
+        let RetainedProgram::Tools(program) = self.prepared.inspected.program() else {
             return Err(failure("validator_binding_program_type"));
         };
         if !program.bindings().is_empty() {
@@ -214,8 +186,8 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
         Ok(SelectedMontyRecipe {
             normal_match: None,
-            inspected: self.inspected.clone(),
-            inputs: Some(self.inputs.clone()),
+            inspected: self.prepared.inspected.clone(),
+            inputs: Some(self.input_capture().inputs().clone()),
             // Pure structural validators have no Tool port.
             tools: None,
         })
@@ -245,89 +217,27 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
-        // Step 1: verify the executed programme matches the admission-time selection
-        // by comparing RetainedRecipeSelection checksums — the v3 identity contract.
-        // ptr equality is an implementation accident that does not survive refactoring.
-        let executed_checksum = selected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure("validator_receipt_selection_invalid"))?
-            .checksum();
-        let sealed_checksum = self
-            .inspected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure("validator_receipt_sealed_selection_invalid"))?
-            .checksum();
-        if executed_checksum != sealed_checksum {
-            return Err(failure("validator_receipt_programme_mismatch"));
+        let (checks, _) = ValidatorReceiptSubject {
+            subject: &self.prepared.subject,
+            selection: &self.prepared.selection,
+            inspected: &self.prepared.inspected,
+            coverage: &self.prepared.coverage,
+            limits: validator_input_capture::limits(self.input_capture().preparation()),
         }
-
-        // Step 2: parse the receipt JSON. The orchestrator must post the exact envelope.
-        let receipt_value: Value =
-            serde_json::from_str(receipt).map_err(|_| failure("validator_receipt_parse_failed"))?;
-        if receipt_value["format"] != "validator-structural-receipt/1" {
-            return Err(failure("validator_receipt_format_invalid"));
-        }
-        let results_value = receipt_value
-            .get("results")
-            .and_then(Value::as_object)
-            .ok_or_else(|| failure("validator_receipt_results_missing"))?;
-        let mut results: BTreeMap<String, Value> = results_value
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        // Step 3: verify the receipt-step fingerprint.
-        //
-        // The Python orchestrator returns the receipt JSON string as the result
-        // of the receipt encoder step (the final recipe step). The executor
-        // records its SHA-256 fingerprint (typed-value-sha256/1 of
-        // Value::String(receipt)) in the step observation. Verifying this before
-        // any writes proves the receipt came from the actual Monty execution.
-        // A spoofed or truncated receipt string produces a different checksum
-        // and is rejected here, before observe_subject runs.
-        let receipt_step = self.coverage.receipt_step();
-        let proof = execution
-            .observations()
-            .get(receipt_step)
-            .ok_or_else(|| failure("validator_receipt_aggregate_observation_missing"))?;
-        // The receipt string is what Python returned — it is typed as
-        // Value::String, so json!(receipt) wraps it correctly.
-        let expected_checksum =
-            typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())
-                .map_err(|_| failure("validator_receipt_checksum_overflow"))?;
-        if proof.result_checksum() != Some(expected_checksum) {
-            return Err(failure("validator_receipt_fingerprint_mismatch"));
-        }
-        // Add the receipt encoder step's own result (the receipt string) so that
-        // observe_subject can verify its fingerprint alongside the other steps.
-        results.insert(receipt_step.to_owned(), serde_json::json!(receipt));
-
-        // Step 4: produce sealed subject-bound observations. This verifies per-step
-        // input and result fingerprints for every step using the stored coverage
-        // declaration (derived once at construction in new()).
-        let checks = self
-            .coverage
-            .observe_subject(
-                &self.subject,
-                &self.selection,
-                execution,
-                &results,
-                self.limits,
-            )
-            .map_err(|_| failure("validator_receipt_observation_failed"))?;
+        .observe(
+            ValidatorReceiptProfile::Structural,
+            receipt,
+            selected,
+            execution,
+        )
+        .map_err(failure)?;
 
         // Step 5: persist structural workflow-review evidence. WorkflowReview::structural
         // derives its report from the sealed inspected programme — no receipt values
         // are needed for this record. Placed after observe_subject so no structural
         // evidence is written unless the fingerprint and observations are consistent.
-        let structural_review =
-            WorkflowReview::structural(Arc::clone(&self.inspected)).map_err(|e| match e {
+        let structural_review = WorkflowReview::structural(Arc::clone(&self.prepared.inspected))
+            .map_err(|e| match e {
                 StructuralReviewFailure::Preparation(reason) => {
                     tracing::warn!(reason, "validator structural review preparation failed");
                     failure("validator_receipt_structural_review_failed")
@@ -350,8 +260,8 @@ impl InternalRecipeSource for ReviewAdmissionSource {
             .map_err(|_| failure("validator_receipt_task_handle_invalid"))?;
         crate::pg_validator_q1_evidence::persist_validator_q1_evidence(
             &self.pool,
-            &self.subject,
-            &self.selection,
+            &self.prepared.subject,
+            &self.prepared.selection,
             &checks,
             task_handle,
         )
@@ -359,6 +269,196 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         .map(|_| ())
         .map_err(|_| failure("validator_receipt_evidence_persist_failed"))
     }
+}
+
+/// Shared original-subject/receipt authentication. The profile selects the
+/// existing wire grammar, never permissions, Q1 or terminal settlement.
+pub(crate) enum ValidatorReceiptProfile {
+    Structural,
+    Inventory,
+}
+pub(crate) struct ValidatorReceiptSubject<'a> {
+    pub(crate) subject: &'a RetainedValidatorSubject,
+    pub(crate) selection: &'a RetainedValidatorSelection,
+    pub(crate) inspected: &'a InspectedRetainedProgram,
+    pub(crate) coverage: &'a RetainedValidatorCoverage,
+    pub(crate) limits: ContractLimits,
+}
+impl ValidatorReceiptSubject<'_> {
+    pub(crate) fn observe(
+        self,
+        profile: ValidatorReceiptProfile,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<
+        (
+            brassclaw_engine::memory::retained_validator::ObservedSubjectValidatorChecks,
+            BTreeMap<String, Value>,
+        ),
+        &'static str,
+    > {
+        if self.selection.submission_id() != self.subject.submission_id()
+            || self.selection.subject_checksum() != self.subject.subject_checksum()
+        {
+            return Err("validator_selection_subject_mismatch");
+        }
+        let results = receipt_results(
+            profile,
+            receipt,
+            selected,
+            execution,
+            self.inspected,
+            self.coverage,
+            self.limits,
+        )?;
+        let checks = self
+            .coverage
+            .observe_subject(
+                self.subject,
+                self.selection,
+                execution,
+                &results,
+                self.limits,
+            )
+            .map_err(|_| "validator_receipt_observation_failed")?;
+        Ok((checks, results))
+    }
+}
+
+pub(crate) struct InstallationReceiptSubject<'a> {
+    pub(crate) subject:&'a brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSubject,
+    pub(crate) selection:&'a brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSelection,
+    pub(crate) inspected:&'a InspectedRetainedProgram,
+    pub(crate) coverage:&'a RetainedValidatorCoverage,
+    pub(crate) limits:ContractLimits,
+}
+impl InstallationReceiptSubject<'_> {
+    pub(crate) fn observe(
+        self,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<
+        (
+            brassclaw_engine::memory::retained_validator::ObservedInstallationValidatorChecks,
+            BTreeMap<String, Value>,
+        ),
+        &'static str,
+    > {
+        if self.selection.subject() != self.subject.reference() {
+            return Err("installation_selection_subject_mismatch");
+        }
+        let results = receipt_results(
+            ValidatorReceiptProfile::Inventory,
+            receipt,
+            selected,
+            execution,
+            self.inspected,
+            self.coverage,
+            self.limits,
+        )?;
+        let checks = self.coverage.observe_installation_subject(
+            self.subject,
+            self.selection,
+            execution,
+            &results,
+            self.limits,
+        )?;
+        Ok((checks, results))
+    }
+}
+fn receipt_results(
+    profile: ValidatorReceiptProfile,
+    receipt: &str,
+    selected: &InspectedRetainedProgram,
+    execution: &RetainedRecipeExecution,
+    inspected: &InspectedRetainedProgram,
+    coverage: &RetainedValidatorCoverage,
+    limits: ContractLimits,
+) -> Result<BTreeMap<String, Value>, &'static str> {
+    let original = inspected
+        .program()
+        .inputs()
+        .instruction()
+        .retained_selection()
+        .map_err(|_| "validator_receipt_selection_invalid")?;
+    let actual = selected
+        .program()
+        .inputs()
+        .instruction()
+        .retained_selection()
+        .map_err(|_| "validator_receipt_selection_invalid")?;
+    if actual.exact_bytes() != original.exact_bytes() {
+        return Err("validator_receipt_programme_mismatch");
+    }
+    let receipt_step = coverage.receipt_step();
+    let expected = selected
+        .program()
+        .program()
+        .steplist
+        .iter()
+        .filter(|s| s.step_id != receipt_step)
+        .map(|s| s.step_id.as_str())
+        .collect::<Vec<_>>();
+    let results = recorded_receipt_results(profile, receipt, &expected, receipt_step, limits)?;
+    let proof = execution
+        .observations()
+        .get(receipt_step)
+        .ok_or("validator_receipt_observation_missing")?;
+    if proof.result_checksum()
+        != Some(
+            typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())
+                .map_err(|_| "validator_receipt_checksum_overflow")?,
+        )
+    {
+        return Err("validator_receipt_fingerprint_mismatch");
+    }
+    Ok(results)
+}
+/// Shared receipt grammar for actual execution and trusted original records.
+/// This returns typed data only; executor/native seals remain separate.
+pub(crate) fn recorded_receipt_results(
+    profile: ValidatorReceiptProfile,
+    receipt: &str,
+    expected: &[&str],
+    receipt_step: &str,
+    limits: ContractLimits,
+) -> Result<BTreeMap<String, Value>, &'static str> {
+    let value = match profile {
+        ValidatorReceiptProfile::Structural => {
+            serde_json::from_str(receipt).map_err(|_| "validator_receipt_parse_failed")?
+        }
+        ValidatorReceiptProfile::Inventory => {
+            brassclaw_skills::value_contract::strict_json(receipt, limits)
+                .map_err(|_| "validator_receipt_parse_failed")?
+        }
+    };
+    let expected_format = match profile {
+        ValidatorReceiptProfile::Structural => "validator-structural-receipt/1",
+        ValidatorReceiptProfile::Inventory => "validator-step-results/1",
+    };
+    if value["format"] != expected_format {
+        return Err("validator_receipt_format_invalid");
+    }
+    let values = value
+        .get("results")
+        .and_then(Value::as_object)
+        .ok_or("validator_receipt_results_missing")?;
+    if matches!(profile, ValidatorReceiptProfile::Inventory) {
+        if value.as_object().is_none_or(|object| object.len() != 2)
+            || values.len() != expected.len()
+            || expected.iter().any(|step| !values.contains_key(*step))
+        {
+            return Err("validator_receipt_steps_invalid");
+        }
+    }
+    let mut results: BTreeMap<_, _> = values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    results.insert(receipt_step.to_owned(), serde_json::json!(receipt));
+    Ok(results)
 }
 
 fn failure(reason: &'static str) -> PortFailure {

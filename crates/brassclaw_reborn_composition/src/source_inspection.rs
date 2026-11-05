@@ -17,6 +17,7 @@ use brassclaw_monty_host::{
 };
 use serde_json::json;
 
+#[derive(Clone)]
 struct Bound {
     settings: Arc<dyn HostPrimitiveSettingsSource>,
     worker: Arc<PackagedExecutableImage>,
@@ -24,6 +25,7 @@ struct Bound {
 
 pub(crate) struct ContainedSourceInspection {
     bound: RwLock<Option<Bound>>,
+    binding_id: uuid::Uuid,
 }
 fn error(kind: RuntimeDispatchErrorKind) -> FirstPartyCapabilityError {
     FirstPartyCapabilityError::new(kind)
@@ -32,6 +34,7 @@ impl ContainedSourceInspection {
     pub(crate) fn new() -> Self {
         Self {
             bound: RwLock::new(None),
+            binding_id: uuid::Uuid::new_v4(),
         }
     }
 
@@ -127,17 +130,83 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         &self,
         sources: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        self.prepare().await?.inspect_sources(sources, None).await
+    }
+    async fn capture_fixture_preparation(
+        &self,
+    ) -> Result<brassclaw_host_runtime::SourceInspectionPreparationFacts, FirstPartyCapabilityError>
+    {
+        let Bound { settings, worker } = self.bound_parts()?;
+        let capture = settings.capture_for_native_fixture().await?;
+        Ok(brassclaw_host_runtime::SourceInspectionPreparationFacts {
+            capture,
+            worker_checksum: worker.checksum(),
+            backend_binding_id: self.binding_id,
+        })
+    }
+    async fn inspect_sources_with_fixture(
+        &self,
+        sources: &serde_json::Map<String, serde_json::Value>,
+        fixture: &brassclaw_host_runtime::SourceInspectionFixtureProfile,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        let actual = self.capture_fixture_preparation().await?;
+        if actual != fixture.base() || fixture.arguments() != &json!({"sources":sources}) {
+            return Err(error(RuntimeDispatchErrorKind::OperationFailed));
+        }
+        let Bound { worker, .. } = self.bound_parts()?;
+        let limits = UtilityLimits::from_execution(fixture.limits())
+            .map_err(|_| error(RuntimeDispatchErrorKind::Resource))?;
+        PreparedUtility {
+            worker,
+            limits,
+            revision: actual.capture.settings.revision,
+        }
+        .inspect_sources(sources, Some(fixture.guard_reason()))
+        .await
+    }
+}
+
+pub(crate) struct PreparedUtility {
+    pub(crate) worker: Arc<PackagedExecutableImage>,
+    pub(crate) limits: UtilityLimits,
+    pub(crate) revision: u64,
+}
+impl PreparedUtility {
+    async fn inspect_sources(
+        &self,
+        sources: &serde_json::Map<String, serde_json::Value>,
+        fixture_reason: Option<String>,
+    ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
         if sources
             .iter()
             .any(|(id, source)| id.is_empty() || !source.is_string())
         {
             return Err(error(RuntimeDispatchErrorKind::InputEncode));
         }
-        let prepared = self.prepare().await?;
+        // This stable native guard diagnostic identifies the pre-worker source
+        // byte rejection. Generic Resource failures (allocator/transport/worker)
+        // are deliberately different and cannot qualify this boundary case.
+        let source_bytes = sources
+            .values()
+            .try_fold(0usize, |total, source| {
+                source
+                    .as_str()
+                    .and_then(|source| total.checked_add(source.len()))
+            })
+            .ok_or_else(|| error(RuntimeDispatchErrorKind::Resource))?;
+        if source_bytes > self.limits.bounds.max_source_bytes {
+            return Err(FirstPartyCapabilityError::with_safe_summary(
+                RuntimeDispatchErrorKind::Resource,
+                fixture_reason.unwrap_or_else(|| format!(
+                    "source inventory source byte limit exceeded revision {} limit {} actual {}",
+                    self.revision, self.limits.bounds.max_source_bytes, source_bytes
+                )),
+            ).with_usage(ResourceUsage::default()));
+        }
         if !brassclaw_monty_host::source_inventory::source_values_within_bounds(
             sources,
-            prepared.limits.bounds,
-            prepared.limits.process.max_frame_bytes,
+            self.limits.bounds,
+            self.limits.process.max_frame_bytes,
         ) {
             return Err(error(RuntimeDispatchErrorKind::Resource));
         }
@@ -151,11 +220,11 @@ impl SourceInspectionBackend for ContainedSourceInspection {
                     .ok_or_else(|| error(RuntimeDispatchErrorKind::InputEncode))
             })
             .collect::<Result<_, _>>()?;
-        let (output, usage) = prepared
+        let (output, usage) = self
             .execute(
                 UtilityRequest::InspectSources {
                     sources,
-                    bounds: prepared.limits.bounds,
+                    bounds: self.limits.bounds,
                 },
                 started,
             )
@@ -163,20 +232,13 @@ impl SourceInspectionBackend for ContainedSourceInspection {
         let UtilityOutput::InspectedSources { sources } = output else {
             return Err(error(RuntimeDispatchErrorKind::OperationFailed).with_usage(usage));
         };
-        prepared.report(
-            json!({"format":"python-source-inventory/1", "preparation_revision":prepared.revision,
-            "worker_checksum":hex::encode(prepared.worker.checksum()),"sources":sources}),
+        self.report(
+            json!({"format":"python-source-inventory/1", "preparation_revision":self.revision,
+            "worker_checksum":hex::encode(self.worker.checksum()),"sources":sources}),
             usage,
         )
     }
-}
 
-pub(crate) struct PreparedUtility {
-    pub(crate) worker: Arc<PackagedExecutableImage>,
-    pub(crate) limits: UtilityLimits,
-    pub(crate) revision: u64,
-}
-impl PreparedUtility {
     async fn execute(
         &self,
         request: UtilityRequest,
@@ -257,17 +319,15 @@ impl PreparedUtility {
 impl ContainedSourceInspection {
     /// Share one retained worker/settings owner with fixed preparation
     /// primitives. Bootstrap selection is private; ingress sees live ack limits.
+    fn bound_parts(&self) -> Result<Bound, FirstPartyCapabilityError> {
+        self.bound
+            .read()
+            .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?
+            .clone()
+            .ok_or_else(|| error(RuntimeDispatchErrorKind::OperationFailed))
+    }
     pub(crate) async fn prepare(&self) -> Result<PreparedUtility, FirstPartyCapabilityError> {
-        let (settings, worker) = {
-            let bound = self
-                .bound
-                .read()
-                .map_err(|_| error(RuntimeDispatchErrorKind::OperationFailed))?;
-            let bound = bound
-                .as_ref()
-                .ok_or_else(|| error(RuntimeDispatchErrorKind::OperationFailed))?;
-            (bound.settings.clone(), bound.worker.clone())
-        };
+        let Bound { settings, worker } = self.bound_parts()?;
         let current = settings
             .snapshot()
             .await

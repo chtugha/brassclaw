@@ -1157,6 +1157,8 @@ mod bootstrap_measurement_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_pair_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod bootstrap_quiescence_wire;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_recipe_flow;
 #[cfg(feature = "skills-db")]
 mod bootstrap_reply_approval;
@@ -1198,6 +1200,10 @@ mod resource_store_settings;
 mod source_inspection;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod source_inspection_components;
+
+// Closed contained review support only; ordinary private Work remains B3-owned.
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) mod validator_inventory_review;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod installed_monty_catalogue;

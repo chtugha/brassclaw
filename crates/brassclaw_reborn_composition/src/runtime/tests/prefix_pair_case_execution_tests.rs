@@ -309,7 +309,7 @@ async fn native_pair_case_recipe_checks_source_handoffs_and_actual_durable_nativ
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 catalogue.worker.clone(),
-                inspected.preparation_limits(),
+                catalogue.startup_executor.clone(),
                 &root,
                 Arc::new(Invocation {
                     reference,
@@ -445,6 +445,7 @@ async fn native_pair_bootstrap_qualifies_exact_recipe_and_checks_retained_journa
         catalogue.compiler_approval.as_ref(),
         &catalogue.encoding_approvals,
         &catalogue.worker,
+        catalogue.startup_executor.clone(),
     )
     .await
     .unwrap()

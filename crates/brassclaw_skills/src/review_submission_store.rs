@@ -9,6 +9,8 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::{IsolationLevel, Transaction};
 use uuid::Uuid;
 
+#[path = "review_installation_subject.rs"]
+pub mod installation;
 #[path = "review_selection_store.rs"]
 pub mod selection;
 

@@ -136,6 +136,8 @@ pub(crate) struct InstalledMontyCatalogue {
     initial_preparation: PreparationCapture,
     private_work_context:
         std::sync::OnceLock<brassclaw_turns::private_work::PrivateExecutionContext>,
+    pub(crate) startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    pub(crate) resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     preparation_settings:
         std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
     pub(crate) pool: Arc<PgPool>,
@@ -146,6 +148,8 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) generation: Uuid,
     pub(crate) reference_sources: crate::prefix_reference_seeds::Package,
     pub(crate) root_reference: brassclaw_skills::association_contract::ComponentRevisionRef,
+    #[cfg(test)]
+    pub(crate) root_definition: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
     pub(crate) mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     pub(crate) qualification_scope: IntentScope,
     pub(crate) worker: std::path::PathBuf,
@@ -515,9 +519,12 @@ impl InstalledMontyCatalogue {
         worker_image: Arc<PackagedExecutableImage>,
         scope: &IntentScope,
         memory_mounts: MountView,
-        root: brassclaw_skills::association_contract::ComponentRevisionRef,
+        root_definition: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
         startup_settings: &brassclaw_product_workflow::MontyVmSettings,
+        startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+        resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let root = root_definition.reference();
         let initial_preparation =
             PreparationCapture::capture(startup_settings, PreparationOrigin::AcknowledgedStartup)
                 .map_err(invalid)?;
@@ -589,6 +596,7 @@ impl InstalledMontyCatalogue {
             kernel.clone(),
             &encoding_candidates,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let source_compiler_candidates = crate::prefix_compiler_candidates::retain(
@@ -622,6 +630,7 @@ impl InstalledMontyCatalogue {
             &source_compiler_candidates.source,
             &generation_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let compiler_program = match &compiler_approval {
@@ -644,6 +653,7 @@ impl InstalledMontyCatalogue {
             compiler_approval.as_ref(),
             &encoding_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let measurement_program = measurement_qualification
@@ -654,6 +664,7 @@ impl InstalledMontyCatalogue {
             kernel.clone(),
             worker,
             preparation,
+            startup_executor.clone(),
         ))
         .await?;
         let pair_case_candidate = crate::prefix_pair_candidates::retain(
@@ -672,6 +683,7 @@ impl InstalledMontyCatalogue {
             compiler_approval.as_ref(),
             &encoding_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let pair_case_program = pair_case_qualification
@@ -848,20 +860,46 @@ impl InstalledMontyCatalogue {
                 "installed source inspection requires reply components",
             ));
         };
-        let inventory_usage = crate::source_inspection_components::retain(
-            pool.clone(),
-            kernel.as_ref(),
-            &scope.tenant_id,
-            reply_components,
+        let mut inventory_components = crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            crate::source_inspection_components::retain(
+                pool.clone(),
+                kernel.as_ref(),
+                &scope.tenant_id,
+                reply_components,
+            ),
         )
         .await?;
-        crate::builtin_bootstrap::retain_validator_structure_drafts(&pool, inventory_usage)
-            .await
-            .map_err(|error| {
-                invalid(format!(
-                    "retain private validator structure drafts: {error}"
-                ))
-            })?;
+        let checking_definitions =
+            crate::bootstrap_evidence::io::bounded(resource_store_settings.as_ref(), async {
+                crate::builtin_bootstrap::retain_validator_structure_drafts(
+                    &pool,
+                    inventory_components.usage,
+                )
+                .await
+                .map_err(|error| {
+                    invalid(format!(
+                        "retain private validator structure drafts: {error}"
+                    ))
+                })
+            })
+            .await?;
+        inventory_components
+            .definitions
+            .extend(checking_definitions)?;
+        let inventory_observations =
+            Box::pin(crate::validator_inventory_review::observe_installation(
+                pool.clone(),
+                kernel.clone(),
+                worker_image.clone(),
+                inventory_components.definitions,
+                reply_components,
+                startup_executor.clone(),
+                preparation,
+                resource_store_settings.clone(),
+                root_definition.clone(),
+            ))
+            .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -923,6 +961,15 @@ impl InstalledMontyCatalogue {
         if let Some(approval) = &public_reply_approval {
             approval.verify_in_transaction(&tx).await?;
         }
+        crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            inventory_observations.verify_in_transaction(&tx),
+        )
+        .await?;
+        tracing::info!(
+            status = inventory_observations.status(),
+            "contained installation source observations; no checker qualification or activation"
+        );
         for selected in [&reply, &history] {
             let instruction = selected.program().inputs().instruction();
             let refs: Vec<_> = instruction
@@ -994,6 +1041,8 @@ impl InstalledMontyCatalogue {
         let catalogue = Arc::new(Self {
             initial_preparation,
             private_work_context: std::sync::OnceLock::new(),
+            startup_executor,
+            resource_store_settings,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
             tool_credential_sources: std::sync::OnceLock::new(),
@@ -1033,6 +1082,8 @@ impl InstalledMontyCatalogue {
             memory_mounts,
             generation,
             root_reference: root,
+            #[cfg(test)]
+            root_definition,
             reference_sources,
             _image: image,
         });
@@ -1202,10 +1253,6 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             .user_input
             .starts_with(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
         {
-            use brassclaw_engine::{
-                executor::retained_source::InspectedRetainedProgram,
-                memory::retained_validator::RetainedValidatorCoverage,
-            };
             use brassclaw_skills::{
                 component_revision::REVISION_LIMITS,
                 review_submission_store::{PgReviewSubmissionStore, selection},
@@ -1244,51 +1291,25 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                     .ok_or_else(failed)?;
             tx.commit().await.map_err(|_| failed())?;
 
-            // 3. Restore the retained programme from the sealed selection.
-            let program =
-                RetainedValidatorCoverage::restore_preparation(&selection).map_err(|_| failed())?;
-
-            // 4. Inspect the retained programme under the current worker image.
-            //    preparation_limits() returns the UtilityLimits that inspect_with_limits
-            //    requires; the corresponding ContractLimits are derived from those same
-            //    bounds for subject/inputs construction.
-            let preparation = self.preparation_limits().await.map_err(|_| failed())?;
-            let contract_limits = brassclaw_skills::value_contract::ContractLimits {
-                max_depth: preparation.bounds.max_value_depth,
-                max_nodes: preparation.bounds.max_value_nodes,
-                max_bytes: preparation.bounds.max_value_bytes,
-            };
-            let inspected = Arc::new(
-                InspectedRetainedProgram::inspect_with_limits(
-                    RetainedProgram::Tools(Arc::new(program)),
-                    &self.worker_image.path(),
-                    preparation,
-                )
+            // One acknowledged task capture and one shared domain serializer.
+            // B02 persists this same Prepared/input capture before Work admission;
+            // this existing direct route keeps its original authored behavior.
+            let preparation = self
+                .capture_task_preparation()
                 .await
-                .map_err(|_| failed())?,
-            );
-
-            // 5. Derive typed inputs from the sealed subject (no source substitution).
-            let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
                 .map_err(|_| failed())?;
-            let inputs = crate::pg_review_admission_source::subject_validator_task_inputs(
-                &coverage,
-                &subject,
-                &inspected,
-                contract_limits,
+            let prepared = crate::pg_review_admission_source::PreparedValidatorReview::prepare(
+                Arc::new(subject),
+                Arc::new(selection),
+                self.worker_image.clone(),
+                preparation,
             )
+            .await
             .map_err(|_| failed())?;
-
-            // 6. Construct the sealed ReviewAdmissionSource. new() enforces
-            //    subject/selection agreement and the zero-Tool-binding invariant.
             let source = Arc::new(
-                crate::pg_review_admission_source::ReviewAdmissionSource::new(
-                    Arc::new(subject),
-                    Arc::new(selection),
-                    inspected,
-                    inputs,
+                crate::pg_review_admission_source::ReviewAdmissionSource::from_prepared(
+                    prepared,
                     self.pool.clone(),
-                    contract_limits,
                 )
                 .map_err(|_| failed())?,
             );
@@ -1819,33 +1840,7 @@ fn bootstrap_builtin_tools(
 ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
     let mut runtimes = BTreeMap::new();
     for (step, binding) in program.bindings() {
-        let capability = CapabilityId::new(binding.capability_id())
-            .map_err(|error| invalid(error.to_string()))?;
-        let descriptor = kernel
-            .builtin(&capability, None)
-            .map_err(|error| invalid(error.to_string()))?
-            .descriptor()
-            .clone();
-        let policy = Arc::new(PgSelectedToolPolicy {
-            host: host.clone(),
-            pool: pool.clone(),
-            tool: binding.tool().uuid,
-            capability: capability.clone(),
-            effects: descriptor.effects,
-            mounts: MountView::default(),
-        });
-        let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
-            live: policy,
-            denied,
-        });
-        let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
-            .draft()
-            .document();
-        let expected = serde_json::from_value(document["implementation"]["identity"].clone())
-            .map_err(|error| invalid(error.to_string()))?;
-        let runtime = kernel
-            .builtin_with_policy(&capability, expected, policy)
-            .map_err(|error| invalid(error.to_string()))?;
+        let runtime = bootstrap_builtin_runtime(&pool, &kernel, &host, &program, binding, denied)?;
         runtimes.insert(step.clone(), Arc::new(runtime));
     }
     Ok(Arc::new(SelectedTools {
@@ -1860,6 +1855,70 @@ fn bootstrap_builtin_tools(
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
     }))
+}
+
+/// Existing contained primitive boundary, before qualifying a dependent usage.
+/// Registration, retained identity and current policy remain native-owned.
+pub(crate) fn bootstrap_builtin_runtime(
+    pool: &Arc<PgPool>,
+    kernel: &Arc<dyn MontyKernelSnapshot>,
+    host: &Arc<MontyTaskHost>,
+    program: &RetainedToolProgram,
+    binding: &RetainedToolBinding,
+    denied: bool,
+) -> Result<RetainedFirstPartyCapability, RebornBuildError> {
+    let capability =
+        CapabilityId::new(binding.capability_id()).map_err(|error| invalid(error.to_string()))?;
+    let descriptor = kernel
+        .builtin(&capability, None)
+        .map_err(|error| invalid(error.to_string()))?
+        .descriptor()
+        .clone();
+    let policy = Arc::new(PgSelectedToolPolicy {
+        host: host.clone(),
+        pool: pool.clone(),
+        tool: binding.tool().uuid,
+        capability: capability.clone(),
+        effects: descriptor.effects,
+        mounts: MountView::default(),
+    });
+    let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
+        live: policy,
+        denied,
+    });
+    let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
+        .draft()
+        .document();
+    let expected = serde_json::from_value(document["implementation"]["identity"].clone())
+        .map_err(|error| invalid(error.to_string()))?;
+    kernel
+        .builtin_with_policy(&capability, expected, policy)
+        .map_err(|error| invalid(error.to_string()))
+}
+
+/// A private qualified parser handle, rather than a caller-selected Tool list,
+/// determines the only permitted binding. This exposes no ordinary activation.
+pub(crate) fn qualified_inventory_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    qualification: &crate::validator_inventory_review::QualifiedSourceInventoryUsage,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    qualification.require_program(&program)?;
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
+}
+
+pub(crate) fn inventory_qualification_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    crate::validator_inventory_review::require_inventory_binding(&program)?;
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
 }
 
 /// Bind the existing native Tool-port owner to a proven zero-Tool workflow.

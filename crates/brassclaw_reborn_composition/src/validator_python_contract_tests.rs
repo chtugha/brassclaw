@@ -145,6 +145,21 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
  {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let settings = brassclaw_product_workflow::MontyVmSettingsStore::get(
+        &crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        ),
+        "default",
+        "default",
+    )
+    .await
+    .unwrap();
+    let executor =
+        crate::global_monty_startup::ControlledExecutorConfiguration::new(&settings).unwrap();
     crate::builtin_bootstrap::retain_validator_check_drafts(&rig.pool)
         .await
         .unwrap();
@@ -347,7 +362,7 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 worker.clone(),
-                inspected.preparation_limits(),
+                executor.clone(),
                 &root,
                 source.clone(),
             )

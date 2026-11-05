@@ -918,25 +918,24 @@ pub async fn seed_builtin_components(
     Ok(())
 }
 
-/// Installation-owned draft retention only. No class route, confidence,
-/// evidence, human review or active catalogue selection is created here.
-pub(crate) async fn retain_validator_check_drafts(
-    pool: &Arc<PgPool>,
-) -> Result<(), SeedBuiltinBootstrapError> {
+/// Shared packaged definitions used by retention and exact closed review.
+/// Constructing these drafts grants no qualification or activation.
+pub(crate) fn validator_check_drafts() -> Vec<
+    Result<
+        brassclaw_skills::component_revision::ComponentRevisionDraft,
+        brassclaw_skills::component_revision::RevisionError,
+    >,
+> {
     use brassclaw_skills::{
         global_bootstrap_components::packaged_component_id,
         validator_components::{
-            VALIDATOR_CLASS_CODES, preload_definition_draft, python_contracts_draft,
-            python_definitions_draft, python_graph_draft, python_pure_calls_draft,
-            recursive_contract_draft, review_subject_reader_draft, skill_interface_draft,
-            structural_presence_draft, structural_validator_recipe_drafts, subject_sources_draft,
+            preload_definition_draft, python_contracts_draft, python_definitions_draft,
+            python_graph_draft, python_pure_calls_draft, recursive_contract_draft,
+            review_subject_reader_draft, skill_interface_draft, structural_presence_draft,
+            subject_sources_draft,
         },
     };
-
-    let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
-
-    // Retain shared checking components (independent of class route).
-    for draft in [
+    vec![
         structural_presence_draft(packaged_component_id("validator:structural-presence")),
         preload_definition_draft(packaged_component_id("validator:preload-definition")),
         subject_sources_draft(packaged_component_id("validator:subject-sources")),
@@ -964,7 +963,22 @@ pub(crate) async fn retain_validator_check_drafts(
             packaged_component_id("validator:python-pure-calls"),
             VALIDATOR_PYTHON_PURE_CALLS_SEED,
         ),
-    ] {
+    ]
+}
+
+/// Installation-owned draft retention only. No class route, confidence,
+/// evidence, human review or active catalogue selection is created here.
+pub(crate) async fn retain_validator_check_drafts(
+    pool: &Arc<PgPool>,
+) -> Result<(), SeedBuiltinBootstrapError> {
+    use brassclaw_skills::validator_components::{
+        VALIDATOR_CLASS_CODES, structural_validator_recipe_drafts,
+    };
+
+    let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+
+    // Retain shared checking components (independent of class route).
+    for draft in validator_check_drafts() {
         let draft = draft.map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),
         })?;
@@ -1022,7 +1036,7 @@ pub(crate) async fn retain_validator_check_drafts(
 pub(crate) async fn retain_validator_structure_drafts(
     pool: &Arc<PgPool>,
     inventory: brassclaw_skills::global_bootstrap_components::UsageComponentIds,
-) -> Result<(), SeedBuiltinBootstrapError> {
+) -> Result<crate::source_inspection_components::PackagedDefinitions, SeedBuiltinBootstrapError> {
     let profile = serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
         .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),
@@ -1036,8 +1050,9 @@ pub(crate) async fn retain_validator_structure_drafts(
         reason: error.to_string(),
     })?;
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+    let mut retained = crate::source_inspection_components::PackagedDefinitions::default();
     for draft in drafts {
-        store.retain_packaged_draft(&draft).await.map_err(|error| {
+        retained.retain(&store, &draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),
             }
@@ -1051,13 +1066,13 @@ pub(crate) async fn retain_validator_structure_drafts(
     .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
         reason: error.to_string(),
     })? {
-        store.retain_packaged_draft(&draft).await.map_err(|error| {
+        retained.retain(&store, &draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),
             }
         })?;
     }
-    Ok(())
+    Ok(retained)
 }
 
 const PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT: &str = r#"def usage_assemble_prefix_bundle(inputs):

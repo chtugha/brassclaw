@@ -232,6 +232,7 @@ pub(super) async fn qualify(
     digest: Option<&BootstrapCompilerApproval>,
     encodings: &[BootstrapEncodingApproval],
     worker_path: &Path,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
 ) -> Result<Option<BootstrapMeasurementQualification>, RebornBuildError> {
     let Some(digest) = digest else {
         return Ok(None);
@@ -308,6 +309,7 @@ pub(super) async fn qualify(
     tx.commit().await.map_err(invalid)?;
     drop(client);
     let observed = Box::pin(validation::execute(
+        executor.clone(),
         pool.clone(),
         kernel,
         subject.inspected.clone(),

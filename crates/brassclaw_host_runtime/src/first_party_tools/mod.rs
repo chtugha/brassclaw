@@ -75,9 +75,14 @@ pub use prefix_source::{
     PREFIX_SOURCE_CAPABILITY_ID, PrefixSourceBackend, PrefixSourceBackendError,
     PrefixSourceIdentity,
 };
-pub use primitive_settings::{HostPrimitiveSettings, HostPrimitiveSettingsSource};
+pub use primitive_settings::{
+    HostPrimitiveSettings, HostPrimitiveSettingsSource, NativePrimitiveSettingsCapture,
+    NativePrimitiveSettingsOrigin,
+};
 pub use shell::SHELL_CAPABILITY_ID;
-pub use source_inspection::{SOURCE_INSPECTION_CAPABILITY_ID, SourceInspectionBackend};
+pub use source_inspection::{
+    SOURCE_INSPECTION_CAPABILITY_ID, SOURCE_INVENTORY_INPUT_INVALID_REASON, SourceInspectionBackend,
+};
 pub use spawn_subagent::SPAWN_SUBAGENT_CAPABILITY_ID;
 pub use time::TIME_CAPABILITY_ID;
 #[cfg(any(test, feature = "test-support"))]
@@ -247,6 +252,7 @@ pub async fn builtin_native_first_party_handlers(
     let image =
         crate::NativeExecutableImage::capture_with_verification(max_artifact_bytes, verification)
             .await?;
+    let inspection = tools.source_inspection_state.retained_backend();
     let mut registry = builtin_first_party_registry_from_tools(tools)
         .map_err(|_| crate::NativeRegistrationError::Declaration)?;
     let package =
@@ -263,11 +269,16 @@ pub async fn builtin_native_first_party_handlers(
             .replace('.', "-");
         let schema = resolve_builtin_input_schema_ref(&current_builtin_input_schema_ref(&name))
             .ok_or(crate::NativeRegistrationError::Declaration)?;
-        registry.record_native(crate::native_registration::NativeBuiltinRegistration::new(
+        let is_inspection = descriptor.id.as_str() == SOURCE_INSPECTION_CAPABILITY_ID;
+        let mut native = crate::native_registration::NativeBuiltinRegistration::new(
             image.clone(),
             descriptor,
             schema,
-        )?)?;
+        )?;
+        if is_inspection && let Some(backend) = &inspection {
+            native = native.with_source_inspection_preparation(backend.clone())?;
+        }
+        registry.record_native(native)?;
     }
     Ok(registry)
 }
@@ -573,8 +584,20 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         if request.capability_id.as_str() == SOURCE_INSPECTION_CAPABILITY_ID {
             // The actual backend captures acknowledged limits and accounts for
             // its contained worker. No shared 1 MiB fallback truncates facts.
-            return source_inspection::dispatch(&self.source_inspection_state, &request.input)
-                .await;
+            let view = request.services.source_inspection_fixture.as_deref();
+            if view.is_some_and(|view| !view.matches(&request.scope, &request.input)) {
+                return Err(operation_error());
+            }
+            let outcome = source_inspection::dispatch(
+                &self.source_inspection_state,
+                &request.input,
+                view.and_then(|view| view.profile()),
+            )
+            .await;
+            if let Some(view) = view {
+                view.observe(&request.scope, &request.input, &outcome).await;
+            }
+            return outcome;
         }
         let start = Instant::now();
         let mut network_egress_bytes = 0;

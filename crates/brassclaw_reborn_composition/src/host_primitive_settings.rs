@@ -77,15 +77,19 @@ impl AcknowledgedPrimitiveSettings {
         Ok(())
     }
 }
-#[async_trait]
-impl HostPrimitiveSettingsSource for AcknowledgedPrimitiveSettings {
-    async fn snapshot(&self) -> Result<HostPrimitiveSettings, FirstPartyCapabilityError> {
+impl AcknowledgedPrimitiveSettings {
+    async fn capture_actual(
+        &self,
+    ) -> Result<brassclaw_host_runtime::NativePrimitiveSettingsCapture, FirstPartyCapabilityError>
+    {
         let failure = || FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::Resource);
         let source = {
             let bound = self.source.read().map_err(|_| failure())?;
             match &*bound {
                 PrimitiveSettingsState::Unbound => return Err(failure()),
-                PrimitiveSettingsState::Bootstrap(settings) => return Ok(**settings),
+                PrimitiveSettingsState::Bootstrap(settings) => return Ok(brassclaw_host_runtime::NativePrimitiveSettingsCapture {
+                    settings: **settings, origin: brassclaw_host_runtime::NativePrimitiveSettingsOrigin::ControlledBootstrap,
+                }),
                 PrimitiveSettingsState::Live(source) => source.clone(),
             }
         };
@@ -100,9 +104,25 @@ impl HostPrimitiveSettingsSource for AcknowledgedPrimitiveSettings {
         if settings.revision == 0 {
             return Err(failure());
         }
-        Ok(HostPrimitiveSettings {
-            revision: settings.revision,
-            limits: settings.execution_limits,
+        Ok(brassclaw_host_runtime::NativePrimitiveSettingsCapture {
+            settings: HostPrimitiveSettings {
+                revision: settings.revision,
+                limits: settings.execution_limits,
+            },
+            origin: brassclaw_host_runtime::NativePrimitiveSettingsOrigin::AcknowledgedLive,
         })
+    }
+}
+
+#[async_trait]
+impl HostPrimitiveSettingsSource for AcknowledgedPrimitiveSettings {
+    async fn snapshot(&self) -> Result<HostPrimitiveSettings, FirstPartyCapabilityError> {
+        Ok(self.capture_actual().await?.settings)
+    }
+    async fn capture_for_native_fixture(
+        &self,
+    ) -> Result<brassclaw_host_runtime::NativePrimitiveSettingsCapture, FirstPartyCapabilityError>
+    {
+        self.capture_actual().await
     }
 }

@@ -181,6 +181,7 @@ pub(super) async fn qualify(
     kernel: Arc<dyn MontyKernelSnapshot>,
     candidates: &[Arc<InspectedRetainedProgram>; 2],
     worker_path: &Path,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
 ) -> Result<Vec<BootstrapEncodingApproval>, RebornBuildError> {
     let runtime = kernel
         .builtin(
@@ -230,6 +231,7 @@ pub(super) async fn qualify(
     let mut observations = Vec::new();
     for subject in &subjects {
         let observed = Box::pin(validation::execute(
+            executor.clone(),
             pool.clone(),
             kernel.clone(),
             subject.inspected.clone(),

@@ -13,6 +13,87 @@ use crate::executor::retained_recipe::{
     RetainedRecipeExecution, typed_object_checksum_with_limits,
 };
 
+use brassclaw_skills::review_submission_store::installation::{
+    RetainedInstallationValidatorSelection, RetainedInstallationValidatorSubject,
+};
+
+#[derive(Clone, Copy)]
+pub(super) enum SubjectView<'a> {
+    Authored(&'a RetainedValidatorSubject),
+    Installation(&'a RetainedInstallationValidatorSubject),
+}
+impl<'a> SubjectView<'a> {
+    fn value(self) -> &'a Value {
+        match self {
+            Self::Authored(s) => s.value(),
+            Self::Installation(s) => s.value(),
+        }
+    }
+    pub(super) fn candidate(self) -> brassclaw_skills::association_contract::ComponentRevisionRef {
+        match self {
+            Self::Authored(s) => s.candidate(),
+            Self::Installation(s) => s.candidate(),
+        }
+    }
+    pub(super) fn is_function_review(self) -> bool {
+        match self {
+            Self::Authored(s) => s.is_function_review(),
+            Self::Installation(_) => false,
+        }
+    }
+    fn id(self) -> uuid::Uuid {
+        match self {
+            Self::Authored(s) => s.submission_id(),
+            Self::Installation(s) => s.reference().id,
+        }
+    }
+    fn subject_checksum(self) -> &'a str {
+        match self {
+            Self::Authored(s) => s.subject_checksum(),
+            Self::Installation(s) => &s.reference().checksum,
+        }
+    }
+}
+#[derive(Clone, Copy)]
+enum SelectionView<'a> {
+    Authored(&'a RetainedValidatorSelection),
+    Installation(&'a RetainedInstallationValidatorSelection),
+}
+impl<'a> SelectionView<'a> {
+    fn id(self) -> uuid::Uuid {
+        match self {
+            Self::Authored(s) => s.submission_id(),
+            Self::Installation(s) => s.subject().id,
+        }
+    }
+    fn subject_checksum(self) -> &'a str {
+        match self {
+            Self::Authored(s) => s.subject_checksum(),
+            Self::Installation(s) => &s.subject().checksum,
+        }
+    }
+    fn validator_bytes(self) -> &'a str {
+        match self {
+            Self::Authored(s) => s.validator_bytes(),
+            Self::Installation(s) => s.validator_bytes(),
+        }
+    }
+}
+/// Passive input evidence. Constructing it grants no execution/review authority.
+pub struct ValidatorInputFingerprint {
+    pub checksum: [u8; 32],
+    pub limits: ContractLimits,
+}
+/// Installation-only factual observation; cannot be passed to authored Q1 writers.
+pub struct ObservedInstallationValidatorChecks {
+    report: Value,
+}
+impl ObservedInstallationValidatorChecks {
+    pub fn report(&self) -> &Value {
+        &self.report
+    }
+}
+
 /// Complete actual observations bound to one sealed original submission and
 /// stored validator selection. This is deliberately distinct from unbound
 /// fixture observations. It still supplies no Q1, semantic or approval verdict.
@@ -35,7 +116,23 @@ impl RetainedValidatorCoverage {
         inputs: &super::RetainedRecipeInputs,
         limits: ContractLimits,
     ) -> Result<Value, &'static str> {
-        self.require_subject(subject)?;
+        self.subject_task_inputs_view(SubjectView::Authored(subject), inputs, limits)
+    }
+    pub fn installation_task_inputs(
+        &self,
+        subject: &RetainedInstallationValidatorSubject,
+        inputs: &super::RetainedRecipeInputs,
+        limits: ContractLimits,
+    ) -> Result<Value, &'static str> {
+        self.subject_task_inputs_view(SubjectView::Installation(subject), inputs, limits)
+    }
+    fn subject_task_inputs_view(
+        &self,
+        subject: SubjectView<'_>,
+        inputs: &super::RetainedRecipeInputs,
+        limits: ContractLimits,
+    ) -> Result<Value, &'static str> {
+        self.require_subject_view(subject)?;
         if inputs
             .instruction()
             .retained_selection()
@@ -81,28 +178,89 @@ impl RetainedValidatorCoverage {
         results: &BTreeMap<String, Value>,
         limits: ContractLimits,
     ) -> Result<ObservedSubjectValidatorChecks, &'static str> {
-        self.require_subject(subject)?;
-        let inspected = execution.inspected_program();
-        let inputs = inspected.program().inputs();
-        if saved.submission_id() != subject.submission_id()
-            || saved.subject_checksum() != subject.subject_checksum()
-            || inputs
+        self.observe_subject_view(
+            SubjectView::Authored(subject),
+            SelectionView::Authored(saved),
+            execution,
+            results,
+            limits,
+        )
+        .map(|report| ObservedSubjectValidatorChecks { report })
+    }
+    pub fn observe_installation_subject(
+        &self,
+        subject: &RetainedInstallationValidatorSubject,
+        saved: &RetainedInstallationValidatorSelection,
+        execution: &RetainedRecipeExecution,
+        results: &BTreeMap<String, Value>,
+        limits: ContractLimits,
+    ) -> Result<ObservedInstallationValidatorChecks, &'static str> {
+        self.observe_subject_view(
+            SubjectView::Installation(subject),
+            SelectionView::Installation(saved),
+            execution,
+            results,
+            limits,
+        )
+        .map(|report| ObservedInstallationValidatorChecks { report })
+    }
+    /// Recheck immutable recorded inputs without manufacturing an execution or
+    /// an Observed* seal. Both live observation and historical metadata use the
+    /// same original subject serializer and exact dataflow checksum core.
+    pub fn verify_installation_input_fingerprints(
+        &self,
+        subject: &RetainedInstallationValidatorSubject,
+        saved: &RetainedInstallationValidatorSelection,
+        program: &crate::memory::retained_tools::RetainedToolProgram,
+        results: &BTreeMap<String, Value>,
+        fingerprints: &BTreeMap<String, ValidatorInputFingerprint>,
+        limits: ContractLimits,
+    ) -> Result<(), &'static str> {
+        if subject.reference() != saved.subject()
+            || program
+                .inputs()
                 .instruction()
                 .retained_selection()
-                .map_err(|_| "executed selection cannot be retained")?
+                .map_err(|_| "recorded selection invalid")?
                 .exact_bytes()
                 != saved.validator_bytes()
         {
-            return Err("validator execution differs from original subject selection");
+            return Err("recorded subject selection differs");
         }
-        let task_inputs = self.subject_task_inputs(subject, inputs, limits)?;
+        let order = program
+            .program()
+            .steplist
+            .iter()
+            .map(|s| s.step_id.as_str())
+            .collect::<Vec<_>>();
+        self.verify_subject_edges(
+            SubjectView::Installation(subject),
+            program.inputs(),
+            &order,
+            results,
+            fingerprints,
+            limits,
+        )
+    }
+    fn verify_subject_edges(
+        &self,
+        subject: SubjectView<'_>,
+        inputs: &super::RetainedRecipeInputs,
+        order: &[&str],
+        results: &BTreeMap<String, Value>,
+        fingerprints: &BTreeMap<String, ValidatorInputFingerprint>,
+        limits: ContractLimits,
+    ) -> Result<(), &'static str> {
+        if fingerprints.len() != order.len() {
+            return Err("complete original input evidence required");
+        }
+        let task_inputs = self.subject_task_inputs_view(subject, inputs, limits)?;
         // Verify dataflow, not workflow decisions: Monty already executed the
         // pinned flat order. A changed input producing the same output is still
         // a different observation and cannot become evidence for this subject.
-        for step in &inspected.program().program().steplist {
-            let step = step.step_id.as_str();
-            let actual = execution
-                .observations()
+        for step in order {
+            let step = *step;
+            let actual = fingerprints
                 .get(step)
                 .ok_or("validator input observation missing")?;
             let bindings = inputs
@@ -132,27 +290,97 @@ impl RetainedValidatorCoverage {
                 };
                 expected.insert(name.clone(), value);
             }
-            if typed_object_checksum_with_limits(&expected, actual.data_limits())
+            if typed_object_checksum_with_limits(&expected, actual.limits)
                 .map_err(|_| "validator expected input exceeds captured limits")?
-                != actual.input_checksum()
+                != actual.checksum
             {
                 return Err("validator input differs from sealed subject dataflow");
             }
         }
+        Ok(())
+    }
+
+    fn observe_subject_view(
+        &self,
+        subject: SubjectView<'_>,
+        saved: SelectionView<'_>,
+        execution: &RetainedRecipeExecution,
+        results: &BTreeMap<String, Value>,
+        limits: ContractLimits,
+    ) -> Result<Value, &'static str> {
+        if !matches!(
+            (subject, saved),
+            (SubjectView::Authored(_), SelectionView::Authored(_))
+                | (SubjectView::Installation(_), SelectionView::Installation(_))
+        ) {
+            return Err("validator subject and selection origins differ");
+        }
+        self.require_subject_view(subject)?;
+        let inspected = execution.inspected_program();
+        let inputs = inspected.program().inputs();
+        if saved.id() != subject.id()
+            || saved.subject_checksum() != subject.subject_checksum()
+            || inputs
+                .instruction()
+                .retained_selection()
+                .map_err(|_| "executed selection cannot be retained")?
+                .exact_bytes()
+                != saved.validator_bytes()
+        {
+            return Err("validator execution differs from original subject selection");
+        }
+        let fingerprints = execution
+            .observations()
+            .iter()
+            .map(|(step, actual)| {
+                (
+                    step.clone(),
+                    ValidatorInputFingerprint {
+                        checksum: actual.input_checksum(),
+                        limits: actual.data_limits(),
+                    },
+                )
+            })
+            .collect();
+        let order = inspected
+            .program()
+            .program()
+            .steplist
+            .iter()
+            .map(|s| s.step_id.as_str())
+            .collect::<Vec<_>>();
+        self.verify_subject_edges(subject, inputs, &order, results, &fingerprints, limits)?;
         let mut report = self.observe(execution, results, limits)?.report;
         let object = report
             .as_object_mut()
             .ok_or("validator observation report invalid")?;
-        object.insert(
-            "format".into(),
-            json!("observed-subject-validator-checks/1"),
-        );
-        object.insert("scope".into(), json!("subject-bound-validator-execution"));
-        object.insert("submission_id".into(), json!(subject.submission_id()));
+        match subject {
+            SubjectView::Authored(_) => {
+                object.insert(
+                    "format".into(),
+                    json!("observed-subject-validator-checks/1"),
+                );
+                object.insert("scope".into(), json!("subject-bound-validator-execution"));
+                object.insert("submission_id".into(), json!(subject.id()));
+            }
+            SubjectView::Installation(_) => {
+                object.insert(
+                    "format".into(),
+                    json!("observed-installation-validator-checks/1"),
+                );
+                object.insert(
+                    "scope".into(),
+                    json!("controlled-installation-source-review"),
+                );
+                object.insert("subject_id".into(), json!(subject.id()));
+                object.insert("semantic_approval".into(), json!(false));
+                object.insert("catalogue_activation".into(), json!(false));
+            }
+        }
         object.insert("subject_checksum".into(), json!(subject.subject_checksum()));
         object.insert("task_handle".into(), json!(execution.task_handle()));
         validate_data_bounds(&report, limits)
             .map_err(|_| "subject observation report exceeds owner policy")?;
-        Ok(ObservedSubjectValidatorChecks { report })
+        Ok(report)
     }
 }

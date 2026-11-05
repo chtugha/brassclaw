@@ -315,7 +315,7 @@ async fn native_sealed_subject_extracts_every_python_source_into_one_actual_inve
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 catalogue.worker.clone(),
-                inspected.preparation_limits(),
+                catalogue.startup_executor.clone(),
                 &root,
                 Arc::new(InventoryInvocation {
                     reference,

@@ -20,7 +20,7 @@ const ROOT_ID: Uuid = Uuid::from_u128(0x52a1c2df_fb73_4832_ab11_e47b931f0724);
 
 /// Actual root compiler/transport interface. Tool calls by child PythonCode
 /// receive their separately prepared binding; root ports grant no Tool authority.
-fn ports() -> BTreeSet<String> {
+pub(super) fn ports() -> BTreeSet<String> {
     [
         "await_next_task",
         "await_pool_update",

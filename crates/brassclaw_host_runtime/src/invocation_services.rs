@@ -33,6 +33,8 @@ use crate::{ExecutionPlan, RuntimeProcessPort};
 #[non_exhaustive]
 pub struct InvocationServices {
     pub filesystem: Arc<dyn RootFilesystem>,
+    pub(crate) source_inspection_fixture:
+        Option<Arc<crate::source_inspection_fixture::SourceInspectionInvocationView>>,
     pub child_tasks: Option<Arc<dyn crate::RuntimeChildTaskPort>>,
     pub memory_embeddings: Option<Arc<dyn crate::RuntimeMemoryEmbeddingPort>>,
     pub runtime_http_egress: Option<Arc<dyn RuntimeHttpEgress>>,
@@ -131,6 +133,8 @@ pub enum InvocationServicesError {
     UnsupportedSecretMode { mode: SecretMode },
     #[error("capability requires secret access but no secret store is configured")]
     SecretAccessRequired,
+    #[error("native scoped preparation does not match its original invocation")]
+    ScopedPreparationMismatch,
 }
 
 impl InvocationServicesError {
@@ -140,6 +144,7 @@ impl InvocationServicesError {
             Self::UnsupportedProcessBackend { .. } => RuntimeDispatchErrorKind::UnsupportedRunner,
             Self::UnsupportedNetworkMode { .. } => RuntimeDispatchErrorKind::NetworkDenied,
             Self::UnsupportedSecretMode { .. } => RuntimeDispatchErrorKind::SecretDenied,
+            Self::ScopedPreparationMismatch => RuntimeDispatchErrorKind::OperationFailed,
             Self::SecretAccessRequired => RuntimeDispatchErrorKind::SecretDenied,
         }
     }
@@ -262,6 +267,7 @@ impl InvocationServicesResolver for LocalInvocationServicesResolver {
             return Err(InvocationServicesError::SecretAccessRequired);
         }
         Ok(InvocationServices {
+            source_inspection_fixture: None,
             child_tasks: None,
             memory_embeddings: None,
             filesystem: Arc::clone(&self.filesystem),

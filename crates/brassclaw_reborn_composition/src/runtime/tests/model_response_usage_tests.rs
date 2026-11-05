@@ -248,7 +248,7 @@ async fn native_model_response_parser_preserves_wire_data_and_stops_before_proje
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 catalogue.worker.clone(),
-                inspected.preparation_limits(),
+                catalogue.startup_executor.clone(),
                 &root_definition,
                 Arc::new(Invocation {
                     reference,
@@ -494,7 +494,7 @@ async fn native_standalone_strict_json_usage_preserves_raw_arguments_and_canonic
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 catalogue.worker.clone(),
-                inspected.preparation_limits(),
+                catalogue.startup_executor.clone(),
                 &root_definition,
                 Arc::new(Invocation {
                     reference,

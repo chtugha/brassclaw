@@ -40,7 +40,11 @@ def _validator_review_subject(inputs):
     if type(subject) is not dict:
         raise ValueError("complete retained validator subject required")
     kind = subject.get("format")
-    if kind == "component-validator-subject/2":
+    if kind == "installation-validator-subject/1":
+        fields = {"format", "subject_id", "subject_bytes", "subject_checksum", "candidate", "dependencies", "base_comparison"}
+        if subject.get("base_comparison") is not None:
+            raise ValueError("installation subject has no authored comparison base")
+    elif kind == "component-validator-subject/2":
         fields.add("function_partner")
     elif kind != "component-validator-subject/1":
         raise ValueError("complete retained validator subject required")
