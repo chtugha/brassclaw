@@ -24,7 +24,7 @@ struct StructureInvocation {
     inspected: Arc<InspectedRetainedProgram>,
     tools: Arc<dyn RetainedToolPort>,
     subject: Arc<RetainedValidatorSubject>,
-    saved: RetainedValidatorSelection,
+    saved: Arc<RetainedValidatorSelection>,
     coverage: Arc<RetainedValidatorCoverage>,
     inputs: Value,
     worker_checksum: String,
@@ -133,6 +133,86 @@ fn python(id: Uuid, dependencies: &[Uuid], content: &str, public: bool) -> Value
     }
     json!({"format":"component-revision/1","uuid":id,"class_code":22,
         "document":document,"dependencies":dependencies,"association":null})
+}
+
+// Negative probes reuse the actual completed execution. Only the untouched
+// receipt can establish an observation; no substitute Tool returns are used.
+struct ReceiptRejectionProbe {
+    inner: Arc<crate::validator_inventory_review::InventoryReviewSource>,
+    pure: bool,
+    foreign: Arc<crate::validator_inventory_review::InventoryReviewSource>,
+}
+#[async_trait]
+impl InternalRecipeSource for ReceiptRejectionProbe {
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+    fn reference(&self) -> &str {
+        self.inner.reference()
+    }
+    fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
+        self.inner.captured_program()
+    }
+    fn requires_step_observations(&self) -> bool {
+        true
+    }
+    async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
+        self.inner.select().await
+    }
+    async fn verify_receipt(
+        &self,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<(), PortFailure> {
+        let original: Value = serde_json::from_str(receipt).unwrap();
+        let mut variants = vec![format!(
+            "{{\"format\":\"validator-step-results/1\",{}",
+            receipt.strip_prefix('{').unwrap()
+        )];
+        let mut unknown = original.clone();
+        unknown["unknown"] = json!(true);
+        variants.push(unknown.to_string());
+        let mut missing = original.clone();
+        missing["results"].as_object_mut().unwrap().remove("0:4");
+        variants.push(missing.to_string());
+        let mut extra = original.clone();
+        extra["results"]["0:2"] = json!(null);
+        variants.push(extra.to_string());
+        let mut aggregate = original.clone();
+        aggregate["results"][if self.pure { "0:9" } else { "0:8" }] =
+            json!("not the actual aggregate object");
+        variants.push(aggregate.to_string());
+        let mut wrong_worker = original.clone();
+        let mut inventory: Value =
+            serde_json::from_str(original["results"]["0:3"].as_str().unwrap()).unwrap();
+        inventory["worker_checksum"] = json!("00".repeat(32));
+        wrong_worker["results"]["0:3"] = json!(inventory.to_string());
+        variants.push(wrong_worker.to_string());
+        let mut sources = original.clone();
+        sources["results"]["0:1"] = json!({});
+        variants.push(sources.to_string());
+        for changed in variants {
+            assert!(
+                self.inner
+                    .verify_receipt(&changed, selected, execution)
+                    .await
+                    .is_err()
+            );
+            assert!(self.inner.take_observation().await.is_none());
+        }
+        assert!(
+            self.foreign
+                .verify_receipt(receipt, selected, execution)
+                .await
+                .is_err(),
+            "an answer from another original run cannot be borrowed"
+        );
+        assert!(self.foreign.take_observation().await.is_none());
+        self.inner
+            .verify_receipt(receipt, selected, execution)
+            .await
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -303,6 +383,54 @@ async fn check_private_structure_recipe(pure: bool) {
     )
     .await
     .unwrap();
+    let RetainedProgram::Tools(reply) = catalogue.reply.program() else {
+        panic!("retained reply factory context required")
+    };
+    let qualification_id = Uuid::new_v4();
+    let qualified_parser = crate::validator_inventory_review::qualify(
+        rig.pool.clone(),
+        catalogue.kernel.clone(),
+        catalogue.worker_image.clone(),
+        &inspected,
+        reply,
+        qualification_id,
+    )
+    .await
+    .unwrap();
+    let qualification_calls_before = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    assert!(
+        crate::validator_inventory_review::qualify(
+            rig.pool.clone(),
+            catalogue.kernel.clone(),
+            catalogue.worker_image.clone(),
+            &inspected,
+            reply,
+            qualification_id,
+        )
+        .await
+        .is_err(),
+        "an existing qualification intent never replays native usage"
+    );
+    assert_eq!(
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .query_one("SELECT count(*) FROM brassclaw_monty_tool_invocations", &[])
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        qualification_calls_before
+    );
+    assert!(qualified_parser.require_program(reply).is_err());
     let evidence_before = rig
         .pool
         .get()
@@ -498,10 +626,12 @@ async fn check_private_structure_recipe(pure: bool) {
         selection::retain_in_transaction(&tx, &selection_bytes, REVISION_LIMITS)
             .await
             .unwrap();
-        let saved = selection::read_preparation_in_transaction(&tx, submission, REVISION_LIMITS)
-            .await
-            .unwrap()
-            .unwrap();
+        let saved = Arc::new(
+            selection::read_preparation_in_transaction(&tx, submission, REVISION_LIMITS)
+                .await
+                .unwrap()
+                .unwrap(),
+        );
         tx.commit().await.unwrap();
         drop(client);
         let mut inputs = coverage
@@ -526,7 +656,7 @@ async fn check_private_structure_recipe(pure: bool) {
                 );
             }
         }
-        let reference = format!("development-python-structure:{}", Uuid::new_v4());
+        let reference = crate::pg_review_admission_source::validator_review_reference(submission);
         let admitted = Box::pin(bootstrap_validation::admit(
             rig.pool.clone(),
             "python-structure-review",
@@ -543,6 +673,64 @@ async fn check_private_structure_recipe(pure: bool) {
             program.clone(),
         )
         .unwrap();
+        let mut foreign_admission = None;
+        let mut foreign_source = None;
+        let qualified = if case == 9 {
+            None
+        } else {
+            let request = crate::validator_inventory_review::InventoryReviewRequest {
+                pool: rig.pool.clone(),
+                kernel: catalogue.kernel.clone(),
+                host: admitted.host.clone(),
+                admission: admitted.admission.clone(),
+                subject: subject.clone(),
+                saved: saved.clone(),
+                inspected: inspected.clone(),
+                parser: qualified_parser.clone(),
+                profile: if pure {
+                    crate::validator_inventory_review::InventoryReviewProfile::Pure
+                } else {
+                    crate::validator_inventory_review::InventoryReviewProfile::Structure
+                },
+            };
+            if case == 0 {
+                let mut wrong_profile = request.clone();
+                wrong_profile.profile = if pure {
+                    crate::validator_inventory_review::InventoryReviewProfile::Structure
+                } else {
+                    crate::validator_inventory_review::InventoryReviewProfile::Pure
+                };
+                assert!(
+                    crate::validator_inventory_review::InventoryReviewSource::prepare(
+                        wrong_profile
+                    )
+                    .await
+                    .is_err()
+                );
+                let foreign = bootstrap_validation::admit(
+                    rig.pool.clone(),
+                    "foreign-inventory-review",
+                    &reference,
+                    None,
+                )
+                .await
+                .unwrap();
+                let mut wrong_run = request.clone();
+                wrong_run.host = foreign.host.clone();
+                wrong_run.admission = foreign.admission.clone();
+                foreign_source = Some(
+                    crate::validator_inventory_review::InventoryReviewSource::prepare(wrong_run)
+                        .await
+                        .unwrap(),
+                );
+                foreign_admission = Some(foreign);
+            }
+            Some(
+                crate::validator_inventory_review::InventoryReviewSource::prepare(request)
+                    .await
+                    .unwrap(),
+            )
+        };
         let invocation = Arc::new(StructureInvocation {
             pure,
             reference,
@@ -559,15 +747,30 @@ async fn check_private_structure_recipe(pure: bool) {
         let observed = bootstrap_recipe_flow::execute(
             &admitted,
             bootstrap_recipe_flow::Request::contained(
-                catalogue.worker.clone(),
+                qualified
+                    .as_ref()
+                    .map_or_else(|| catalogue.worker.clone(), |source| source.worker_path()),
                 inspected.preparation_limits(),
                 &root,
-                invocation.clone(),
+                match &qualified {
+                    Some(source) if case == 0 => Arc::new(ReceiptRejectionProbe {
+                        inner: source.clone(),
+                        pure,
+                        foreign: foreign_source.clone().unwrap(),
+                    })
+                        as Arc<dyn InternalRecipeSource>,
+                    Some(source) => source.clone() as Arc<dyn InternalRecipeSource>,
+                    None => invocation.clone(),
+                },
             )
             .unwrap(),
         )
         .await;
-        if !invocation.receipt_seen.load(Ordering::SeqCst) {
+        let qualified_observation = match &qualified {
+            Some(source) => source.take_observation().await,
+            None => None,
+        };
+        if qualified_observation.is_none() && !invocation.receipt_seen.load(Ordering::SeqCst) {
             match &observed {
                 Ok(observed) => {
                     let state = observed
@@ -604,7 +807,7 @@ async fn check_private_structure_recipe(pure: bool) {
             ));
             assert_eq!(observed.report["model_exchange_count"], 0);
             assert!(observed.report["reply"].is_null());
-            let report = invocation.report.lock().await.clone().unwrap();
+            let report = qualified_observation.as_ref().unwrap().report().clone();
             assert_eq!(report["q1_qualification"], false);
             assert_eq!(report["semantic_approval"], false);
             assert_eq!(
@@ -638,7 +841,7 @@ async fn check_private_structure_recipe(pure: bool) {
             );
         }
         if pure && case != 9 {
-            let report = invocation.report.lock().await.clone().unwrap();
+            let report = qualified_observation.as_ref().unwrap().report().clone();
             assert_eq!(
                 report["rules"]
                     .as_array()
@@ -649,6 +852,36 @@ async fn check_private_structure_recipe(pure: bool) {
                 matches!(case, 0 | 15 | 22 | 23 | 25 | 29),
                 "case {case}: {report}"
             );
+        }
+        if let Some(foreign) = foreign_admission {
+            let source = foreign_source.unwrap();
+            // Bind first, then change the real live policy before dispatch.
+            rig.pool.get().await.unwrap().execute("UPDATE brassclaw_instance_tool_settings SET enabled=false,revision=revision+1 WHERE tool_id=$1", &[&tool]).await.unwrap();
+            let denied = bootstrap_recipe_flow::execute(
+                &foreign,
+                bootstrap_recipe_flow::Request::contained(
+                    source.worker_path(),
+                    inspected.preparation_limits(),
+                    &root,
+                    source.clone(),
+                )
+                .unwrap(),
+            )
+            .await;
+            rig.pool.get().await.unwrap().execute("UPDATE brassclaw_instance_tool_settings SET enabled=true,revision=revision+1 WHERE tool_id=$1", &[&tool]).await.unwrap();
+            bootstrap_validation::settle_closed(&foreign).await.unwrap();
+            assert!(source.take_observation().await.is_none());
+            let denied = denied.unwrap();
+            assert!(matches!(denied.receipt.outcome, TaskOutcome::Failed { .. }));
+            denied.ports.observe_internal_execution(|execution| {
+                assert!(!execution.is_complete());
+                assert_eq!(execution.failed_step_id(),Some("0:3"));
+                assert!(matches!(execution.host_answers(),[(_,PortAnswer::TerminalError { reason_kind })] if reason_kind == "retained_tool_authorization"));
+            }).await.unwrap();
+            let rows = rig.pool.get().await.unwrap().query("SELECT attempt_count,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1", &[&foreign.attempt.run_id.as_uuid()]).await.unwrap();
+            assert_eq!(rows.len(), 1);
+            assert_eq!(rows[0].get::<_, i16>(0), 1);
+            assert_eq!(rows[0].get::<_, String>(1), "answered");
         }
         bootstrap_validation::settle_closed(&admitted)
             .await

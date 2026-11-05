@@ -1769,33 +1769,7 @@ fn bootstrap_builtin_tools(
 ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
     let mut runtimes = BTreeMap::new();
     for (step, binding) in program.bindings() {
-        let capability = CapabilityId::new(binding.capability_id())
-            .map_err(|error| invalid(error.to_string()))?;
-        let descriptor = kernel
-            .builtin(&capability, None)
-            .map_err(|error| invalid(error.to_string()))?
-            .descriptor()
-            .clone();
-        let policy = Arc::new(PgSelectedToolPolicy {
-            host: host.clone(),
-            pool: pool.clone(),
-            tool: binding.tool().uuid,
-            capability: capability.clone(),
-            effects: descriptor.effects,
-            mounts: MountView::default(),
-        });
-        let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
-            live: policy,
-            denied,
-        });
-        let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
-            .draft()
-            .document();
-        let expected = serde_json::from_value(document["implementation"]["identity"].clone())
-            .map_err(|error| invalid(error.to_string()))?;
-        let runtime = kernel
-            .builtin_with_policy(&capability, expected, policy)
-            .map_err(|error| invalid(error.to_string()))?;
+        let runtime = bootstrap_builtin_runtime(&pool, &kernel, &host, &program, binding, denied)?;
         runtimes.insert(step.clone(), Arc::new(runtime));
     }
     Ok(Arc::new(SelectedTools {
@@ -1810,6 +1784,72 @@ fn bootstrap_builtin_tools(
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: None,
     }))
+}
+
+/// Existing contained primitive boundary, before qualifying a dependent usage.
+/// Registration, retained identity and current policy remain native-owned.
+pub(crate) fn bootstrap_builtin_runtime(
+    pool: &Arc<PgPool>,
+    kernel: &Arc<dyn MontyKernelSnapshot>,
+    host: &Arc<MontyTaskHost>,
+    program: &RetainedToolProgram,
+    binding: &RetainedToolBinding,
+    denied: bool,
+) -> Result<RetainedFirstPartyCapability, RebornBuildError> {
+    let capability =
+        CapabilityId::new(binding.capability_id()).map_err(|error| invalid(error.to_string()))?;
+    let descriptor = kernel
+        .builtin(&capability, None)
+        .map_err(|error| invalid(error.to_string()))?
+        .descriptor()
+        .clone();
+    let policy = Arc::new(PgSelectedToolPolicy {
+        host: host.clone(),
+        pool: pool.clone(),
+        tool: binding.tool().uuid,
+        capability: capability.clone(),
+        effects: descriptor.effects,
+        mounts: MountView::default(),
+    });
+    let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
+        live: policy,
+        denied,
+    });
+    let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
+        .draft()
+        .document();
+    let expected = serde_json::from_value(document["implementation"]["identity"].clone())
+        .map_err(|error| invalid(error.to_string()))?;
+    kernel
+        .builtin_with_policy(&capability, expected, policy)
+        .map_err(|error| invalid(error.to_string()))
+}
+
+/// A private qualified parser handle, rather than a caller-selected Tool list,
+/// determines the only permitted binding. This exposes no ordinary activation.
+#[cfg(test)]
+pub(crate) fn qualified_inventory_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    qualification: &crate::validator_inventory_review::QualifiedSourceInventoryUsage,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    qualification.require_program(&program)?;
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
+}
+
+#[cfg(test)]
+pub(crate) fn inventory_qualification_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    crate::validator_inventory_review::require_inventory_binding(&program)?;
+    bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
 }
 
 /// Bind the existing native Tool-port owner to a proven zero-Tool workflow.

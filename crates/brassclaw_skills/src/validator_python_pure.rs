@@ -104,6 +104,7 @@ pub fn python_pure_structure_drafts(
         .ok_or_else(invalid)?
         .push(json!({"rule_id":"python_pure_calls","step_id":"0:7"}));
     document["validator_coverage"]["aggregate_step"] = json!("0:9");
+    document["validator_coverage"]["receipt_step"] = json!("0:10");
     let steps = document["step_descriptions"][0]["steps"]
         .as_array_mut()
         .ok_or_else(invalid)?;

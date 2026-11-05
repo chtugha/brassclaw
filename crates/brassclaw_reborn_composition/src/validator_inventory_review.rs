@@ -1,0 +1,568 @@
+//! Closed source-review observations. Neither this source nor its contained
+//! parser qualification supplies candidate Q1, own approval or activation.
+use std::{collections::BTreeMap, sync::Arc};
+
+use async_trait::async_trait;
+use brassclaw_engine::{
+    executor::{
+        retained_recipe::{
+            RetainedProgram, RetainedRecipeExecution, RetainedToolPort,
+            port_answer_checksum_with_limits, typed_value_checksum_with_limits,
+        },
+        retained_source::InspectedRetainedProgram,
+    },
+    memory::{
+        retained_tools::{RetainedToolBinding, RetainedToolProgram},
+        retained_validator::{ObservedSubjectValidatorChecks, RetainedValidatorCoverage},
+    },
+};
+use brassclaw_host_runtime::PackagedExecutableImage;
+use brassclaw_monty_host::{process::PortAnswer, service::PortFailure};
+use brassclaw_pg::PgPool;
+use brassclaw_reborn::monty_task_host::MontyTaskHost;
+use brassclaw_skills::{
+    association_contract::ComponentRevisionRef,
+    review_submission_store::{RetainedValidatorSubject, selection::RetainedValidatorSelection},
+    validator_components::{python_pure_structure_drafts, python_structure_drafts},
+    value_contract::{ContractLimits, strict_json},
+};
+use serde_json::{Value, json};
+use tokio::sync::Mutex;
+
+use crate::{
+    RebornBuildError,
+    bootstrap_reply_validation::invalid,
+    global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe},
+    monty_kernel::MontyKernelSnapshot,
+    pg_monty_admission::PgMontyAdmission,
+};
+
+#[path = "bootstrap_inventory_qualification.rs"]
+mod qualification;
+pub(crate) use qualification::qualify;
+
+/// Issued only by the contained installation qualification below. No JSON
+/// constructor or historical mechanical approval can mint this handle.
+pub(crate) struct QualifiedSourceInventoryUsage {
+    combination: Vec<ComponentRevisionRef>,
+    association: String,
+    worker: Arc<PackagedExecutableImage>,
+    proof: qualification::InventoryQualification,
+}
+impl QualifiedSourceInventoryUsage {
+    pub(crate) fn require_program<'a>(
+        &self,
+        program: &'a RetainedToolProgram,
+    ) -> Result<(&'a str, &'a RetainedToolBinding), RebornBuildError> {
+        let (step, binding) = require_inventory_binding(program)?;
+        if binding.combination() != self.combination.as_slice()
+            || binding.association().exact_bytes() != self.association
+        {
+            return Err(invalid(
+                "qualified inventory usage differs from selected graph",
+            ));
+        }
+        Ok((step, binding))
+    }
+}
+
+/// Locate the single actual binding; its canonical step ID is not an allowlist.
+pub(crate) fn require_inventory_binding(
+    program: &RetainedToolProgram,
+) -> Result<(&str, &RetainedToolBinding), RebornBuildError> {
+    let mut bindings = program.bindings().iter();
+    let (step, binding) = bindings
+        .next()
+        .ok_or_else(|| invalid("inventory binding missing"))?;
+    if bindings.next().is_some()
+        || binding.capability_id() != brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
+        || binding.association().callable() != "host.source_inspection"
+    {
+        return Err(invalid(
+            "review requires exactly its selected inventory usage",
+        ));
+    }
+    Ok((step, binding))
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum InventoryReviewProfile {
+    Structure,
+    Pure,
+}
+
+/// Original prepared graph/subject plus real native ports. Complete observations
+/// may survive later cancellation; this type never claims terminal settlement.
+pub(crate) struct InventoryReviewSource {
+    reference: String,
+    subject: Arc<RetainedValidatorSubject>,
+    saved: Arc<RetainedValidatorSelection>,
+    inspected: Arc<InspectedRetainedProgram>,
+    coverage: RetainedValidatorCoverage,
+    parser: Arc<QualifiedSourceInventoryUsage>,
+    worker: Arc<PackagedExecutableImage>,
+    tools: Arc<dyn RetainedToolPort>,
+    host: Arc<MontyTaskHost>,
+    pool: Arc<PgPool>,
+    inputs: Value,
+    limits: ContractLimits,
+    observation: Mutex<Option<ObservedSubjectValidatorChecks>>,
+}
+#[derive(Clone)]
+pub(crate) struct InventoryReviewRequest {
+    pub(crate) pool: Arc<PgPool>,
+    pub(crate) kernel: Arc<dyn MontyKernelSnapshot>,
+    pub(crate) host: Arc<MontyTaskHost>,
+    pub(crate) admission: Arc<PgMontyAdmission>,
+    pub(crate) subject: Arc<RetainedValidatorSubject>,
+    pub(crate) saved: Arc<RetainedValidatorSelection>,
+    pub(crate) inspected: Arc<InspectedRetainedProgram>,
+    pub(crate) parser: Arc<QualifiedSourceInventoryUsage>,
+    pub(crate) profile: InventoryReviewProfile,
+}
+impl InventoryReviewSource {
+    pub(crate) async fn prepare(
+        request: InventoryReviewRequest,
+    ) -> Result<Arc<Self>, RebornBuildError> {
+        let InventoryReviewRequest {
+            pool,
+            kernel,
+            host,
+            admission,
+            subject,
+            saved,
+            inspected,
+            parser,
+            profile,
+        } = request;
+        let limits = captured_limits(&inspected);
+        parser.proof.verify(&pool).await?;
+        let RetainedProgram::Tools(program) = inspected.program() else {
+            return Err(invalid("inventory review needs retained bindings"));
+        };
+        let (_, binding) = parser.require_program(program)?;
+        let ids = crate::source_inspection_components::usage_ids(binding.tool().uuid, true);
+        let native_profile =
+            serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+                .map_err(invalid)?;
+        let drafts = match profile {
+            InventoryReviewProfile::Structure => python_structure_drafts(
+                ids,
+                crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
+                native_profile,
+            ),
+            InventoryReviewProfile::Pure => python_pure_structure_drafts(
+                ids,
+                crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+                native_profile,
+            ),
+        }
+        .map_err(invalid)?;
+        // Compare complete factory bytes, including typed native/result edges,
+        // variant, rule order and receipt profile. A step name grants nothing.
+        let graph = program.inputs().instruction().snapshot().revisions();
+        for draft in &drafts {
+            if graph
+                .get(&draft.uuid())
+                .is_none_or(|r| r.draft().exact_bytes() != draft.exact_bytes())
+            {
+                return Err(invalid("review graph differs from packaged profile"));
+            }
+        }
+        let shared = crate::builtin_bootstrap::validator_check_drafts()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(invalid)?;
+        for revision in graph.values() {
+            if binding.combination().contains(&revision.reference()) {
+                continue;
+            }
+            let expected = drafts
+                .iter()
+                .chain(shared.iter())
+                .find(|draft| draft.uuid() == revision.reference().uuid)
+                .ok_or_else(|| invalid("review contains an undeclared checking component"))?;
+            if expected.exact_bytes() != revision.draft().exact_bytes() {
+                return Err(invalid(
+                    "selected checking definition differs from packaged bytes",
+                ));
+            }
+        }
+        if !drafts.iter().any(|d| {
+            d.class_code() == 21 && d.uuid() == program.inputs().instruction().recipe().uuid
+        }) {
+            return Err(invalid("review selected a different Recipe"));
+        }
+        let restored = RetainedValidatorCoverage::restore_preparation(&saved).map_err(invalid)?;
+        if restored
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(invalid)?
+            .exact_bytes()
+            != program
+                .inputs()
+                .instruction()
+                .retained_selection()
+                .map_err(invalid)?
+                .exact_bytes()
+        {
+            return Err(invalid("review differs from retained preparation"));
+        }
+        let worker = verified_worker(
+            &parser.worker,
+            inspected.preparation_limits().max_native_artifact_bytes,
+        )
+        .await?;
+        // Reinspect using the retained qualified worker, never an installation
+        // pathname supplied by the review caller.
+        let inspected = Arc::new(
+            InspectedRetainedProgram::inspect_with_limits(
+                RetainedProgram::Tools(Arc::new(restored)),
+                &worker.path(),
+                inspected.preparation_limits(),
+            )
+            .await
+            .map_err(invalid)?,
+        );
+        let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
+            .map_err(invalid)?;
+        let inputs = coverage
+            .subject_task_inputs(&subject, inspected.program().inputs(), limits)
+            .map_err(invalid)?;
+        let RetainedProgram::Tools(program) = inspected.program() else {
+            return Err(invalid("review bindings missing"));
+        };
+        let tools = crate::installed_monty_catalogue::qualified_inventory_tools(
+            pool.clone(),
+            kernel,
+            host.clone(),
+            admission,
+            program.clone(),
+            &parser,
+        )?;
+        Ok(Arc::new(Self {
+            reference: crate::pg_review_admission_source::validator_review_reference(
+                subject.submission_id(),
+            ),
+            subject,
+            saved,
+            inspected,
+            coverage,
+            parser,
+            worker,
+            tools,
+            host,
+            pool,
+            inputs,
+            limits,
+            observation: Mutex::new(None),
+        }))
+    }
+
+    pub(crate) fn worker_path(&self) -> std::path::PathBuf {
+        self.worker.path()
+    }
+    pub(crate) async fn take_observation(&self) -> Option<ObservedSubjectValidatorChecks> {
+        self.observation.lock().await.take()
+    }
+}
+fn failure() -> PortFailure {
+    PortFailure::new("validator_inventory_observation_invalid").expect("static classification")
+}
+
+#[async_trait]
+impl InternalRecipeSource for InventoryReviewSource {
+    fn name(&self) -> &str {
+        "contained-original-source-review"
+    }
+    fn reference(&self) -> &str {
+        &self.reference
+    }
+    fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
+        Some(self.inspected.clone())
+    }
+    fn requires_step_observations(&self) -> bool {
+        true
+    }
+    fn bind_native_runtimes(&self) -> Result<(), PortFailure> {
+        Ok(())
+    }
+    async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
+        Ok(SelectedMontyRecipe {
+            normal_match: None,
+            inspected: self.inspected.clone(),
+            inputs: Some(self.inputs.clone().into()),
+            tools: Some(self.tools.clone()),
+        })
+    }
+    async fn verify_receipt(
+        &self,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<(), PortFailure> {
+        let original = self
+            .inspected
+            .program()
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(|_| failure())?;
+        if selected
+            .program()
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(|_| failure())?
+            .exact_bytes()
+            != original.exact_bytes()
+        {
+            return Err(failure());
+        }
+        let value = strict_json(receipt, self.limits).map_err(|_| failure())?;
+        let object = value
+            .as_object()
+            .filter(|o| o.len() == 2)
+            .ok_or_else(failure)?;
+        if object.get("format") != Some(&json!("validator-step-results/1")) {
+            return Err(failure());
+        }
+        let values = object
+            .get("results")
+            .and_then(Value::as_object)
+            .ok_or_else(failure)?;
+        let receipt_step = self.coverage.receipt_step();
+        let expected: Vec<_> = selected
+            .program()
+            .program()
+            .steplist
+            .iter()
+            .filter(|s| s.step_id != receipt_step)
+            .map(|s| s.step_id.as_str())
+            .collect();
+        if values.len() != expected.len() || expected.iter().any(|step| !values.contains_key(*step))
+        {
+            return Err(failure());
+        }
+        let observation = execution
+            .observations()
+            .get(receipt_step)
+            .ok_or_else(failure)?;
+        if observation.result_checksum()
+            != Some(
+                typed_value_checksum_with_limits(&json!(receipt), observation.data_limits())
+                    .map_err(|_| failure())?,
+            )
+        {
+            return Err(failure());
+        }
+        let mut results: BTreeMap<_, _> =
+            values.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        results.insert(receipt_step.to_owned(), json!(receipt));
+        let checks = self
+            .coverage
+            .observe_subject(&self.subject, &self.saved, execution, &results, self.limits)
+            .map_err(|_| failure())?;
+        let RetainedProgram::Tools(program) = selected.program() else {
+            return Err(failure());
+        };
+        let (step, _) = self
+            .parser
+            .require_program(program)
+            .map_err(|_| failure())?;
+        NativeInventoryObservation {
+            pool: &self.pool,
+            host: &self.host,
+            program,
+            step,
+            worker: self.parser.worker.checksum(),
+            limits: self.limits,
+        }
+        .verify(execution, &results[step])
+        .await
+        .map_err(|_| failure())?;
+        let mut retained = self.observation.lock().await;
+        if retained.is_some() {
+            return Err(failure());
+        }
+        *retained = Some(checks);
+        Ok(())
+    }
+}
+
+/// Native return, executor fingerprints and the original PG invocation must all
+/// agree. This authenticates facts, not the candidate's semantics or settlement.
+async fn verified_worker(
+    worker: &PackagedExecutableImage,
+    max_bytes: u64,
+) -> Result<Arc<PackagedExecutableImage>, RebornBuildError> {
+    let copy = PackagedExecutableImage::capture(&worker.path(), max_bytes)
+        .await
+        .map_err(invalid)?;
+    if copy.checksum() != worker.checksum() {
+        return Err(invalid("retained qualification worker bytes changed"));
+    }
+    Ok(Arc::new(copy))
+}
+fn captured_limits(inspected: &InspectedRetainedProgram) -> ContractLimits {
+    let bounds = inspected.preparation_limits().bounds;
+    ContractLimits {
+        max_depth: bounds.max_value_depth,
+        max_nodes: bounds.max_value_nodes,
+        max_bytes: bounds.max_value_bytes,
+    }
+}
+struct NativeInventoryObservation<'a> {
+    pool: &'a PgPool,
+    host: &'a MontyTaskHost,
+    program: &'a RetainedToolProgram,
+    step: &'a str,
+    worker: [u8; 32],
+    limits: ContractLimits,
+}
+impl NativeInventoryObservation<'_> {
+    async fn verify(
+        self,
+        execution: &RetainedRecipeExecution,
+        result: &Value,
+    ) -> Result<Value, RebornBuildError> {
+        let Self {
+            pool,
+            host,
+            program,
+            step,
+            worker,
+            limits,
+        } = self;
+        let [(actual_step, answer)] = execution.host_answers() else {
+            return Err(invalid("inventory requires one actual native answer"));
+        };
+        let PortAnswer::Return { value } = answer else {
+            return Err(invalid("inventory native answer failed"));
+        };
+        let observed = execution
+            .observations()
+            .get(step)
+            .ok_or_else(|| invalid("inventory observation missing"))?;
+        if actual_step != step
+            || value.as_value() != result
+            || observed.answer_checksum()
+                != Some(
+                    port_answer_checksum_with_limits(answer, observed.data_limits())
+                        .map_err(invalid)?,
+                )
+            || observed.result_checksum()
+                != Some(
+                    typed_value_checksum_with_limits(result, observed.data_limits())
+                        .map_err(invalid)?,
+                )
+        {
+            return Err(invalid("inventory answer differs from original executor"));
+        }
+        let client = pool.get().await.map_err(invalid)?;
+        let rows = client.query("SELECT selection_bytes,selection_checksum,arguments_bytes,arguments_checksum,answer_bytes,answer_checksum,attempt_count,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND recipe_id=$2 AND step_id=$3", &[&host.run_context().run_id.as_uuid(), &program.inputs().instruction().recipe().uuid, &step]).await.map_err(invalid)?;
+        let [row] = rows.as_slice() else {
+            return Err(invalid("original native inventory invocation missing"));
+        };
+        let bytes: &str = row.get(0);
+        let arguments: &str = row.get(2);
+        let answer_bytes: &str = row
+            .get::<_, Option<&str>>(4)
+            .ok_or_else(|| invalid("inventory answer remains unresolved"))?;
+        if bytes != PgMontyAdmission::invocation_selection(program, step).map_err(invalid)?
+            || crate::bootstrap_evidence::checksum(bytes) != row.get::<_, &str>(1)
+            || crate::bootstrap_evidence::checksum(arguments) != row.get::<_, &str>(3)
+            || crate::bootstrap_evidence::checksum(answer_bytes)
+                != row
+                    .get::<_, Option<&str>>(5)
+                    .ok_or_else(|| invalid("inventory answer digest missing"))?
+            || row.get::<_, i16>(6) != 1
+            || row.get::<_, &str>(7) != "answered"
+        {
+            return Err(invalid("inventory original journal differs"));
+        }
+        let arguments = strict_json(arguments, limits).map_err(invalid)?;
+        let argument_fingerprint =
+            typed_value_checksum_with_limits(&arguments, observed.data_limits())
+                .map_err(invalid)?;
+        if observed.arguments_checksum() != Some(argument_fingerprint)
+            || observed.input_checksum() != argument_fingerprint
+            || strict_json(answer_bytes, limits).map_err(invalid)?
+                != serde_json::to_value(answer).map_err(invalid)?
+        {
+            return Err(invalid(
+                "inventory journal data differs from actual dispatch",
+            ));
+        }
+        let report = strict_json(
+            result
+                .as_str()
+                .ok_or_else(|| invalid("inventory result must remain JSON string"))?,
+            limits,
+        )
+        .map_err(invalid)?;
+        if report.as_object().is_none_or(|o| o.len() != 4)
+            || report["format"] != "python-source-inventory/1"
+            || report["worker_checksum"] != hex::encode(worker)
+            || report["preparation_revision"]
+                .as_u64()
+                .is_none_or(|r| r == 0)
+        {
+            return Err(invalid(
+                "inventory interpreter or preparation identity differs",
+            ));
+        }
+        let sources = arguments["sources"]
+            .as_object()
+            .ok_or_else(|| invalid("inventory sources missing"))?;
+        let facts = report["sources"]
+            .as_object()
+            .ok_or_else(|| invalid("inventory facts missing"))?;
+        if arguments.as_object().is_none_or(|o| o.len() != 1) || sources.len() != facts.len() {
+            return Err(invalid("inventory source membership differs"));
+        }
+        let typed_facts: BTreeMap<
+            String,
+            brassclaw_monty_host::source_inventory::SourceInspection,
+        > = serde_json::from_value(report["sources"].clone()).map_err(invalid)?;
+        for (id, source) in sources {
+            let source = source
+                .as_str()
+                .ok_or_else(|| invalid("inventory source is not text"))?;
+            let fact = typed_facts
+                .get(id)
+                .ok_or_else(|| invalid("inventory original source omitted"))?;
+            let checksum = match fact {
+                brassclaw_monty_host::source_inventory::SourceInspection::Inspected {
+                    structure,
+                } => &structure.source_checksum,
+                brassclaw_monty_host::source_inventory::SourceInspection::CompileRejected {
+                    source_checksum,
+                    ..
+                } => source_checksum,
+            };
+            if checksum != &crate::bootstrap_evidence::checksum(source) {
+                return Err(invalid("inventory source checksum differs"));
+            }
+        }
+        Ok(report)
+    }
+}
+
+#[tokio::test]
+async fn retained_review_worker_rejects_replacement_before_inspection() {
+    let source = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(source.path(), b"packaged fixture identity").unwrap();
+    let image = PackagedExecutableImage::capture(source.path(), 128)
+        .await
+        .unwrap();
+    verified_worker(&image, 128).await.unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(image.path(), std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    std::fs::write(image.path(), b"different bytes").unwrap();
+    assert!(verified_worker(&image, 128).await.is_err());
+}
