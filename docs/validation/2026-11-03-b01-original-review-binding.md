@@ -526,3 +526,25 @@ Direct rustfmt parser/format checks and `git diff --check` pass. No Cargo comman
 test execution or Modal job was started for this correction; supervisor-owned
 native reruns remain required. The previous build receipt does not cover these
 changed test inputs, and general B1/B2/B3 acceptance remains open.
+
+## UI translation fixture correction — 2026-11-05
+
+The supervisor executed all 24 UI cases after integration and reported 22 passes
+and two failures in the new German queue-row cases. Their fixture loaded only
+the German message pack and substituted raw keys for missing translations;
+its button lookup then used an absent raw German value. The real `lib/i18n.js`
+owner instead falls back to the English pack for those button labels.
+
+The queue-row fixture now executes the actual i18n provider, language detection,
+translation function and `useT` hook in its controlled VM, with actual English
+and selected-language packs. Only React context/hook storage is controlled;
+fallback and interpolation are not copied into the fixture. It asserts the
+selected provider/document language and looks up the real rendered button by
+the actual translated/fallback label. The visible localized diagnosis, queue
+ID, disabled approval and absence of mutation calls remain required. Joint
+non-Recipe rows still require the absence of both actions, using valid labels.
+
+Only the test source and this report change. `node --check` and
+`git diff --check` pass; the corrected cases were not executed in this package
+chat. This correction accompanies `75d237b7c` for the supervisor's focused
+JS/native reruns, with no extra Cargo compilation or Modal job here.

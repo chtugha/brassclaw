@@ -12,12 +12,43 @@ function messages(language) {
   assert.ok(pack, `missing actual ${language} message pack`);
   return pack;
 }
+function translations(language) {
+  let providerContext;
+  const context = {
+    navigator: { language }, localStorage: { getItem: () => null },
+    document: { documentElement: {} },
+    React: {
+      createContext(initial) { providerContext = { current: initial, Provider: "I18nProvider" }; return providerContext; },
+      useState: initial => [typeof initial === "function" ? initial() : initial, () => {}],
+      useCallback: callback => callback, useMemo: callback => callback(),
+      useEffect: callback => callback(), useContext: context => context.current,
+    },
+    html(strings, provider, value) {
+      assert.equal(provider, providerContext.Provider);
+      providerContext.current = value;
+    },
+  };
+  vm.createContext(context);
+  const source = readFileSync(new URL("../../../lib/i18n.js", import.meta.url), "utf8");
+  vm.runInContext(withoutImports(source).replaceAll("export ", ""), context);
+  for (const packLanguage of new Set(["en", language])) {
+    const packSource = readFileSync(new URL(`../../../i18n/${packLanguage}.js`, import.meta.url), "utf8");
+    vm.runInContext(withoutImports(packSource), context);
+  }
+  // Execute the real provider/detection/translate/useT owners with controlled
+  // React context storage; fallback and interpolation are not reimplemented.
+  context.I18nProvider({ children: null });
+  assert.equal(providerContext.current.lang, language);
+  assert.equal(context.document.documentElement.lang, language);
+  return { useT: context.useT, t: context.useT() };
+}
 function fixture({ language = "en", state = "legacy_unresolved", classCode = 21 } = {}) {
   const pack = messages(language), states = [], validationCalls = [], rejectionCalls = [];
+  const { useT, t } = translations(language);
   let cursor = 0;
   const context = {
     React: { useState(initial) { const i = cursor++; if (!(i in states)) states[i] = initial; return [states[i], value => { states[i] = typeof value === "function" ? value(states[i]) : value; }]; } },
-    html: (strings, ...values) => ({ strings: [...strings], values }), Badge: "Badge", useT: () => key => pack[key] ?? key,
+    html: (strings, ...values) => ({ strings: [...strings], values }), Badge: "Badge", useT,
     useQueryClient: () => ({ invalidateQueries() {} }),
     // No synthetic success/evidence callbacks: only the affordance is tested.
     useMutation: options => ({ isPending: false, mutate: value => options.mutationFn(value) }),
@@ -32,7 +63,7 @@ function fixture({ language = "en", state = "legacy_unresolved", classCode = 21 
     queue_code: "q2_manual", validation_status: "auto_passed", llm_audit_status: "not_applicable", q2_actor: null,
     original_review: { state, queue_id: "original-queue-id", submission_id: ["joint_unsupported", "bound"].includes(state) ? "retained-original-subject" : null },
   };
-  return { render() { cursor = 0; return context.renderRow({ item }); }, pack, validationCalls, rejectionCalls };
+  return { render() { cursor = 0; return context.renderRow({ item }); }, pack, t, validationCalls, rejectionCalls };
 }
 function nodes(root) {
   const out = [];
@@ -62,7 +93,9 @@ for (const language of ["en", "de"]) {
       const message = f.pack[`validationQueue.original.${state}`];
       assert.ok(visible(tree, message), "the diagnosis must be visible, not just an unused translation");
       assert.ok(visible(tree, "original-queue-id"));
-      const approve = button(tree, f.pack["validationQueue.validate"]);
+      const approveLabel = f.t("validationQueue.validate");
+      assert.notEqual(approveLabel, "validationQueue.validate", "approval must have an actual translated/fallback label");
+      const approve = button(tree, approveLabel);
       assert.ok(approve); assert.equal(prop(approve, "disabled"), true);
       assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
       if (state === "legacy_unresolved") {
@@ -80,14 +113,14 @@ for (const classCode of [1, 22]) {
     const f = fixture({ state: "joint_unsupported", classCode }); const tree = f.render();
     assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
     assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
-    assert.equal(button(tree, f.pack["validationQueue.validate"]), undefined);
-    assert.equal(button(tree, f.pack["validationQueue.reject"]), undefined);
+    assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+    assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
     assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
   });
 }
 test("a bound Recipe Q2 row keeps its existing approval affordance without claiming backend success", () => {
   const f = fixture({ state: "bound" }); const tree = f.render();
-  const approve = button(tree, f.pack["validationQueue.validate"]);
+  const approve = button(tree, f.t("validationQueue.validate"));
   assert.ok(approve); assert.equal(prop(approve, "disabled"), false);
   assert.equal(visible(tree, f.pack["validationQueue.original.legacy_unresolved"]), false);
   assert.equal(visible(tree, f.pack["validationQueue.original.joint_unsupported"]), false);
@@ -97,6 +130,6 @@ test("a new unbound draft explains explicit binding while approval stays disable
   const f = fixture({ state: "unresolved" }); const tree = f.render();
   assert.ok(visible(tree, f.pack["validationQueue.original.unresolved"]));
   assert.equal(visible(tree, f.pack["validationQueue.original.legacy_unresolved"]), false);
-  assert.equal(prop(button(tree, f.pack["validationQueue.validate"]), "disabled"), true);
+  assert.equal(prop(button(tree, f.t("validationQueue.validate")), "disabled"), true);
   assert.equal(f.validationCalls.length, 0);
 });
