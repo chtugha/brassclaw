@@ -63,6 +63,9 @@ mod child_tasks;
 mod native_answers;
 #[path = "task_catalogue_binding.rs"]
 mod task_binding;
+#[path = "task_preparation_capture.rs"]
+mod task_preparation_capture;
+pub(crate) use task_preparation_capture::{PreparationCapture, PreparationOrigin};
 
 fn invalid(reason: impl Into<String>) -> RebornBuildError {
     RebornBuildError::InvalidConfig {
@@ -128,7 +131,7 @@ impl BootstrapUsageApproval<'_> {
 }
 
 pub(crate) struct InstalledMontyCatalogue {
-    initial_preparation: brassclaw_host_api::MontyExecutionLimits,
+    initial_preparation: PreparationCapture,
     preparation_settings:
         std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
     pub(crate) pool: Arc<PgPool>,
@@ -343,29 +346,42 @@ impl InstalledMontyCatalogue {
     pub(crate) async fn preparation_limits(
         &self,
     ) -> Result<brassclaw_monty_host::utility::UtilityLimits, RebornBuildError> {
-        brassclaw_monty_host::utility::UtilityLimits::from_execution(
-            self.preparation_policy().await?,
-        )
-        .map_err(invalid)
+        Ok(self.capture_task_preparation().await?.limits())
     }
 
     pub(crate) async fn preparation_policy(
         &self,
     ) -> Result<brassclaw_host_api::MontyExecutionLimits, RebornBuildError> {
+        Ok(self.capture_task_preparation().await?.policy())
+    }
+
+    /// The source is the existing acknowledged effective view bound by runtime,
+    /// never the desired PostgreSQL settings store. Read one coherent record.
+    /// Call once when preparing new work; retained work restores its own bytes.
+    pub(crate) async fn capture_task_preparation(
+        &self,
+    ) -> Result<PreparationCapture, RebornBuildError> {
         let source = self
             .preparation_settings
             .read()
             .map_err(|_| invalid("preparation settings unavailable"))?
             .clone();
         let Some(source) = source else {
-            return Ok(self.initial_preparation);
+            return Ok(self.initial_preparation.clone());
         };
         let settings = source
             .get("default", "default")
             .await
             .map_err(|_| invalid("effective preparation settings unavailable"))?;
-        settings.execution_limits.validate().map_err(invalid)?;
-        Ok(settings.execution_limits)
+        // Preserve the same bootstrap-to-live invariant as the native primitive
+        // settings owner. A revision is never inferred from numeric limits.
+        if settings.revision < self.initial_preparation.revision()
+            || (settings.revision == self.initial_preparation.revision()
+                && settings.execution_limits != self.initial_preparation.policy())
+        {
+            return Err(invalid("effective preparation settings regress startup"));
+        }
+        PreparationCapture::capture(&settings, PreparationOrigin::AcknowledgedLive).map_err(invalid)
     }
     /// Fresh capture/source projection must still name the active generation.
     /// Caller holds activation serialization and a read-only repeatable snapshot.
@@ -477,10 +493,10 @@ impl InstalledMontyCatalogue {
         root: brassclaw_skills::association_contract::ComponentRevisionRef,
         startup_settings: &brassclaw_product_workflow::MontyVmSettings,
     ) -> Result<Arc<Self>, RebornBuildError> {
-        let preparation_policy = startup_settings.execution_limits;
-        let preparation =
-            brassclaw_monty_host::utility::UtilityLimits::from_execution(preparation_policy)
+        let initial_preparation =
+            PreparationCapture::capture(startup_settings, PreparationOrigin::AcknowledgedStartup)
                 .map_err(invalid)?;
+        let preparation = initial_preparation.limits();
         let worker_path = worker_image.path();
         let worker = worker_path.as_path();
         let image = NativeExecutableImage::capture_with_verification(
@@ -951,7 +967,7 @@ impl InstalledMontyCatalogue {
             disabled_recipes: Default::default(),
         });
         let catalogue = Arc::new(Self {
-            initial_preparation: preparation_policy,
+            initial_preparation,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
             tool_credential_sources: std::sync::OnceLock::new(),
