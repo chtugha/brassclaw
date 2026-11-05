@@ -730,6 +730,13 @@ async fn check_private_structure_recipe(pure: bool) {
             .subject_task_inputs(&subject, inspected.program().inputs(), REVISION_LIMITS)
             .unwrap();
         if case == 0 {
+            crate::pg_review_admission_source::assert_original_capture(
+                catalogue,
+                subject.clone(),
+                saved.clone(),
+                settings.as_ref(),
+            )
+            .await;
             first_inputs = Some(inputs.clone());
         }
         if case == 9 {

@@ -968,6 +968,7 @@ impl Context {
             catalogue_activation: false,
         };
         let admission_bytes = self.record(self.id("original-admission"), &binding)?;
+        let quiescence_proof = OnceLock::new();
         let observed = async {
             io::retain_record(
                 &self.pool,
@@ -1032,7 +1033,10 @@ impl Context {
                 )?,
             )
             .await?;
-            let actual = observation.model_free_quiescence()?;
+            let (actual, proof) = observation.quiescence_proof()?;
+            quiescence_proof
+                .set(proof)
+                .map_err(|_| invalid("original quiescence already observed"))?;
             let preterminal_bytes = source
                 .received
                 .get()
@@ -1061,11 +1065,22 @@ impl Context {
             Ok::<_, RebornBuildError>((preterminal_bytes, quiescence_bytes))
         }
         .await;
-        let close = io::bounded(
-            self.storage.as_ref(),
-            crate::bootstrap_validation::settle_closed(&admitted),
-        )
-        .await;
+        let close = match quiescence_proof.get() {
+            Some(proof) => {
+                io::bounded(
+                    self.storage.as_ref(),
+                    crate::bootstrap_validation::settle_quiescent_closed(&admitted, proof),
+                )
+                .await
+            }
+            None => {
+                io::bounded(
+                    self.storage.as_ref(),
+                    crate::bootstrap_validation::settle_closed(&admitted),
+                )
+                .await
+            }
+        };
         let (preterminal_bytes, quiescence_bytes) = match observed {
             Ok(facts) => facts,
             Err(error) => {

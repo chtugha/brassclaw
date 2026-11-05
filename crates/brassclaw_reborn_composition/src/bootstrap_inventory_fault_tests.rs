@@ -262,6 +262,36 @@ pub(crate) async fn assert_actual_ack_and_timeout_faults(
             .await
             .is_none()
     );
+    {
+        use brassclaw_turns::TurnSpawnTreeStateStore;
+        let original: Value = serde_json::from_str(&case.bytes(intent).await.unwrap()).unwrap();
+        let quiet: Value = serde_json::from_str(
+            &case
+                .bytes(Uuid::new_v5(&intent, b"actual-quiescence-observation"))
+                .await
+                .unwrap(),
+        )
+        .unwrap();
+        let scope: brassclaw_turns::TurnScope =
+            serde_json::from_value(quiet["report"]["turn_scope"].clone()).unwrap();
+        let run = brassclaw_turns::TurnRunId::from_uuid(
+            serde_json::from_value(original["report"]["header"]["run_id"].clone()).unwrap(),
+        );
+        let actual = brassclaw_turns::PgTurnStateStore::new(
+            catalogue.pool.clone(),
+            scope.tenant_id.as_str(),
+        )
+        .get_run_record(&scope, run)
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(actual.status, brassclaw_turns::TurnStatus::Cancelled);
+        assert!(
+            actual.runner_id.is_none()
+                && actual.lease_token.is_none()
+                && actual.lease_expires_at.is_none()
+        );
+    }
     case.assert_unreplayed(id).await;
 
     // The actual native success reaches its observer, then its INSERT exceeds

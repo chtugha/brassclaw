@@ -15,6 +15,7 @@ enum Fault {
     CompletionAck,
     IntentTimeout,
     LateCancel,
+    CancelAck,
     CloseReject,
     Negative,
 }
@@ -24,6 +25,7 @@ struct Plan {
     transport: Arc<AckCutTransport>,
     context: StdMutex<Option<Arc<Context>>>,
     reserved_run: OnceLock<Uuid>,
+    cancel_run: OnceLock<Uuid>,
     baseline: tokio::sync::OnceCell<Audit>,
     after: tokio::sync::OnceCell<Audit>,
     consumer_status: OnceLock<&'static str>,
@@ -223,9 +225,15 @@ pub(super) async fn after_quiescence(
     context: &Context,
     admitted: &crate::bootstrap_validation::Admitted,
 ) -> Result<(), RebornBuildError> {
-    if plan()
-        .is_some_and(|p| p.profile == context.selection.profile() && p.fault == Fault::LateCancel)
-    {
+    if plan().is_some_and(|p| {
+        p.profile == context.selection.profile()
+            && matches!(p.fault, Fault::LateCancel | Fault::CancelAck)
+    }) {
+        if let Some(plan) = plan() {
+            plan.cancel_run
+                .set(admitted.attempt.run_id.as_uuid())
+                .map_err(|_| invalid("test original cancel run already captured"))?;
+        }
         brassclaw_turns::TurnStateStore::request_cancel(
             admitted.state.as_ref(),
             brassclaw_turns::CancelRunRequest {
@@ -251,6 +259,15 @@ pub(super) async fn after_quiescence(
     Ok(())
 }
 
+pub(crate) fn before_cancel(run: Uuid) -> Result<(), RebornBuildError> {
+    if let Some(plan) =
+        plan().filter(|p| p.fault == Fault::CancelAck && p.cancel_run.get() == Some(&run))
+    {
+        plan.transport.arm(6).map_err(invalid)?;
+    }
+    Ok(())
+}
+
 async fn run_case(fault: Fault, profile: store::InstallationProfile) {
     use secrecy::ExposeSecret;
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -268,6 +285,7 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
                     AckBoundary::Commit,
                 ),
                 AckCutRule::next_commit(2),
+                AckCutRule::next_commit(6),
                 AckCutRule::after_bind(
                     3,
                     vec![b"installation-validator-admission/1".to_vec()],
@@ -300,6 +318,7 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
         transport: transport.clone(),
         context: StdMutex::new(None),
         reserved_run: OnceLock::new(),
+        cancel_run: OnceLock::new(),
         baseline: tokio::sync::OnceCell::new(),
         after: tokio::sync::OnceCell::new(),
         consumer_status: OnceLock::new(),
@@ -351,6 +370,7 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
             | Fault::AdmissionBindingAck
             | Fault::NativeAck
             | Fault::CompletionAck
+            | Fault::CancelAck
     ));
     assert_eq!(
         transport.cut_count(),
@@ -455,7 +475,10 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
                 .contains("python-source-inventory/1")
         );
     }
-    if matches!(fault, Fault::LateCancel | Fault::CloseReject) {
+    if matches!(
+        fault,
+        Fault::LateCancel | Fault::CancelAck | Fault::CloseReject
+    ) {
         assert!(pre.is_some());
         assert!(quiescence.is_some());
         assert!(completion.is_none());
@@ -498,7 +521,7 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
     let counts:Value=tx.query_one("SELECT jsonb_build_array((SELECT count(*) FROM brassclaw_monty_task_admissions),(SELECT count(*) FROM brassclaw_monty_tool_invocations))",&[]).await.unwrap().get(0);
     tx.commit().await.unwrap();
     drop(client);
-    if fault == Fault::LateCancel {
+    if matches!(fault, Fault::LateCancel | Fault::CancelAck) {
         let binding = &binding.as_ref().unwrap().1;
         let actual = brassclaw_turns::PgTurnStateStore::new(
             rig.pool.clone(),
@@ -508,7 +531,13 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
         .await
         .unwrap()
         .unwrap();
-        assert_eq!(actual.status, TurnStatus::CancelRequested);
+        assert_eq!(actual.status, TurnStatus::Cancelled);
+        assert!(
+            actual.runner_id.is_none()
+                && actual.lease_token.is_none()
+                && actual.lease_expires_at.is_none(),
+            "actual cancel ACK clears the original claim"
+        );
     }
     let original = context.read_original().await;
     if succeeds {
@@ -571,5 +600,7 @@ cases! {
     installation_pure_late_cancel:LateCancel,Pure;
     installation_structure_close_error:CloseReject,Structure;
     installation_pure_close_error:CloseReject,Pure;
+    installation_structure_cancel_ack:CancelAck,Structure;
+    installation_pure_cancel_ack:CancelAck,Pure;
     installation_actual_negative_rules:Negative,Pure;
 }

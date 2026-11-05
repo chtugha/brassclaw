@@ -1219,10 +1219,6 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             .user_input
             .starts_with(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
         {
-            use brassclaw_engine::{
-                executor::retained_source::InspectedRetainedProgram,
-                memory::retained_validator::RetainedValidatorCoverage,
-            };
             use brassclaw_skills::{
                 component_revision::REVISION_LIMITS,
                 review_submission_store::{PgReviewSubmissionStore, selection},
@@ -1261,51 +1257,25 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
                     .ok_or_else(failed)?;
             tx.commit().await.map_err(|_| failed())?;
 
-            // 3. Restore the retained programme from the sealed selection.
-            let program =
-                RetainedValidatorCoverage::restore_preparation(&selection).map_err(|_| failed())?;
-
-            // 4. Inspect the retained programme under the current worker image.
-            //    preparation_limits() returns the UtilityLimits that inspect_with_limits
-            //    requires; the corresponding ContractLimits are derived from those same
-            //    bounds for subject/inputs construction.
-            let preparation = self.preparation_limits().await.map_err(|_| failed())?;
-            let contract_limits = brassclaw_skills::value_contract::ContractLimits {
-                max_depth: preparation.bounds.max_value_depth,
-                max_nodes: preparation.bounds.max_value_nodes,
-                max_bytes: preparation.bounds.max_value_bytes,
-            };
-            let inspected = Arc::new(
-                InspectedRetainedProgram::inspect_with_limits(
-                    RetainedProgram::Tools(Arc::new(program)),
-                    &self.worker_image.path(),
-                    preparation,
-                )
+            // One acknowledged task capture and one shared domain serializer.
+            // B02 persists this same Prepared/input capture before Work admission;
+            // this existing direct route keeps its original authored behavior.
+            let preparation = self
+                .capture_task_preparation()
                 .await
-                .map_err(|_| failed())?,
-            );
-
-            // 5. Derive typed inputs from the sealed subject (no source substitution).
-            let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
                 .map_err(|_| failed())?;
-            let inputs = crate::pg_review_admission_source::subject_validator_task_inputs(
-                &coverage,
-                &subject,
-                &inspected,
-                contract_limits,
+            let prepared = crate::pg_review_admission_source::PreparedValidatorReview::prepare(
+                Arc::new(subject),
+                Arc::new(selection),
+                self.worker_image.clone(),
+                preparation,
             )
+            .await
             .map_err(|_| failed())?;
-
-            // 6. Construct the sealed ReviewAdmissionSource. new() enforces
-            //    subject/selection agreement and the zero-Tool-binding invariant.
             let source = Arc::new(
-                crate::pg_review_admission_source::ReviewAdmissionSource::new(
-                    Arc::new(subject),
-                    Arc::new(selection),
-                    inspected,
-                    inputs,
+                crate::pg_review_admission_source::ReviewAdmissionSource::from_prepared(
+                    prepared,
                     self.pool.clone(),
-                    contract_limits,
                 )
                 .map_err(|_| failed())?,
             );

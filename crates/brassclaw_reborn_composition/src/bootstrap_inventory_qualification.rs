@@ -16,6 +16,7 @@ use brassclaw_skills::{
 };
 use brassclaw_trust::{AuthorityCeiling, EffectiveTrustClass, TrustDecision, TrustProvenance};
 use sha2::Digest;
+use std::sync::OnceLock;
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
 
@@ -310,7 +311,9 @@ async fn qualify_inner(
         ),
     )
     .await?;
+    let quiescence_proof = OnceLock::new();
     let qualification = QualificationRequest {
+        quiescence_proof: &quiescence_proof,
         pool: pool.clone(),
         kernel,
         worker: worker.clone(),
@@ -332,11 +335,22 @@ async fn qualify_inner(
     }
     .observe()
     .await;
-    let closed = primitives::bounded(
-        storage.as_ref(),
-        crate::bootstrap_validation::settle_closed(&admitted),
-    )
-    .await;
+    let closed = match quiescence_proof.get() {
+        Some(proof) => {
+            primitives::bounded(
+                storage.as_ref(),
+                crate::bootstrap_validation::settle_quiescent_closed(&admitted, proof),
+            )
+            .await
+        }
+        None => {
+            primitives::bounded(
+                storage.as_ref(),
+                crate::bootstrap_validation::settle_closed(&admitted),
+            )
+            .await
+        }
+    };
     let observation = match qualification {
         Ok(observation) => observation,
         Err(operation) => {
@@ -372,6 +386,7 @@ async fn qualify_inner(
 }
 
 struct QualificationRequest<'a> {
+    quiescence_proof: &'a OnceLock<crate::bootstrap_recipe_flow::ModelFreeQuiescence>,
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
     worker: Arc<PackagedExecutableImage>,
@@ -394,6 +409,7 @@ struct QualificationRequest<'a> {
 impl QualificationRequest<'_> {
     async fn observe(self) -> Result<InventoryObservation, RebornBuildError> {
         let Self {
+            quiescence_proof,
             pool,
             kernel,
             worker,
@@ -752,7 +768,10 @@ impl QualificationRequest<'_> {
             assert!(!status.success());
             assert_eq!(status.signal(), Some(9));
         }
-        let actual_quiescence = observed.model_free_quiescence()?;
+        let (actual_quiescence, proof) = observed.quiescence_proof()?;
+        quiescence_proof
+            .set(proof)
+            .map_err(|_| invalid("original parser quiescence already observed"))?;
         if admitted.host.finalized_reply_ref().is_some() {
             return Err(invalid("inventory fixture published an unexpected reply"));
         }

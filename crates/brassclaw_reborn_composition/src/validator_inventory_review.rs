@@ -28,6 +28,8 @@ use brassclaw_skills::{
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 
+use crate::pg_review_admission_source::verified_worker;
+
 use crate::{
     RebornBuildError,
     bootstrap_reply_validation::invalid,
@@ -41,6 +43,8 @@ mod installation;
 #[cfg(test)]
 pub(crate) use installation::assert_original_installation_readback;
 pub(crate) use installation::observe_installation;
+#[cfg(test)]
+pub(crate) use installation::tests::before_cancel as installation_test_before_cancel;
 #[cfg(test)]
 pub(crate) use installation::tests::before_reservation as installation_test_before_reservation;
 
@@ -372,20 +376,6 @@ impl InternalRecipeSource for InventoryReviewSource {
     }
 }
 
-/// Native return, executor fingerprints and the original PG invocation must all
-/// agree. This authenticates facts, not the candidate's semantics or settlement.
-async fn verified_worker(
-    worker: &PackagedExecutableImage,
-    max_bytes: u64,
-) -> Result<Arc<PackagedExecutableImage>, RebornBuildError> {
-    let copy = PackagedExecutableImage::capture(&worker.path(), max_bytes)
-        .await
-        .map_err(invalid)?;
-    if copy.checksum() != worker.checksum() {
-        return Err(invalid("retained qualification worker bytes changed"));
-    }
-    Ok(Arc::new(copy))
-}
 fn captured_limits(inspected: &InspectedRetainedProgram) -> ContractLimits {
     let bounds = inspected.preparation_limits().bounds;
     ContractLimits {
@@ -394,6 +384,8 @@ fn captured_limits(inspected: &InspectedRetainedProgram) -> ContractLimits {
         max_bytes: bounds.max_value_bytes,
     }
 }
+/// Native return, executor fingerprints and the original PG invocation must all
+/// agree. This authenticates facts, not the candidate's semantics or settlement.
 struct NativeInventoryObservation<'a> {
     pool: &'a PgPool,
     host: &'a MontyTaskHost,

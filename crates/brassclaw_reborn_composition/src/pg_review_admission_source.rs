@@ -5,8 +5,9 @@
 //!
 //! 1. Verify the submission exists and is active before constructing this source.
 //! 2. Supply the exact `RetainedValidatorSelection` read from sealed storage.
-//! 3. Pass the inspected program from `RetainedValidatorCoverage::restore_preparation`
-//!    plus `InspectedRetainedProgram::inspect_with_limits`.
+//! 3. Prepare or restore `PreparedValidatorReview` with the original catalogue
+//!    `PreparationCapture` and retained worker image, then use `from_prepared`.
+//!    That owner restores exact IBS, inspects it and derives typed inputs once.
 //! 4. Call `capture_internal` only on a `trusted_internal_turn` whose `user_input`
 //!    equals `Self::reference_for(submission_id)`.
 //!
@@ -81,6 +82,29 @@ use crate::global_recipe_ports::{InternalRecipeSource, SelectedMontyRecipe};
 use crate::pg_retained_q1::StructuralReviewFailure;
 use crate::pg_workflow_review::{WorkflowReview, persist_workflow_review};
 
+#[path = "validator_input_capture.rs"]
+mod validator_input_capture;
+#[cfg(test)]
+pub(crate) use validator_input_capture::assert_original_capture;
+pub(crate) use validator_input_capture::{PreparedValidatorReview, ValidatorInputCapture};
+
+/// Retain and verify the original review worker bytes for both authored task
+/// preparation and contained native source observations.
+pub(crate) async fn verified_worker(
+    worker: &brassclaw_host_runtime::PackagedExecutableImage,
+    max_bytes: u64,
+) -> Result<Arc<brassclaw_host_runtime::PackagedExecutableImage>, crate::RebornBuildError> {
+    let copy = brassclaw_host_runtime::PackagedExecutableImage::capture(&worker.path(), max_bytes)
+        .await
+        .map_err(crate::bootstrap_reply_validation::invalid)?;
+    if copy.checksum() != worker.checksum() {
+        return Err(crate::bootstrap_reply_validation::invalid(
+            "retained review worker bytes changed",
+        ));
+    }
+    Ok(Arc::new(copy))
+}
+
 /// Canonical reference prefix for validator review internal tasks.
 pub(crate) const VALIDATOR_REVIEW_PREFIX: &str = "validator-review:";
 
@@ -99,82 +123,30 @@ pub(crate) fn validator_review_reference(submission_id: Uuid) -> String {
 /// `InstalledMontyCatalogue`. No public API or arbitrary JSON supplies the
 /// sealed fields; the pool and subject come from durable storage reads.
 pub(crate) struct ReviewAdmissionSource {
-    /// Canonical `user_input` reference for this review task.
     reference: String,
-    /// Sealed submission subject (candidate + base + dependencies).
-    subject: Arc<RetainedValidatorSubject>,
-    /// Sealed validator programme selection (recipe + snapshot + variant).
-    selection: Arc<RetainedValidatorSelection>,
-    /// Inspected retained programme ready for execution. Pure-logic only;
-    /// Tool bindings are rejected at construction via validator coverage check.
-    inspected: Arc<InspectedRetainedProgram>,
-    /// Retained coverage declaration, derived once from the sealed programme at
-    /// construction. Storing it here ensures construction-time errors surface
-    /// before any task execution begins.
-    coverage: RetainedValidatorCoverage,
-    /// Typed inputs derived from the sealed subject, matching the validator's
-    /// declared `input_layout`. Constructed once at admission time.
-    inputs: brassclaw_host_api::JsonValue,
-    /// Database pool for `verify_receipt` evidence persistence.
+    prepared: Arc<PreparedValidatorReview>,
     pool: Arc<PgPool>,
-    /// Contract limits for data-bounds checks in `verify_receipt`.
-    limits: ContractLimits,
 }
-
 impl ReviewAdmissionSource {
-    /// Construct a sealed source from an already-read subject and selection.
-    ///
-    /// The caller must have verified that:
-    /// - `subject.submission_id()` matches `selection.submission_id()`
-    /// - `selection` was read from `reborn_component_validator_selections`
-    /// - `inspected` was built from `RetainedValidatorCoverage::restore_preparation`
-    ///   followed by `InspectedRetainedProgram::inspect_with_limits`
-    ///
-    /// Returns `Err` if the inspected program does not satisfy the validator
-    /// coverage contract (e.g. has unexpected Tool bindings for a pure validator).
-    pub(crate) fn new(
-        subject: Arc<RetainedValidatorSubject>,
-        selection: Arc<RetainedValidatorSelection>,
-        inspected: Arc<InspectedRetainedProgram>,
-        inputs: brassclaw_host_api::JsonValue,
+    pub(crate) fn from_prepared(
+        prepared: Arc<PreparedValidatorReview>,
         pool: Arc<PgPool>,
-        limits: ContractLimits,
     ) -> Result<Self, &'static str> {
-        // Verify subject/selection agreement.
-        if selection.submission_id() != subject.submission_id()
-            || selection.subject_checksum() != subject.subject_checksum()
-        {
-            return Err("validator selection subject mismatch");
-        }
-        // Verify the inspected programme satisfies the validator coverage contract
-        // and retain the result — derive once, not on every verify_receipt call.
-        let coverage = RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
-            .map_err(|_| "validator programme does not satisfy coverage declaration")?;
-        // Verify pure-logic (no Tool bindings) — structural validators must not
-        // dispatch any Tools during execution.
+        let inspected = prepared.inspected();
         let RetainedProgram::Tools(program) = inspected.program() else {
             return Err("validator programme must be a Tools programme");
         };
         if !program.bindings().is_empty() {
             return Err("structural validator must have zero Tool bindings");
         }
-        let reference = validator_review_reference(subject.submission_id());
         Ok(Self {
-            reference,
-            subject,
-            selection,
-            inspected,
-            coverage,
-            inputs,
+            reference: validator_review_reference(prepared.subject().submission_id()),
+            prepared,
             pool,
-            limits,
         })
     }
-
-    /// The sealed submission subject (read-only for callers needing class code).
-    #[allow(dead_code)] // used by routing tests
-    pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
-        &self.subject
+    pub(crate) fn input_capture(&self) -> &ValidatorInputCapture {
+        self.prepared.input_capture()
     }
 }
 
@@ -189,13 +161,13 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     }
 
     fn captured_program(&self) -> Option<Arc<InspectedRetainedProgram>> {
-        Some(self.inspected.clone())
+        Some(self.prepared.inspected.clone())
     }
 
     /// Pure validators have zero Tool bindings; binding native runtimes is a
     /// no-op. Already verified at construction, checked again defensively here.
     fn bind_native_runtimes(&self) -> Result<(), PortFailure> {
-        let RetainedProgram::Tools(program) = self.inspected.program() else {
+        let RetainedProgram::Tools(program) = self.prepared.inspected.program() else {
             return Err(failure("validator_binding_program_type"));
         };
         if !program.bindings().is_empty() {
@@ -214,8 +186,8 @@ impl InternalRecipeSource for ReviewAdmissionSource {
     async fn select(&self) -> Result<SelectedMontyRecipe, PortFailure> {
         Ok(SelectedMontyRecipe {
             normal_match: None,
-            inspected: self.inspected.clone(),
-            inputs: Some(self.inputs.clone()),
+            inspected: self.prepared.inspected.clone(),
+            inputs: Some(self.input_capture().inputs().clone()),
             // Pure structural validators have no Tool port.
             tools: None,
         })
@@ -246,11 +218,11 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
         let (checks, _) = ValidatorReceiptSubject {
-            subject: &self.subject,
-            selection: &self.selection,
-            inspected: &self.inspected,
-            coverage: &self.coverage,
-            limits: self.limits,
+            subject: &self.prepared.subject,
+            selection: &self.prepared.selection,
+            inspected: &self.prepared.inspected,
+            coverage: &self.prepared.coverage,
+            limits: validator_input_capture::limits(self.input_capture().preparation()),
         }
         .observe(
             ValidatorReceiptProfile::Structural,
@@ -264,8 +236,8 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         // derives its report from the sealed inspected programme — no receipt values
         // are needed for this record. Placed after observe_subject so no structural
         // evidence is written unless the fingerprint and observations are consistent.
-        let structural_review =
-            WorkflowReview::structural(Arc::clone(&self.inspected)).map_err(|e| match e {
+        let structural_review = WorkflowReview::structural(Arc::clone(&self.prepared.inspected))
+            .map_err(|e| match e {
                 StructuralReviewFailure::Preparation(reason) => {
                     tracing::warn!(reason, "validator structural review preparation failed");
                     failure("validator_receipt_structural_review_failed")
@@ -288,8 +260,8 @@ impl InternalRecipeSource for ReviewAdmissionSource {
             .map_err(|_| failure("validator_receipt_task_handle_invalid"))?;
         crate::pg_validator_q1_evidence::persist_validator_q1_evidence(
             &self.pool,
-            &self.subject,
-            &self.selection,
+            &self.prepared.subject,
+            &self.prepared.selection,
             &checks,
             task_handle,
         )

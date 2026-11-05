@@ -64,12 +64,40 @@ impl RecipeCapacitySource for Capacity {
     }
 }
 pub(super) struct Observation {
+    run_id: brassclaw_turns::TurnRunId,
     pub(super) ports: Arc<GlobalRecipePorts>,
     pub(super) receipt: Arc<TaskReceipt>,
     pub(super) report: Value,
     pub(super) exit: ServiceExit,
 }
+/// Only the joined, actually completed model-free execution can create this
+/// scoped lifecycle proof. It is neither a completion nor an approval handle.
+pub(super) struct ModelFreeQuiescence {
+    run_id: brassclaw_turns::TurnRunId,
+}
+impl ModelFreeQuiescence {
+    pub(super) fn require_run(
+        &self,
+        run: brassclaw_turns::TurnRunId,
+    ) -> Result<(), RebornBuildError> {
+        if self.run_id != run {
+            return Err(invalid("contained quiescence belongs to another run"));
+        }
+        Ok(())
+    }
+}
 impl Observation {
+    pub(super) fn quiescence_proof(
+        &self,
+    ) -> Result<(Value, ModelFreeQuiescence), RebornBuildError> {
+        let actual = self.model_free_quiescence()?;
+        Ok((
+            actual,
+            ModelFreeQuiescence {
+                run_id: self.run_id,
+            },
+        ))
+    }
     /// Actual model-free internal receipt/account/worker facts, before durable
     /// admission/Turn cleanup. This value alone is deliberately not settlement.
     pub(super) fn model_free_quiescence(&self) -> Result<Value, RebornBuildError> {
@@ -275,6 +303,7 @@ pub(super) async fn execute(
     forced_exit?;
     let (receipt, report) = completed?;
     Ok(Observation {
+        run_id: admitted.attempt.run_id,
         ports,
         receipt,
         report,
