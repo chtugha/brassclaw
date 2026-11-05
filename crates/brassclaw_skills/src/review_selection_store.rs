@@ -84,8 +84,37 @@ async fn verify(
     {
         return Err(SubmissionStoreError::Invalid);
     }
-    let selection = strict_json(&value.validator_selection_bytes, limits)
-        .map_err(|_| SubmissionStoreError::Invalid)?;
+    let (selection, snapshot) = verify_program_selection(
+        tx,
+        &value.validator_selection_bytes,
+        subject.candidate.class_code,
+        limits,
+    )
+    .await?;
+    Ok(RetainedValidatorSelection {
+        submission_id: value.submission_id,
+        subject_checksum: value.subject_checksum,
+        bytes: bytes.to_owned(),
+        validator_bytes: value.validator_selection_bytes,
+        selection,
+        snapshot,
+    })
+}
+
+pub(super) async fn verify_program_selection(
+    tx: &Transaction<'_>,
+    validator_bytes: &str,
+    class_code: i32,
+    limits: ContractLimits,
+) -> Result<
+    (
+        serde_json::Value,
+        std::sync::Arc<crate::component_revision::RetainedComponentSnapshot>,
+    ),
+    SubmissionStoreError,
+> {
+    let selection =
+        strict_json(validator_bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
     if selection["format"] != "monty-retained-recipe-selection/1" {
         return Err(SubmissionStoreError::Invalid);
     }
@@ -166,7 +195,7 @@ async fn verify(
     if selection.get("model_input_binding") != expected_binding.as_ref() {
         return Err(SubmissionStoreError::Invalid);
     }
-    if doc["validates_class_code"].as_i64() != Some(i64::from(subject.candidate.class_code))
+    if doc["validates_class_code"].as_i64() != Some(i64::from(class_code))
         || doc["consumer_tags"] != serde_json::json!(["05:validator"])
         || variant["intent_examples"] != serde_json::json!([])
         || selection["variant"]["intent_examples"] != serde_json::json!([])
@@ -177,14 +206,7 @@ async fn verify(
     {
         return Err(SubmissionStoreError::Invalid);
     }
-    Ok(RetainedValidatorSelection {
-        submission_id: value.submission_id,
-        subject_checksum: value.subject_checksum,
-        bytes: bytes.to_owned(),
-        validator_bytes: value.validator_selection_bytes,
-        selection,
-        snapshot: std::sync::Arc::new(graph),
-    })
+    Ok((selection, std::sync::Arc::new(graph)))
 }
 
 /// Caller retains exact bytes before I/O and acknowledges only its actual

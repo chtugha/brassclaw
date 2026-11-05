@@ -202,6 +202,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         &catalogue._source_compiler_candidates.source,
         &catalogue.generation_approvals,
         &catalogue.worker,
+        catalogue.startup_executor.clone(),
     ))
     .await
     .unwrap()
@@ -383,6 +384,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     crate::prefix_generation_behavior_tests::assert_native_generation_usages(&catalogue).await;
     crate::prefix_generation_behavior_tests::assert_native_source_compiler(&catalogue).await;
     let source_behavior = crate::bootstrap_compiler_validation::execute(
+        catalogue.startup_executor.clone(),
         catalogue.pool.clone(),
         catalogue.kernel.clone(),
         catalogue._source_compiler_candidates.source.clone(),

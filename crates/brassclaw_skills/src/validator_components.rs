@@ -7,7 +7,9 @@ use uuid::Uuid;
 
 #[path = "validator_source_inventory.rs"]
 mod source_inventory;
-pub use source_inventory::{SOURCE_ENTRIES_SOURCE, source_inventory_drafts};
+pub use source_inventory::{
+    SOURCE_ENTRIES_SOURCE, source_inventory_drafts, source_inventory_qualification_draft,
+};
 
 #[path = "validator_python_structure.rs"]
 mod python_structure;
@@ -33,7 +35,7 @@ pub fn review_subject_reader_draft(id: Uuid) -> Result<ComponentRevisionDraft, R
     ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{"name":"review-subject-reader",
-            "description":"Shared private parsing of complete single-root /1 and function /2 review subjects. Validate exact envelope/role/revision identities, include each selected partner once and leave both bases out of executable dependencies. Return original parsed objects within the invocation without source substitution or serialization copies. This is shape/data handling, not checksum authentication, prior approval, semantic review, candidate execution or Q1/Q2. Only the trusted owner supplies original sealed subject/custody.",
+            "description":"Shared private parsing of complete authored single-root /1, authored function /2 and explicitly separate installation-validator-subject/1 inputs. Preserve each format's exact fields and meaning; installation subject_id is never an authored submission_id. Validate complete envelope/role/revision identities, include each selected partner once and leave comparison bases out of executable dependencies. Return original parsed objects within the invocation without source substitution or serialization copies. This is shape/data handling, not checksum/provenance authentication, prior approval, semantic review, candidate execution or Q1/Q2. Only the trusted owner supplies the original corresponding sealed subject/custody.",
             "content":REVIEW_SUBJECT_READER_SOURCE,"includes":[],"dependency_registry":null,
             "preload":{"format":"python-preload/2","exports":{},
                 "private_functions":{"_validator_review_entry":["entry"],"_validator_review_base":["base","candidate"],"_validator_review_subject":["inputs"]},

@@ -245,82 +245,20 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
-        // Step 1: verify the executed programme matches the admission-time selection
-        // by comparing RetainedRecipeSelection checksums — the v3 identity contract.
-        // ptr equality is an implementation accident that does not survive refactoring.
-        let executed_checksum = selected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure("validator_receipt_selection_invalid"))?
-            .checksum();
-        let sealed_checksum = self
-            .inspected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure("validator_receipt_sealed_selection_invalid"))?
-            .checksum();
-        if executed_checksum != sealed_checksum {
-            return Err(failure("validator_receipt_programme_mismatch"));
+        let (checks, _) = ValidatorReceiptSubject {
+            subject: &self.subject,
+            selection: &self.selection,
+            inspected: &self.inspected,
+            coverage: &self.coverage,
+            limits: self.limits,
         }
-
-        // Step 2: parse the receipt JSON. The orchestrator must post the exact envelope.
-        let receipt_value: Value =
-            serde_json::from_str(receipt).map_err(|_| failure("validator_receipt_parse_failed"))?;
-        if receipt_value["format"] != "validator-structural-receipt/1" {
-            return Err(failure("validator_receipt_format_invalid"));
-        }
-        let results_value = receipt_value
-            .get("results")
-            .and_then(Value::as_object)
-            .ok_or_else(|| failure("validator_receipt_results_missing"))?;
-        let mut results: BTreeMap<String, Value> = results_value
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-
-        // Step 3: verify the receipt-step fingerprint.
-        //
-        // The Python orchestrator returns the receipt JSON string as the result
-        // of the receipt encoder step (the final recipe step). The executor
-        // records its SHA-256 fingerprint (typed-value-sha256/1 of
-        // Value::String(receipt)) in the step observation. Verifying this before
-        // any writes proves the receipt came from the actual Monty execution.
-        // A spoofed or truncated receipt string produces a different checksum
-        // and is rejected here, before observe_subject runs.
-        let receipt_step = self.coverage.receipt_step();
-        let proof = execution
-            .observations()
-            .get(receipt_step)
-            .ok_or_else(|| failure("validator_receipt_aggregate_observation_missing"))?;
-        // The receipt string is what Python returned — it is typed as
-        // Value::String, so json!(receipt) wraps it correctly.
-        let expected_checksum =
-            typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())
-                .map_err(|_| failure("validator_receipt_checksum_overflow"))?;
-        if proof.result_checksum() != Some(expected_checksum) {
-            return Err(failure("validator_receipt_fingerprint_mismatch"));
-        }
-        // Add the receipt encoder step's own result (the receipt string) so that
-        // observe_subject can verify its fingerprint alongside the other steps.
-        results.insert(receipt_step.to_owned(), serde_json::json!(receipt));
-
-        // Step 4: produce sealed subject-bound observations. This verifies per-step
-        // input and result fingerprints for every step using the stored coverage
-        // declaration (derived once at construction in new()).
-        let checks = self
-            .coverage
-            .observe_subject(
-                &self.subject,
-                &self.selection,
-                execution,
-                &results,
-                self.limits,
-            )
-            .map_err(|_| failure("validator_receipt_observation_failed"))?;
+        .observe(
+            ValidatorReceiptProfile::Structural,
+            receipt,
+            selected,
+            execution,
+        )
+        .map_err(failure)?;
 
         // Step 5: persist structural workflow-review evidence. WorkflowReview::structural
         // derives its report from the sealed inspected programme — no receipt values
@@ -359,6 +297,196 @@ impl InternalRecipeSource for ReviewAdmissionSource {
         .map(|_| ())
         .map_err(|_| failure("validator_receipt_evidence_persist_failed"))
     }
+}
+
+/// Shared original-subject/receipt authentication. The profile selects the
+/// existing wire grammar, never permissions, Q1 or terminal settlement.
+pub(crate) enum ValidatorReceiptProfile {
+    Structural,
+    Inventory,
+}
+pub(crate) struct ValidatorReceiptSubject<'a> {
+    pub(crate) subject: &'a RetainedValidatorSubject,
+    pub(crate) selection: &'a RetainedValidatorSelection,
+    pub(crate) inspected: &'a InspectedRetainedProgram,
+    pub(crate) coverage: &'a RetainedValidatorCoverage,
+    pub(crate) limits: ContractLimits,
+}
+impl ValidatorReceiptSubject<'_> {
+    pub(crate) fn observe(
+        self,
+        profile: ValidatorReceiptProfile,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<
+        (
+            brassclaw_engine::memory::retained_validator::ObservedSubjectValidatorChecks,
+            BTreeMap<String, Value>,
+        ),
+        &'static str,
+    > {
+        if self.selection.submission_id() != self.subject.submission_id()
+            || self.selection.subject_checksum() != self.subject.subject_checksum()
+        {
+            return Err("validator_selection_subject_mismatch");
+        }
+        let results = receipt_results(
+            profile,
+            receipt,
+            selected,
+            execution,
+            self.inspected,
+            self.coverage,
+            self.limits,
+        )?;
+        let checks = self
+            .coverage
+            .observe_subject(
+                self.subject,
+                self.selection,
+                execution,
+                &results,
+                self.limits,
+            )
+            .map_err(|_| "validator_receipt_observation_failed")?;
+        Ok((checks, results))
+    }
+}
+
+pub(crate) struct InstallationReceiptSubject<'a> {
+    pub(crate) subject:&'a brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSubject,
+    pub(crate) selection:&'a brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSelection,
+    pub(crate) inspected:&'a InspectedRetainedProgram,
+    pub(crate) coverage:&'a RetainedValidatorCoverage,
+    pub(crate) limits:ContractLimits,
+}
+impl InstallationReceiptSubject<'_> {
+    pub(crate) fn observe(
+        self,
+        receipt: &str,
+        selected: &InspectedRetainedProgram,
+        execution: &RetainedRecipeExecution,
+    ) -> Result<
+        (
+            brassclaw_engine::memory::retained_validator::ObservedInstallationValidatorChecks,
+            BTreeMap<String, Value>,
+        ),
+        &'static str,
+    > {
+        if self.selection.subject() != self.subject.reference() {
+            return Err("installation_selection_subject_mismatch");
+        }
+        let results = receipt_results(
+            ValidatorReceiptProfile::Inventory,
+            receipt,
+            selected,
+            execution,
+            self.inspected,
+            self.coverage,
+            self.limits,
+        )?;
+        let checks = self.coverage.observe_installation_subject(
+            self.subject,
+            self.selection,
+            execution,
+            &results,
+            self.limits,
+        )?;
+        Ok((checks, results))
+    }
+}
+fn receipt_results(
+    profile: ValidatorReceiptProfile,
+    receipt: &str,
+    selected: &InspectedRetainedProgram,
+    execution: &RetainedRecipeExecution,
+    inspected: &InspectedRetainedProgram,
+    coverage: &RetainedValidatorCoverage,
+    limits: ContractLimits,
+) -> Result<BTreeMap<String, Value>, &'static str> {
+    let original = inspected
+        .program()
+        .inputs()
+        .instruction()
+        .retained_selection()
+        .map_err(|_| "validator_receipt_selection_invalid")?;
+    let actual = selected
+        .program()
+        .inputs()
+        .instruction()
+        .retained_selection()
+        .map_err(|_| "validator_receipt_selection_invalid")?;
+    if actual.exact_bytes() != original.exact_bytes() {
+        return Err("validator_receipt_programme_mismatch");
+    }
+    let receipt_step = coverage.receipt_step();
+    let expected = selected
+        .program()
+        .program()
+        .steplist
+        .iter()
+        .filter(|s| s.step_id != receipt_step)
+        .map(|s| s.step_id.as_str())
+        .collect::<Vec<_>>();
+    let results = recorded_receipt_results(profile, receipt, &expected, receipt_step, limits)?;
+    let proof = execution
+        .observations()
+        .get(receipt_step)
+        .ok_or("validator_receipt_observation_missing")?;
+    if proof.result_checksum()
+        != Some(
+            typed_value_checksum_with_limits(&serde_json::json!(receipt), proof.data_limits())
+                .map_err(|_| "validator_receipt_checksum_overflow")?,
+        )
+    {
+        return Err("validator_receipt_fingerprint_mismatch");
+    }
+    Ok(results)
+}
+/// Shared receipt grammar for actual execution and trusted original records.
+/// This returns typed data only; executor/native seals remain separate.
+pub(crate) fn recorded_receipt_results(
+    profile: ValidatorReceiptProfile,
+    receipt: &str,
+    expected: &[&str],
+    receipt_step: &str,
+    limits: ContractLimits,
+) -> Result<BTreeMap<String, Value>, &'static str> {
+    let value = match profile {
+        ValidatorReceiptProfile::Structural => {
+            serde_json::from_str(receipt).map_err(|_| "validator_receipt_parse_failed")?
+        }
+        ValidatorReceiptProfile::Inventory => {
+            brassclaw_skills::value_contract::strict_json(receipt, limits)
+                .map_err(|_| "validator_receipt_parse_failed")?
+        }
+    };
+    let expected_format = match profile {
+        ValidatorReceiptProfile::Structural => "validator-structural-receipt/1",
+        ValidatorReceiptProfile::Inventory => "validator-step-results/1",
+    };
+    if value["format"] != expected_format {
+        return Err("validator_receipt_format_invalid");
+    }
+    let values = value
+        .get("results")
+        .and_then(Value::as_object)
+        .ok_or("validator_receipt_results_missing")?;
+    if matches!(profile, ValidatorReceiptProfile::Inventory) {
+        if value.as_object().is_none_or(|object| object.len() != 2)
+            || values.len() != expected.len()
+            || expected.iter().any(|step| !values.contains_key(*step))
+        {
+            return Err("validator_receipt_steps_invalid");
+        }
+    }
+    let mut results: BTreeMap<_, _> = values
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    results.insert(receipt_step.to_owned(), serde_json::json!(receipt));
+    Ok(results)
 }
 
 fn failure(reason: &'static str) -> PortFailure {

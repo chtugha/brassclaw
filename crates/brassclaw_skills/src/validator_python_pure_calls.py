@@ -55,7 +55,7 @@ def check_review_python_pure_calls(inputs):
     subject, entries = _validator_review_subject(inputs)
     inventory = json.loads(inputs["inventory_json"])
     profile = inputs["profile"]
-    if subject["format"] != "component-validator-subject/1" or inventory["format"] != "python-source-inventory/1" or profile["format"] != "retained-python-profile/1":
+    if subject["format"] not in ["component-validator-subject/1", "installation-validator-subject/1"] or inventory["format"] != "python-source-inventory/1" or profile["format"] != "retained-python-profile/1":
         raise ValueError("original subject/native inventory and selected profile required")
     records = {}
     scopes = {}

@@ -41,6 +41,7 @@ pub(crate) struct NativeBuiltinRegistration {
     descriptor: CapabilityDescriptor,
     input_schema: Value,
     reference: NativeImplementationRef,
+    source_inspection: Option<Arc<dyn crate::SourceInspectionBackend>>,
 }
 impl NativeBuiltinRegistration {
     pub(crate) fn new(
@@ -76,7 +77,25 @@ impl NativeBuiltinRegistration {
             descriptor,
             input_schema,
             reference,
+            source_inspection: None,
         })
+    }
+    pub(crate) fn with_source_inspection_preparation(
+        mut self,
+        backend: Arc<dyn crate::SourceInspectionBackend>,
+    ) -> Result<Self, NativeRegistrationError> {
+        if self.descriptor.id.as_str() != crate::SOURCE_INSPECTION_CAPABILITY_ID
+            || self.source_inspection.is_some()
+        {
+            return Err(NativeRegistrationError::Declaration);
+        }
+        self.source_inspection = Some(backend);
+        Ok(self)
+    }
+    pub(crate) fn source_inspection_preparation(
+        &self,
+    ) -> Option<Arc<dyn crate::SourceInspectionBackend>> {
+        self.source_inspection.clone()
     }
     pub(crate) fn reference(&self) -> NativeImplementationRef {
         self.reference

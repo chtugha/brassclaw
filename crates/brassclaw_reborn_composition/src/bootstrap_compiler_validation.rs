@@ -158,6 +158,7 @@ impl InternalRecipeSource for Invocation {
 }
 
 pub(super) async fn execute(
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
     inspected: Arc<InspectedRetainedProgram>,
@@ -173,7 +174,6 @@ pub(super) async fn execute(
     )
     .await
     .map_err(invalid)?;
-    let limits = inspected.preparation_limits();
     let client = pool.get().await.map_err(invalid)?;
     let serving: Value = client.query_one("SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY to_jsonb(s)::text),'[]'::jsonb) FROM reborn_basic_prompt_store s",&[]).await.map_err(invalid)?.get(0);
     drop(client);
@@ -219,7 +219,7 @@ pub(super) async fn execute(
             &admitted,
             Request::contained(
                 worker.to_owned(),
-                limits,
+                executor.clone(),
                 &root,
                 Arc::new(Invocation {
                     reference,
@@ -436,6 +436,12 @@ pub(super) async fn verify(
             "compiler input evidence differs",
         )?;
         let report = &record["execution"];
+        let original_executor =
+            crate::global_monty_startup::ControlledExecutorConfiguration::restore_original(
+                report["controlled_executor_configuration"]
+                    .as_str()
+                    .ok_or_else(|| invalid("compiler original executor missing"))?,
+            )?;
         let failed_step = if success {
             None
         } else {
@@ -467,7 +473,8 @@ pub(super) async fn verify(
                     == hex::encode(Sha256::digest(
                         crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED.as_bytes(),
                     ))
-                && report["root"]["workers"] == 1
+                && report["root"]["workers"] == original_executor.bounds().workers
+                && report["accounting"]["effective_revision"] == original_executor.task().revision
                 && report["accounting"].is_object()
                 && report["accounting"]["failure"].is_null()
                 && !report["accounting"]["compute_time"].is_null()

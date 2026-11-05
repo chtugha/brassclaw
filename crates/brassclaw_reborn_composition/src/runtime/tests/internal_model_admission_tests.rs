@@ -904,7 +904,7 @@ async fn native_internal_model_admission_settles_result_only_without_determinist
         &admitted,
         crate::bootstrap_recipe_flow::Request::contained(
             catalogue.worker.clone(),
-            source.inspected.preparation_limits(),
+            catalogue.startup_executor.clone(),
             &root_definition,
             source.clone(),
         )

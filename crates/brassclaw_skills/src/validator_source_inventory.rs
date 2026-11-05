@@ -9,6 +9,37 @@ use uuid::Uuid;
 
 pub const SOURCE_ENTRIES_SOURCE: &str = include_str!("validator_source_entries.py");
 
+fn inventory_inputs() -> Value {
+    json!({"sources":{"type":"object","checks":[],"fields":{},"allow_extra_fields":true,
+        "extra_fields":{"type":"string","checks":[]},"required":true}})
+}
+
+/// One private contained workflow for qualifying this usage. Definition UUIDs
+/// are stable; qualification/run identities belong to the original evidence.
+/// This is neither mandatory for a Skill nor a public command/MCP workflow.
+pub fn source_inventory_qualification_draft(
+    ids: UsageComponentIds,
+) -> Result<ComponentRevisionDraft, RevisionError> {
+    let recipe = crate::global_bootstrap_components::packaged_component_id(
+        "validator:inspection:inventory:qualification-recipe",
+    );
+    if [ids.skill, ids.tool_skill, ids.python_code, ids.tool].contains(&recipe) {
+        return Err(RevisionError::Invalid(
+            "qualification Recipe conflicts with usage identity",
+        ));
+    }
+    ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":recipe,"class_code":21,"association":null,
+        "dependencies":[ids.skill,ids.tool_skill,ids.python_code],
+        "document":{"name":"contained-inventory-qualification","variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+            "step_descriptions":[{"desc_idx":0,"label":"Invoke the exact parser usage","yaml_source":"","steps":[
+                {"stepnumber":1,"knowledge":"rust","goal":"Prepare the retained inventory binding","content":"","type":"component","include":[ids.tool_skill],"tool_bindings":[{"tool_id":ids.tool,"tool_name":"source_inspection","params":{},"error_policy":{"policy":"fail"}}]},
+                {"stepnumber":2,"knowledge":"orchestrator","goal":"Invoke the pinned inventory export","content":"","type":"component","include":[ids.python_code]}
+            ]}],"input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":inventory_inputs(),"steps":{"0:2":{"sources":{"kind":"task_input","reference":"{{vars.sources}}"}}}}},
+            "invocations":{"selected":{"0:2":"inspect_python_inventory"}}}
+    }).to_string())
+}
+
 /// A canonical command accepts a JSON list of [ID, source] pairs because the
 /// existing intent capture returns strings. A separate pure component rejects
 /// duplicate IDs before constructing the map. The Skill itself takes that typed
@@ -43,9 +74,7 @@ pub fn source_inventory_drafts(
     }
     let text = json!({"type":"string","checks":[]});
     let sources = json!({"type":"object","checks":[],"fields":{},"allow_extra_fields":true,"extra_fields":text});
-    let mut required_sources = sources.clone();
-    required_sources["required"] = json!(true);
-    let inputs = json!({"sources":required_sources});
+    let inputs = inventory_inputs();
     let command_inputs = json!({"entries_json":{"type":"string","required":true,"checks":[]}});
     let export = "inspect_python_inventory";
     let interface = |symbol: &str, imports: Vec<String>| {

@@ -415,6 +415,12 @@ async fn prepare_admission(
     // (via GlobalMontyDriver::drive_admitted → ports.build) to avoid a double-insert
     // on brassclaw_monty_task_admissions. All other modes persist here.
     if !matches!(mode, AdmissionMode::ValidatorInternal) {
+        #[cfg(test)]
+        if identity == "installation-source-observer" && matches!(mode, AdmissionMode::Contained) {
+            crate::validator_inventory_review::installation_test_before_reservation(
+                attempt.run_id.as_uuid(),
+            )?;
+        }
         admission.persist_reservation().await.map_err(invalid)?;
     }
     if matches!(mode, AdmissionMode::Contained) {

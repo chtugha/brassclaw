@@ -227,10 +227,40 @@ async fn native_private_pure_structure_recipe_checks_all_exports_and_hidden_host
 }
 
 async fn check_private_structure_recipe(pure: bool) {
+    use brassclaw_product_workflow::MontyVmSettingsStore;
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
+    if !pure {
+        let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+            rig.pool.clone(),
+            "default",
+            "default",
+        );
+        let original = settings.get("default", "default").await.unwrap();
+        let mut limits = original.execution_limits;
+        limits.max_source_bytes = 16 * 1024 * 1024;
+        limits.max_compiled_source_bytes = limits
+            .max_compiled_source_bytes
+            .max(limits.max_source_bytes);
+        limits.max_stdout_bytes = 16 * 1024 * 1024;
+        let changed = settings
+            .upsert(
+                "default",
+                "default",
+                &serde_json::from_value(json!({
+                    "expected_revision":original.revision,"execution_limits":limits,
+                }))
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            changed.execution_limits.utility_worker_memory_bytes,
+            original.execution_limits.utility_worker_memory_bytes
+        );
+    }
     let directory = tempfile::tempdir().unwrap();
     let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
         rig.build_input("python-structure-owner", directory.path())
@@ -239,6 +269,17 @@ async fn check_private_structure_recipe(pure: bool) {
     .await
     .unwrap();
     let catalogue = &runtime.installed_catalogue;
+    assert_eq!(catalogue.startup_executor.bounds().workers, 2);
+    if !pure {
+        assert_eq!(
+            catalogue.startup_executor.bounds().values.max_source_bytes,
+            16 * 1024 * 1024
+        );
+        assert_eq!(
+            catalogue.startup_executor.process().max_frame_bytes,
+            64 * 1024 * 1024
+        );
+    }
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let tool = crate::builtin_bootstrap::seed_source_inspection_tool(
         rig.pool.clone(),
@@ -394,6 +435,9 @@ async fn check_private_structure_recipe(pure: bool) {
         &inspected,
         reply,
         qualification_id,
+        catalogue.startup_executor.clone(),
+        catalogue.resource_store_settings.clone(),
+        catalogue.root_definition.clone(),
     )
     .await
     .unwrap();
@@ -406,19 +450,56 @@ async fn check_private_structure_recipe(pure: bool) {
         .await
         .unwrap()
         .get::<_, i64>(0);
+    let readback_pool =
+        Arc::new(brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap());
+    let settings = runtime.monty_settings_owner.store();
+    let current = settings.get("default", "default").await.unwrap();
+    let mut reduced = current.execution_limits;
+    reduced.max_source_bytes /= 2;
+    reduced.max_stdout_bytes /= 2;
+    reduced.max_value_bytes /= 2;
+    settings.upsert("default", "default", &serde_json::from_value(json!({
+        "expected_revision":current.revision,"max_duration_secs":current.max_duration_secs+1,
+        "execution_limits":reduced,
+    })).unwrap()).await.unwrap();
+    let changed = settings
+        .effective_view()
+        .get("default", "default")
+        .await
+        .unwrap();
+    let next_executor =
+        crate::global_monty_startup::ControlledExecutorConfiguration::new(&changed).unwrap();
+    assert_ne!(
+        next_executor.exact_bytes(),
+        catalogue.startup_executor.exact_bytes()
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(60),
+        crate::validator_inventory_review::assert_original_installation_readback(
+            catalogue,readback_pool.clone(),next_executor.clone(),
+            brassclaw_monty_host::utility::UtilityLimits::from_execution(changed.execution_limits).unwrap(),
+        )).await.expect("pool1 original installation metadata read must complete after acknowledged limit reductions");
+
     assert!(
-        crate::validator_inventory_review::qualify(
-            rig.pool.clone(),
-            catalogue.kernel.clone(),
-            catalogue.worker_image.clone(),
-            &inspected,
-            reply,
-            qualification_id,
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            crate::validator_inventory_review::qualify(
+                readback_pool.clone(),
+                catalogue.kernel.clone(),
+                catalogue.worker_image.clone(),
+                &inspected,
+                reply,
+                qualification_id,
+                next_executor.clone(),
+                catalogue.resource_store_settings.clone(),
+                catalogue.root_definition.clone(),
+            ),
         )
         .await
-        .is_err(),
-        "an existing qualification intent never replays native usage"
+        .expect("completed original readback does not hold a client while Turn checks out pool1")
+        .is_ok(),
+        "a completed original qualification is read without replaying native usage"
     );
+    readback_pool.close();
     assert_eq!(
         rig.pool
             .get()
@@ -431,6 +512,17 @@ async fn check_private_structure_recipe(pure: bool) {
         qualification_calls_before
     );
     assert!(qualified_parser.require_program(reply).is_err());
+    #[cfg(unix)]
+    if !pure {
+        crate::validator_inventory_review::assert_actual_ack_and_timeout_faults(
+            catalogue,
+            &inspected,
+            reply,
+            next_executor.clone(),
+            rig.url.expose_secret(),
+        )
+        .await;
+    }
     let evidence_before = rig
         .pool
         .get()
@@ -750,7 +842,7 @@ async fn check_private_structure_recipe(pure: bool) {
                 qualified
                     .as_ref()
                     .map_or_else(|| catalogue.worker.clone(), |source| source.worker_path()),
-                inspected.preparation_limits(),
+                next_executor.clone(),
                 &root,
                 match &qualified {
                     Some(source) if case == 0 => Arc::new(ReceiptRejectionProbe {
@@ -807,6 +899,16 @@ async fn check_private_structure_recipe(pure: bool) {
             ));
             assert_eq!(observed.report["model_exchange_count"], 0);
             assert!(observed.report["reply"].is_null());
+            if case == 0 {
+                let quiescence = observed.model_free_quiescence().unwrap();
+                crate::bootstrap_quiescence_wire::assert_rejects_corrupt_readback(
+                    &quiescence,
+                    &program,
+                    &serde_json::to_value(observed.receipt.accounting.as_ref().unwrap().task)
+                        .unwrap(),
+                    observed.report["internal_receipt"].as_str().unwrap(),
+                );
+            }
             let report = qualified_observation.as_ref().unwrap().report().clone();
             assert_eq!(report["q1_qualification"], false);
             assert_eq!(report["semantic_approval"], false);
@@ -861,7 +963,7 @@ async fn check_private_structure_recipe(pure: bool) {
                 &foreign,
                 bootstrap_recipe_flow::Request::contained(
                     source.worker_path(),
-                    inspected.preparation_limits(),
+                    next_executor.clone(),
                     &root,
                     source.clone(),
                 )

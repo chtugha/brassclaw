@@ -162,7 +162,7 @@ pub(super) async fn execute_candidate(
         &admitted,
         bootstrap_recipe_flow::Request::contained(
             runtime.installed_catalogue.worker.clone(),
-            inspected.preparation_limits(),
+            runtime.installed_catalogue.startup_executor.clone(),
             &root,
             Arc::new(Invocation {
                 reference,

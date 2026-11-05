@@ -13,7 +13,7 @@ use brassclaw_engine::{
     },
     memory::{
         retained_tools::{RetainedToolBinding, RetainedToolProgram},
-        retained_validator::{ObservedSubjectValidatorChecks, RetainedValidatorCoverage},
+        retained_validator::RetainedValidatorCoverage,
     },
 };
 use brassclaw_host_runtime::PackagedExecutableImage;
@@ -22,7 +22,6 @@ use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    review_submission_store::{RetainedValidatorSubject, selection::RetainedValidatorSelection},
     validator_components::{python_pure_structure_drafts, python_structure_drafts},
     value_contract::{ContractLimits, strict_json},
 };
@@ -37,8 +36,25 @@ use crate::{
     pg_monty_admission::PgMontyAdmission,
 };
 
+#[path = "installation_inventory_observation.rs"]
+mod installation;
+#[cfg(test)]
+pub(crate) use installation::assert_original_installation_readback;
+pub(crate) use installation::observe_installation;
+#[cfg(test)]
+pub(crate) use installation::tests::before_reservation as installation_test_before_reservation;
+
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;
+#[cfg(test)]
+use brassclaw_engine::memory::retained_validator::ObservedSubjectValidatorChecks;
+#[cfg(test)]
+use brassclaw_skills::review_submission_store::{
+    RetainedValidatorSubject, selection::RetainedValidatorSelection,
+};
+#[cfg(all(test, unix))]
+pub(crate) use qualification::assert_actual_ack_and_timeout_faults;
+#[cfg(test)]
 pub(crate) use qualification::qualify;
 
 /// Issued only by the contained installation qualification below. No JSON
@@ -90,9 +106,70 @@ pub(crate) enum InventoryReviewProfile {
     Structure,
     Pure,
 }
+fn require_packaged_inventory_profile(
+    program: &RetainedToolProgram,
+    binding: &RetainedToolBinding,
+    profile: InventoryReviewProfile,
+) -> Result<(), RebornBuildError> {
+    let ids = crate::source_inspection_components::usage_ids(binding.tool().uuid, true);
+    let native_profile =
+        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+            .map_err(invalid)?;
+    let drafts = match profile {
+        InventoryReviewProfile::Structure => python_structure_drafts(
+            ids,
+            crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
+            native_profile,
+        ),
+        InventoryReviewProfile::Pure => python_pure_structure_drafts(
+            ids,
+            crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+            native_profile,
+        ),
+    }
+    .map_err(invalid)?;
+    // Compare complete factory bytes, including typed native/result edges,
+    // variant, rule order and receipt profile. A step name grants nothing.
+    let graph = program.inputs().instruction().snapshot().revisions();
+    for draft in &drafts {
+        if graph
+            .get(&draft.uuid())
+            .is_none_or(|r| r.draft().exact_bytes() != draft.exact_bytes())
+        {
+            return Err(invalid("review graph differs from packaged profile"));
+        }
+    }
+    let shared = crate::builtin_bootstrap::validator_check_drafts()
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(invalid)?;
+    for revision in graph.values() {
+        if binding.combination().contains(&revision.reference()) {
+            continue;
+        }
+        let expected = drafts
+            .iter()
+            .chain(shared.iter())
+            .find(|draft| draft.uuid() == revision.reference().uuid)
+            .ok_or_else(|| invalid("review contains an undeclared checking component"))?;
+        if expected.exact_bytes() != revision.draft().exact_bytes() {
+            return Err(invalid(
+                "selected checking definition differs from packaged bytes",
+            ));
+        }
+    }
+    if !drafts
+        .iter()
+        .any(|d| d.class_code() == 21 && d.uuid() == program.inputs().instruction().recipe().uuid)
+    {
+        return Err(invalid("review selected a different Recipe"));
+    }
+    Ok(())
+}
 
 /// Original prepared graph/subject plus real native ports. Complete observations
 /// may survive later cancellation; this type never claims terminal settlement.
+#[cfg(test)]
 pub(crate) struct InventoryReviewSource {
     reference: String,
     subject: Arc<RetainedValidatorSubject>,
@@ -108,6 +185,7 @@ pub(crate) struct InventoryReviewSource {
     limits: ContractLimits,
     observation: Mutex<Option<ObservedSubjectValidatorChecks>>,
 }
+#[cfg(test)]
 #[derive(Clone)]
 pub(crate) struct InventoryReviewRequest {
     pub(crate) pool: Arc<PgPool>,
@@ -120,6 +198,7 @@ pub(crate) struct InventoryReviewRequest {
     pub(crate) parser: Arc<QualifiedSourceInventoryUsage>,
     pub(crate) profile: InventoryReviewProfile,
 }
+#[cfg(test)]
 impl InventoryReviewSource {
     pub(crate) async fn prepare(
         request: InventoryReviewRequest,
@@ -141,58 +220,7 @@ impl InventoryReviewSource {
             return Err(invalid("inventory review needs retained bindings"));
         };
         let (_, binding) = parser.require_program(program)?;
-        let ids = crate::source_inspection_components::usage_ids(binding.tool().uuid, true);
-        let native_profile =
-            serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
-                .map_err(invalid)?;
-        let drafts = match profile {
-            InventoryReviewProfile::Structure => python_structure_drafts(
-                ids,
-                crate::builtin_bootstrap::VALIDATOR_STRUCTURE_RECEIPT_SEED,
-                native_profile,
-            ),
-            InventoryReviewProfile::Pure => python_pure_structure_drafts(
-                ids,
-                crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
-                native_profile,
-            ),
-        }
-        .map_err(invalid)?;
-        // Compare complete factory bytes, including typed native/result edges,
-        // variant, rule order and receipt profile. A step name grants nothing.
-        let graph = program.inputs().instruction().snapshot().revisions();
-        for draft in &drafts {
-            if graph
-                .get(&draft.uuid())
-                .is_none_or(|r| r.draft().exact_bytes() != draft.exact_bytes())
-            {
-                return Err(invalid("review graph differs from packaged profile"));
-            }
-        }
-        let shared = crate::builtin_bootstrap::validator_check_drafts()
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(invalid)?;
-        for revision in graph.values() {
-            if binding.combination().contains(&revision.reference()) {
-                continue;
-            }
-            let expected = drafts
-                .iter()
-                .chain(shared.iter())
-                .find(|draft| draft.uuid() == revision.reference().uuid)
-                .ok_or_else(|| invalid("review contains an undeclared checking component"))?;
-            if expected.exact_bytes() != revision.draft().exact_bytes() {
-                return Err(invalid(
-                    "selected checking definition differs from packaged bytes",
-                ));
-            }
-        }
-        if !drafts.iter().any(|d| {
-            d.class_code() == 21 && d.uuid() == program.inputs().instruction().recipe().uuid
-        }) {
-            return Err(invalid("review selected a different Recipe"));
-        }
+        require_packaged_inventory_profile(program, binding, profile)?;
         let restored = RetainedValidatorCoverage::restore_preparation(&saved).map_err(invalid)?;
         if restored
             .inputs()
@@ -271,6 +299,7 @@ fn failure() -> PortFailure {
     PortFailure::new("validator_inventory_observation_invalid").expect("static classification")
 }
 
+#[cfg(test)]
 #[async_trait]
 impl InternalRecipeSource for InventoryReviewSource {
     fn name(&self) -> &str {
@@ -302,68 +331,20 @@ impl InternalRecipeSource for InventoryReviewSource {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
-        let original = self
-            .inspected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure())?;
-        if selected
-            .program()
-            .inputs()
-            .instruction()
-            .retained_selection()
-            .map_err(|_| failure())?
-            .exact_bytes()
-            != original.exact_bytes()
-        {
-            return Err(failure());
+        let (checks, results) = crate::pg_review_admission_source::ValidatorReceiptSubject {
+            subject: &self.subject,
+            selection: &self.saved,
+            inspected: &self.inspected,
+            coverage: &self.coverage,
+            limits: self.limits,
         }
-        let value = strict_json(receipt, self.limits).map_err(|_| failure())?;
-        let object = value
-            .as_object()
-            .filter(|o| o.len() == 2)
-            .ok_or_else(failure)?;
-        if object.get("format") != Some(&json!("validator-step-results/1")) {
-            return Err(failure());
-        }
-        let values = object
-            .get("results")
-            .and_then(Value::as_object)
-            .ok_or_else(failure)?;
-        let receipt_step = self.coverage.receipt_step();
-        let expected: Vec<_> = selected
-            .program()
-            .program()
-            .steplist
-            .iter()
-            .filter(|s| s.step_id != receipt_step)
-            .map(|s| s.step_id.as_str())
-            .collect();
-        if values.len() != expected.len() || expected.iter().any(|step| !values.contains_key(*step))
-        {
-            return Err(failure());
-        }
-        let observation = execution
-            .observations()
-            .get(receipt_step)
-            .ok_or_else(failure)?;
-        if observation.result_checksum()
-            != Some(
-                typed_value_checksum_with_limits(&json!(receipt), observation.data_limits())
-                    .map_err(|_| failure())?,
-            )
-        {
-            return Err(failure());
-        }
-        let mut results: BTreeMap<_, _> =
-            values.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-        results.insert(receipt_step.to_owned(), json!(receipt));
-        let checks = self
-            .coverage
-            .observe_subject(&self.subject, &self.saved, execution, &results, self.limits)
-            .map_err(|_| failure())?;
+        .observe(
+            crate::pg_review_admission_source::ValidatorReceiptProfile::Inventory,
+            receipt,
+            selected,
+            execution,
+        )
+        .map_err(|_| failure())?;
         let RetainedProgram::Tools(program) = selected.program() else {
             return Err(failure());
         };
@@ -483,71 +464,114 @@ impl NativeInventoryObservation<'_> {
             return Err(invalid("inventory original journal differs"));
         }
         let arguments = strict_json(arguments, limits).map_err(invalid)?;
-        let argument_fingerprint =
-            typed_value_checksum_with_limits(&arguments, observed.data_limits())
-                .map_err(invalid)?;
-        if observed.arguments_checksum() != Some(argument_fingerprint)
-            || observed.input_checksum() != argument_fingerprint
-            || strict_json(answer_bytes, limits).map_err(invalid)?
-                != serde_json::to_value(answer).map_err(invalid)?
-        {
-            return Err(invalid(
-                "inventory journal data differs from actual dispatch",
-            ));
-        }
-        let report = strict_json(
-            result
-                .as_str()
-                .ok_or_else(|| invalid("inventory result must remain JSON string"))?,
-            limits,
+        verify_inventory_fingerprints(
+            result,
+            &arguments,
+            answer_bytes,
+            InventoryFingerprints {
+                input: observed.input_checksum(),
+                arguments: observed.arguments_checksum(),
+                answer: observed.answer_checksum(),
+                result: observed.result_checksum(),
+            },
+            observed.data_limits(),
+            worker,
         )
-        .map_err(invalid)?;
-        if report.as_object().is_none_or(|o| o.len() != 4)
-            || report["format"] != "python-source-inventory/1"
-            || report["worker_checksum"] != hex::encode(worker)
-            || report["preparation_revision"]
-                .as_u64()
-                .is_none_or(|r| r == 0)
-        {
-            return Err(invalid(
-                "inventory interpreter or preparation identity differs",
-            ));
-        }
-        let sources = arguments["sources"]
-            .as_object()
-            .ok_or_else(|| invalid("inventory sources missing"))?;
-        let facts = report["sources"]
-            .as_object()
-            .ok_or_else(|| invalid("inventory facts missing"))?;
-        if arguments.as_object().is_none_or(|o| o.len() != 1) || sources.len() != facts.len() {
-            return Err(invalid("inventory source membership differs"));
-        }
-        let typed_facts: BTreeMap<
-            String,
-            brassclaw_monty_host::source_inventory::SourceInspection,
-        > = serde_json::from_value(report["sources"].clone()).map_err(invalid)?;
-        for (id, source) in sources {
-            let source = source
-                .as_str()
-                .ok_or_else(|| invalid("inventory source is not text"))?;
-            let fact = typed_facts
-                .get(id)
-                .ok_or_else(|| invalid("inventory original source omitted"))?;
-            let checksum = match fact {
-                brassclaw_monty_host::source_inventory::SourceInspection::Inspected {
-                    structure,
-                } => &structure.source_checksum,
-                brassclaw_monty_host::source_inventory::SourceInspection::CompileRejected {
-                    source_checksum,
-                    ..
-                } => source_checksum,
-            };
-            if checksum != &crate::bootstrap_evidence::checksum(source) {
-                return Err(invalid("inventory source checksum differs"));
-            }
-        }
-        Ok(report)
     }
+}
+
+/// Passive recorded hashes, not an executor/approval seal. Live and historical
+/// consumers share this exact native data/fingerprint check.
+struct InventoryFingerprints {
+    input: [u8; 32],
+    arguments: Option<[u8; 32]>,
+    answer: Option<[u8; 32]>,
+    result: Option<[u8; 32]>,
+}
+fn verify_inventory_fingerprints(
+    result: &Value,
+    arguments: &Value,
+    answer_bytes: &str,
+    fingerprints: InventoryFingerprints,
+    limits: ContractLimits,
+    worker: [u8; 32],
+) -> Result<Value, RebornBuildError> {
+    let answer = PortAnswer::Return {
+        value: brassclaw_host_api::JsonValue::new(result.clone()),
+    };
+    let input = typed_value_checksum_with_limits(arguments, limits).map_err(invalid)?;
+    if fingerprints.input != input
+        || fingerprints.arguments != Some(input)
+        || fingerprints.answer
+            != Some(port_answer_checksum_with_limits(&answer, limits).map_err(invalid)?)
+        || fingerprints.result
+            != Some(typed_value_checksum_with_limits(result, limits).map_err(invalid)?)
+        || strict_json(answer_bytes, limits).map_err(invalid)?
+            != serde_json::to_value(&answer).map_err(invalid)?
+    {
+        return Err(invalid(
+            "inventory journal data differs from original dispatch",
+        ));
+    }
+    verify_inventory_report(result, arguments, worker, limits)
+}
+
+fn verify_inventory_report(
+    result: &Value,
+    arguments: &Value,
+    worker: [u8; 32],
+    limits: ContractLimits,
+) -> Result<Value, RebornBuildError> {
+    let report = strict_json(
+        result
+            .as_str()
+            .ok_or_else(|| invalid("inventory result must remain JSON string"))?,
+        limits,
+    )
+    .map_err(invalid)?;
+    if report.as_object().is_none_or(|o| o.len() != 4)
+        || report["format"] != "python-source-inventory/1"
+        || report["worker_checksum"] != hex::encode(worker)
+        || report["preparation_revision"]
+            .as_u64()
+            .is_none_or(|r| r == 0)
+    {
+        return Err(invalid(
+            "inventory interpreter or preparation identity differs",
+        ));
+    }
+    let sources = arguments["sources"]
+        .as_object()
+        .ok_or_else(|| invalid("inventory sources missing"))?;
+    let facts = report["sources"]
+        .as_object()
+        .ok_or_else(|| invalid("inventory facts missing"))?;
+    if arguments.as_object().is_none_or(|o| o.len() != 1) || sources.len() != facts.len() {
+        return Err(invalid("inventory source membership differs"));
+    }
+    let typed_facts: BTreeMap<String, brassclaw_monty_host::source_inventory::SourceInspection> =
+        serde_json::from_value(report["sources"].clone()).map_err(invalid)?;
+    for (id, source) in sources {
+        let source = source
+            .as_str()
+            .ok_or_else(|| invalid("inventory source is not text"))?;
+        let fact = typed_facts
+            .get(id)
+            .ok_or_else(|| invalid("inventory original source omitted"))?;
+        let checksum = match fact {
+            brassclaw_monty_host::source_inventory::SourceInspection::Inspected { structure } => {
+                &structure.source_checksum
+            }
+            brassclaw_monty_host::source_inventory::SourceInspection::CompileRejected {
+                source_checksum,
+                ..
+            } => source_checksum,
+        };
+        if checksum != &crate::bootstrap_evidence::checksum(source) {
+            return Err(invalid("inventory source checksum differs"));
+        }
+    }
+    Ok(report)
 }
 
 #[tokio::test]

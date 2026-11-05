@@ -129,6 +129,8 @@ impl BootstrapUsageApproval<'_> {
 
 pub(crate) struct InstalledMontyCatalogue {
     initial_preparation: brassclaw_host_api::MontyExecutionLimits,
+    pub(crate) startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    pub(crate) resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     preparation_settings:
         std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
     pub(crate) pool: Arc<PgPool>,
@@ -139,6 +141,8 @@ pub(crate) struct InstalledMontyCatalogue {
     pub(crate) generation: Uuid,
     pub(crate) reference_sources: crate::prefix_reference_seeds::Package,
     pub(crate) root_reference: brassclaw_skills::association_contract::ComponentRevisionRef,
+    #[cfg(test)]
+    pub(crate) root_definition: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
     pub(crate) mcp_discovery: Arc<crate::mcp_recipe_catalogue::McpRecipeDiscovery>,
     pub(crate) qualification_scope: IntentScope,
     pub(crate) worker: std::path::PathBuf,
@@ -474,9 +478,12 @@ impl InstalledMontyCatalogue {
         worker_image: Arc<PackagedExecutableImage>,
         scope: &IntentScope,
         memory_mounts: MountView,
-        root: brassclaw_skills::association_contract::ComponentRevisionRef,
+        root_definition: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
         startup_settings: &brassclaw_product_workflow::MontyVmSettings,
+        startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+        resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let root = root_definition.reference();
         let preparation_policy = startup_settings.execution_limits;
         let preparation =
             brassclaw_monty_host::utility::UtilityLimits::from_execution(preparation_policy)
@@ -548,6 +555,7 @@ impl InstalledMontyCatalogue {
             kernel.clone(),
             &encoding_candidates,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let source_compiler_candidates = crate::prefix_compiler_candidates::retain(
@@ -581,6 +589,7 @@ impl InstalledMontyCatalogue {
             &source_compiler_candidates.source,
             &generation_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let compiler_program = match &compiler_approval {
@@ -603,6 +612,7 @@ impl InstalledMontyCatalogue {
             compiler_approval.as_ref(),
             &encoding_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let measurement_program = measurement_qualification
@@ -613,6 +623,7 @@ impl InstalledMontyCatalogue {
             kernel.clone(),
             worker,
             preparation,
+            startup_executor.clone(),
         ))
         .await?;
         let pair_case_candidate = crate::prefix_pair_candidates::retain(
@@ -631,6 +642,7 @@ impl InstalledMontyCatalogue {
             compiler_approval.as_ref(),
             &encoding_approvals,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let pair_case_program = pair_case_qualification
@@ -807,20 +819,46 @@ impl InstalledMontyCatalogue {
                 "installed source inspection requires reply components",
             ));
         };
-        let inventory_usage = crate::source_inspection_components::retain(
-            pool.clone(),
-            kernel.as_ref(),
-            &scope.tenant_id,
-            reply_components,
+        let mut inventory_components = crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            crate::source_inspection_components::retain(
+                pool.clone(),
+                kernel.as_ref(),
+                &scope.tenant_id,
+                reply_components,
+            ),
         )
         .await?;
-        crate::builtin_bootstrap::retain_validator_structure_drafts(&pool, inventory_usage)
-            .await
-            .map_err(|error| {
-                invalid(format!(
-                    "retain private validator structure drafts: {error}"
-                ))
-            })?;
+        let checking_definitions =
+            crate::bootstrap_evidence::io::bounded(resource_store_settings.as_ref(), async {
+                crate::builtin_bootstrap::retain_validator_structure_drafts(
+                    &pool,
+                    inventory_components.usage,
+                )
+                .await
+                .map_err(|error| {
+                    invalid(format!(
+                        "retain private validator structure drafts: {error}"
+                    ))
+                })
+            })
+            .await?;
+        inventory_components
+            .definitions
+            .extend(checking_definitions)?;
+        let inventory_observations =
+            Box::pin(crate::validator_inventory_review::observe_installation(
+                pool.clone(),
+                kernel.clone(),
+                worker_image.clone(),
+                inventory_components.definitions,
+                reply_components,
+                startup_executor.clone(),
+                preparation,
+                resource_store_settings.clone(),
+                root_definition.clone(),
+            ))
+            .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -882,6 +920,15 @@ impl InstalledMontyCatalogue {
         if let Some(approval) = &public_reply_approval {
             approval.verify_in_transaction(&tx).await?;
         }
+        crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            inventory_observations.verify_in_transaction(&tx),
+        )
+        .await?;
+        tracing::info!(
+            status = inventory_observations.status(),
+            "contained installation source observations; no checker qualification or activation"
+        );
         for selected in [&reply, &history] {
             let instruction = selected.program().inputs().instruction();
             let refs: Vec<_> = instruction
@@ -952,6 +999,8 @@ impl InstalledMontyCatalogue {
         });
         let catalogue = Arc::new(Self {
             initial_preparation: preparation_policy,
+            startup_executor,
+            resource_store_settings,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
             tool_credential_sources: std::sync::OnceLock::new(),
@@ -991,6 +1040,8 @@ impl InstalledMontyCatalogue {
             memory_mounts,
             generation,
             root_reference: root,
+            #[cfg(test)]
+            root_definition,
             reference_sources,
             _image: image,
         });
@@ -1827,7 +1878,6 @@ pub(crate) fn bootstrap_builtin_runtime(
 
 /// A private qualified parser handle, rather than a caller-selected Tool list,
 /// determines the only permitted binding. This exposes no ordinary activation.
-#[cfg(test)]
 pub(crate) fn qualified_inventory_tools(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
@@ -1840,7 +1890,6 @@ pub(crate) fn qualified_inventory_tools(
     bootstrap_builtin_tools(pool, kernel, host, admission, program, false)
 }
 
-#[cfg(test)]
 pub(crate) fn inventory_qualification_tools(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,

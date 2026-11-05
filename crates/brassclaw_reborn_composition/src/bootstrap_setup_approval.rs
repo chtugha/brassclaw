@@ -65,6 +65,7 @@ impl Prepared {
 struct Subject {
     program: Arc<InspectedRetainedProgram>,
     worker: Arc<PackagedExecutableImage>,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     header: Value,
     q1: Uuid,
     behavior: Uuid,
@@ -128,6 +129,7 @@ pub(crate) async fn qualify(
     kernel: Arc<dyn MontyKernelSnapshot>,
     worker: &Path,
     limits: UtilityLimits,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
 ) -> Result<Qualification, RebornBuildError> {
     let (recipe, code) = ids();
     let drafts =
@@ -187,6 +189,7 @@ pub(crate) async fn qualify(
     let subject = Arc::new(Subject {
         program,
         worker: image,
+        executor,
         header,
         q1: Uuid::new_v5(&identity, b"q1"),
         behavior: Uuid::new_v5(&identity, b"behavior"),
@@ -428,7 +431,7 @@ async fn execute(
         )?;
         let request = bootstrap_recipe_flow::Request::contained(
             subject.worker.path(),
-            subject.program.preparation_limits(),
+            subject.executor.clone(),
             &root,
             Arc::new(Invocation {
                 reference,
@@ -437,9 +440,8 @@ async fn execute(
                 tools,
             }),
         )?;
-        // The contained observer can lower its physical transport frame. The
-        // actual boot profile, subsequently acknowledged by the VM, is the
-        // oracle's selected boundary; never substitute a current/default cap.
+        // The actual selected executor profile, subsequently acknowledged by
+        // the VM, is the oracle boundary; never substitute a utility/default cap.
         let bounds = request.boot.bounds.values;
         let limits = ContractLimits {
             max_depth: bounds.max_value_depth,

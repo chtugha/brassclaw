@@ -1036,7 +1036,7 @@ pub(crate) async fn retain_validator_check_drafts(
 pub(crate) async fn retain_validator_structure_drafts(
     pool: &Arc<PgPool>,
     inventory: brassclaw_skills::global_bootstrap_components::UsageComponentIds,
-) -> Result<(), SeedBuiltinBootstrapError> {
+) -> Result<crate::source_inspection_components::PackagedDefinitions, SeedBuiltinBootstrapError> {
     let profile = serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
         .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
             reason: error.to_string(),
@@ -1050,8 +1050,9 @@ pub(crate) async fn retain_validator_structure_drafts(
         reason: error.to_string(),
     })?;
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
+    let mut retained = crate::source_inspection_components::PackagedDefinitions::default();
     for draft in drafts {
-        store.retain_packaged_draft(&draft).await.map_err(|error| {
+        retained.retain(&store, &draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),
             }
@@ -1065,13 +1066,13 @@ pub(crate) async fn retain_validator_structure_drafts(
     .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
         reason: error.to_string(),
     })? {
-        store.retain_packaged_draft(&draft).await.map_err(|error| {
+        retained.retain(&store, &draft).await.map_err(|error| {
             SeedBuiltinBootstrapError::ComponentRevision {
                 reason: error.to_string(),
             }
         })?;
     }
-    Ok(())
+    Ok(retained)
 }
 
 const PC_HOST_ASSEMBLE_PREFIX_BUNDLE_CONTENT: &str = r#"def usage_assemble_prefix_bundle(inputs):

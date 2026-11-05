@@ -347,6 +347,7 @@ pub(super) async fn qualify(
     candidate: &InspectedRetainedProgram,
     generation: &[BootstrapGenerationApproval],
     worker: &Path,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
 ) -> Result<Option<BootstrapCompilerApproval>, RebornBuildError> {
     // An operator-blocked, previously unqualified storage primitive cannot
     // bootstrap a compiler; leave that capability unavailable without effects.
@@ -386,6 +387,7 @@ pub(super) async fn qualify(
     tx.commit().await.map_err(invalid)?;
     drop(client);
     let observed = Box::pin(validation::execute(
+        executor.clone(),
         pool.clone(),
         kernel,
         subject.inspected.clone(),

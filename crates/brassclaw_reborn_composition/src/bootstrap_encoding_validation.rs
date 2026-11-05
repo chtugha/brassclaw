@@ -115,6 +115,7 @@ impl InternalRecipeSource for Invocation {
 }
 
 pub(super) async fn execute(
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
     inspected: Arc<InspectedRetainedProgram>,
@@ -155,7 +156,7 @@ pub(super) async fn execute(
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 worker.to_owned(),
-                inspected.preparation_limits(),
+                executor.clone(),
                 &root,
                 Arc::new(Invocation {
                     reference,

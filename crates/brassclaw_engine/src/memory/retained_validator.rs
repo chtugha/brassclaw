@@ -11,7 +11,9 @@ use super::{retained_inputs::RetainedRecipeInputs, typed_bindings::PreparedRefer
 #[path = "retained_validator_subject.rs"]
 mod subject;
 #[cfg(feature = "skills-db")]
-pub use subject::ObservedSubjectValidatorChecks;
+pub use subject::{
+    ObservedInstallationValidatorChecks, ObservedSubjectValidatorChecks, ValidatorInputFingerprint,
+};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,11 +64,24 @@ impl RetainedValidatorCoverage {
     pub fn restore_preparation(
         saved: &brassclaw_skills::review_submission_store::selection::RetainedValidatorSelection,
     ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
+        Self::restore_preparation_core(saved.snapshot(), saved.selection(), saved.validator_bytes())
+    }
+    #[cfg(feature = "skills-db")]
+    pub fn restore_installation_preparation(
+        saved:&brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSelection,
+    ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
+        Self::restore_preparation_core(saved.snapshot(), saved.selection(), saved.validator_bytes())
+    }
+    #[cfg(feature = "skills-db")]
+    fn restore_preparation_core(
+        snapshot: std::sync::Arc<brassclaw_skills::component_revision::RetainedComponentSnapshot>,
+        selection: &Value,
+        validator_bytes: &str,
+    ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
         use super::{
             retained_instruction::{WorkflowClass, compile_retained_recipe},
             retained_tools::prepare_retained_tool_program,
         };
-        let selection = saved.selection();
         let root = selection["recipe"]["uuid"]
             .as_str()
             .and_then(|value| uuid::Uuid::parse_str(value).ok())
@@ -79,7 +94,7 @@ impl RetainedValidatorCoverage {
             Some("requires_model") => WorkflowClass::RequiresModel,
             _ => return Err("retained validator workflow class invalid"),
         };
-        let mut instruction = compile_retained_recipe(saved.snapshot(), root, variant, class)
+        let mut instruction = compile_retained_recipe(snapshot, root, variant, class)
             .map_err(|_| "retained validator compilation failed")?;
         if let Some(pins) = selection.get("association_approvals") {
             instruction.association_approvals = serde_json::from_value(pins.clone())
@@ -94,7 +109,7 @@ impl RetainedValidatorCoverage {
             .retained_selection()
             .map_err(|_| "restored validator selection cannot be retained")?
             .exact_bytes()
-            != saved.validator_bytes()
+            != validator_bytes
         {
             return Err("retained validator selection differs from typed IBS");
         }
@@ -343,7 +358,6 @@ impl RetainedValidatorCoverage {
         limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<ObservedValidatorChecks, &'static str> {
         use crate::executor::retained_recipe::typed_value_checksum_with_limits;
-        use brassclaw_skills::value_contract::validate_data_bounds;
         let inspected = execution.inspected_program();
         let instruction = inspected.program().inputs().instruction();
         if instruction
@@ -391,6 +405,45 @@ impl RetainedValidatorCoverage {
                 return Err("result differs from successful executor observation");
             }
         }
+        let report = self.result_summary(results, &expected, limits)?;
+        Ok(ObservedValidatorChecks { report })
+    }
+    /// Deterministic summary check for trusted immutable recorded facts. This
+    /// returns data only, never an Observed* seal, Q1 or component approval.
+    #[cfg(feature = "skills-db")]
+    pub fn recorded_result_summary(
+        &self,
+        program: &super::retained_tools::RetainedToolProgram,
+        results: &BTreeMap<String, Value>,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<Value, &'static str> {
+        if program
+            .inputs()
+            .instruction()
+            .retained_selection()
+            .map_err(|_| "recorded selection invalid")?
+            .checksum()
+            != self.selection_checksum
+        {
+            return Err("recorded selection differs");
+        }
+        let order = program
+            .program()
+            .steplist
+            .iter()
+            .map(|s| s.step_id.as_str())
+            .collect::<Vec<_>>();
+        if results.len() != order.len() || order.iter().any(|step| !results.contains_key(*step)) {
+            return Err("complete recorded results required");
+        }
+        self.result_summary(results, &order, limits)
+    }
+    fn result_summary(
+        &self,
+        results: &BTreeMap<String, Value>,
+        expected: &[&str],
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<Value, &'static str> {
         let collected = results[&self.collection_step]
             .as_array()
             .filter(|values| values.len() == self.rules.len())
@@ -432,9 +485,9 @@ impl RetainedValidatorCoverage {
             "rules":collected,"aggregation":aggregation,
             "scope":"selected-validator-execution","semantic_approval":false,
             "q1_qualification":false});
-        validate_data_bounds(&report, limits)
+        brassclaw_skills::value_contract::validate_data_bounds(&report, limits)
             .map_err(|_| "observation report exceeds owner policy")?;
-        Ok(ObservedValidatorChecks { report })
+        Ok(report)
     }
     pub fn class_code(&self) -> i32 {
         self.class_code
@@ -446,6 +499,10 @@ impl RetainedValidatorCoverage {
         &self,
         subject: &brassclaw_skills::review_submission_store::RetainedValidatorSubject,
     ) -> Result<(), &'static str> {
+        self.require_subject_view(subject::SubjectView::Authored(subject))
+    }
+    #[cfg(feature = "skills-db")]
+    fn require_subject_view(&self, subject: subject::SubjectView<'_>) -> Result<(), &'static str> {
         if subject.is_function_review() {
             return Err("single-class validator does not cover the complete function subject");
         }

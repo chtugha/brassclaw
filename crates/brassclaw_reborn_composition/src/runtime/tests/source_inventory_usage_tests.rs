@@ -415,7 +415,7 @@ async fn native_inventory_recipe_decodes_complete_pairs_and_journals_one_actual_
             &admitted,
             bootstrap_recipe_flow::Request::contained(
                 catalogue.worker.clone(),
-                inspected.preparation_limits(),
+                catalogue.startup_executor.clone(),
                 &root,
                 Arc::new(InventoryInvocation {
                     reference,

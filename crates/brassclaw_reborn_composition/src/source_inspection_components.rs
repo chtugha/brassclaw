@@ -1,6 +1,9 @@
 //! Installation-owned immutable drafts for the already registered parser.
 //! Retention supplies neither review evidence nor an active routing selection.
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use brassclaw_engine::memory::retained_tools::RetainedToolProgram;
 use brassclaw_host_api::CapabilityId;
@@ -17,6 +20,88 @@ use uuid::Uuid;
 use crate::{
     RebornBuildError, bootstrap_reply_validation::invalid, monty_kernel::MontyKernelSnapshot,
 };
+
+/// Exact refs/dependencies returned by the existing package store. This is
+/// transient retention metadata, never component approval or latest selection.
+#[derive(Default)]
+pub(super) struct PackagedDefinitions {
+    references: BTreeMap<Uuid, brassclaw_skills::association_contract::ComponentRevisionRef>,
+    dependencies: BTreeMap<Uuid, BTreeSet<Uuid>>,
+}
+impl PackagedDefinitions {
+    pub(super) async fn retain(
+        &mut self,
+        store: &PgComponentRevisionStore,
+        draft: &ComponentRevisionDraft,
+    ) -> Result<(), RebornBuildError> {
+        let reference = store.retain_packaged_draft(draft).await.map_err(invalid)?;
+        if self
+            .references
+            .insert(draft.uuid(), reference)
+            .is_some_and(|old| old != reference)
+        {
+            return Err(invalid("packaged definition conflict"));
+        }
+        self.dependencies
+            .insert(draft.uuid(), draft.dependencies().clone());
+        Ok(())
+    }
+    pub(super) fn extend(&mut self, other: Self) -> Result<(), RebornBuildError> {
+        for (id, reference) in other.references {
+            if self
+                .references
+                .insert(id, reference)
+                .is_some_and(|old| old != reference)
+            {
+                return Err(invalid("packaged graph reference conflict"));
+            }
+        }
+        self.dependencies.extend(other.dependencies);
+        Ok(())
+    }
+    pub(super) async fn snapshot(
+        &self,
+        pool: Arc<PgPool>,
+        root: Uuid,
+    ) -> Result<
+        Arc<brassclaw_skills::component_revision::RetainedComponentSnapshot>,
+        RebornBuildError,
+    > {
+        let mut pending = vec![root];
+        let mut selected = BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if !selected.insert(id) {
+                continue;
+            }
+            pending.extend(
+                self.dependencies
+                    .get(&id)
+                    .ok_or_else(|| invalid("packaged dependency not retained"))?
+                    .iter()
+                    .copied(),
+            );
+        }
+        let refs = selected
+            .into_iter()
+            .map(|id| {
+                self.references
+                    .get(&id)
+                    .copied()
+                    .ok_or_else(|| invalid("packaged revision not retained"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(Arc::new(
+            PgComponentRevisionStore::new(pool)
+                .read_exact(&[root], &refs)
+                .await
+                .map_err(invalid)?,
+        ))
+    }
+}
+pub(super) struct RetainedInspectionComponents {
+    pub(super) usage: UsageComponentIds,
+    pub(super) definitions: PackagedDefinitions,
+}
 
 pub(super) fn usage_ids(tool: Uuid, inventory: bool) -> UsageComponentIds {
     let usage = if inventory { "inventory" } else { "source" };
@@ -44,7 +129,7 @@ pub(super) async fn retain(
     kernel: &dyn MontyKernelSnapshot,
     tenant: &str,
     reply: &RetainedToolProgram,
-) -> Result<UsageComponentIds, RebornBuildError> {
+) -> Result<RetainedInspectionComponents, RebornBuildError> {
     let binding = reply
         .bindings()
         .get("0:2")
@@ -91,13 +176,17 @@ pub(super) async fn retain(
         source_inventory_drafts(usage_ids(tool, true), decoder_id(), reply_ids).map_err(invalid)?,
     );
     let store = PgComponentRevisionStore::new(pool.clone());
+    let mut definitions = PackagedDefinitions::default();
     for draft in std::iter::once(&tool_draft).chain(drafts.iter()) {
-        store.retain_packaged_draft(draft).await.map_err(invalid)?;
+        definitions.retain(&store, draft).await?;
     }
     // Preserve an existing live block across restarts/upgrades.
     pool.get().await.map_err(invalid)?.execute(
         "INSERT INTO brassclaw_instance_tool_settings(tool_id) VALUES($1) ON CONFLICT(tool_id) DO NOTHING",
         &[&tool],
     ).await.map_err(invalid)?;
-    Ok(usage_ids(tool, true))
+    Ok(RetainedInspectionComponents {
+        usage: usage_ids(tool, true),
+        definitions,
+    })
 }

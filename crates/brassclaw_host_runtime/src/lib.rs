@@ -49,6 +49,12 @@ pub mod memory_context;
 mod memory_embedding_port;
 mod memory_probe;
 mod native_image;
+mod source_inspection_fixture;
+pub use source_inspection_fixture::{
+    RetainedSourceInspectionFixture, SourceInspectionDispatchObservation,
+    SourceInspectionFixtureProfile, SourceInspectionObservationSink,
+    SourceInspectionPreparationFacts,
+};
 mod native_registration;
 mod obligations;
 mod planner;
@@ -95,8 +101,9 @@ pub use first_party_tools::{
     HTTP_CAPABILITY_ID, HTTP_SAVE_CAPABILITY_ID, HostPrimitiveSettings,
     HostPrimitiveSettingsSource, JSON_CAPABILITY_ID, LIST_DIR_CAPABILITY_ID,
     MEMORY_READ_CAPABILITY_ID, MEMORY_SEARCH_CAPABILITY_ID, MEMORY_TREE_CAPABILITY_ID,
-    MEMORY_WRITE_CAPABILITY_ID, PrefixBundleCapabilityError, PrefixBundleCapabilityState,
-    READ_FILE_CAPABILITY_ID, SHELL_CAPABILITY_ID, SOURCE_INSPECTION_CAPABILITY_ID,
+    MEMORY_WRITE_CAPABILITY_ID, NativePrimitiveSettingsCapture, NativePrimitiveSettingsOrigin,
+    PrefixBundleCapabilityError, PrefixBundleCapabilityState, READ_FILE_CAPABILITY_ID,
+    SHELL_CAPABILITY_ID, SOURCE_INSPECTION_CAPABILITY_ID, SOURCE_INVENTORY_INPUT_INVALID_REASON,
     SPAWN_SUBAGENT_CAPABILITY_ID, STORE_PREFIX_BUNDLE_CAPABILITY_ID,
     SWEEP_VALIDATED_COMPONENTS_CAPABILITY_ID, SourceInspectionBackend, StorePrefixBundleBackend,
     StorePrefixBundleResult, SweepValidatedComponentsBackend, SweepValidatedComponentsResult,
