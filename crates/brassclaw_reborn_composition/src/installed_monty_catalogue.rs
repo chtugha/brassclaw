@@ -61,6 +61,8 @@ use crate::{
 mod child_tasks;
 #[path = "native_tool_answers.rs"]
 mod native_answers;
+#[path = "private_task_catalogue.rs"]
+mod private_tasks;
 #[path = "task_catalogue_binding.rs"]
 mod task_binding;
 #[path = "task_preparation_capture.rs"]
@@ -132,6 +134,8 @@ impl BootstrapUsageApproval<'_> {
 
 pub(crate) struct InstalledMontyCatalogue {
     initial_preparation: PreparationCapture,
+    private_work_context:
+        std::sync::OnceLock<brassclaw_turns::private_work::PrivateExecutionContext>,
     preparation_settings:
         std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
     pub(crate) pool: Arc<PgPool>,
@@ -326,6 +330,27 @@ impl InstalledMontyCatalogue {
                     .find(|a| a.usage_approval(binding).is_some())
                     .map(BootstrapUsageApproval::Encoding)
             })
+    }
+
+    pub(crate) fn bind_private_work_context(
+        &self,
+        context: brassclaw_turns::private_work::PrivateExecutionContext,
+    ) -> Result<(), RebornBuildError> {
+        if context.tenant_id.as_str() != self.qualification_scope.tenant_id
+            || context.agent_id.as_ref().map(|agent| agent.as_str())
+                != Some(self.qualification_scope.agent_id.as_str())
+            || context
+                .project_id
+                .as_ref()
+                .map(|project| project.as_str())
+                .unwrap_or("default")
+                != self.qualification_scope.project_id
+        {
+            return Err(invalid("private Work original runtime context differs"));
+        }
+        self.private_work_context
+            .set(context)
+            .map_err(|_| invalid("private Work original runtime context is already bound"))
     }
 
     pub(crate) fn bind_preparation_settings(
@@ -968,6 +993,7 @@ impl InstalledMontyCatalogue {
         });
         let catalogue = Arc::new(Self {
             initial_preparation,
+            private_work_context: std::sync::OnceLock::new(),
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
             tool_credential_sources: std::sync::OnceLock::new(),
@@ -1147,6 +1173,14 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         self.capture_child_task(host, admission, input).await
     }
 
+    async fn capture_private(
+        &self,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+    ) -> Result<crate::global_task_factory::CapturedPrivateRecipe, AgentLoopDriverError> {
+        self.capture_private_original(host, admission).await
+    }
+
     async fn capture_internal(
         &self,
         host: Arc<MontyTaskHost>,
@@ -1156,7 +1190,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         Option<Arc<dyn crate::global_recipe_ports::InternalRecipeSource>>,
         AgentLoopDriverError,
     > {
-        let context = host.run_context();
+        let context = host.run_context().ok_or_else(failed)?;
         if !context.trusted_internal_turn {
             return Ok(None);
         }
@@ -1272,7 +1306,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         let reference = format!("prefix-job:{}", definition.id);
         if definition.operation == "bootstrap_setup" {
             if input.user_input != reference
-                || definition.scope != context.scope
+                || definition.origin.chat_scope().map_err(|_| failed())? != &context.scope
                 || definition.created_by
                     != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
                 || definition.mode != "target"
@@ -1290,7 +1324,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         }
         if definition.operation == "measure" {
             if input.user_input != reference
-                || definition.scope != context.scope
+                || definition.origin.chat_scope().map_err(|_| failed())? != &context.scope
                 || definition.created_by
                     != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
                 || definition.mode != "target"
@@ -1306,7 +1340,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         }
         if definition.operation == "check_cases" {
             if input.user_input != reference
-                || definition.scope != context.scope
+                || definition.origin.chat_scope().map_err(|_| failed())? != &context.scope
                 || definition.created_by
                     != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
                 || definition.mode != "target"
@@ -1323,7 +1357,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         let (profile, target_revision) = definition.target.profile().ok_or_else(failed)?;
         let revision = target_revision.to_string();
         if input.user_input != reference
-            || definition.scope != context.scope
+            || definition.origin.chat_scope().map_err(|_| failed())? != &context.scope
             || definition.created_by != context.actor.as_ref().ok_or_else(failed)?.user_id.as_str()
             || definition.operation != "generate"
             || definition.mode != "source_only"
@@ -1408,7 +1442,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
             .await
             .map_err(|_| failed())?;
         let view = self.active.read().await.clone();
-        let context = host.run_context();
+        let context = host.run_context().ok_or_else(failed)?;
         let scope = IntentScope {
             tenant_id: context.scope.tenant_id.to_string(),
             user_id: context
@@ -2057,7 +2091,7 @@ impl RetainedToolPort for SelectedTools {
         {
             return error();
         }
-        let context = self.host.run_context();
+        let context = self.host.work_context();
         let Some(actor) = context.actor.as_ref() else {
             return error();
         };
@@ -2072,10 +2106,10 @@ impl RetainedToolPort for SelectedTools {
             Ok(value) => value,
             Err(_) => return error(),
         };
-        execution.tenant_id = context.scope.tenant_id.clone();
-        execution.agent_id = context.scope.agent_id.clone();
-        execution.project_id = context.scope.project_id.clone();
-        execution.thread_id = Some(context.thread_id.clone());
+        execution.tenant_id = context.tenant_id.clone();
+        execution.agent_id = context.agent_id.clone();
+        execution.project_id = context.project_id.clone();
+        execution.thread_id = self.host.run_context().map(|chat| chat.thread_id.clone());
         execution.resource_scope.tenant_id = execution.tenant_id.clone();
         execution.resource_scope.agent_id = execution.agent_id.clone();
         execution.resource_scope.project_id = execution.project_id.clone();

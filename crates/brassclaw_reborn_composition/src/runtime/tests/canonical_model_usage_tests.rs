@@ -120,7 +120,7 @@ impl InternalRecipeSource for CanonicalSource {
             return Err(rejected());
         }
         let rows=self.pool.get().await.map_err(|_|rejected())?.query(
-            "SELECT r.response_bytes,r.prefix_reference,i.attempt_count::bigint FROM brassclaw_monty_model_responses r JOIN brassclaw_monty_tool_invocations i USING(invocation_id) WHERE i.run_id=$1", &[&self.host.run_context().run_id.as_uuid()]
+            "SELECT r.response_bytes,r.prefix_reference,i.attempt_count::bigint FROM brassclaw_monty_model_responses r JOIN brassclaw_monty_tool_invocations i USING(invocation_id) WHERE i.run_id=$1", &[&self.host.run_context().expect("actual native chat fixture").run_id.as_uuid()]
         ).await.map_err(|_|rejected())?;
         if rows.len() != 1
             || rows[0].get::<_, String>(1) != self.prefix_reference

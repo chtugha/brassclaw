@@ -681,7 +681,7 @@ fn trust() -> TrustDecision {
 }
 
 fn execution_context(host: &MontyTaskHost) -> ExecutionContext {
-    let c = host.run_context();
+    let c = host.run_context().expect("actual native chat fixture");
     let mut execution = ExecutionContext::local_default(
         c.actor.as_ref().unwrap().user_id.clone(),
         ExtensionId::new("model-candidate").unwrap(),
@@ -2474,7 +2474,12 @@ async fn native_task_model_input_case(
         host.selected_model_route().unwrap().model_id,
         captured_model
     );
-    assert!(host.run_context().resolved_model_route.is_none());
+    assert!(
+        host.run_context()
+            .expect("actual native chat fixture")
+            .resolved_model_route
+            .is_none()
+    );
     crate::db_config::save_config_key(
         rig.pool.as_ref(),
         tenant,

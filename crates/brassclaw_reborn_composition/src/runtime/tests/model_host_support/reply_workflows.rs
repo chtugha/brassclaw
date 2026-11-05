@@ -388,7 +388,7 @@ struct Tools {
     block_history: bool,
 }
 fn execution(host: &MontyTaskHost, kernel: &reply_kernel::Kernel) -> ExecutionContext {
-    let bound = host.run_context();
+    let bound = host.run_context().expect("actual native chat fixture");
     let mut context = ExecutionContext::local_default(
         bound.actor.as_ref().unwrap().user_id.clone(),
         ExtensionId::new("draft-workflow").unwrap(),
@@ -525,7 +525,11 @@ async fn native_reply_address_and_payload_validation_precedes_publication() {
         threads
             .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
                 scope,
-                thread_id: host.run_context().thread_id.clone(),
+                thread_id: host
+                    .run_context()
+                    .expect("actual native chat fixture")
+                    .thread_id
+                    .clone(),
             })
             .await
             .unwrap()
@@ -666,7 +670,11 @@ async fn whole_match(block_history: bool, skip_history: bool) {
     let transcript = threads
         .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
             scope: scope.clone(),
-            thread_id: host.run_context().thread_id.clone(),
+            thread_id: host
+                .run_context()
+                .expect("actual native chat fixture")
+                .thread_id
+                .clone(),
         })
         .await
         .unwrap();
@@ -822,7 +830,7 @@ async fn whole_match(block_history: bool, skip_history: bool) {
             matches!(&receipt.outcome,TaskOutcome::Completed { reply_ref } if reply_ref==reference.as_str())
         );
         let path = memory_answer["value"]["path"].as_str().unwrap();
-        let context = host.run_context();
+        let context = host.run_context().expect("actual native chat fixture");
         let stored = filesystem
             .read_file(
                 &brassclaw_host_api::VirtualPath::new(format!(
@@ -870,7 +878,11 @@ async fn whole_match(block_history: bool, skip_history: bool) {
         threads
             .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
                 scope,
-                thread_id: host.run_context().thread_id.clone(),
+                thread_id: host
+                    .run_context()
+                    .expect("actual native chat fixture")
+                    .thread_id
+                    .clone(),
             })
             .await
             .unwrap()

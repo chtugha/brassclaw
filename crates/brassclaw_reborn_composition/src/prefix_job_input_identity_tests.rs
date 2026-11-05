@@ -31,8 +31,10 @@ pub(super) async fn assert_input_identity(
     assert_eq!(retried.input, original.input);
 
     let id = Uuid::new_v4();
-    let mut scope = (*template.scope).clone();
-    scope.thread_id = brassclaw_host_api::ThreadId::new(format!("prefix-job-{id}")).unwrap();
+    let mut origin = template.origin.clone();
+    if let Origin::Chat { scope, .. } = &mut origin {
+        scope.thread_id = brassclaw_host_api::ThreadId::new(format!("prefix-job-{id}")).unwrap();
+    }
     let left_input = (*template.input).clone();
     let mut right_input = left_input.clone();
     right_input["snapshot_bytes"] = json!("different explicitly offered source data");
@@ -55,13 +57,13 @@ pub(super) async fn assert_input_identity(
         tokio::join!(
             store.reserve(Reservation {
                 id,
-                scope: &scope,
+                origin: &origin,
                 input: &left_input,
                 ..template
             }),
             store.reserve(Reservation {
                 id,
-                scope: &scope,
+                origin: &origin,
                 input: &right_input,
                 ..template
             }),

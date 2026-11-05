@@ -217,15 +217,15 @@ impl CapturedToolCredentials {
                     }
                 }
             }
-            let context = host.run_context();
+            let context = host.work_context();
             let scope = context.actor.as_ref().map(|actor| {
                 AuthProductScope::new(
                     ResourceScope {
-                        tenant_id: context.scope.tenant_id.clone(),
+                        tenant_id: context.tenant_id.clone(),
                         user_id: actor.user_id.clone(),
-                        agent_id: context.scope.agent_id.clone(),
-                        project_id: context.scope.project_id.clone(),
-                        thread_id: Some(context.thread_id.clone()),
+                        agent_id: context.agent_id.clone(),
+                        project_id: context.project_id.clone(),
+                        thread_id: host.run_context().map(|chat| chat.thread_id.clone()),
                         // Read-only selection-owner scope; not a native dispatch ID,
                         // account source address, lease, claim or admission proof.
                         invocation_id: InvocationId::new(),
@@ -312,15 +312,15 @@ impl CapturedToolCredentials {
 }
 
 fn scope_matches_host(host: &MontyTaskHost, scope: &ResourceScope) -> bool {
-    let context = host.run_context();
+    let context = host.work_context();
     context
         .actor
         .as_ref()
         .is_some_and(|actor| scope.user_id == actor.user_id)
-        && scope.tenant_id == context.scope.tenant_id
-        && scope.agent_id == context.scope.agent_id
-        && scope.project_id == context.scope.project_id
-        && scope.thread_id.as_ref() == Some(&context.thread_id)
+        && scope.tenant_id == context.tenant_id
+        && scope.agent_id == context.agent_id
+        && scope.project_id == context.project_id
+        && scope.thread_id.as_ref() == host.run_context().map(|chat| &chat.thread_id)
 }
 
 struct InvocationAccounts {

@@ -228,7 +228,7 @@ pub(super) async fn execute(
                 && fingerprints.1 == Some(port_answer_checksum(&answer).map_err(invalid)?),
             "encoding journal differs from native observation",
         )?;
-        reports.push(json!({"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().thread_id,
+        reports.push(json!({"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,
             "root_vm":observed.receipt.root.vm_id(),"inputs_checksum":hex::encode(typed_value_checksum(&inputs).map_err(invalid)?),
             "arguments_checksum":fingerprints.0.map(hex::encode),"answer_checksum":fingerprints.1.map(hex::encode),
             "result_checksum":fingerprints.2.map(hex::encode),"failure":fingerprints.3,"execution":observed.report}));

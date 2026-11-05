@@ -25,7 +25,7 @@ pub(crate) async fn capture_task_models(
     let inherited = parent.is_some();
     let capture = root
         .map(|program| {
-            PrefixFreeCapture::from_program(program, host.run_context().scope.tenant_id.as_str())
+            PrefixFreeCapture::from_program(program, host.work_context().tenant_id.as_str())
                 .map_err(|_| failed("monty_task_model_capture_invalid"))
         })
         .transpose()?

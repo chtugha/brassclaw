@@ -1201,6 +1201,8 @@ mod source_inspection_components;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod installed_monty_catalogue;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod private_work_definition;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod task_tool_credentials;

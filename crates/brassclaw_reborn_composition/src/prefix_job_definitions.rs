@@ -22,6 +22,9 @@ pub(crate) enum Error {
 #[path = "prefix_job_target.rs"]
 mod target;
 pub(crate) use target::Target;
+#[path = "prefix_job_origin.rs"]
+mod origin;
+pub(crate) use origin::Origin;
 
 pub(crate) struct Definition {
     pub(crate) id: Uuid,
@@ -29,12 +32,22 @@ pub(crate) struct Definition {
     pub(crate) operation: String,
     pub(crate) mode: String,
     pub(crate) request: Value,
+    pub(crate) request_bytes: String,
     pub(crate) program_bytes: String,
     pub(crate) input: Value,
+    pub(crate) input_bytes: String,
     pub(crate) original_input_limits: brassclaw_skills::value_contract::ContractLimits,
-    pub(crate) scope: TurnScope,
-    pub(crate) thread_scope: ThreadScope,
+    pub(crate) origin: Origin,
     pub(crate) created_by: String,
+}
+impl Definition {
+    pub(crate) fn original_checksum(&self) -> [u8; 32] {
+        let mut hash = Sha256::new();
+        hash.update(Sha256::digest(self.request_bytes.as_bytes()));
+        hash.update(Sha256::digest(self.program_bytes.as_bytes()));
+        hash.update(Sha256::digest(self.input_bytes.as_bytes()));
+        hash.finalize().into()
+    }
 }
 pub(crate) struct Reservation<'a> {
     pub(crate) id: Uuid,
@@ -45,8 +58,7 @@ pub(crate) struct Reservation<'a> {
     pub(crate) program: &'a InspectedRetainedProgram,
     pub(crate) input: &'a Value,
     pub(crate) original_input_limits: brassclaw_skills::value_contract::ContractLimits,
-    pub(crate) scope: &'a TurnScope,
-    pub(crate) thread_scope: &'a ThreadScope,
+    pub(crate) origin: &'a Origin,
     pub(crate) created_by: &'a str,
 }
 pub(crate) struct Header {
@@ -54,7 +66,7 @@ pub(crate) struct Header {
     pub(crate) target: Target,
     pub(crate) operation: String,
     pub(crate) mode: String,
-    pub(crate) scope: TurnScope,
+    pub(crate) origin: Origin,
     pub(crate) created_by: String,
     pub(crate) created_at: String,
     pub(crate) request_sha256: String,
@@ -64,7 +76,7 @@ pub(crate) struct Header {
 pub(crate) struct Store {
     pool: Arc<PgPool>,
 }
-const COLUMNS: &str = "job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits";
+const COLUMNS: &str = "job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits,definition_format,private_context,original_preparation_bytes,original_preparation_checksum";
 
 // Frozen V167 input-codec domain. SQL NULL denotes only that historical format,
 // never today's settings or a future value of EXECUTION_DATA_LIMITS. Request
@@ -198,10 +210,24 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
         &row.get::<_, String>(10),
         original_input_limits,
     )?;
-    let scope = serde_json::from_value(row.get::<_, Value>(11)).map_err(|_| Error::Invalid)?;
-    let thread_scope =
-        serde_json::from_value(row.get::<_, Value>(12)).map_err(|_| Error::Invalid)?;
-    validate_scope(&scope, &thread_scope, &row.get::<_, String>(13))?;
+    let origin = origin::decode(
+        &row.get::<_, String>(15),
+        row.get(11),
+        row.get(12),
+        row.get(16),
+        row.get(17),
+        row.get(18),
+        &row.get::<_, String>(13),
+    )?;
+    if let Origin::Private { preparation, .. } = &origin {
+        let limits = captured_input_limits(preparation.policy())?;
+        if limits.max_depth != original_input_limits.max_depth
+            || limits.max_nodes != original_input_limits.max_nodes
+            || limits.max_bytes != original_input_limits.max_bytes
+        {
+            return Err(Error::Invalid);
+        }
+    }
     let operation: String = row.get(3);
     let mode: String = row.get(4);
     let target = Target::from_columns(row.get(1), row.get(2), &operation, &mode, &request)?;
@@ -211,11 +237,12 @@ fn decode(row: tokio_postgres::Row) -> Result<Definition, Error> {
         operation,
         mode,
         request,
+        request_bytes,
         program_bytes,
         input,
+        input_bytes,
         original_input_limits,
-        scope,
-        thread_scope,
+        origin,
         created_by: row.get(13),
     })
 }
@@ -226,8 +253,7 @@ fn same_request(existing: &Definition, r: &Reservation<'_>) -> bool {
         && existing.operation == r.operation
         && existing.mode == r.mode
         && existing.created_by == r.created_by
-        && existing.scope == *r.scope
-        && existing.thread_scope == *r.thread_scope
+        && existing.origin == *r.origin
     // Original codec meaning remains fixed when a retry arrives after a
     // live settings edit. Offered new limits cannot reinterpret old bytes.
 }
@@ -239,12 +265,18 @@ impl Store {
     /// Small read projection; status polling never reloads compiler/source blobs.
     pub(crate) async fn header(&self, id: Uuid) -> Result<Option<Header>, Error> {
         let client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
-        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum,request_bytes,original_input_limits FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
+        let Some(row) = client.query_opt("SELECT job_id,profile_name,profile_revision,operation,mode,scope,thread_scope,created_by,created_at,request_checksum,program_checksum,input_checksum,request_bytes,original_input_limits,definition_format,private_context,original_preparation_bytes,original_preparation_checksum FROM brassclaw_prefix_job_definitions WHERE job_id=$1", &[&id]).await.map_err(|_| Error::Unavailable)? else { return Ok(None); };
         decode_input_limits(row.try_get(13).map_err(|_| Error::Invalid)?)?;
-        let scope = serde_json::from_value(row.get::<_, Value>(5)).map_err(|_| Error::Invalid)?;
-        let thread = serde_json::from_value(row.get::<_, Value>(6)).map_err(|_| Error::Invalid)?;
         let actor: String = row.get(7);
-        validate_scope(&scope, &thread, &actor)?;
+        let origin = origin::decode(
+            &row.get::<_, String>(14),
+            row.get(5),
+            row.get(6),
+            row.get(15),
+            row.get(16),
+            row.get(17),
+            &actor,
+        )?;
         let operation: String = row.get(3);
         let mode: String = row.get(4);
         let request = parse(
@@ -261,7 +293,7 @@ impl Store {
             target,
             operation,
             mode,
-            scope,
+            origin,
             created_by: actor,
             created_at: row.get::<_, chrono::DateTime<chrono::Utc>>(8).to_rfc3339(),
             request_sha256: row.get(9),
@@ -304,7 +336,7 @@ impl Store {
         if r.id.is_nil() || r.created_by.is_empty() || r.created_by.len() > 512 {
             return Err(Error::Invalid);
         }
-        validate_scope(r.scope, r.thread_scope, r.created_by)?;
+        r.origin.validate(r.created_by)?;
         r.target.columns(r.operation, r.mode, r.request)?;
         if let Target::Pair {
             specification,
@@ -321,7 +353,7 @@ impl Store {
             }
             let packet = crate::prefix_model_designs::PgPrefixModelDesigns::new(
                 self.pool.clone(),
-                r.scope.tenant_id.as_str().into(),
+                r.origin.tenant_id().as_str().into(),
             )
             .case_packet(specification, proposal)
             .await
@@ -362,7 +394,7 @@ impl Store {
         if r.id.is_nil() || r.created_by.is_empty() || r.created_by.len() > 512 {
             return Err(Error::Invalid);
         }
-        validate_scope(r.scope, r.thread_scope, r.created_by)?;
+        r.origin.validate(r.created_by)?;
         let (profile, revision) = r.target.columns(r.operation, r.mode, r.request)?;
         let request_bytes = serde_json::to_string(r.request).map_err(|_| Error::Invalid)?;
         let request_checksum = sha(&request_bytes);
@@ -376,7 +408,18 @@ impl Store {
         // at commit time. A concurrent live settings edit between qualification
         // capture and this reserve must be detected and rejected rather than
         // silently storing a stale codec boundary.
-        let effective_limits = read_effective_limits_in_transaction(tx).await?;
+        let effective_limits = match r.origin {
+            Origin::Chat { .. } => read_effective_limits_in_transaction(tx).await?,
+            Origin::Private { preparation, .. } => {
+                if r.operation != "generate"
+                    || r.mode != "source_only"
+                    || !matches!(r.target, Target::Profile { .. })
+                {
+                    return Err(Error::Invalid);
+                }
+                captured_input_limits(preparation.policy())?
+            }
+        };
         if r.original_input_limits.max_depth != effective_limits.max_depth
             || r.original_input_limits.max_nodes != effective_limits.max_nodes
             || r.original_input_limits.max_bytes != effective_limits.max_bytes
@@ -430,9 +473,30 @@ impl Store {
         // Every newly created reservation writes a concrete validated record;
         // NULL is read-only legacy compatibility, never a new default.
         let original_input_limits = encode_input_limits(r.original_input_limits)?;
-        let scope = serde_json::to_value(r.scope).map_err(|_| Error::Invalid)?;
-        let thread_scope = serde_json::to_value(r.thread_scope).map_err(|_| Error::Invalid)?;
-        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by,&original_input_limits]).await.map_err(|_| Error::Unavailable)?;
+        let (scope, thread_scope, private_context, preparation_bytes, preparation_checksum) =
+            match r.origin {
+                Origin::Chat {
+                    scope,
+                    thread_scope,
+                } => (
+                    Some(serde_json::to_value(scope).map_err(|_| Error::Invalid)?),
+                    Some(serde_json::to_value(thread_scope).map_err(|_| Error::Invalid)?),
+                    None,
+                    None,
+                    None,
+                ),
+                Origin::Private {
+                    context,
+                    preparation,
+                } => (
+                    None,
+                    None,
+                    Some(serde_json::to_value(context).map_err(|_| Error::Invalid)?),
+                    Some(preparation.bytes()),
+                    Some(preparation.checksum()),
+                ),
+            };
+        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits,definition_format,private_context,original_preparation_bytes,original_preparation_checksum) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by,&original_input_limits,&r.origin.format(),&private_context,&preparation_bytes,&preparation_checksum]).await.map_err(|_| Error::Unavailable)?;
         let stored = Self::get_in_transaction(tx, r.id)
             .await?
             .ok_or(Error::Unavailable)?;
@@ -517,8 +581,10 @@ pub(super) async fn assert_metadata_only(
                 request: $request,
                 program,
                 input: $input,
-                scope: &scope,
-                thread_scope: &thread_scope,
+                origin: &crate::prefix_job_definitions::Origin::Chat {
+                    scope: scope.clone(),
+                    thread_scope: thread_scope.clone(),
+                },
                 created_by: "operator",
             }
         };
@@ -543,11 +609,11 @@ pub(super) async fn assert_metadata_only(
             .exact_bytes()
     );
     assert_eq!(
-        serde_json::to_value(&stored.scope).unwrap(),
+        serde_json::to_value(stored.origin.chat_scope().expect("legacy chat original")).unwrap(),
         serde_json::to_value(&scope).unwrap()
     );
     assert_eq!(
-        serde_json::to_value(&stored.thread_scope).unwrap(),
+        serde_json::to_value(stored.origin.thread_scope().expect("legacy chat original")).unwrap(),
         serde_json::to_value(&thread_scope).unwrap()
     );
     // Explicit offered input belongs to request identity. A reconnect that

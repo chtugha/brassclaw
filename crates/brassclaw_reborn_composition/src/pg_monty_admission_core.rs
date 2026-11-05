@@ -32,17 +32,24 @@ pub(crate) struct CatalogueReference {
 /// Private admission address; neither serializable nor diagnostic-printable.
 pub(crate) struct PgMontyAdmission {
     pool: Arc<PgPool>,
+    origin: AdmissionOrigin,
+    attempt: MontyTaskAttempt,
+    key: [u8; 32],
+    checksum: [u8; 32],
+    catalogue: OnceLock<Option<CatalogueReference>>,
+    task_models: OnceLock<Option<Value>>,
+}
+struct ChatAdmissionOrigin {
     scope: TurnScope,
     turn_id: TurnId,
     accepted: AcceptedMessageRef,
     trusted_internal_turn: bool,
     source_binding_ref: Option<SourceBindingRef>,
     actor: Option<brassclaw_turns::TurnActor>,
-    attempt: MontyTaskAttempt,
-    key: [u8; 32],
-    checksum: [u8; 32],
-    catalogue: OnceLock<Option<CatalogueReference>>,
-    task_models: OnceLock<Option<Value>>,
+}
+enum AdmissionOrigin {
+    Chat(Box<ChatAdmissionOrigin>),
+    Private(Arc<brassclaw_turns::private_work::ClaimedPrivateWork>),
 }
 
 impl PgMontyAdmission {
@@ -87,18 +94,64 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
         Ok(Self {
             pool,
-            scope: context.scope.clone(),
-            turn_id: context.turn_id,
-            accepted,
-            trusted_internal_turn: context.trusted_internal_turn,
-            source_binding_ref: source_binding_ref.cloned(),
-            actor: context.actor.clone(),
+            origin: AdmissionOrigin::Chat(Box::new(ChatAdmissionOrigin {
+                scope: context.scope.clone(),
+                turn_id: context.turn_id,
+                accepted,
+                trusted_internal_turn: context.trusted_internal_turn,
+                source_binding_ref: source_binding_ref.cloned(),
+                actor: context.actor.clone(),
+            })),
             attempt,
             key: Sha256::digest(nonce).into(),
             checksum: Sha256::digest(claim).into(),
             catalogue: OnceLock::new(),
             task_models: OnceLock::new(),
         })
+    }
+
+    pub(crate) fn prepare_private(
+        pool: Arc<PgPool>,
+        claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>,
+    ) -> Result<Self, AgentLoopDriverError> {
+        let attempt = claimed.attempt();
+        let claim = serde_json::to_vec(&attempt.lease_token)
+            .map_err(|_| failed("monty_admission_identity_invalid"))?;
+        let nonce = serde_json::to_vec(&brassclaw_turns::TurnLeaseToken::new())
+            .map_err(|_| failed("monty_admission_identity_invalid"))?;
+        Ok(Self {
+            pool,
+            origin: AdmissionOrigin::Private(claimed),
+            attempt,
+            key: Sha256::digest(nonce).into(),
+            checksum: Sha256::digest(claim).into(),
+            catalogue: OnceLock::new(),
+            task_models: OnceLock::new(),
+        })
+    }
+    fn chat_origin(&self) -> Result<&ChatAdmissionOrigin, AgentLoopDriverError> {
+        match &self.origin {
+            AdmissionOrigin::Chat(origin) => Ok(origin),
+            AdmissionOrigin::Private(_) => Err(failed("monty_chat_origin_required")),
+        }
+    }
+    fn original_source_binding(&self) -> Option<&SourceBindingRef> {
+        match &self.origin {
+            AdmissionOrigin::Chat(origin) => origin.source_binding_ref.as_ref(),
+            AdmissionOrigin::Private(_) => None,
+        }
+    }
+    fn is_result_only(&self) -> bool {
+        match &self.origin {
+            AdmissionOrigin::Private(_) => true,
+            AdmissionOrigin::Chat(origin) => {
+                origin.trusted_internal_turn
+                    || origin.source_binding_ref.as_ref().is_some_and(|source| {
+                        source.as_str()
+                            == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
+                    })
+            }
+        }
     }
 
     /// Freeze the actual captured ordinary source before the first host call.
@@ -208,17 +261,44 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        if let AdmissionOrigin::Private(claimed) = &self.origin {
+            self.verify_claim(&transaction).await?;
+            let retained: bool = transaction
+                .query_one(
+                    "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_task_admissions
+                WHERE run_id=$1 AND private_work_id=$2 AND admission_key=$3 AND claim_checksum=$4
+                AND origin_kind='private_work' AND phase='reserved')",
+                    &[
+                        &self.attempt.run_id.as_uuid(),
+                        &claimed.request().work_id(),
+                        &&self.key[..],
+                        &&self.checksum[..],
+                    ],
+                )
+                .await
+                .map_err(|_| failed("monty_admission_database_failed"))?
+                .get(0);
+            if !retained {
+                return Err(failed("monty_admission_replay_requires_recovery"));
+            }
+            transaction
+                .commit()
+                .await
+                .map_err(|_| failed("monty_admission_database_failed"))?;
+            return Ok(());
+        }
+        let chat = self.chat_origin()?;
         self.preflight_claim(&transaction).await?;
-        let scope = serde_json::to_value(&self.scope)
+        let scope = serde_json::to_value(&chat.scope)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
-        let actor = serde_json::to_value(&self.actor)
+        let actor = serde_json::to_value(&chat.actor)
             .map_err(|_| failed("monty_admission_identity_invalid"))?;
         let runner = serde_json::to_value(self.attempt.runner_id)
             .map_err(|_| failed("monty_admission_identity_invalid"))?
             .as_str()
             .ok_or_else(|| failed("monty_admission_identity_invalid"))?
             .to_owned();
-        let source_binding = self
+        let source_binding = chat
             .source_binding_ref
             .as_ref()
             .map(SourceBindingRef::as_str);
@@ -226,8 +306,8 @@ impl PgMontyAdmission {
             (run_id, turn_id, scope, accepted_message_ref, runner_id, claim_checksum, admission_key, phase, trusted_internal_turn,
              catalogue_reference_version, task_model_selection_version,native_actor,source_binding_ref)
             VALUES ($1,$2,$3,$4,$5::text::uuid,$6,$7,'reserved',$8,1,1,$9,$10) ON CONFLICT (run_id) DO NOTHING",
-            &[&self.attempt.run_id.as_uuid(), &self.turn_id.as_uuid(), &scope, &self.accepted.as_str(),
-                &runner, &&self.checksum[..], &&self.key[..], &self.trusted_internal_turn,&actor,&source_binding])
+            &[&self.attempt.run_id.as_uuid(), &chat.turn_id.as_uuid(), &scope, &chat.accepted.as_str(),
+                &runner, &&self.checksum[..], &&self.key[..], &chat.trusted_internal_turn,&actor,&source_binding])
             .await.map_err(|_| failed("monty_admission_database_failed"))?;
         if inserted != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
@@ -294,11 +374,9 @@ impl PgMontyAdmission {
     /// Only the verified actual root outcome belongs here. This method records
     /// local settlement and does not declare external effects reconciled.
     pub(crate) async fn settle(&self, outcome: Value) -> Result<(), AgentLoopDriverError> {
-        let result_only = self.trusted_internal_turn
-            || self.source_binding_ref.as_ref().is_some_and(|source| {
-                source.as_str() == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
-            });
-        validate_outcome(&outcome, result_only, self.attempt.run_id)?;
+        if matches!(&self.origin, AdmissionOrigin::Private(_)) {
+            return Err(failed("private_settlement_requires_native_receipt"));
+        }
         let mut client = self
             .pool
             .get()
@@ -308,6 +386,20 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        self.settle_in_transaction(&transaction, &outcome).await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))
+    }
+
+    async fn settle_in_transaction(
+        &self,
+        transaction: &Transaction<'_>,
+        outcome: &Value,
+    ) -> Result<(), AgentLoopDriverError> {
+        let result_only = self.is_result_only();
+        validate_outcome(outcome, result_only, self.attempt.run_id)?;
         // Settlement records the original worker's acknowledged outcome; it
         // grants no dispatch or reply authority. Cancellation, lease expiry or
         // reclaim must not prevent preserving this original admission's audit
@@ -327,17 +419,14 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_admission_database_failed"))?
             .ok_or_else(|| failed("monty_admission_fenced"))?;
         if row.get::<_, Option<String>>(2).as_deref()
-            != self
-                .source_binding_ref
-                .as_ref()
-                .map(SourceBindingRef::as_str)
+            != self.original_source_binding().map(SourceBindingRef::as_str)
             || row.get::<_, bool>(3) != result_only
         {
             return Err(failed("monty_admission_fenced"));
         }
         let phase: &str = row.get(0);
         if phase == "settled" {
-            if row.get::<_, Option<Value>>(1).as_ref() != Some(&outcome) {
+            if row.get::<_, Option<Value>>(1).as_ref() != Some(outcome) {
                 return Err(failed("monty_admission_settlement_conflict"));
             }
         } else if phase == "started"
@@ -349,7 +438,7 @@ impl PgMontyAdmission {
                     "UPDATE brassclaw_monty_task_admissions
                 SET phase='settled', outcome=$3, settled_at=clock_timestamp()
                 WHERE run_id=$1 AND admission_key=$2 AND phase IN ('reserved','started')",
-                    &[&self.attempt.run_id.as_uuid(), &&self.key[..], &outcome],
+                    &[&self.attempt.run_id.as_uuid(), &&self.key[..], outcome],
                 )
                 .await
                 .map_err(|_| failed("monty_admission_database_failed"))?;
@@ -359,10 +448,7 @@ impl PgMontyAdmission {
         } else {
             return Err(failed("monty_admission_not_started"));
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| failed("monty_admission_database_failed"))
+        Ok(())
     }
 
     async fn verify_claim(
@@ -387,6 +473,12 @@ impl PgMontyAdmission {
         transaction: &Transaction<'_>,
         retain_lock: bool,
     ) -> Result<Option<brassclaw_turns::TurnRunId>, AgentLoopDriverError> {
+        if let AdmissionOrigin::Private(claimed) = &self.origin {
+            self.inspect_private_claim(transaction, claimed, retain_lock)
+                .await?;
+            return Ok(None);
+        }
+        let chat = self.chat_origin()?;
         // Same snapshot key/lock as PgTurnStateStore. The snapshot row lock
         // fences the final claim check and COMMIT, after all effect-free journal
         // preparation. A blocked journal must not hold up cancellation or lease
@@ -405,8 +497,8 @@ impl PgMontyAdmission {
             .query_opt(
                 &query,
                 &[
-                    &self.scope.tenant_id.as_str(),
-                    &self.scope.thread_id.as_str(),
+                    &chat.scope.tenant_id.as_str(),
+                    &chat.scope.thread_id.as_str(),
                 ],
             )
             .await
@@ -424,31 +516,31 @@ impl PgMontyAdmission {
             .iter()
             .find(|run| run.run_id == self.attempt.run_id)
             .ok_or_else(|| failed("monty_admission_fenced"))?;
-        if run.scope != self.scope
-            || self.actor.as_ref().is_some_and(|actor| {
+        if run.scope != chat.scope
+            || chat.actor.as_ref().is_some_and(|actor| {
                 !snapshot.turns.iter().any(|turn| {
-                    turn.turn_id == self.turn_id
-                        && turn.scope == self.scope
+                    turn.turn_id == chat.turn_id
+                        && turn.scope == chat.scope
                         && &turn.actor == actor
-                        && turn.accepted_message_ref == self.accepted
+                        && turn.accepted_message_ref == chat.accepted
                 })
             })
-            || run.turn_id != self.turn_id
-            || run.accepted_message_ref != self.accepted
+            || run.turn_id != chat.turn_id
+            || run.accepted_message_ref != chat.accepted
             || run.runner_id != Some(self.attempt.runner_id)
             || run.lease_token != Some(self.attempt.lease_token)
             || run
                 .lease_expires_at
                 .as_ref()
                 .is_none_or(|expires| *expires <= now)
-            || self.trusted_internal_turn
+            || chat.trusted_internal_turn
                 != (run.source_binding_ref.as_str()
                     == brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
-            || self
+            || chat
                 .source_binding_ref
                 .as_ref()
                 .is_some_and(|source| source != &run.source_binding_ref)
-            || (self.source_binding_ref.is_none()
+            || (chat.source_binding_ref.is_none()
                 && run.source_binding_ref.as_str()
                     == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING)
             || run.status != TurnStatus::Running
@@ -458,6 +550,9 @@ impl PgMontyAdmission {
         Ok(run.parent_run_id)
     }
 }
+
+#[path = "pg_monty_private_admission.rs"]
+mod private_origin;
 
 /// Shape validation is not completion proof. The private task owner verifies
 /// native receipts before settlement; the evidence reader then checks that exact

@@ -440,8 +440,13 @@ async fn nine_executed_recipes_settle_after_live_selection_capacity_is_reduced()
     // This unpersisted diagnostic address cannot replace the settled admission.
     // Validate corrupted copies of the actual outcome before address lookup;
     // rejection must be a shape/completion error, never a successful rewrite.
-    let probe = PgMontyAdmission::prepare(database.pool.clone(), host.run_context(), attempt, None)
-        .unwrap();
+    let probe = PgMontyAdmission::prepare(
+        database.pool.clone(),
+        host.run_context().expect("actual native chat fixture"),
+        attempt,
+        None,
+    )
+    .unwrap();
     for kind in [
         "null",
         "object",
@@ -487,7 +492,11 @@ async fn nine_executed_recipes_settle_after_live_selection_capacity_is_reduced()
     let transcript = threads
         .list_thread_history(brassclaw_threads::ThreadHistoryRequest {
             scope,
-            thread_id: host.run_context().thread_id.clone(),
+            thread_id: host
+                .run_context()
+                .expect("actual native chat fixture")
+                .thread_id
+                .clone(),
         })
         .await
         .unwrap();

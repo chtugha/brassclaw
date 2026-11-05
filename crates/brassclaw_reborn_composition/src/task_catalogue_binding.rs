@@ -326,6 +326,7 @@ impl InstalledMontyCatalogue {
             reference,
             prefix_user: host
                 .run_context()
+                .ok_or_else(failed)?
                 .actor
                 .as_ref()
                 .map(|actor| actor.user_id.as_str())
@@ -333,6 +334,7 @@ impl InstalledMontyCatalogue {
                 .to_owned(),
             prefix_project: host
                 .run_context()
+                .ok_or_else(failed)?
                 .scope
                 .project_id
                 .as_ref()
@@ -351,7 +353,7 @@ impl InstalledMontyCatalogue {
         {
             let mut pinned = self.captured_prefixes.lock().map_err(|_| failed())?;
             pinned.retain(|_, task| task.strong_count() > 0);
-            pinned.insert(host.run_context().run_id.to_string(), Arc::downgrade(&task));
+            pinned.insert(host.attempt().run_id.to_string(), Arc::downgrade(&task));
         }
         Ok(task)
     }

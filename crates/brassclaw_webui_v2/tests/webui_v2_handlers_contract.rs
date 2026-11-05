@@ -1232,26 +1232,28 @@ impl RebornServicesApi for StubServices {
             revision,
             job.into(),
         ));
-        Ok(brassclaw_product_workflow::PrefixJobDetail {
-            job_id: job.into(),
+        Ok(brassclaw_product_workflow::PrefixJobDetail::Chat {
             thread_id: "original-conversation".into(),
-            target: brassclaw_product_workflow::PrefixJobTarget::ModelSetup {
-                specification: specification.into(),
-                setup_revision: revision,
-            },
-            operation: "bootstrap_setup".into(),
-            mode: "target".into(),
-            created_at: "date".into(),
-            request_sha256: "r".into(),
-            program_sha256: "p".into(),
-            input_sha256: "i".into(),
             run_status: None,
-            admission_phase: None,
-            answered_tool_calls: 0,
-            pending_tool_calls: 0,
-            failure_kind: None,
-            internal_receipt: Some("original literal result".into()),
-            result_ref: None,
+            metadata: brassclaw_product_workflow::PrefixJobMetadata {
+                job_id: job.into(),
+                target: brassclaw_product_workflow::PrefixJobTarget::ModelSetup {
+                    specification: specification.into(),
+                    setup_revision: revision,
+                },
+                operation: "bootstrap_setup".into(),
+                mode: "target".into(),
+                created_at: "date".into(),
+                request_sha256: "r".into(),
+                program_sha256: "p".into(),
+                input_sha256: "i".into(),
+                admission_phase: None,
+                answered_tool_calls: 0,
+                pending_tool_calls: 0,
+                failure_kind: None,
+                internal_receipt: Some("original literal result".into()),
+                result_ref: None,
+            },
         })
     }
     async fn list_interceptor_prefixes(

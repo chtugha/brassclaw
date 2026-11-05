@@ -342,7 +342,9 @@ impl FirstPartyCapabilityHandler for TaskModelCapability {
         &self,
         request: FirstPartyCapabilityRequest,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
-        let context = self.host.run_context();
+        let context = self.host.run_context().ok_or_else(|| {
+            FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::PolicyDenied)
+        })?;
         if context.trusted_internal_turn || self.host.selected_model_route().is_err() {
             return Err(FirstPartyCapabilityError::new(
                 RuntimeDispatchErrorKind::PolicyDenied,

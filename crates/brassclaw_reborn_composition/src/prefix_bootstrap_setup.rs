@@ -164,16 +164,19 @@ pub(crate) async fn select(
         .await?;
     let origin: Uuid =
         serde_json::from_value(definition.request["origin_mutation"].clone()).map_err(invalid)?;
-    let mutation =
-        crate::provider_mutation::read_original(&*tx, definition.scope.tenant_id.as_str(), origin)
-            .await
-            .map_err(invalid)?;
+    let mutation = crate::provider_mutation::read_original(
+        &*tx,
+        definition.origin.tenant_id().as_str(),
+        origin,
+    )
+    .await
+    .map_err(invalid)?;
     if mutation.bootstrap_job_id != Some(definition.id) {
         return Err(invalid("setup original mutation link differs"));
     }
     let store = crate::prefix_model_designs::PgPrefixModelDesigns::new(
         catalogue.pool.clone(),
-        definition.scope.tenant_id.as_str().into(),
+        definition.origin.tenant_id().as_str().into(),
     );
     let original = store
         .specification_in_transaction(&tx, specification)

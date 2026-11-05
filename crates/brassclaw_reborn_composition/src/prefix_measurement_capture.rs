@@ -80,7 +80,7 @@ pub(crate) async fn verify(
         || metadata(profile, &request)? != definition.request
         || capture(
             pool,
-            definition.scope.tenant_id.as_str(),
+            definition.origin.tenant_id().as_str(),
             profile,
             &request,
             definition.original_input_limits,

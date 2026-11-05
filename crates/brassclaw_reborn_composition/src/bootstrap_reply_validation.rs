@@ -305,7 +305,7 @@ pub(super) async fn execute_cases(
         }
         // Retain actual transcript records and no-replay journals before approval.
         let observation = json!({"case":case,"run_id":admitted.attempt.run_id.as_uuid(),
-            "thread_id":admitted.host.run_context().thread_id,
+            "thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,
             "reply_ref":expected_result,"arguments_checksum":hex(actual.arguments_checksum().ok_or_else(|| invalid("bootstrap arguments missing"))?),
             "answer_checksum":hex(actual.answer_checksum().ok_or_else(|| invalid("bootstrap answer missing"))?),
             "failure":actual.failure().map(RetainedStepFailure::reason_kind),

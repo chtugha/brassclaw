@@ -375,7 +375,10 @@ pub(super) async fn failed_build_keeps_invalidation(
     assert_eq!(
         runtime
             .wait_for_terminal(
-                &definition.scope,
+                definition
+                    .origin
+                    .chat_scope()
+                    .expect("legacy chat original"),
                 TurnRunId::from_uuid(id),
                 &tokio_util::sync::CancellationToken::new()
             )

@@ -339,7 +339,7 @@ pub(crate) async fn select(
     let source = Arc::new(
         CapturedPairCases::capture(
             catalogue.pool.clone(),
-            definition.scope.tenant_id.as_str(),
+            definition.origin.tenant_id().as_str(),
             specification,
             proposal,
         )

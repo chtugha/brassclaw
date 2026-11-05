@@ -745,7 +745,7 @@ async fn assert_admitted_pair_jobs(runtime: &Arc<RebornRuntime>, document: &Valu
         );
         let status = runtime
             .wait_for_terminal(
-                &retained.scope,
+                retained.origin.chat_scope().expect("legacy pair original"),
                 TurnRunId::from_uuid(id),
                 &CancellationToken::new(),
             )
@@ -770,7 +770,11 @@ async fn assert_admitted_pair_jobs(runtime: &Arc<RebornRuntime>, document: &Valu
         let state = runtime
             .turn_coordinator
             .get_run_state(brassclaw_turns::GetRunStateRequest {
-                scope: retained.scope.clone(),
+                scope: retained
+                    .origin
+                    .chat_scope()
+                    .expect("legacy pair original")
+                    .clone(),
                 run_id: TurnRunId::from_uuid(id),
             })
             .await
@@ -831,7 +835,11 @@ async fn assert_admitted_pair_jobs(runtime: &Arc<RebornRuntime>, document: &Valu
             runtime
                 .read_latest_assistant_text(
                     &retained.thread_scope,
-                    &retained.scope.thread_id,
+                    &retained
+                        .origin
+                        .chat_scope()
+                        .expect("legacy pair original")
+                        .thread_id,
                     TurnRunId::from_uuid(id)
                 )
                 .await

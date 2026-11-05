@@ -12,7 +12,7 @@ use std::{collections::BTreeMap, sync::Arc};
 use uuid::Uuid;
 
 pub(super) fn scope(host: &MontyTaskHost) -> IntentScope {
-    let context = host.run_context();
+    let context = host.run_context().expect("actual native chat fixture");
     IntentScope {
         tenant_id: context.scope.tenant_id.to_string(),
         user_id: context.actor.as_ref().unwrap().user_id.to_string(),

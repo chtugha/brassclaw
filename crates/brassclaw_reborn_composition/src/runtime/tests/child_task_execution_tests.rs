@@ -192,7 +192,7 @@ async fn child_usage_candidate(
 }
 
 fn child_execution_context(host: &MontyTaskHost) -> ExecutionContext {
-    let context = host.run_context();
+    let context = host.run_context().expect("actual native chat fixture");
     let mut execution = ExecutionContext::local_default(
         context.actor.as_ref().unwrap().user_id.clone(),
         ExtensionId::new("native-child-candidate").unwrap(),
@@ -259,7 +259,7 @@ async fn run_child_export_for_review(
         .installed_catalogue
         .child_usage_tools_for_test(host.clone(), admission, program.clone())
         .unwrap();
-    let context = host.run_context();
+    let context = host.run_context().expect("actual native chat fixture");
     let input = crate::monty_task_input::load_monty_task_input(
         runtime.thread_service.as_ref(),
         &context.scope,
@@ -466,7 +466,11 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
         .unwrap();
     crate::db_config::save_config_key(
         rig.pool.as_ref(),
-        host.run_context().scope.tenant_id.as_str(),
+        host.run_context()
+            .expect("actual native chat fixture")
+            .scope
+            .tenant_id
+            .as_str(),
         "llm.default.provider_id",
         "must-not-rebind-original-child",
         crate::db_config::ConfigWriteContext::Operator,
@@ -653,11 +657,18 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                     // never an empty reply or another child attempt.
                     let state = brassclaw_turns::PgTurnStateStore::new(
                         rig.pool.clone(),
-                        host.run_context().scope.tenant_id.as_str(),
+                        host.run_context()
+                            .expect("actual native chat fixture")
+                            .scope
+                            .tenant_id
+                            .as_str(),
                     );
                     let mut children = brassclaw_turns::TurnSpawnTreeStateStore::children_of(
                         &state,
-                        &host.run_context().scope,
+                        &host
+                            .run_context()
+                            .expect("actual native chat fixture")
+                            .scope,
                         run,
                     )
                     .await
@@ -673,7 +684,12 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                         .turn_coordinator
                         .cancel_tree(CancelRunRequest {
                             scope: child.scope,
-                            actor: host.run_context().actor.clone().unwrap(),
+                            actor: host
+                                .run_context()
+                                .expect("actual native chat fixture")
+                                .actor
+                                .clone()
+                                .unwrap(),
                             run_id: child.run_id,
                             reason: SanitizedCancelReason::UserRequested,
                             idempotency_key: IdempotencyKey::new("native-child-cancellation")
@@ -739,11 +755,19 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                 );
                 let state = brassclaw_turns::PgTurnStateStore::new(
                     rig.pool.clone(),
-                    host.run_context().scope.tenant_id.as_str(),
+                    host.run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .tenant_id
+                        .as_str(),
                 );
                 let child_scope = brassclaw_turns::TurnScope {
                     thread_id: ThreadId::new(output["thread_id"].as_str().unwrap()).unwrap(),
-                    ..host.run_context().scope.clone()
+                    ..host
+                        .run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .clone()
                 };
                 let actual = brassclaw_turns::TurnSpawnTreeStateStore::get_run_record(
                     &state,
@@ -776,7 +800,11 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                 let id = Uuid::parse_str(output["child_run_id"].as_str().unwrap()).unwrap();
                 let scope = brassclaw_turns::TurnScope {
                     thread_id: ThreadId::new(output["thread_id"].as_str().unwrap()).unwrap(),
-                    ..host.run_context().scope.clone()
+                    ..host
+                        .run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .clone()
                 };
                 let state = brassclaw_turns::PgTurnStateStore::new(
                     rig.pool.clone(),
@@ -858,11 +886,19 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
                 assert_ne!(Some(id), child_run);
                 let state = brassclaw_turns::PgTurnStateStore::new(
                     rig.pool.clone(),
-                    host.run_context().scope.tenant_id.as_str(),
+                    host.run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .tenant_id
+                        .as_str(),
                 );
                 let child_scope = brassclaw_turns::TurnScope {
                     thread_id: ThreadId::new(output["thread_id"].as_str().unwrap()).unwrap(),
-                    ..host.run_context().scope.clone()
+                    ..host
+                        .run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .clone()
                 };
                 let actual = brassclaw_turns::TurnSpawnTreeStateStore::get_run_record(
                     &state,
@@ -909,11 +945,18 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
             Err(_) if reject_release => {
                 let state = brassclaw_turns::PgTurnStateStore::new(
                     rig.pool.clone(),
-                    host.run_context().scope.tenant_id.as_str(),
+                    host.run_context()
+                        .expect("actual native chat fixture")
+                        .scope
+                        .tenant_id
+                        .as_str(),
                 );
                 let children = brassclaw_turns::TurnSpawnTreeStateStore::children_of(
                     &state,
-                    &host.run_context().scope,
+                    &host
+                        .run_context()
+                        .expect("actual native chat fixture")
+                        .scope,
                     run,
                 )
                 .await
@@ -1037,7 +1080,7 @@ async fn native_child_uses_claimed_parent_old_catalogue_and_same_global_vm() {
     assert_eq!(client.query_one("SELECT count(*)::bigint FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND selection_bytes::jsonb->>'capability_id'='builtin.spawn_subagent'",
         &[&correlation]).await.unwrap().get::<_,i64>(0),6);
     assert_eq!(client.query_one("SELECT count(*)::bigint FROM brassclaw_session_threads WHERE tenant_id=$1 AND id LIKE 'monty-child-v1-%'",
-        &[&host.run_context().scope.tenant_id.as_str()]).await.unwrap().get::<_,i64>(0),4,"invalid input must create no additional child thread");
+        &[&host.run_context().expect("actual native chat fixture").scope.tenant_id.as_str()]).await.unwrap().get::<_,i64>(0),4,"invalid input must create no additional child thread");
     transaction.commit().await.unwrap();
     let finished = tokio::time::timeout(Duration::from_secs(30), parent)
         .await

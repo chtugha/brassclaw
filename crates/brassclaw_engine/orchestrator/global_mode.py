@@ -384,6 +384,21 @@ async def _execute_task(task):
     # The routing token indexes the admitted Rust-owned task host. Payload IDs
     # are data; changing one in Python cannot switch host authority.
     task_token = task["task_token"]
+    if task.get("format") == "monty-private-task/1":
+        _exact_fields(task, ["format", "entry", "work_id", "run_id",
+                             "workflow_checksum", "input_checksum", "task_token"])
+        if task["entry"] != "private":
+            raise RuntimeError("task_entry_invalid")
+        selected = await host.resolve_private_recipe(
+            task_token, task["work_id"], task["run_id"],
+            task["workflow_checksum"], task["input_checksum"])
+        if not isinstance(selected, dict) or selected.get("status") != "private_recipe":
+            raise RuntimeError("recipe_composition_failed")
+        receipt = await _execute_recipe(task_token, selected.get("component_id"),
+                                        selected.get("step_link"), selected.get("inputs"))
+        if not isinstance(receipt, str) or receipt == "":
+            raise RuntimeError("recipe_execution_failed")
+        return {"receipt_ref": receipt}
     user_input = task["user_input"]
     inputs = {"user_input": user_input, "history": task["history"]}
     # Named internal work is host-owned admission data. It never enters public

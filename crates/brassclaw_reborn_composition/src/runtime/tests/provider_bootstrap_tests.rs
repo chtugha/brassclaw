@@ -35,7 +35,10 @@ async fn complete(runtime: &Arc<RebornRuntime>, receipt: &ProviderMutationReceip
     assert_eq!(
         runtime
             .wait_for_terminal(
-                &definition.scope,
+                definition
+                    .origin
+                    .chat_scope()
+                    .expect("legacy chat original"),
                 TurnRunId::from_uuid(id),
                 &CancellationToken::new()
             )
@@ -62,7 +65,11 @@ async fn complete(runtime: &Arc<RebornRuntime>, receipt: &ProviderMutationReceip
         runtime
             .read_latest_assistant_text(
                 &definition.thread_scope,
-                &definition.scope.thread_id,
+                &definition
+                    .origin
+                    .chat_scope()
+                    .expect("legacy chat original")
+                    .thread_id,
                 TurnRunId::from_uuid(id)
             )
             .await

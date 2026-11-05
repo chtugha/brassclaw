@@ -63,7 +63,7 @@ async fn explicit_child_entry_preserves_typed_inputs_and_cannot_rematch_or_fall_
         let admission = Arc::new(
             pg_monty_admission::PgMontyAdmission::reserve(
                 database.pool.clone(),
-                host.run_context(),
+                host.run_context().expect("actual native chat fixture"),
                 host.attempt(),
             )
             .await
@@ -132,7 +132,11 @@ async fn explicit_child_entry_preserves_typed_inputs_and_cannot_rematch_or_fall_
         let history = threads
             .list_thread_history(ThreadHistoryRequest {
                 scope,
-                thread_id: host.run_context().thread_id.clone(),
+                thread_id: host
+                    .run_context()
+                    .expect("actual native chat fixture")
+                    .thread_id
+                    .clone(),
             })
             .await
             .unwrap();

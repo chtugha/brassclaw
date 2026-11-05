@@ -46,6 +46,12 @@ use crate::{
     },
 };
 
+#[path = "pg_private_work.rs"]
+mod private_work_store;
+pub use private_work_store::{
+    PgPrivateClaimParticipant, PgPrivateClaimReservation, PgPrivateOriginalVerifier,
+};
+
 /// Maximum number of optimistic-CAS retries before surfacing `TurnError::Unavailable`.
 const PG_CAS_RETRIES: usize = 12;
 
@@ -108,6 +114,7 @@ pub struct PgTurnStateStore {
     limits: InMemoryTurnStateStoreLimits,
     admission_limit_provider: Arc<dyn TurnAdmissionLimitProvider>,
     admission_commit_participant: Option<Arc<dyn PgTurnAdmissionCommitParticipant>>,
+    private_work_participant: std::sync::OnceLock<Arc<dyn PgPrivateClaimParticipant>>,
 }
 
 impl PgTurnStateStore {
@@ -118,6 +125,7 @@ impl PgTurnStateStore {
             limits: InMemoryTurnStateStoreLimits::default(),
             admission_limit_provider: Arc::new(AllowAllTurnAdmissionLimitProvider),
             admission_commit_participant: None,
+            private_work_participant: std::sync::OnceLock::new(),
         }
     }
 
@@ -821,6 +829,106 @@ impl LoopCheckpointStore for PgTurnStateStore {
 
 #[async_trait]
 impl TurnRunTransitionPort for PgTurnStateStore {
+    fn bind_private_work_participant(
+        &self,
+        participant: Arc<dyn PgPrivateClaimParticipant>,
+    ) -> Result<(), TurnError> {
+        self.private_work_participant
+            .set(participant)
+            .map_err(|_| TurnError::Unavailable {
+                reason: "private Work claim participant is already bound".into(),
+            })
+    }
+    async fn claim_next_work(
+        &self,
+        request: ClaimRunRequest,
+    ) -> Result<Option<crate::private_work::ClaimedWork>, TurnError> {
+        if request.scope_filter.is_some() {
+            return self.claim_next_run(request).await.map(|claim| {
+                claim.map(|claim| crate::private_work::ClaimedWork::Chat(Box::new(claim)))
+            });
+        }
+        let candidates = {
+            let client = self.pool.get().await.map_err(map_pg_pool)?;
+            client.query("SELECT kind,snapshot_thread,scope FROM (
+                SELECT 1 AS kind,NULL::text AS snapshot_thread,NULL::jsonb AS scope,
+                    ready_at AS queued_at,execution_run_id AS execution_id
+                FROM brassclaw_turns WHERE tenant_id=$1 AND record_kind='private_work' AND status='ready'
+                UNION ALL
+                SELECT 0,s.turn_id,r->'scope',(r->>'received_at')::timestamptz,(r->>'run_id')::uuid
+                FROM brassclaw_turns s CROSS JOIN LATERAL jsonb_array_elements(s.payload->'runs')r
+                WHERE s.tenant_id=$1 AND s.record_kind='legacy' AND s.status='snapshot'
+                    AND r->>'status'='Queued'
+            )c ORDER BY queued_at,execution_id",&[&self.tenant_id]).await.map_err(map_pg)?
+        };
+        for candidate in candidates {
+            if candidate.get::<_, i32>(0) == 1 {
+                let participant =
+                    self.private_work_participant
+                        .get()
+                        .ok_or_else(|| TurnError::Unavailable {
+                            reason: "private Work claim participant is not bound".into(),
+                        })?;
+                if let Some(claimed) = self
+                    .claim_next_private_work(&request, participant.as_ref())
+                    .await?
+                {
+                    return Ok(Some(crate::private_work::ClaimedWork::Private(Arc::new(
+                        claimed,
+                    ))));
+                }
+            } else {
+                let thread = ThreadId::from_trusted(candidate.get::<_, String>(1));
+                let scope: TurnScope =
+                    serde_json::from_value(candidate.get(2)).map_err(map_json_de)?;
+                let mut exact = request.clone();
+                exact.scope_filter = Some(scope);
+                let claimed = self
+                    .apply(&thread, |store| {
+                        let exact = exact.clone();
+                        async move {
+                            let result = store.claim_next_run(exact).await;
+                            (result, store)
+                        }
+                    })
+                    .await?;
+                if let Some(claimed) = claimed {
+                    return Ok(Some(crate::private_work::ClaimedWork::Chat(Box::new(
+                        claimed,
+                    ))));
+                }
+            }
+        }
+        Ok(None)
+    }
+    async fn heartbeat_work(
+        &self,
+        request: crate::private_work::WorkHeartbeatRequest,
+    ) -> Result<crate::private_work::WorkHeartbeat, TurnError> {
+        match request {
+            crate::private_work::WorkHeartbeatRequest::Chat(request) => self
+                .heartbeat(request)
+                .await
+                .map(|_| crate::private_work::WorkHeartbeat::Current),
+            crate::private_work::WorkHeartbeatRequest::Private(claimed) => self
+                .heartbeat_private_work(&claimed)
+                .await
+                .map(|cancelled| {
+                    if cancelled {
+                        crate::private_work::WorkHeartbeat::CancellationRequested
+                    } else {
+                        crate::private_work::WorkHeartbeat::Current
+                    }
+                }),
+        }
+    }
+    async fn fence_private_work(
+        &self,
+        claimed: &crate::private_work::ClaimedPrivateWork,
+    ) -> Result<(), TurnError> {
+        self.mark_private_work_unresolved(claimed).await
+    }
+
     async fn claim_next_run(
         &self,
         request: ClaimRunRequest,
@@ -877,6 +985,9 @@ impl TurnRunTransitionPort for PgTurnStateStore {
         &self,
         request: RecoverExpiredLeasesRequest,
     ) -> Result<RecoverExpiredLeasesResponse, TurnError> {
+        if request.scope_filter.is_none() {
+            self.fence_expired_private_work().await?;
+        }
         if let Some(scope) = &request.scope_filter {
             let thread_id = scope.thread_id.clone();
             return self

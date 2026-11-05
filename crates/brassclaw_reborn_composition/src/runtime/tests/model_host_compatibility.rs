@@ -952,7 +952,10 @@ async fn global_model_tool_followup_uses_real_mount_kernel_and_retained_output()
     )
     .await;
     let task_host = Arc::new(MontyTaskHost::new(handoff));
-    let context = task_host.run_context().clone();
+    let context = task_host
+        .run_context()
+        .expect("actual native chat fixture")
+        .clone();
     let mut owner = global_monty_owner::GlobalMontyOwner::start(
         &database.pool,
         global_monty_owner::GlobalMontyOwner::retained_test_worker(support::worker()).await,
@@ -1538,7 +1541,9 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         observed_root = Some(root);
         let duplicate = pg_monty_admission::PgMontyAdmission::reserve(
             database.pool.clone(),
-            actual_host.run_context(),
+            actual_host
+                .run_context()
+                .expect("actual native chat fixture"),
             attempt,
         )
         .await;
@@ -1550,7 +1555,7 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
             ..attempt
         };
         assert!(
-            matches!(pg_monty_admission::PgMontyAdmission::reserve(database.pool.clone(), actual_host.run_context(), stale).await,
+            matches!(pg_monty_admission::PgMontyAdmission::reserve(database.pool.clone(), actual_host.run_context().expect("actual native chat fixture"), stale).await,
             Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_fenced")
         );
         let history = threads
@@ -1679,7 +1684,11 @@ async fn global_no_match_reply_obeys_live_tool_policy_without_model_replay() {
     let history = threads
         .list_thread_history(ThreadHistoryRequest {
             scope,
-            thread_id: host.run_context().thread_id.clone(),
+            thread_id: host
+                .run_context()
+                .expect("actual native chat fixture")
+                .thread_id
+                .clone(),
         })
         .await
         .unwrap();
@@ -3064,7 +3073,10 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
     )
     .await;
     let (request, attempt, host) = handoff.into_parts();
-    let context = host.run_context().clone();
+    let context = host
+        .run_context()
+        .expect("actual native chat fixture")
+        .clone();
     let handoff = MontyTaskHandoff::new(request, attempt, host).unwrap();
     let driver = global_monty_driver::GlobalMontyDriver::new(
         owner.client(),
@@ -3371,7 +3383,11 @@ async fn completed_reply_survives_waiter_fencing_before_durable_settlement() {
     let history = threads
         .list_thread_history(ThreadHistoryRequest {
             scope,
-            thread_id: host.run_context().thread_id.clone(),
+            thread_id: host
+                .run_context()
+                .expect("actual native chat fixture")
+                .thread_id
+                .clone(),
         })
         .await
         .unwrap();

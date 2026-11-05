@@ -36,16 +36,16 @@ impl RuntimeMemoryEmbeddingPort for TaskMemoryEmbeddings {
         scope: &ResourceScope,
     ) -> Result<Option<Arc<dyn EmbeddingProvider>>, EmbeddingError> {
         let host = self.host.upgrade().ok_or_else(unavailable)?;
-        let context = host.run_context();
-        if scope.tenant_id != context.scope.tenant_id
-            || context
-                .scope
-                .explicit_owner_user_id()
-                .or_else(|| context.actor.as_ref().map(|actor| &actor.user_id))
-                != Some(&scope.user_id)
-            || scope.agent_id != context.scope.agent_id
-            || scope.project_id != context.scope.project_id
-            || scope.thread_id.as_ref() != Some(&context.thread_id)
+        let context = host.work_context();
+        let owner = host
+            .run_context()
+            .and_then(|chat| chat.scope.explicit_owner_user_id())
+            .or_else(|| context.actor.as_ref().map(|actor| &actor.user_id));
+        if scope.tenant_id != context.tenant_id
+            || owner != Some(&scope.user_id)
+            || scope.agent_id != context.agent_id
+            || scope.project_id != context.project_id
+            || scope.thread_id.as_ref() != host.run_context().map(|chat| &chat.thread_id)
         {
             return Err(unavailable());
         }

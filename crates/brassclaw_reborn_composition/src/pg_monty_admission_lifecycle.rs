@@ -15,16 +15,17 @@ impl PgMontyAdmission {
         host: &brassclaw_reborn::monty_task_host::MontyTaskHost,
     ) -> Result<(), AgentLoopDriverError> {
         let invalid = || failed("monty_model_preparation_invalid");
-        let context = host.run_context();
+        let chat = self.chat_origin()?;
+        let context = host.run_context().ok_or_else(invalid)?;
         let claimed = host.claimed_run().ok_or_else(invalid)?;
         if host.attempt() != self.attempt
-            || context.scope != self.scope
-            || context.actor != self.actor
-            || context.turn_id != self.turn_id
-            || context.accepted_message_ref.as_ref() != Some(&self.accepted)
+            || context.scope != chat.scope
+            || context.actor != chat.actor
+            || context.turn_id != chat.turn_id
+            || context.accepted_message_ref.as_ref() != Some(&chat.accepted)
             || context.trusted_internal_turn
-            || self.trusted_internal_turn
-            || self.source_binding_ref.as_ref() != Some(&claimed.state.source_binding_ref)
+            || chat.trusted_internal_turn
+            || chat.source_binding_ref.as_ref() != Some(&claimed.state.source_binding_ref)
             || claimed.state.source_binding_ref.as_str()
                 != brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
         {
@@ -111,7 +112,9 @@ impl PgMontyAdmission {
         &self,
         reason: brassclaw_monty_host::service::UnsubmittedReason,
     ) -> Result<(), AgentLoopDriverError> {
-        let outcome = serde_json::json!({"status":"failed","reason_kind":reason.reason_kind()});
+        if matches!(&self.origin, AdmissionOrigin::Private(_)) {
+            return Err(failed("private_settlement_requires_unsubmitted_proof"));
+        }
         let mut client = self
             .pool
             .get()
@@ -121,6 +124,20 @@ impl PgMontyAdmission {
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        self.settle_unsubmitted_in_transaction(&transaction, reason)
+            .await?;
+        transaction
+            .commit()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))
+    }
+
+    async fn settle_unsubmitted_in_transaction(
+        &self,
+        transaction: &Transaction<'_>,
+        reason: brassclaw_monty_host::service::UnsubmittedReason,
+    ) -> Result<(), AgentLoopDriverError> {
+        let outcome = serde_json::json!({"status":"failed","reason_kind":reason.reason_kind()});
         let row = transaction
             .query_opt(
                 "SELECT phase,started_at,outcome FROM brassclaw_monty_task_admissions
@@ -168,9 +185,6 @@ impl PgMontyAdmission {
                 return Err(failed("monty_admission_fenced"));
             }
         }
-        transaction
-            .commit()
-            .await
-            .map_err(|_| failed("monty_admission_database_failed"))
+        Ok(())
     }
 }

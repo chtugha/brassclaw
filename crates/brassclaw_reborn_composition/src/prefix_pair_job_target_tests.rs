@@ -166,8 +166,10 @@ async fn pair_job_target_retains_complete_source_owned_input_and_original_identi
         request: &request,
         program: &selected,
         input: &input,
-        scope: &scope,
-        thread_scope: &thread,
+        origin: &Origin::Chat {
+            scope: scope.clone(),
+            thread_scope: thread.clone(),
+        },
         created_by: "pair-metadata-operator",
     };
     // All failures precede metadata insertion, admission and native effects.
@@ -215,8 +217,10 @@ async fn pair_job_target_retains_complete_source_owned_input_and_original_identi
                     target: &other_target,
                     request: &offered,
                     input: &altered,
-                    scope: &bad_scope,
-                    thread_scope: &bad_thread,
+                    origin: &Origin::Chat {
+                        scope: bad_scope.clone(),
+                        thread_scope: bad_thread.clone()
+                    },
                     mode,
                     ..reservation
                 })

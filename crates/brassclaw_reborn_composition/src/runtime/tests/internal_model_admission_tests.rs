@@ -485,7 +485,7 @@ impl InternalRecipeSource for ModelSource {
         }
         let rows = self.pool.get().await.map_err(|_| rejected())?.query(
             "SELECT i.step_id,i.attempt_count::bigint,i.arguments_bytes,r.response_bytes FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_model_responses r USING(invocation_id) WHERE i.run_id=$1",
-            &[&self.host.run_context().run_id.as_uuid()],
+            &[&self.host.run_context().expect("actual native chat fixture").run_id.as_uuid()],
         ).await.map_err(|_| rejected())?;
         if rows.len() != self.program.bindings().len() {
             return Err(rejected());
@@ -524,7 +524,12 @@ impl crate::global_task_factory::MontyCatalogueProvider for ModelCatalogue {
         admission: Arc<crate::pg_monty_admission::PgMontyAdmission>,
         input: &TaskInput,
     ) -> Result<Option<Arc<dyn InternalRecipeSource>>, AgentLoopDriverError> {
-        if !host.is_result_only_completion() || host.run_context().trusted_internal_turn {
+        if !host.is_result_only_completion()
+            || host
+                .run_context()
+                .expect("actual native chat fixture")
+                .trusted_internal_turn
+        {
             return Err(failed());
         }
         *self.last_host.lock().unwrap() = Some(host.clone());
@@ -769,7 +774,10 @@ async fn native_internal_model_admission_settles_result_only_without_determinist
     let host = selected.last_host.lock().unwrap().clone().unwrap();
     assert!(host.is_result_only_completion());
     assert!(
-        !host.run_context().trusted_internal_turn,
+        !host
+            .run_context()
+            .expect("actual native chat fixture")
+            .trusted_internal_turn,
         "model work must not be relabeled deterministic"
     );
     let attempted_reply = host
@@ -857,7 +865,13 @@ async fn native_internal_model_admission_settles_result_only_without_determinist
     .await
     .unwrap();
     assert!(admitted.host.is_result_only_completion());
-    assert!(!admitted.host.run_context().trusted_internal_turn);
+    assert!(
+        !admitted
+            .host
+            .run_context()
+            .expect("actual native chat fixture")
+            .trusted_internal_turn
+    );
     assert!(!admitted.admission.task_models_captured());
     let foreign = crate::bootstrap_validation::admit(
         rig.pool.clone(),
@@ -945,7 +959,12 @@ async fn native_internal_model_admission_settles_result_only_without_determinist
         .unwrap();
     // Exercise real host validation failure, not a substitute factory returning
     // a manufactured error. No admission/fallback/model effect may result.
-    let mut wrong_scope = admitted.host.run_context().scope.clone();
+    let mut wrong_scope = admitted
+        .host
+        .run_context()
+        .expect("actual native chat fixture")
+        .scope
+        .clone();
     wrong_scope.agent_id = Some(brassclaw_host_api::AgentId::new("wrong-review-agent").unwrap());
     let wrong_thread_scope = ThreadScope {
         tenant_id: wrong_scope.tenant_id.clone(),

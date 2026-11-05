@@ -33,6 +33,11 @@ use crate::{
     pg_monty_admission::PgMontyAdmission,
 };
 
+pub(crate) struct CapturedPrivateRecipe {
+    pub(crate) definition: Arc<crate::private_work_definition::PrivateWorkDefinition>,
+    pub(crate) source: Arc<dyn crate::global_recipe_ports::InternalRecipeSource>,
+}
+
 /// Capture a complete coherent catalogue view for this admitted task, without
 /// execution. Production implementations retain approved exact
 /// revisions, combination reviews and actual implementations. Draft validation
@@ -133,6 +138,14 @@ pub(crate) trait MontyCatalogueProvider: Send + Sync {
     > {
         Ok(None)
     }
+    async fn capture_private(
+        &self,
+        _host: Arc<MontyTaskHost>,
+        _admission: Arc<PgMontyAdmission>,
+    ) -> Result<CapturedPrivateRecipe, AgentLoopDriverError> {
+        Err(failed("private_recipe_source_unavailable"))
+    }
+
     async fn prepare(
         &self,
         host: Arc<MontyTaskHost>,
@@ -350,7 +363,9 @@ impl OwnedGlobalTaskFactory {
         let parent_run: uuid::Uuid = row.get(0);
         let owner: brassclaw_threads::ThreadScope = serde_json::from_value(row.get(1))
             .map_err(|_| failed("mcp_parent_identity_invalid"))?;
-        let context = host.run_context();
+        let context = host
+            .run_context()
+            .ok_or_else(|| failed("monty_chat_origin_required"))?;
         if parent_run == host.attempt().run_id.as_uuid()
             || row.get::<_, uuid::Uuid>(4) != parent_run
             || row.get::<_, Value>(1) != row.get::<_, Value>(5)
@@ -383,7 +398,10 @@ impl OwnedGlobalTaskFactory {
             {
                 return Err(failed("mcp_parent_attempt_fenced"));
             }
-            let parent_context = parent.host.run_context();
+            let parent_context = parent
+                .host
+                .run_context()
+                .ok_or_else(|| failed("mcp_parent_identity_invalid"))?;
             if parent_context.scope.tenant_id != context.scope.tenant_id
                 || parent_context.scope.agent_id != context.scope.agent_id
                 || parent_context.scope.project_id != context.scope.project_id
@@ -425,9 +443,13 @@ impl OwnedGlobalTaskFactory {
         thread: &brassclaw_host_api::ThreadId,
     ) -> Result<Option<Arc<MontyTaskHost>>, AgentLoopDriverError> {
         let tasks = self.tasks()?;
-        let mut matching = tasks
-            .values()
-            .filter(|task| !task.settled && &task.host.run_context().thread_id == thread);
+        let mut matching = tasks.values().filter(|task| {
+            !task.settled
+                && task
+                    .host
+                    .run_context()
+                    .is_some_and(|context| &context.thread_id == thread)
+        });
         let host = matching.next().map(|task| task.host.clone());
         if matching.next().is_some() {
             return Err(failed("test_task_identity_ambiguous"));
@@ -478,12 +500,148 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
     ) -> Result<CancellationAckSettings, AgentLoopDriverError> {
         self.cancellation.current()
     }
+    fn private_host(
+        &self,
+        claimed: &brassclaw_turns::private_work::ClaimedPrivateWork,
+    ) -> Result<Arc<MontyTaskHost>, AgentLoopDriverError> {
+        let tasks = self.tasks()?;
+        let task = tasks
+            .get(&claimed.attempt())
+            .ok_or_else(|| failed("private_original_host_unavailable"))?;
+        let original = task
+            .host
+            .private_claim()
+            .ok_or_else(|| failed("private_original_host_invalid"))?;
+        if original.request() != claimed.request()
+            || original.definition_checksum() != claimed.definition_checksum()
+            || original.request_checksum() != claimed.request_checksum()
+            || task.settled
+        {
+            return Err(failed("private_original_host_invalid"));
+        }
+        Ok(task.host.clone())
+    }
+
+    async fn before_submit(&self, host: &Arc<MontyTaskHost>) -> Result<(), AgentLoopDriverError> {
+        if host.private_claim().is_none() {
+            return Ok(());
+        }
+        host.check_dispatch_open()
+            .map_err(|_| failed("monty_admission_fenced"))?;
+        let admission = {
+            let tasks = self.tasks()?;
+            let task = tasks
+                .get(&host.attempt())
+                .ok_or_else(|| failed("private_original_host_unavailable"))?;
+            if !Arc::ptr_eq(&task.host, host) || task.ports.is_none() || task.settled {
+                return Err(failed("private_original_host_invalid"));
+            }
+            task.admission.clone()
+        };
+        admission.mark_private_submission_intent().await
+    }
+
+    async fn build_private(
+        &self,
+        host: Arc<MontyTaskHost>,
+    ) -> Result<PreparedGlobalTask, AgentLoopDriverError> {
+        let claim = host
+            .private_claim()
+            .ok_or_else(|| failed("private_original_host_invalid"))?;
+        let admission = {
+            let tasks = self.tasks()?;
+            let task = tasks
+                .get(&host.attempt())
+                .ok_or_else(|| failed("private_original_host_unavailable"))?;
+            if !Arc::ptr_eq(&task.host, &host)
+                || task.preparation.is_some()
+                || task.ports.is_some()
+                || task.settled
+            {
+                return Err(failed("private_original_host_invalid"));
+            }
+            task.admission.clone()
+        };
+        self.ownership
+            .check()
+            .await
+            .map_err(|_| failed("monty_instance_ownership_failed"))?;
+        admission.persist_reservation().await?;
+        let captured = self
+            .catalogue
+            .capture_private(host.clone(), admission.clone())
+            .await?;
+        if captured.definition.checksum() != claim.definition_checksum()
+            || captured.definition.root().source_checksum() != self.root.source_checksum()
+        {
+            return Err(failed("private_preparation_root_invalid"));
+        }
+        let program = captured
+            .source
+            .captured_program()
+            .ok_or_else(|| failed("private_preparation_program_missing"))?;
+        {
+            let mut tasks = self.tasks()?;
+            let task = tasks
+                .get_mut(&host.attempt())
+                .ok_or_else(|| failed("private_original_host_unavailable"))?;
+            if task.preparation.is_some() {
+                return Err(failed("monty_task_preparation_conflict"));
+            }
+            task.preparation = Some(Arc::new(CapturedTaskPreparation::Internal(
+                captured.source.clone(),
+            )));
+        }
+        // First-slice private profiles are model-free, still using the common
+        // captured-source/native-binding path and current kernel dispatch guard.
+        crate::task_model_capture::capture_task_models(
+            &host,
+            &admission,
+            Some(program.as_ref()),
+            None,
+        )
+        .await?;
+        captured
+            .source
+            .bind_native_runtimes()
+            .map_err(|_| failed("private_recipe_binding_failed"))?;
+        let ports = Arc::new(
+            GlobalRecipePorts::for_internal(
+                host.clone(),
+                admission.clone(),
+                captured.source,
+                Some(self.ownership.clone()),
+                false,
+                self.recipe_capacity.clone(),
+            )
+            .with_private_definition(captured.definition.clone())
+            .map_err(|_| failed("private_recipe_origin_invalid"))?,
+        );
+        let scheduled: Arc<dyn TaskPorts> = ports.clone();
+        self.catalogue
+            .observe_task_ports(&host, &admission, Arc::downgrade(&scheduled))?;
+        self.tasks()?
+            .get_mut(&host.attempt())
+            .ok_or_else(|| failed("private_original_host_unavailable"))?
+            .ports = Some(ports.clone());
+        self.ownership
+            .check()
+            .await
+            .map_err(|_| failed("monty_instance_ownership_failed"))?;
+        Ok(PreparedGlobalTask {
+            input: captured.definition.task_input(claim).into(),
+            ports,
+        })
+    }
+
     async fn build(
         &self,
         host: Arc<MontyTaskHost>,
         mut input: TaskInput,
     ) -> Result<PreparedGlobalTask, AgentLoopDriverError> {
-        let context = host.run_context();
+        let context = host
+            .run_context()
+            .ok_or_else(|| failed("monty_chat_origin_required"))?;
         // The message ID is opaque typed data, not a UUID engine address. Check
         // the handoff before allocating an admission or exposing task ports.
         if input.conversation_id != context.thread_id.as_str()
@@ -701,7 +859,10 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             .get_mut(&host.attempt())
             .ok_or_else(|| failed("monty_task_registry_failed"))?
             .ports = Some(ports.clone());
-        Ok(PreparedGlobalTask { input, ports })
+        Ok(PreparedGlobalTask {
+            input: input.into(),
+            ports,
+        })
     }
 
     async fn settle_unsubmitted(
@@ -739,7 +900,11 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         if let Some(provider) = provider {
             provider.finish().await;
         }
-        admission.settle_unsubmitted(proof.reason()).await?;
+        if host.private_claim().is_some() {
+            admission.settle_private_unsubmitted(&proof).await?;
+        } else {
+            admission.settle_unsubmitted(proof.reason()).await?;
+        }
         let mut tasks = self.tasks()?;
         let task = tasks
             .get(&host.attempt())
@@ -866,7 +1031,17 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         if let Some(port) = &provider_port {
             port.finish().await;
         }
-        admission.settle(outcome).await?;
+        if host.private_claim().is_some() {
+            if receipt.root != self.root
+                || !receipt.withheld.is_empty()
+                || host.has_withheld_results()
+            {
+                return Err(failed("monty_service_reconciliation_required"));
+            }
+            admission.settle_private_native(outcome, &receipt).await?;
+        } else {
+            admission.settle(outcome).await?;
+        }
         // Optional discovery observes only acknowledged durable evidence. Its
         // pending/error state cannot replay or invalidate a completed task.
         ports.refresh_command_qualification().await;
@@ -901,5 +1076,62 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
 fn failed(reason: &str) -> AgentLoopDriverError {
     AgentLoopDriverError::Failed {
         reason_kind: reason.into(),
+    }
+}
+
+impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant for OwnedGlobalTaskFactory {
+    fn retain_reservation(
+        &self,
+        claimed: &brassclaw_turns::private_work::ClaimedPrivateWork,
+    ) -> Result<
+        Arc<dyn brassclaw_turns::pg_turn_state_store::PgPrivateClaimReservation>,
+        brassclaw_turns::TurnError,
+    > {
+        let invalid = || brassclaw_turns::TurnError::Unavailable {
+            reason: "private reservation requires original native custody".into(),
+        };
+        let mut tasks = self.tasks().map_err(|_| invalid())?;
+        if let Some((_, existing)) = tasks
+            .iter()
+            .find(|(attempt, _)| attempt.run_id == claimed.attempt().run_id)
+        {
+            let original = existing.host.private_claim().ok_or_else(invalid)?;
+            if original.request() != claimed.request()
+                || original.definition_checksum() != claimed.definition_checksum()
+                || original.request_checksum() != claimed.request_checksum()
+                || original.attempt().runner_id != claimed.attempt().runner_id
+                || existing.preparation.is_some()
+                || existing.ports.is_some()
+                || existing.receipt.is_some()
+                || existing.unsubmitted.is_some()
+                || existing.settled
+            {
+                return Err(invalid());
+            }
+            return Ok(existing.admission.clone());
+        }
+        let host = Arc::new(MontyTaskHost::new_private(Arc::new(claimed.clone())));
+        let retention = self.retention.retain(&host).map_err(|_| invalid())?;
+        let admission = Arc::new(
+            PgMontyAdmission::prepare_private(self.pool.clone(), Arc::new(claimed.clone()))
+                .map_err(|_| invalid())?,
+        );
+        tasks.insert(
+            claimed.attempt(),
+            RetainedTask {
+                host,
+                retention,
+                admission: admission.clone(),
+                preparation: None,
+                ports: None,
+                receipt: None,
+                execution_report: None,
+                settled: false,
+                provider_watch: None,
+                provider_port: None,
+                unsubmitted: None,
+            },
+        );
+        Ok(admission)
     }
 }

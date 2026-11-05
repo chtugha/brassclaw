@@ -449,7 +449,7 @@ pub(super) async fn execute(
             "measurement worker containment unresolved",
         )?;
         bootstrap_validation::settle_closed(&admitted).await?;
-        reports.push(json!({"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().thread_id,"root_vm":observed.receipt.root.vm_id(),"order":order(case),"steps":steps,"rejection":rejection,"execution":observed.report,"inputs_checksum":hash(&inputs)?}));
+        reports.push(json!({"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,"root_vm":observed.receipt.root.vm_id(),"order":order(case),"steps":steps,"rejection":rejection,"execution":observed.report,"inputs_checksum":hash(&inputs)?}));
     }
     let after = serving(&pool).await?;
     check(

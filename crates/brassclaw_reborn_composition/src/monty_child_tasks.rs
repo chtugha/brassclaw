@@ -588,7 +588,7 @@ impl RuntimeChildTaskPort for ChildPort {
     ) -> Result<RuntimeChildTaskOutcome, Error> {
         let owner = self.owner.upgrade().ok_or(Error::Unavailable)?;
         let runtime = owner.child_tasks.runtime.get().ok_or(Error::Unavailable)?;
-        let context = self.host.run_context();
+        let context = self.host.run_context().ok_or(Error::Fenced)?;
         let parent = self.host.claimed_run().ok_or(Error::Fenced)?;
         let actor = parent.state.actor.as_ref().ok_or(Error::Fenced)?;
         if scope.tenant_id != context.scope.tenant_id
@@ -884,6 +884,7 @@ async fn wait_for_child(
             let actor = operation
                 .parent
                 .run_context()
+                .ok_or(Error::Fenced)?
                 .actor
                 .clone()
                 .ok_or(Error::Fenced)?;

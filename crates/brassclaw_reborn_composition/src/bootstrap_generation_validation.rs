@@ -387,7 +387,7 @@ pub(super) async fn execute(
         let tx = client.transaction().await.map_err(invalid)?;
         let rejected_generation = malformed_absent(&tx).await?;
         tx.commit().await.map_err(invalid)?;
-        let record = json!({"rejection":rejection,"rejected_generation":rejected_generation,"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().thread_id,
+        let record = json!({"rejection":rejection,"rejected_generation":rejected_generation,"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,
             "worker_root":root.root,"task_inputs":hash(&task_inputs)?,"order":execution.observation_order(),"steps":steps});
         bootstrap_validation::close(&mut owner, &admitted).await?;
         observed.push(record);

@@ -29,10 +29,8 @@ pub const POST_REPLY_CAPABILITY_ID: &str = "host.post_reply";
 /// Rust-owned task host. Never serialize this object or its claim identity into
 /// Python. The hosting service addresses it using its own task routing token.
 pub struct MontyTaskHost {
-    request: AgentLoopDriverRunRequest,
+    origin: TaskOrigin,
     attempt: MontyTaskAttempt,
-    claimed_run: Option<Arc<brassclaw_turns::runner::ClaimedTurnRun>>,
-    host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
     fence: MontyTaskFence,
     memory_embeddings:
         std::sync::OnceLock<Arc<dyn brassclaw_host_runtime::RuntimeMemoryEmbeddingPort>>,
@@ -40,6 +38,17 @@ pub struct MontyTaskHost {
     withheld: Mutex<Vec<WithheldTaskPortResult>>,
     model_exchange_count: std::sync::atomic::AtomicU64,
     capability_dispatch_count: std::sync::atomic::AtomicU64,
+}
+
+enum TaskOrigin {
+    Chat {
+        request: Box<AgentLoopDriverRunRequest>,
+        claimed_run: Option<Arc<brassclaw_turns::runner::ClaimedTurnRun>>,
+        host: Arc<dyn AgentLoopDriverHost + Send + Sync>,
+    },
+    Private {
+        claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>,
+    },
 }
 
 /// Trusted supervisor evidence. Payloads have no Debug/serde surface and never
@@ -76,16 +85,75 @@ impl MontyTaskHost {
         let claimed_run = handoff.claimed_run().cloned();
         let (request, attempt, host) = handoff.into_parts();
         Self {
-            request,
+            origin: TaskOrigin::Chat {
+                request: Box::new(request),
+                claimed_run,
+                host,
+            },
             attempt,
-            claimed_run,
-            host,
             fence: MontyTaskFence::new(attempt),
             memory_embeddings: std::sync::OnceLock::new(),
             published_reply: Mutex::new(None),
             withheld: Mutex::new(Vec::new()),
             model_exchange_count: std::sync::atomic::AtomicU64::new(0),
             capability_dispatch_count: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    /// Only the actual PG claim supplies original private identity. The local
+    /// cancellation signal is fed by the existing worker heartbeat; durable
+    /// admission still rechecks PG before every actual dispatch.
+    pub fn new_private(claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>) -> Self {
+        let attempt = claimed.attempt();
+        Self {
+            origin: TaskOrigin::Private { claimed },
+            attempt,
+            fence: MontyTaskFence::new(attempt),
+            memory_embeddings: std::sync::OnceLock::new(),
+            published_reply: Mutex::new(None),
+            withheld: Mutex::new(Vec::new()),
+            model_exchange_count: std::sync::atomic::AtomicU64::new(0),
+            capability_dispatch_count: std::sync::atomic::AtomicU64::new(0),
+        }
+    }
+
+    fn chat_host(&self) -> Result<&Arc<dyn AgentLoopDriverHost + Send + Sync>, AgentLoopHostError> {
+        match &self.origin {
+            TaskOrigin::Chat { host, .. } => Ok(host),
+            TaskOrigin::Private { .. } => Err(AgentLoopHostError::new(
+                AgentLoopHostErrorKind::PolicyDenied,
+                "operation requires an actual chat origin",
+            )),
+        }
+    }
+
+    pub fn private_claim(&self) -> Option<&Arc<brassclaw_turns::private_work::ClaimedPrivateWork>> {
+        match &self.origin {
+            TaskOrigin::Private { claimed, .. } => Some(claimed),
+            TaskOrigin::Chat { .. } => None,
+        }
+    }
+
+    /// A typed projection of real identity, with no synthetic thread axis.
+    pub fn work_context(&self) -> brassclaw_turns::private_work::PrivateExecutionContext {
+        match &self.origin {
+            TaskOrigin::Private { claimed, .. } => claimed.request().context().clone(),
+            TaskOrigin::Chat { host, .. } => {
+                let context = host.run_context();
+                brassclaw_turns::private_work::PrivateExecutionContext {
+                    tenant_id: context.scope.tenant_id.clone(),
+                    agent_id: context.scope.agent_id.clone(),
+                    project_id: context.scope.project_id.clone(),
+                    actor: context.actor.clone(),
+                }
+            }
+        }
+    }
+
+    fn cancellation_observed(&self) -> bool {
+        match &self.origin {
+            TaskOrigin::Chat { host, .. } => host.observe_cancellation().is_some(),
+            TaskOrigin::Private { .. } => self.fence.check_open().is_err(),
         }
     }
 
@@ -103,7 +171,10 @@ impl MontyTaskHost {
         Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>>,
         AgentLoopHostError,
     > {
-        self.host
+        if self.private_claim().is_some() {
+            return Ok(None);
+        }
+        self.chat_host()?
             .capture_task_model_selection(parent, capture.clone())
             .await
     }
@@ -138,14 +209,16 @@ impl MontyTaskHost {
         input: Option<&brassclaw_turns::run_profile::LoopModelInputReference>,
     ) -> Result<(), AgentLoopHostError> {
         self.check_dispatch_open()?;
-        self.host.preflight_task_model_usage(input).await?;
+        self.chat_host()?.preflight_task_model_usage(input).await?;
         self.check_dispatch_open()
     }
 
     pub fn task_model_selection(
         &self,
     ) -> Option<Arc<dyn brassclaw_turns::run_profile::LoopTaskModelSelection>> {
-        self.host.task_model_selection()
+        self.chat_host()
+            .ok()
+            .and_then(|host| host.task_model_selection())
     }
 
     pub fn selected_model_route(
@@ -156,6 +229,7 @@ impl MontyTaskHost {
         }
         // Historical/contained hosts retain their explicit route contract.
         let route = self
+            .chat_host()?
             .run_context()
             .resolved_model_route
             .clone()
@@ -174,15 +248,23 @@ impl MontyTaskHost {
         Ok(route)
     }
 
-    pub fn run_context(&self) -> &LoopRunContext {
-        self.host.run_context()
+    pub fn run_context(&self) -> Option<&LoopRunContext> {
+        match &self.origin {
+            TaskOrigin::Chat { host, .. } => Some(host.run_context()),
+            TaskOrigin::Private { .. } => None,
+        }
     }
 
     /// Transport cleanup observes the same durable cancellation signal as the
     /// task host. This is not a VM acknowledgement or effect reconciliation.
     pub async fn cancellation_requested(&self) {
         tokio::select! {
-            _ = self.host.cancellation_requested() => {},
+            _ = async {
+                match &self.origin {
+                    TaskOrigin::Chat { host, .. } => host.cancellation_requested().await,
+                    TaskOrigin::Private { .. } => std::future::pending::<()>().await,
+                }
+            } => {},
             _ = self.fence.closed() => {},
         }
     }
@@ -204,22 +286,31 @@ impl MontyTaskHost {
     /// The actual worker claim stays behind the host boundary across waits.
     /// Durable admission must still recheck it; this is not a permission grant.
     pub fn claimed_run(&self) -> Option<&Arc<brassclaw_turns::runner::ClaimedTurnRun>> {
-        self.claimed_run.as_ref()
+        match &self.origin {
+            TaskOrigin::Chat { claimed_run, .. } => claimed_run.as_ref(),
+            TaskOrigin::Private { .. } => None,
+        }
     }
 
     /// Completion follows the original host-owned ingress, independently of
     /// whether this workflow may use a model. Durable admission still verifies
     /// the actual source/claim; this observation grants no Tool permission.
     pub fn is_result_only_completion(&self) -> bool {
-        self.run_context().trusted_internal_turn
-            || self.claimed_run.as_ref().is_some_and(|claimed| {
+        self.private_claim().is_some()
+            || self
+                .run_context()
+                .is_some_and(|context| context.trusted_internal_turn)
+            || self.claimed_run().is_some_and(|claimed| {
                 claimed.state.source_binding_ref.as_str()
                     == brassclaw_turns::run_profile::INTERNAL_MODEL_SOURCE_BINDING
             })
     }
 
-    pub fn request(&self) -> &AgentLoopDriverRunRequest {
-        &self.request
+    pub fn request(&self) -> Option<&AgentLoopDriverRunRequest> {
+        match &self.origin {
+            TaskOrigin::Chat { request, .. } => Some(request.as_ref()),
+            TaskOrigin::Private { .. } => None,
+        }
     }
 
     /// Retain this handle before dispatch; the supervisor can fence a dropped
@@ -272,7 +363,7 @@ impl MontyTaskHost {
         result: Result<T, AgentLoopHostError>,
         retain: impl FnOnce(T) -> WithheldTaskPortValue,
     ) -> Result<T, AgentLoopHostError> {
-        if self.host.observe_cancellation().is_some() {
+        if self.cancellation_observed() {
             self.fence.close();
         }
         call.finish_retaining(result, |call_id, value| {
@@ -299,7 +390,7 @@ impl MontyTaskHost {
     }
 
     fn check_cancellation(&self) -> Result<(), AgentLoopHostError> {
-        if self.host.observe_cancellation().is_some() {
+        if self.cancellation_observed() {
             self.fence.close();
             return Err(AgentLoopHostError::new(
                 AgentLoopHostErrorKind::Cancelled,
@@ -314,7 +405,7 @@ impl MontyTaskHost {
     ) -> Result<VisibleCapabilitySurface, AgentLoopHostError> {
         let call = self.begin_call()?;
         let result = self
-            .host
+            .chat_host()?
             .visible_capabilities(VisibleCapabilityRequest)
             .await;
         self.finish_call(call, result, WithheldTaskPortValue::VisibleCapabilities)
@@ -335,7 +426,7 @@ impl MontyTaskHost {
             ));
         }
         let call = self.begin_call()?;
-        let result = self.host.build_prompt_bundle(request).await;
+        let result = self.chat_host()?.build_prompt_bundle(request).await;
         self.finish_call(call, result, WithheldTaskPortValue::PromptBundle)
     }
 
@@ -348,7 +439,10 @@ impl MontyTaskHost {
         request: PreparedLoopPromptRequest,
     ) -> Result<LoopPromptBundle, AgentLoopHostError> {
         let call = self.begin_call()?;
-        let result = self.host.build_prepared_prompt_bundle(request).await;
+        let result = self
+            .chat_host()?
+            .build_prepared_prompt_bundle(request)
+            .await;
         self.finish_call(call, result, WithheldTaskPortValue::PromptBundle)
     }
 
@@ -359,7 +453,7 @@ impl MontyTaskHost {
         request: LoopModelRequest,
     ) -> Result<LoopModelResponse, AgentLoopHostError> {
         let call = self.begin_model_call(&request)?;
-        let result = self.host.stream_model(request).await;
+        let result = self.chat_host()?.stream_model(request).await;
         self.finish_call(call, result, WithheldTaskPortValue::ModelResponse)
     }
 
@@ -367,7 +461,11 @@ impl MontyTaskHost {
         &self,
         request: &LoopModelRequest,
     ) -> Result<MontyHostCall, AgentLoopHostError> {
-        if self.run_context().trusted_internal_turn {
+        if self.private_claim().is_some()
+            || self
+                .run_context()
+                .is_some_and(|context| context.trusted_internal_turn)
+        {
             return Err(AgentLoopHostError::new(
                 AgentLoopHostErrorKind::PolicyDenied,
                 "trusted internal turns require deterministic execution",
@@ -409,7 +507,7 @@ impl MontyTaskHost {
             bytes: Mutex::new(None),
         });
         let result = async {
-            self.host
+            self.chat_host()?
                 .stream_model_with_custody(request, custodian.clone())
                 .await?;
             // Only bytes durably retained by the original record may be delivered.
@@ -436,7 +534,7 @@ impl MontyTaskHost {
         self.capability_dispatch_count
             .fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let result = self
-            .with_memory_embeddings(self.host.invoke_capability(request))
+            .with_memory_embeddings(self.chat_host()?.invoke_capability(request))
             .await;
         self.finish_call(call, result, WithheldTaskPortValue::CapabilityOutcome)
     }
@@ -446,7 +544,10 @@ impl MontyTaskHost {
         request: AppendCapabilityResultRef,
     ) -> Result<LoopMessageRef, AgentLoopHostError> {
         let call = self.begin_call()?;
-        let result = self.host.append_capability_result_ref(request).await;
+        let result = self
+            .chat_host()?
+            .append_capability_result_ref(request)
+            .await;
         self.finish_call(
             call,
             result,
@@ -466,7 +567,7 @@ impl MontyTaskHost {
         }
         let call = self.begin_call()?;
         let content = request.reply.content.clone();
-        let result = self.host.finalize_assistant_message(request).await;
+        let result = self.chat_host()?.finalize_assistant_message(request).await;
         if let Ok(reference) = &result {
             // Retain actual success even if the attempt was fenced while the
             // transcript port awaited persistence. A late success is evidence

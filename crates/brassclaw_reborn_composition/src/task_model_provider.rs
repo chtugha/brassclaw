@@ -518,7 +518,7 @@ pub(crate) async fn task_embedding_provider(
         .ok_or_else(embedding_unavailable)?;
     selected
         .snapshot
-        .validate(host.run_context().scope.tenant_id.as_str())
+        .validate(host.work_context().tenant_id.as_str())
         .map_err(|_| embedding_unavailable())?;
     let provider = prepare_embedding(selected).await?;
     host.check_dispatch_open()

@@ -84,8 +84,10 @@ impl RebornRuntime {
                 program: &program,
                 input: &input,
                 original_input_limits: prepared.original_input_limits(),
-                scope: &scope,
-                thread_scope: &thread_scope,
+                origin: &crate::prefix_job_definitions::Origin::Chat {
+                    scope: scope.clone(),
+                    thread_scope: thread_scope.clone(),
+                },
                 created_by: caller.user_id.as_str(),
             },
         )
@@ -104,7 +106,7 @@ impl RebornRuntime {
                 .await
                 .map_err(|_| E::Unavailable)?
                 .ok_or(E::Unavailable)?;
-        if definition.scope.tenant_id.as_str() != self.webui_tenant_id()
+        if definition.origin.tenant_id().as_str() != self.webui_tenant_id()
             || !matches!(
                 definition.target,
                 crate::prefix_job_definitions::Target::ModelSetup { .. }

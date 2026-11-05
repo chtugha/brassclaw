@@ -214,6 +214,18 @@ pub trait MontyTurnDriverPort: Send + Sync {
     async fn drive_turn(&self, handoff: MontyTaskHandoff)
     -> Result<LoopExit, AgentLoopDriverError>;
 
+    /// The private branch retains its actual original claim and uses the same
+    /// global host lifecycle. Success is a native transport acknowledgement;
+    /// the Work/Admission owner, never this return value, writes settlement.
+    async fn drive_private(
+        &self,
+        _claimed: Arc<crate::private_work::ClaimedPrivateWork>,
+    ) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "private Work driver is unavailable".into(),
+        })
+    }
+
     /// Stop one claimed attempt. A completed/missing attempt is an idempotent
     /// no-op; another claim of the same run must never receive this signal.
     /// Success acknowledges actual owned attempt settlement, not merely

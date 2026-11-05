@@ -39,6 +39,9 @@ impl RebornRuntime {
         release_documents: bool,
     ) -> Result<Uuid, RebornRuntimeError> {
         validate_source_request(id, profile, expected_revision)?;
+        if caller.tenant_id.as_str() != self.webui_tenant_id() {
+            return Err(invalid("prefix original tenant differs"));
+        }
         let snapshot =
             if crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone())
                 .get(id)
@@ -129,7 +132,12 @@ impl RebornRuntime {
         if release_documents {
             request["source_capture"] = serde_json::json!("declared_release");
         }
-        let (scope, thread_scope) = self.prefix_definition_scope(id, &caller)?;
+        let context = brassclaw_turns::private_work::PrivateExecutionContext {
+            tenant_id: caller.tenant_id.clone(),
+            agent_id: Some(self.thread_scope.agent_id.clone()),
+            project_id: caller.project_id.clone(),
+            actor: Some(brassclaw_turns::TurnActor::new(caller.user_id.clone())),
+        };
         let target = Target::Profile {
             name: profile.into(),
             revision: expected_revision,
@@ -142,8 +150,11 @@ impl RebornRuntime {
                 || existing.operation != "generate"
                 || existing.mode != "source_only"
                 || existing.created_by != caller.user_id.as_str()
-                || existing.scope != scope
-                || existing.thread_scope != thread_scope
+                || existing
+                    .origin
+                    .context(&existing.created_by)
+                    .map_err(definition_error)?
+                    != context
                 || snapshot_bytes.is_some_and(|bytes| {
                     !same_source_input(&existing.input, profile, expected_revision, bytes)
                 })
@@ -156,13 +167,14 @@ impl RebornRuntime {
         } else {
             let snapshot_bytes = snapshot_bytes
                 .ok_or_else(|| invalid("source snapshot required for a new prefix job"))?;
-            let original_input_limits = crate::prefix_job_definitions::captured_input_limits(
-                self.installed_catalogue
-                    .preparation_policy()
-                    .await
-                    .map_err(|_| invalid("effective input limits unavailable"))?,
-            )
-            .map_err(definition_error)?;
+            let preparation = self
+                .installed_catalogue
+                .capture_task_preparation()
+                .await
+                .map_err(|_| invalid("acknowledged preparation capture unavailable"))?;
+            let original_input_limits =
+                crate::prefix_job_definitions::captured_input_limits(preparation.policy())
+                    .map_err(definition_error)?;
             crate::prefix_job_execution::validate_snapshot(
                 profile,
                 snapshot_bytes,
@@ -187,8 +199,10 @@ impl RebornRuntime {
                     program,
                     input: &input,
                     original_input_limits,
-                    scope: &scope,
-                    thread_scope: &thread_scope,
+                    origin: &crate::prefix_job_definitions::Origin::Private {
+                        context,
+                        preparation,
+                    },
                     created_by: caller.user_id.as_str(),
                 })
                 .await
@@ -231,8 +245,11 @@ impl RebornRuntime {
                 || existing.operation != "measure"
                 || existing.mode != "target"
                 || existing.created_by != caller.user_id.as_str()
-                || existing.scope != scope
-                || existing.thread_scope != thread_scope
+                || existing.origin
+                    != (crate::prefix_job_definitions::Origin::Chat {
+                        scope: scope.clone(),
+                        thread_scope: thread_scope.clone(),
+                    })
             {
                 return Err(RebornRuntimeError::PrefixJob(
                     brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
@@ -272,8 +289,10 @@ impl RebornRuntime {
                     program: &program,
                     input: &input,
                     original_input_limits,
-                    scope: &scope,
-                    thread_scope: &thread_scope,
+                    origin: &crate::prefix_job_definitions::Origin::Chat {
+                        scope: scope.clone(),
+                        thread_scope: thread_scope.clone(),
+                    },
                     created_by: caller.user_id.as_str(),
                 })
                 .await
@@ -318,8 +337,11 @@ impl RebornRuntime {
                 || existing.operation != "check_cases"
                 || existing.mode != "target"
                 || existing.created_by != caller.user_id.as_str()
-                || existing.scope != scope
-                || existing.thread_scope != thread_scope
+                || existing.origin
+                    != (crate::prefix_job_definitions::Origin::Chat {
+                        scope: scope.clone(),
+                        thread_scope: thread_scope.clone(),
+                    })
             {
                 return Err(RebornRuntimeError::PrefixJob(
                     brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
@@ -359,8 +381,10 @@ impl RebornRuntime {
                     program: &program,
                     input: &input,
                     original_input_limits,
-                    scope: &scope,
-                    thread_scope: &thread_scope,
+                    origin: &crate::prefix_job_definitions::Origin::Chat {
+                        scope: scope.clone(),
+                        thread_scope: thread_scope.clone(),
+                    },
                     created_by: caller.user_id.as_str(),
                 })
                 .await
@@ -401,9 +425,31 @@ impl RebornRuntime {
         &self,
         definition: crate::prefix_job_definitions::Definition,
     ) -> Result<Uuid, RebornRuntimeError> {
+        if matches!(
+            &definition.origin,
+            crate::prefix_job_definitions::Origin::Private { .. }
+        ) {
+            return self.admit_private_prefix_definition(definition).await;
+        }
         let invalid = |reason: &str| RebornRuntimeError::InvalidArgument {
             reason: reason.into(),
         };
+        if definition.operation == "generate" && definition.mode == "source_only" {
+            // Historical accepted executions keep their actual chat original.
+            // An old metadata-only definition cannot create another fake chat.
+            let scope = definition.origin.chat_scope().map_err(definition_error)?;
+            let state=self.turn_coordinator.get_run_state(GetRunStateRequest {
+                scope:scope.clone(),run_id:TurnRunId::from_uuid(definition.id),
+            }).await.map_err(|_|invalid("existing source job has no admitted execution; original state requires review"))?;
+            if state.source_binding_ref.as_str()
+                != brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
+                || state.actor.as_ref().map(|actor| actor.user_id.as_str())
+                    != Some(definition.created_by.as_str())
+            {
+                return Err(invalid("existing source job origin differs"));
+            }
+            return Ok(definition.id);
+        }
         let title = match &definition.target {
             crate::prefix_job_definitions::Target::Profile { name, .. } => {
                 format!("Prefix build: {name}")
@@ -436,13 +482,22 @@ impl RebornRuntime {
                 format!("Prefix model case check: {specification}")
             }
         };
+        let (scope, thread_scope) = match definition.origin {
+            crate::prefix_job_definitions::Origin::Chat {
+                scope,
+                thread_scope,
+            } => (scope, thread_scope),
+            crate::prefix_job_definitions::Origin::Private { .. } => {
+                return Err(invalid("prefix origin differs"));
+            }
+        };
         let id = definition.id;
-        let conversation = ConversationId(definition.scope.thread_id.clone());
+        let conversation = ConversationId(scope.thread_id.clone());
         let send_lock = self.send_lock_for(&conversation).await;
         let _guard = send_lock.lock().await;
         self.thread_service
             .ensure_thread(EnsureThreadRequest {
-                scope: definition.thread_scope.clone(),
+                scope: thread_scope.clone(),
                 thread_id: Some(conversation.0.clone()),
                 created_by_actor_id: definition.created_by.clone(),
                 title: Some(title),
@@ -452,10 +507,10 @@ impl RebornRuntime {
             .map_err(|error| RebornRuntimeError::ThreadService(error.to_string()))?;
         // This existing transport map is reconstructed from immutable storage on
         // every submission/reconnect; it is not the owner of durable job scope.
-        self.internal_conversation_scopes.lock().await.insert(
-            conversation.clone(),
-            (definition.thread_scope, definition.scope),
-        );
+        self.internal_conversation_scopes
+            .lock()
+            .await
+            .insert(conversation.clone(), (thread_scope, scope));
         let source =
             SourceBindingRef::new(brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING)
                 .map_err(|reason| invalid(&reason))?;
@@ -663,7 +718,7 @@ pub(super) async fn assert_global_snapshot_submission(
     assert_eq!(
         runtime
             .wait_for_terminal(
-                &definition.scope,
+                definition.origin.chat_scope().map_err(definition_error)?,
                 TurnRunId::from_uuid(id),
                 &CancellationToken::new()
             )
@@ -885,7 +940,10 @@ pub(super) async fn assert_global_snapshot_submission(
         .unwrap();
     let terminal = runtime
         .wait_for_terminal(
-            &release_definition.scope,
+            release_definition
+                .origin
+                .chat_scope()
+                .map_err(definition_error)?,
             TurnRunId::from_uuid(release_id),
             &CancellationToken::new(),
         )
@@ -1059,4 +1117,19 @@ pub(super) async fn assert_global_snapshot_submission(
         json!(true)
     );
     (core_id, sempai_id)
+}
+
+impl RebornRuntime {
+    async fn admit_private_prefix_definition(
+        &self,
+        definition: crate::prefix_job_definitions::Definition,
+    ) -> Result<Uuid, RebornRuntimeError> {
+        let id = definition.id;
+        self.installed_catalogue
+            .prepare_private_prefix(definition)
+            .await
+            .map_err(RebornRuntimeError::Build)?;
+        self.wake_sender.wake();
+        Ok(id)
+    }
 }

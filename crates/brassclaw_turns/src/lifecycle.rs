@@ -699,6 +699,40 @@ impl<S> TurnRunTransitionPort for LifecyclePublishingTurnStateStore<S>
 where
     S: TurnRunTransitionPort + ?Sized,
 {
+    fn bind_private_work_participant(
+        &self,
+        participant: Arc<dyn crate::pg_turn_state_store::PgPrivateClaimParticipant>,
+    ) -> Result<(), TurnError> {
+        self.inner.bind_private_work_participant(participant)
+    }
+    async fn claim_next_work(
+        &self,
+        request: crate::runner::ClaimRunRequest,
+    ) -> Result<Option<crate::private_work::ClaimedWork>, TurnError> {
+        let claimed = self.inner.claim_next_work(request).await?;
+        if let Some(crate::private_work::ClaimedWork::Chat(claimed)) = &claimed {
+            let event = TurnLifecycleEvent::from_run_state(
+                &claimed.state,
+                TurnEventKind::RunnerClaimed,
+                None,
+            );
+            self.publish_state_once_best_effort(claimed.state.clone(), event, "committed claim")
+                .await;
+        }
+        Ok(claimed)
+    }
+    async fn heartbeat_work(
+        &self,
+        request: crate::private_work::WorkHeartbeatRequest,
+    ) -> Result<crate::private_work::WorkHeartbeat, TurnError> {
+        self.inner.heartbeat_work(request).await
+    }
+    async fn fence_private_work(
+        &self,
+        claimed: &crate::private_work::ClaimedPrivateWork,
+    ) -> Result<(), TurnError> {
+        self.inner.fence_private_work(claimed).await
+    }
     async fn claim_next_run(
         &self,
         request: ClaimRunRequest,

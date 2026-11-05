@@ -3088,6 +3088,16 @@ pub async fn build_reborn_runtime(
                 reason: error.to_string(),
             })?;
         catalogue
+            .bind_private_work_context(brassclaw_turns::private_work::PrivateExecutionContext {
+                tenant_id: thread_scope.tenant_id.clone(),
+                agent_id: Some(thread_scope.agent_id.clone()),
+                project_id: thread_scope.project_id.clone(),
+                actor: Some(brassclaw_turns::TurnActor::new(actor_user_id.clone())),
+            })
+            .map_err(|error| RebornRuntimeError::InvalidArgument {
+                reason: error.to_string(),
+            })?;
+        catalogue
             .bind_preparation_settings(settings_owner.store().effective_view())
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
@@ -3106,6 +3116,13 @@ pub async fn build_reborn_runtime(
                 reason: error.to_string(),
             })?,
         );
+        brassclaw_turns::runner::TurnRunTransitionPort::bind_private_work_participant(
+            turn_state_store.as_ref(),
+            ports.clone(),
+        )
+        .map_err(|error| RebornRuntimeError::InvalidArgument {
+            reason: error.to_string(),
+        })?;
         let driver = Arc::new(
             crate::global_monty_driver::GlobalMontyDriver::new(
                 owner.client(),
@@ -8925,7 +8942,7 @@ mod tests {
         assert!(
             crate::pg_monty_admission::PgMontyAdmission::reserve(
                 rig.pool.clone(),
-                host.run_context(),
+                host.run_context().expect("actual native chat fixture"),
                 host.attempt()
             )
             .await
@@ -8993,6 +9010,7 @@ mod tests {
                 user_id: runtime.actor_user_id.to_string(),
                 agent_id: host
                     .run_context()
+                    .expect("actual native chat fixture")
                     .scope
                     .agent_id
                     .as_ref()
@@ -9000,6 +9018,7 @@ mod tests {
                     .to_string(),
                 project_id: host
                     .run_context()
+                    .expect("actual native chat fixture")
                     .scope
                     .project_id
                     .as_ref()
@@ -9015,6 +9034,7 @@ mod tests {
                 user_id: runtime.actor_user_id.to_string(),
                 agent_id: host
                     .run_context()
+                    .expect("actual native chat fixture")
                     .scope
                     .agent_id
                     .as_ref()
@@ -9022,6 +9042,7 @@ mod tests {
                     .to_string(),
                 project_id: host
                     .run_context()
+                    .expect("actual native chat fixture")
                     .scope
                     .project_id
                     .as_ref()

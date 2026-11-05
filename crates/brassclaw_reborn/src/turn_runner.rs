@@ -27,10 +27,11 @@ use brassclaw_turns::{
     AgentLoopDriverError, AgentLoopDriverRunRequest, LoopExit, SanitizedFailure, TurnError,
     TurnLeaseToken, TurnRunId, TurnRunWake, TurnRunWakeNotifier, TurnRunWakeNotifyError,
     TurnRunnerId, TurnScope, TurnStatus,
+    private_work::{ClaimedWork, WorkHeartbeat, WorkHeartbeatRequest},
     run_profile::MontyTurnDriverPort,
     runner::{
-        ClaimRunRequest, ClaimedTurnRun, HeartbeatRequest, RecordRunnerFailureRequest,
-        RecoverExpiredLeasesRequest, RelinquishRunRequest, TurnRunTransitionPort,
+        ClaimRunRequest, ClaimedTurnRun, RecordRunnerFailureRequest, RecoverExpiredLeasesRequest,
+        RelinquishRunRequest, TurnRunTransitionPort,
     },
 };
 
@@ -389,7 +390,7 @@ impl TurnRunnerWorker {
         Ok(true)
     }
 
-    async fn claim_run(&self) -> Result<Option<ClaimedTurnRun>, TurnRunnerError> {
+    async fn claim_run(&self) -> Result<Option<ClaimedWork>, TurnRunnerError> {
         let lease_token = TurnLeaseToken::new();
         let request = ClaimRunRequest {
             runner_id: self.runner_id,
@@ -399,7 +400,7 @@ impl TurnRunnerWorker {
 
         let claimed = self
             .transition_port
-            .claim_next_run(request)
+            .claim_next_work(request)
             .await
             .map_err(TurnRunnerError::ClaimFailed)?;
 
@@ -408,36 +409,24 @@ impl TurnRunnerWorker {
             return Ok(None);
         };
 
-        let run_id = claimed.state.run_id;
-        let status = claimed.state.status;
-
-        debug!(
-            runner_id = ?self.runner_id,
-            run_id = ?run_id,
-            status = ?status,
-            resolved_run_profile_id = claimed.resolved_run_profile.profile_id.as_str(),
-            resolved_run_profile_version = claimed.resolved_run_profile.profile_version.as_u64(),
-            loop_driver_id = claimed.resolved_run_profile.loop_driver.id.as_str(),
-            loop_driver_version = claimed.resolved_run_profile.loop_driver.version.as_u64(),
-            "claimed turn run"
-        );
-
+        debug!(runner_id=?self.runner_id,run_id=?claimed.attempt().run_id,
+            private=matches!(&claimed,ClaimedWork::Private(_)),"claimed work");
         Ok(Some(claimed))
     }
 
     /// Execute a claimed run: heartbeat, invoke driver, apply exit.
-    async fn execute_claimed_run(&self, claimed: ClaimedTurnRun, cancel: &CancellationToken) {
-        let run_id = claimed.state.run_id;
-        let runner_id = claimed.runner_id;
-        let lease_token = claimed.lease_token;
+    async fn execute_claimed_run(&self, claimed: ClaimedWork, cancel: &CancellationToken) {
+        let attempt = claimed.attempt();
+        let run_id = attempt.run_id;
+        let runner_id = attempt.runner_id;
+        let lease_token = attempt.lease_token;
 
         let exit_result = {
             let heartbeat_cancel = CancellationToken::new();
             let heartbeat = heartbeat_loop(
                 Arc::clone(&self.transition_port),
-                run_id,
-                runner_id,
-                lease_token,
+                claimed.heartbeat_request(),
+                attempt,
                 self.config.heartbeat_interval,
                 heartbeat_cancel.clone(),
             );
@@ -445,7 +434,7 @@ impl TurnRunnerWorker {
 
             // Resolve driver from registry and invoke it. Driver panics indicate
             // unknown partial state, so fail the active run with a sanitized category.
-            let driver = AssertUnwindSafe(self.invoke_driver(&claimed)).catch_unwind();
+            let driver = AssertUnwindSafe(self.invoke_work_driver(&claimed)).catch_unwind();
             tokio::pin!(driver);
 
             let exit_result = tokio::select! {
@@ -484,10 +473,13 @@ impl TurnRunnerWorker {
             Err(DriverInvocationError::DriverError(
                 AgentLoopDriverError::InputAdmissionPending
             ))
-        ) && chrono::Utc::now()
-            .signed_duration_since(claimed.state.received_at)
-            >= chrono::Duration::seconds(30)
-        {
+        ) && match &claimed {
+            ClaimedWork::Chat(chat) => {
+                chrono::Utc::now().signed_duration_since(chat.state.received_at)
+                    >= chrono::Duration::seconds(30)
+            }
+            ClaimedWork::Private(_) => false,
+        } {
             Err(DriverInvocationError::DriverError(
                 AgentLoopDriverError::Unavailable {
                     reason: "accepted input admission did not commit within 30 seconds".to_owned(),
@@ -499,9 +491,12 @@ impl TurnRunnerWorker {
 
         // Apply the exit or fail/cancel the claimed run through the compatibility transition.
         match exit_result {
-            Ok(exit) => {
-                self.apply_exit(&claimed, exit).await;
+            Ok(WorkDriverExit::Chat(exit)) => {
+                if let ClaimedWork::Chat(chat) = &claimed {
+                    self.apply_exit(chat, exit).await;
+                }
             }
+            Ok(WorkDriverExit::Private) => {}
             Err(err) => {
                 let mut stop_unacknowledged = false;
                 if let Some(monty) = self.monty_driver.as_ref() {
@@ -534,8 +529,44 @@ impl TurnRunnerWorker {
                 } else {
                     err
                 };
-                self.record_terminal_failure(run_id, runner_id, lease_token, &recovery_error)
-                    .await;
+                match &claimed {
+                    ClaimedWork::Chat(_) => {
+                        self.record_terminal_failure(
+                            run_id,
+                            runner_id,
+                            lease_token,
+                            &recovery_error,
+                        )
+                        .await
+                    }
+                    ClaimedWork::Private(private) => {
+                        if let Err(error) = self.transition_port.fence_private_work(private).await {
+                            error!(?run_id,error=%error,"private Work reconciliation fencing failed");
+                            cancel.cancel();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn invoke_work_driver(
+        &self,
+        claimed: &ClaimedWork,
+    ) -> Result<WorkDriverExit, DriverInvocationError> {
+        match claimed {
+            ClaimedWork::Chat(chat) => self.invoke_driver(chat).await.map(WorkDriverExit::Chat),
+            ClaimedWork::Private(private) => {
+                let monty = self.monty_driver.as_ref().ok_or_else(|| {
+                    DriverInvocationError::DriverError(AgentLoopDriverError::Unavailable {
+                        reason: "global Monty driver is unavailable".into(),
+                    })
+                })?;
+                monty
+                    .drive_private(private.clone())
+                    .await
+                    .map(|()| WorkDriverExit::Private)
+                    .map_err(DriverInvocationError::DriverError)
             }
         }
     }
@@ -757,12 +788,13 @@ fn runner_failure_rejection_is_expected(error: &TurnError) -> bool {
 
 async fn heartbeat_loop(
     port: Arc<dyn TurnRunTransitionPort>,
-    run_id: TurnRunId,
-    runner_id: TurnRunnerId,
-    lease_token: TurnLeaseToken,
+    request: WorkHeartbeatRequest,
+    attempt: brassclaw_turns::run_profile::MontyTaskAttempt,
     interval: Duration,
     cancel: CancellationToken,
 ) -> Result<(), TurnError> {
+    let run_id = attempt.run_id;
+    let runner_id = attempt.runner_id;
     let interval = if interval.is_zero() {
         Duration::from_millis(1)
     } else {
@@ -783,13 +815,11 @@ async fn heartbeat_loop(
                 return Ok(());
             }
             _ = tick.tick() => {
-                let request = HeartbeatRequest {
-                    run_id,
-                    runner_id,
-                    lease_token,
-                };
-                match port.heartbeat(request).await {
-                    Ok(_cursor) => {
+                match port.heartbeat_work(request.clone()).await {
+                    Ok(WorkHeartbeat::CancellationRequested)=>return Err(TurnError::Unavailable {
+                        reason:"private Work cancellation requested".into(),
+                    }),
+                    Ok(WorkHeartbeat::Current) => {
                         debug!(
                             runner_id = ?runner_id,
                             run_id = ?run_id,
@@ -809,6 +839,11 @@ async fn heartbeat_loop(
             }
         }
     }
+}
+
+enum WorkDriverExit {
+    Chat(LoopExit),
+    Private,
 }
 
 /// Internal error type for a single claim-and-run cycle.

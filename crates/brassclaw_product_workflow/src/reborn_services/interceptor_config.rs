@@ -469,10 +469,43 @@ pub enum PrefixJobTarget {
 /// reconciliation or permission to retry. Source/compiler bodies remain in
 /// their immutable owner instead of being copied into each status poll.
 #[derive(Clone, Serialize, Deserialize)]
-pub struct PrefixJobDetail {
+#[serde(tag = "format")]
+pub enum PrefixJobDetail {
+    #[serde(rename = "prefix-job-detail/1")]
+    Chat {
+        thread_id: String,
+        run_status: Option<brassclaw_turns::TurnStatus>,
+        #[serde(flatten)]
+        metadata: PrefixJobMetadata,
+    },
+    #[serde(rename = "prefix-job-detail/2")]
+    PrivateWork {
+        work_id: String,
+        work_status: Option<brassclaw_turns::private_work::PrivateWorkStatus>,
+        #[serde(flatten)]
+        metadata: PrefixJobMetadata,
+    },
+}
+impl std::ops::Deref for PrefixJobDetail {
+    type Target = PrefixJobMetadata;
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Chat { metadata, .. } | Self::PrivateWork { metadata, .. } => metadata,
+        }
+    }
+}
+
+impl std::ops::DerefMut for PrefixJobDetail {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            Self::Chat { metadata, .. } | Self::PrivateWork { metadata, .. } => metadata,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PrefixJobMetadata {
     pub job_id: String,
-    /// Opaque conversation reference for the existing run/event/cancel APIs.
-    pub thread_id: String,
     #[serde(flatten)]
     pub target: PrefixJobTarget,
     pub operation: String,
@@ -481,7 +514,6 @@ pub struct PrefixJobDetail {
     pub request_sha256: String,
     pub program_sha256: String,
     pub input_sha256: String,
-    pub run_status: Option<brassclaw_turns::TurnStatus>,
     pub admission_phase: Option<String>,
     pub answered_tool_calls: u64,
     pub pending_tool_calls: u64,

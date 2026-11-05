@@ -15,8 +15,8 @@ use brassclaw_pg::PgPool;
 use crate::monty_attempt_retention::{AttemptRetentionLease, AttemptRetentionRegistry};
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
-    ServiceClient, TaskControl, TaskInput, TaskOutcome, TaskPorts, TaskReceipt, TaskSubmission,
-    TaskTicket, UnsubmittedReason, UnsubmittedTask,
+    ServiceClient, TaskControl, TaskEnvelope, TaskInput, TaskOutcome, TaskPorts, TaskReceipt,
+    TaskSubmission, TaskTicket, UnsubmittedReason, UnsubmittedTask,
 };
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_threads::SessionThreadService;
@@ -57,7 +57,7 @@ pub(crate) trait CancellationAckSource: Send + Sync {
 /// The trusted host prepares entry metadata together with its retained ports.
 /// Identity/content remain typed values; a message cannot select its own entry.
 pub(crate) struct PreparedGlobalTask {
-    pub(crate) input: TaskInput,
+    pub(crate) input: TaskEnvelope,
     pub(crate) ports: Arc<dyn TaskPorts>,
 }
 
@@ -74,6 +74,27 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         host: Arc<MontyTaskHost>,
         input: TaskInput,
     ) -> Result<PreparedGlobalTask, AgentLoopDriverError>;
+
+    fn private_host(
+        &self,
+        _claimed: &brassclaw_turns::private_work::ClaimedPrivateWork,
+    ) -> Result<Arc<MontyTaskHost>, AgentLoopDriverError> {
+        Err(failed("private_original_host_unavailable"))
+    }
+
+    async fn build_private(
+        &self,
+        _host: Arc<MontyTaskHost>,
+    ) -> Result<PreparedGlobalTask, AgentLoopDriverError> {
+        Err(failed("monty_private_preparation_unavailable"))
+    }
+
+    async fn before_submit(&self, host: &Arc<MontyTaskHost>) -> Result<(), AgentLoopDriverError> {
+        if host.private_claim().is_some() {
+            return Err(failed("monty_private_submission_intent_unavailable"));
+        }
+        Ok(())
+    }
 
     /// Persist the actual service settlement under this exact admitted attempt.
     /// This follows root/child/host-future acknowledgement, never finish_task's
@@ -93,9 +114,13 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
     ) -> Result<(), AgentLoopDriverError>;
 }
 
+#[path = "global_private_completion.rs"]
+mod private_completion;
+
 /// Native settlement proof issued only after the real service receipt and
 /// its original factory acknowledgement completed. Neither a ResultOnly exit,
 /// receipt text nor a persisted observation row can construct this proof.
+#[derive(Clone)]
 pub(crate) struct SettledInternalCompletion {
     attempt: MontyTaskAttempt,
     receipt: Arc<TaskReceipt>,
@@ -109,6 +134,7 @@ impl SettledInternalCompletion {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct DrivenMontyTask {
     pub(crate) exit: LoopExit,
     pub(crate) internal_completion: Option<SettledInternalCompletion>,
@@ -167,6 +193,7 @@ pub(crate) struct GlobalMontyDriver {
     admission_pool: Option<Arc<PgPool>>,
     ports: Arc<dyn GlobalTaskPortsFactory>,
     attempts: Mutex<HashMap<MontyTaskAttempt, Arc<Attempt>>>,
+    private_deliveries: Arc<private_completion::PrivateDeliveries>,
     retention: Arc<AttemptRetentionRegistry>,
 }
 
@@ -273,7 +300,8 @@ impl GlobalMontyDriver {
                 "service_receipt": receipt,
                 "settlement_started": settlement_started,
                 "acknowledgement": acknowledgement,
-                "trusted_internal_turn": entry.host.run_context().trusted_internal_turn,
+                "work_origin": if entry.host.private_claim().is_some() {"private_work"} else {"chat"},
+                "trusted_internal_turn": entry.host.run_context().is_some_and(|context|context.trusted_internal_turn),
                 "finalized_reply_present": entry.host.finalized_reply_ref().is_some(),
                 "host_has_withheld_results": entry.host.has_withheld_results(),
             }));
@@ -298,6 +326,7 @@ impl GlobalMontyDriver {
             admission_pool: None,
             ports,
             attempts: Mutex::new(HashMap::new()),
+            private_deliveries: Arc::new(Mutex::new(HashMap::new())),
             retention,
         })
     }
@@ -410,7 +439,7 @@ impl GlobalMontyDriver {
     fn prepare_submission(
         &self,
         entry: &Arc<Attempt>,
-        input: TaskInput,
+        input: TaskEnvelope,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<AdmissionFuture, AgentLoopDriverError> {
         let mut pending = entry
@@ -423,10 +452,21 @@ impl GlobalMontyDriver {
         let service = self.service.clone();
         let host = entry.host.clone();
         let owner = Arc::downgrade(entry);
+        let factory = self.ports.clone();
         let submission = async move {
-            let result = service
-                .submit_unless_cancelled(input, ports, host.cancellation_requested())
-                .await;
+            let result = if factory.before_submit(&host).await.is_ok() {
+                service
+                    .submit_unless_cancelled(input, ports, host.cancellation_requested())
+                    .await
+            } else {
+                // This branch precedes the first service submit call. Ask the
+                // real service to seal its own biased pre-enqueue rejection;
+                // no missing receipt/intent/Tool row is used as no-effect proof.
+                host.fence_dispatch();
+                service
+                    .submit_unless_cancelled(input, ports, std::future::ready(()))
+                    .await
+            };
             let entry = owner
                 .upgrade()
                 .ok_or_else(|| failed("monty_attempt_state_failed"))?;
@@ -634,91 +674,83 @@ impl GlobalMontyDriver {
         &self,
         host: Arc<MontyTaskHost>,
     ) -> Result<DrivenMontyTask, AgentLoopDriverError> {
+        let run_id = host.attempt().run_id;
         let entry = self.register(host.clone())?;
         let guard = DriveGuard(entry.clone());
-        let context = host.run_context();
-        let alt_threads: Option<brassclaw_threads::PgSessionThreadService> =
-            if context.trusted_internal_turn {
-                self.admission_pool.as_ref().map(|pool| {
-                    brassclaw_threads::PgSessionThreadService::new(
-                        Arc::clone(pool),
-                        context.scope.tenant_id.as_str().to_owned(),
-                    )
-                })
-            } else {
-                None
-            };
-        let threads: &dyn brassclaw_threads::SessionThreadService = alt_threads
-            .as_ref()
-            .map(|s| s as &dyn brassclaw_threads::SessionThreadService)
-            .unwrap_or_else(|| self.threads.as_ref());
-        let input = match crate::monty_task_input::load_monty_task_input(
-            threads,
-            &context.scope,
-            context.accepted_message_ref.as_ref(),
-            context.turn_id,
-            context.run_id,
-        )
-        .await
-        {
-            Ok(input) => input,
-            Err(error) => {
-                drop(guard);
-                self.remove(host.attempt())?;
-                return Err(error);
+        let prepared = async {
+            if host.private_claim().is_some() {
+                return self.ports.build_private(host.clone()).await;
             }
-        };
-        let Some(user_input) = input.message.content else {
-            drop(guard);
-            self.remove(host.attempt())?;
-            return Err(failed("monty_admitted_input_invalid"));
-        };
-        // Identity, user content and complete eligible history are typed values,
-        // never Python source. Technical transport limits reject oversized work;
-        // they must not silently turn history into an empty or truncated list.
-        let input = TaskInput {
-            entry: brassclaw_monty_host::service::TaskEntry::Chat,
-            conversation_id: context.thread_id.to_string(),
-            message_id: input.message.message_id.to_string(),
-            turn_id: context.turn_id.to_string(),
-            run_id: context.run_id.to_string(),
-            user_input,
-            history: input
-                .prior_context
-                .messages
-                .into_iter()
-                .map(|message| {
-                    serde_json::json!({
-                        "message_id": message.message_id, "sequence": message.sequence,
-                        "kind": message.kind, "content": message.content,
+            let context = host
+                .run_context()
+                .ok_or_else(|| failed("monty_chat_origin_required"))?;
+            let alt_threads: Option<brassclaw_threads::PgSessionThreadService> =
+                if context.trusted_internal_turn {
+                    self.admission_pool.as_ref().map(|pool| {
+                        brassclaw_threads::PgSessionThreadService::new(
+                            Arc::clone(pool),
+                            context.scope.tenant_id.as_str().to_owned(),
+                        )
                     })
-                })
-                .collect(),
-        };
-        // History preparation may await. Keep the shared private credit active
-        // before constructing ports or retaining an admission address.
-        if let Err(error) = entry.retention.ensure_active(&host) {
-            drop(guard);
-            self.remove(host.attempt())?;
-            return Err(error);
+                } else {
+                    None
+                };
+            let threads: &dyn brassclaw_threads::SessionThreadService = alt_threads
+                .as_ref()
+                .map(|s| s as &dyn brassclaw_threads::SessionThreadService)
+                .unwrap_or_else(|| self.threads.as_ref());
+            let input = match crate::monty_task_input::load_monty_task_input(
+                threads,
+                &context.scope,
+                context.accepted_message_ref.as_ref(),
+                context.turn_id,
+                context.run_id,
+            )
+            .await
+            {
+                Ok(input) => input,
+                Err(error) => {
+                    return Err(error);
+                }
+            };
+            let Some(user_input) = input.message.content else {
+                return Err(failed("monty_admitted_input_invalid"));
+            };
+            // Identity, user content and complete eligible history are typed values,
+            // never Python source. Technical transport limits reject oversized work;
+            // they must not silently turn history into an empty or truncated list.
+            let input = TaskInput {
+                entry: brassclaw_monty_host::service::TaskEntry::Chat,
+                conversation_id: context.thread_id.to_string(),
+                message_id: input.message.message_id.to_string(),
+                turn_id: context.turn_id.to_string(),
+                run_id: context.run_id.to_string(),
+                user_input,
+                history: input
+                    .prior_context
+                    .messages
+                    .into_iter()
+                    .map(|message| {
+                        serde_json::json!({
+                            "message_id": message.message_id, "sequence": message.sequence,
+                            "kind": message.kind, "content": message.content,
+                        })
+                    })
+                    .collect(),
+            };
+            entry.retention.ensure_active(&host)?;
+            self.ports.build(host.clone(), input).await
         }
-        let PreparedGlobalTask { input, ports } = match self.ports.build(host.clone(), input).await
-        {
+        .await;
+        let PreparedGlobalTask { input, ports } = match prepared {
             Ok(prepared) => prepared,
             Err(error) => {
-                if let AgentLoopDriverError::Failed { reason_kind } = &error {
-                    tracing::warn!(run_id = %host.attempt().run_id, %reason_kind,
-                        "global task preparation stopped before submission");
-                }
                 drop(guard);
                 self.remove(host.attempt())?;
                 return Err(error);
             }
         };
-        let internal_entry = matches!(
-            &input.entry,
-            brassclaw_monty_host::service::TaskEntry::InternalRecipe { .. }
-        );
+        let internal_entry = input.is_internal_completion();
         // Retain before polling: a dropped drive waiter must neither discard
         // an accepted ticket nor strand a capacity-blocked preparation.
         let submission = match self.prepare_submission(&entry, input, ports)?.await {
@@ -752,7 +784,7 @@ impl GlobalMontyDriver {
                     reason_kind: LoopCancelledReasonKind::HostCancellation,
                     checkpoint_id: None,
                     interrupted_message_refs: Vec::new(),
-                    exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
+                    exit_id: LoopExitId::new(format!("exit:{}-cancelled", run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
                 })
                 .into());
@@ -802,7 +834,7 @@ impl GlobalMontyDriver {
                     return Err(failed("monty_internal_result_invalid"));
                 }
                 let reference =
-                    crate::monty_result_reference::result_reference(context.run_id, receipt_ref)
+                    crate::monty_result_reference::result_reference(run_id, receipt_ref)
                         .ok_or_else(|| failed("monty_internal_result_invalid"))?;
                 self.settle_attempt(&entry, receipt.clone()).await?;
                 let exit = LoopExit::Completed(LoopCompleted {
@@ -811,7 +843,7 @@ impl GlobalMontyDriver {
                     result_refs: vec![reference],
                     final_checkpoint_id: None,
                     usage_summary_ref: None,
-                    exit_id: LoopExitId::new(format!("exit:{}-completed", context.run_id))
+                    exit_id: LoopExitId::new(format!("exit:{}-completed", run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
                 });
                 let internal_completion = SettledInternalCompletion {
@@ -843,7 +875,7 @@ impl GlobalMontyDriver {
                     result_refs: Vec::new(),
                     final_checkpoint_id: None,
                     usage_summary_ref: None,
-                    exit_id: LoopExitId::new(format!("exit:{}-completed", context.run_id))
+                    exit_id: LoopExitId::new(format!("exit:{}-completed", run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
                 });
                 // A successful task cannot have a fenced late answer. If this
@@ -872,7 +904,7 @@ impl GlobalMontyDriver {
                         reason_kind: LoopCancelledReasonKind::HostCancellation,
                         checkpoint_id: None,
                         interrupted_message_refs: Vec::new(),
-                        exit_id: LoopExitId::new(format!("exit:{}-cancelled", context.run_id))
+                        exit_id: LoopExitId::new(format!("exit:{}-cancelled", run_id))
                             .map_err(|_| failed("monty_exit_reference_invalid"))?,
                     })
                     .into());
@@ -892,6 +924,13 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         self.drive_host(Arc::new(MontyTaskHost::new(handoff)))
             .await
             .map(|driven| driven.exit)
+    }
+
+    async fn drive_private(
+        &self,
+        claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>,
+    ) -> Result<(), AgentLoopDriverError> {
+        self.drive_original_private(claimed).await
     }
 
     async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {

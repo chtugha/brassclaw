@@ -23,6 +23,7 @@ mod admission_capacity;
 mod artifact_cache;
 pub mod global;
 pub mod heap;
+mod private_task_input;
 pub mod process;
 mod process_recipe;
 pub mod service;

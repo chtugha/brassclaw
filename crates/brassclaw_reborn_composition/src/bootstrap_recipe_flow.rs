@@ -122,7 +122,10 @@ pub(super) async fn execute(
     // driver. Reuse that driver's capture owner, without starting admission or
     // accepting request metadata as native workflow qualification.
     if admitted.host.is_result_only_completion()
-        && !admitted.host.run_context().trusted_internal_turn
+        && admitted
+            .host
+            .run_context()
+            .is_some_and(|context| !context.trusted_internal_turn)
     {
         admitted
             .admission

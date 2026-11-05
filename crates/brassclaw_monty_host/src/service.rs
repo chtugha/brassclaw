@@ -58,6 +58,41 @@ pub struct TaskInput {
     pub history: Vec<Value>,
 }
 
+pub use crate::private_task_input::PrivateTaskInput;
+
+/// Exactly one host-selected origin. Legacy chat callers retain TaskInput and
+/// convert at the service boundary; private work never allocates chat fields.
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum TaskEnvelope {
+    Chat(TaskInput),
+    Private(PrivateTaskInput),
+}
+impl From<TaskInput> for TaskEnvelope {
+    fn from(input: TaskInput) -> Self {
+        Self::Chat(input)
+    }
+}
+impl From<PrivateTaskInput> for TaskEnvelope {
+    fn from(input: PrivateTaskInput) -> Self {
+        Self::Private(input)
+    }
+}
+impl TaskEnvelope {
+    pub fn run_id(&self) -> &str {
+        match self {
+            Self::Chat(input) => &input.run_id,
+            Self::Private(input) => input.run_id(),
+        }
+    }
+    pub fn is_internal_completion(&self) -> bool {
+        match self {
+            Self::Chat(input) => matches!(input.entry, TaskEntry::InternalRecipe { .. }),
+            Self::Private(_) => true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TaskOutcome {
     Completed {
@@ -1016,15 +1051,30 @@ impl ServiceClient {
         }
     }
 
+    /// Observe this service's actual closure without a polling timer. Native
+    /// completion waiters use the same close signal as capacity waiters.
+    pub async fn closed(&self) {
+        loop {
+            let closed = self.closed_wake.notified();
+            tokio::pin!(closed);
+            closed.as_mut().enable();
+            if self.closed.load(Ordering::Acquire) {
+                return;
+            }
+            closed.await;
+        }
+    }
+
     /// Wait for bounded queue capacity and safe memory admission without a work
     /// polling loop or repeated input/history cloning. Caller-held inputs
     /// awaiting capacity are not admitted work. Cancellation before enqueue
     /// owns no VM task and returns any acquired queue credit.
     pub async fn submit_when_available(
         &self,
-        input: TaskInput,
+        input: impl Into<TaskEnvelope>,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<TaskTicket, ServiceFailure> {
+        let input = input.into();
         let prepared = if ports.dependency_parent().is_some() {
             self.prepare_available_input(input)?
         } else {
@@ -1037,11 +1087,12 @@ impl ServiceClient {
     /// credit before returning proof; an accepted ticket is never discarded.
     pub async fn submit_unless_cancelled(
         &self,
-        input: TaskInput,
+        input: impl Into<TaskEnvelope>,
         ports: Arc<dyn TaskPorts>,
         cancellation: impl Future<Output = ()>,
     ) -> Result<TaskSubmission, ServiceFailure> {
-        let run_id = input.run_id.clone();
+        let input = input.into();
+        let run_id = input.run_id().to_owned();
         let related = ports.dependency_parent().is_some();
         let prepared = tokio::select! {
             biased;
@@ -1085,7 +1136,7 @@ impl ServiceClient {
 
     async fn wait_for_input_capacity(
         &self,
-        input: TaskInput,
+        input: TaskEnvelope,
     ) -> Result<PreparedInput, ServiceFailure> {
         self.admission_credits.wait_available().await?;
         let (input, bytes) = self.prepare_input(input)?;
@@ -1144,9 +1195,10 @@ impl ServiceClient {
 
     pub fn submit(
         &self,
-        input: TaskInput,
+        input: impl Into<TaskEnvelope>,
         ports: Arc<dyn TaskPorts>,
     ) -> Result<TaskTicket, ServiceFailure> {
+        let input = input.into();
         let prepared = self.prepare_available_input(input)?;
         self.submit_with_credit(prepared.input, ports, prepared.credit)
     }
@@ -1154,7 +1206,10 @@ impl ServiceClient {
     /// A dependent must not wait for queue credits held by a sibling which
     /// cannot run until this dependent's parent finishes. Reject bounded
     /// overload explicitly; never invent extra capacity or replay a task.
-    fn prepare_available_input(&self, input: TaskInput) -> Result<PreparedInput, ServiceFailure> {
+    fn prepare_available_input(
+        &self,
+        input: TaskEnvelope,
+    ) -> Result<PreparedInput, ServiceFailure> {
         if self.closed.load(Ordering::Acquire) {
             return Err(ServiceFailure::Closed);
         }
@@ -1169,38 +1224,49 @@ impl ServiceClient {
         Ok(PreparedInput { input, credit })
     }
 
-    fn prepare_input(&self, input: TaskInput) -> Result<(Value, usize), ServiceFailure> {
-        if [
-            &input.conversation_id,
-            &input.message_id,
-            &input.turn_id,
-            &input.run_id,
-        ]
-        .iter()
-        .any(|id| id.is_empty())
-        {
-            return Err(ServiceFailure::InvalidInput);
-        }
-        if !input.entry.valid() {
-            return Err(ServiceFailure::InvalidInput);
-        }
+    fn prepare_input(&self, input: TaskEnvelope) -> Result<(Value, usize), ServiceFailure> {
         let observed_values = self.vm_bounds();
         let observed_frame = self.transport.frame_limit();
-        if input.history.len() > observed_values.max_value_nodes
-            || [
-                &input.conversation_id,
-                &input.message_id,
-                &input.turn_id,
-                &input.run_id,
-                &input.user_input,
-            ]
-            .iter()
-            .any(|value| value.len() > observed_values.max_value_bytes)
-            || input.history.iter().any(|value| {
-                !crate::process::transport_value(value, observed_values, observed_frame)
-            })
-        {
-            return Err(ServiceFailure::InvalidInput);
+        match &input {
+            TaskEnvelope::Chat(input) => {
+                if [
+                    &input.conversation_id,
+                    &input.message_id,
+                    &input.turn_id,
+                    &input.run_id,
+                ]
+                .iter()
+                .any(|id| id.is_empty())
+                {
+                    return Err(ServiceFailure::InvalidInput);
+                }
+                if !input.entry.valid() {
+                    return Err(ServiceFailure::InvalidInput);
+                }
+                if input.history.len() > observed_values.max_value_nodes
+                    || [
+                        &input.conversation_id,
+                        &input.message_id,
+                        &input.turn_id,
+                        &input.run_id,
+                        &input.user_input,
+                    ]
+                    .iter()
+                    .any(|value| value.len() > observed_values.max_value_bytes)
+                    || input.history.iter().any(|value| {
+                        !crate::process::transport_value(value, observed_values, observed_frame)
+                    })
+                {
+                    return Err(ServiceFailure::InvalidInput);
+                }
+            }
+            TaskEnvelope::Private(input) => {
+                let value =
+                    serde_json::to_value(input).map_err(|_| ServiceFailure::InvalidInput)?;
+                if !crate::private_task_input::valid_private_value(&value, false) {
+                    return Err(ServiceFailure::InvalidInput);
+                }
+            }
         }
         let input = serde_json::to_value(input).map_err(|_| ServiceFailure::InvalidInput)?;
         // Reserve the worker-added task token before admission. Serialization

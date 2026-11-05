@@ -2,8 +2,8 @@
 //! or retained records; their shared DTO/Skill contracts remain numeric.
 use super::WebUiV2HttpError;
 use brassclaw_product_workflow::{
-    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixJobTarget,
-    PrefixListResponse, PrefixModelDesignCatalogue, PrefixModelSpecification,
+    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixJobMetadata,
+    PrefixJobTarget, PrefixListResponse, PrefixModelDesignCatalogue, PrefixModelSpecification,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -211,26 +211,28 @@ mod tests {
                 serde_json::to_value(&detail).unwrap()["summary"]["profile_revision"],
                 json!(revision)
             );
-            let mut status = PrefixJobDetail {
-                job_id: "j".into(),
+            let mut status = PrefixJobDetail::Chat {
                 thread_id: "t".into(),
-                target: PrefixJobTarget::Profile {
-                    profile: "p".into(),
-                    profile_revision: revision,
-                },
-                operation: "measure".into(),
-                mode: "internal".into(),
-                created_at: "date".into(),
-                request_sha256: "r".into(),
-                program_sha256: "p".into(),
-                input_sha256: "i".into(),
                 run_status: None,
-                admission_phase: None,
-                answered_tool_calls: 2,
-                pending_tool_calls: 0,
-                failure_kind: None,
-                internal_receipt: Some(original.into()),
-                result_ref: None,
+                metadata: PrefixJobMetadata {
+                    job_id: "j".into(),
+                    target: PrefixJobTarget::Profile {
+                        profile: "p".into(),
+                        profile_revision: revision,
+                    },
+                    operation: "measure".into(),
+                    mode: "internal".into(),
+                    created_at: "date".into(),
+                    request_sha256: "r".into(),
+                    program_sha256: "p".into(),
+                    input_sha256: "i".into(),
+                    admission_phase: None,
+                    answered_tool_calls: 2,
+                    pending_tool_calls: 0,
+                    failure_kind: None,
+                    internal_receipt: Some(original.into()),
+                    result_ref: None,
+                },
             };
             let wire = job(&status).unwrap();
             assert_eq!(wire["profile_revision"], revision.to_string());

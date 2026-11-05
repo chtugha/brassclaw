@@ -128,6 +128,47 @@ pub trait TurnRunTransitionPort: Send + Sync {
         request: ClaimRunRequest,
     ) -> Result<Option<ClaimedTurnRun>, TurnError>;
 
+    /// The same worker/authority admits Chat and genuine private Work. Stores
+    /// without the private backend keep only their existing chat implementation.
+    async fn claim_next_work(
+        &self,
+        request: ClaimRunRequest,
+    ) -> Result<Option<crate::private_work::ClaimedWork>, TurnError> {
+        self.claim_next_run(request)
+            .await
+            .map(|claim| claim.map(|claim| crate::private_work::ClaimedWork::Chat(Box::new(claim))))
+    }
+    fn bind_private_work_participant(
+        &self,
+        _participant: std::sync::Arc<dyn crate::pg_turn_state_store::PgPrivateClaimParticipant>,
+    ) -> Result<(), TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "private Work requires the PostgreSQL claim owner".into(),
+        })
+    }
+    async fn heartbeat_work(
+        &self,
+        request: crate::private_work::WorkHeartbeatRequest,
+    ) -> Result<crate::private_work::WorkHeartbeat, TurnError> {
+        match request {
+            crate::private_work::WorkHeartbeatRequest::Chat(request) => self
+                .heartbeat(request)
+                .await
+                .map(|_| crate::private_work::WorkHeartbeat::Current),
+            crate::private_work::WorkHeartbeatRequest::Private(_) => Err(TurnError::Unavailable {
+                reason: "private Work heartbeat is unavailable".into(),
+            }),
+        }
+    }
+    async fn fence_private_work(
+        &self,
+        _claimed: &crate::private_work::ClaimedPrivateWork,
+    ) -> Result<(), TurnError> {
+        Err(TurnError::Unavailable {
+            reason: "private Work reconciliation is unavailable".into(),
+        })
+    }
+
     async fn heartbeat(&self, request: HeartbeatRequest) -> Result<EventCursor, TurnError>;
 
     async fn recover_expired_leases(

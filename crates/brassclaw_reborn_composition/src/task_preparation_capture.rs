@@ -127,3 +127,12 @@ impl PreparationCapture {
         &self.checksum
     }
 }
+
+#[cfg(all(
+    test,
+    feature = "postgres",
+    feature = "skills-db",
+    feature = "test-support"
+))]
+#[path = "task_preparation_capture_tests.rs"]
+mod tests;

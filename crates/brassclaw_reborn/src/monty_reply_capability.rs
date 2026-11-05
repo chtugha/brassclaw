@@ -31,7 +31,9 @@ impl FirstPartyCapabilityHandler for TaskReplyCapability {
         &self,
         request: FirstPartyCapabilityRequest,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
-        let context = self.0.run_context();
+        let context = self.0.run_context().ok_or_else(|| {
+            FirstPartyCapabilityError::new(RuntimeDispatchErrorKind::PolicyDenied)
+        })?;
         // These are data-address checks, not user/project role authorization.
         // The bound host owns its exact run/attempt and checks cancellation and
         // freshness again before and after actual transcript persistence.

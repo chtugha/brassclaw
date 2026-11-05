@@ -16,6 +16,7 @@ mod lifecycle;
 pub mod loop_exit;
 mod memory;
 pub mod pg_turn_state_store;
+pub mod private_work;
 mod request;
 mod response;
 pub mod run_profile;

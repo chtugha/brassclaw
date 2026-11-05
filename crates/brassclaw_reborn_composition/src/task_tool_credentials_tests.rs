@@ -79,7 +79,7 @@ async fn bound_account_view_fences_original_claim_scope_late_read_and_weak_lifet
     .unwrap();
     let host = admitted.host.clone();
     assert!(host.claimed_run().is_some());
-    let context = host.run_context();
+    let context = host.run_context().expect("actual native chat fixture");
     let scope = ResourceScope {
         tenant_id: context.scope.tenant_id.clone(),
         user_id: context.actor.as_ref().unwrap().user_id.clone(),
@@ -235,7 +235,7 @@ async fn bound_raw_view_retains_original_generation_absence_scope_and_host_fence
     .await
     .unwrap();
     let host = admitted.host.clone();
-    let context = host.run_context();
+    let context = host.run_context().expect("actual native chat fixture");
     let scope = ResourceScope {
         tenant_id: context.scope.tenant_id.clone(),
         user_id: context.actor.as_ref().unwrap().user_id.clone(),

@@ -344,7 +344,7 @@ pub(super) async fn execute(
                 "compiler duplicate changed immutable output",
             )?;
         }
-        reports.push(json!({"case":name,"profile":profile,"view":view,"run_id":admitted.attempt.run_id.as_uuid(),"revision":inputs["revision"],"thread_id":admitted.host.run_context().thread_id,"rejection":rejection,"inputs_checksum":hex::encode(typed_value_checksum(&inputs).map_err(invalid)?),"execution":observed.report,"invocations":invocations}));
+        reports.push(json!({"case":name,"profile":profile,"view":view,"run_id":admitted.attempt.run_id.as_uuid(),"revision":inputs["revision"],"thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,"rejection":rejection,"inputs_checksum":hex::encode(typed_value_checksum(&inputs).map_err(invalid)?),"execution":observed.report,"invocations":invocations}));
     }
     Ok(
         json!({"format":"source-compiler-behavior-observations/2","qualification_scope":scope,"cases":reports,"catalogue_activation":false,"model_quality":"unmeasured"}),

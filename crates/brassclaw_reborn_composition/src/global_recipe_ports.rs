@@ -150,7 +150,8 @@ pub(crate) struct GlobalRecipePorts {
     host: Arc<MontyTaskHost>,
     admission: Arc<PgMontyAdmission>,
     catalogue: Option<Arc<dyn MontyTaskCatalogue>>,
-    user_input: String,
+    user_input: Option<String>,
+    private_definition: Option<Arc<crate::private_work_definition::PrivateWorkDefinition>>,
     ownership: Option<crate::global_monty_owner::GlobalOwnerCheck>,
     internal: Option<Arc<dyn InternalRecipeSource>>,
     child: Option<Box<Mutex<Option<SelectedMontyRecipe>>>>,
@@ -189,7 +190,8 @@ impl GlobalRecipePorts {
             host,
             admission,
             catalogue: Some(catalogue),
-            user_input,
+            user_input: Some(user_input),
+            private_definition: None,
             ownership: Some(ownership),
             internal: None,
             child: None,
@@ -215,11 +217,17 @@ impl GlobalRecipePorts {
         // The requirement belongs to the validated source, never request data.
         // Existing explicit bootstrap observation and live bounds stay intact.
         let observe_behavior = observe_behavior || source.requires_step_observations();
+        let user_input = if host.private_claim().is_some() {
+            None
+        } else {
+            Some(source.reference().to_owned())
+        };
         Self {
             host,
             admission,
             catalogue: None,
-            user_input: source.reference().to_owned(),
+            user_input,
+            private_definition: None,
             ownership,
             internal: Some(source),
             child: None,
@@ -230,6 +238,25 @@ impl GlobalRecipePorts {
             fenced: std::sync::atomic::AtomicBool::new(false),
             dependency_parent: None,
         }
+    }
+
+    pub(crate) fn with_private_definition(
+        mut self,
+        definition: Arc<crate::private_work_definition::PrivateWorkDefinition>,
+    ) -> Result<Self, PortFailure> {
+        let claim = self
+            .host
+            .private_claim()
+            .ok_or_else(|| failure("private_recipe_origin_invalid"))?;
+        if self.internal.is_none()
+            || self.child.is_some()
+            || self.user_input.is_some()
+            || definition.checksum() != claim.definition_checksum()
+        {
+            return Err(failure("private_recipe_origin_invalid"));
+        }
+        self.private_definition = Some(definition);
+        Ok(self)
     }
 
     /// Only a trusted catalogue/admission owner supplies this selection. It
@@ -581,12 +608,34 @@ impl GlobalRecipePorts {
                     json!({"status":"child_recipe","component_id":id,"step_link":step_link,"inputs":inputs}),
                 )
             }
-            "resolve_internal_recipe" => {
+            "resolve_internal_recipe" | "resolve_private_recipe" => {
                 let source = self
                     .internal
                     .as_ref()
                     .ok_or_else(|| failure("internal_recipe_unavailable"))?;
-                if args != vec![json!(source.name()), json!(source.reference())] {
+                let private = name == "resolve_private_recipe";
+                if private {
+                    let claim = self
+                        .host
+                        .private_claim()
+                        .ok_or_else(|| failure("private_recipe_origin_invalid"))?;
+                    let definition = self
+                        .private_definition
+                        .as_ref()
+                        .ok_or_else(|| failure("private_recipe_origin_invalid"))?;
+                    if args
+                        != vec![
+                            json!(claim.request().work_id()),
+                            json!(claim.request().run_id().as_uuid()),
+                            json!(hex::encode(definition.workflow_checksum())),
+                            json!(hex::encode(definition.input_checksum())),
+                        ]
+                    {
+                        return Err(failure("private_recipe_identity_invalid"));
+                    }
+                } else if self.host.private_claim().is_some()
+                    || args != vec![json!(source.name()), json!(source.reference())]
+                {
                     return Err(failure("internal_recipe_identity_invalid"));
                 }
                 {
@@ -609,7 +658,7 @@ impl GlobalRecipePorts {
                 let (id, step_link) = self.retain_selection(selected).await?;
                 self.state.lock().await.intent_outcome = Some("internal_recipe");
                 Ok(
-                    json!({"status":"internal_recipe","component_id":id,"step_link":step_link,"inputs":inputs}),
+                    json!({"status":if private {"private_recipe"} else {"internal_recipe"},"component_id":id,"step_link":step_link,"inputs":inputs}),
                 )
             }
             "resolve_intent" => {
@@ -619,7 +668,7 @@ impl GlobalRecipePorts {
                 let [query] = args.as_slice() else {
                     return Err(failure("intent_resolution_failed"));
                 };
-                if query.as_str() != Some(self.user_input.as_str()) {
+                if query.as_str() != self.user_input.as_deref() {
                     return Err(failure("intent_resolution_failed"));
                 }
                 {
@@ -635,12 +684,19 @@ impl GlobalRecipePorts {
                     .catalogue
                     .as_ref()
                     .ok_or_else(|| failure("intent_resolution_failed"))?
-                    .resolve_intent(&self.user_input)
+                    .resolve_intent(
+                        self.user_input
+                            .as_deref()
+                            .ok_or_else(|| failure("intent_resolution_failed"))?,
+                    )
                     .await?;
                 self.check_fence()?;
                 match selected {
                     MontyIntentSelection::NoMatch
-                        if self.host.run_context().trusted_internal_turn =>
+                        if self
+                            .host
+                            .run_context()
+                            .is_some_and(|context| context.trusted_internal_turn) =>
                     {
                         self.state.lock().await.intent_outcome = Some("no_match");
                         Err(failure("non_match_instruction_unavailable"))

@@ -132,7 +132,7 @@ async fn retained_search(
         .builtin_with_policy(&capability, original.native_identity().unwrap(), policy)
         .unwrap();
     native.verify_native_artifact().await.unwrap();
-    let task = host.run_context();
+    let task = host.run_context().expect("actual native chat fixture");
     let mut execution = ExecutionContext::local_default(
         task.actor.as_ref().unwrap().user_id.clone(),
         ExtensionId::new("builtin").unwrap(),

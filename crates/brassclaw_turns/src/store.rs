@@ -314,6 +314,30 @@ impl TurnSpawnTreeStateStore for TurnStateDriverBox {
 
 #[async_trait::async_trait]
 impl crate::runner::TurnRunTransitionPort for TurnStateDriverBox {
+    fn bind_private_work_participant(
+        &self,
+        participant: Arc<dyn crate::pg_turn_state_store::PgPrivateClaimParticipant>,
+    ) -> Result<(), TurnError> {
+        self.0.bind_private_work_participant(participant)
+    }
+    async fn claim_next_work(
+        &self,
+        request: crate::runner::ClaimRunRequest,
+    ) -> Result<Option<crate::private_work::ClaimedWork>, TurnError> {
+        self.0.claim_next_work(request).await
+    }
+    async fn heartbeat_work(
+        &self,
+        request: crate::private_work::WorkHeartbeatRequest,
+    ) -> Result<crate::private_work::WorkHeartbeat, TurnError> {
+        self.0.heartbeat_work(request).await
+    }
+    async fn fence_private_work(
+        &self,
+        claimed: &crate::private_work::ClaimedPrivateWork,
+    ) -> Result<(), TurnError> {
+        self.0.fence_private_work(claimed).await
+    }
     async fn claim_next_run(
         &self,
         request: crate::runner::ClaimRunRequest,

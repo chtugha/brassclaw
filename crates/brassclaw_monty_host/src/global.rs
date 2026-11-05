@@ -1219,30 +1219,31 @@ impl GlobalVm {
             error.rejected_answer = Some(Box::new(HostAnswer::Return(task.into())));
             return Err(error);
         }
-        let valid = task.as_object().is_some_and(|task| {
-            // Exact current root envelope. Rust-only claims/credentials and new
-            // protocol fields cannot silently enter ordinary Python task state.
-            ((task.len() == 7 && !task.contains_key("entry"))
-                || (task.len() == 8
-                    && task
-                        .get("entry")
-                        .is_some_and(crate::task_entry::valid_value)))
-                && [
-                    "task_token",
-                    "conversation_id",
-                    "message_id",
-                    "turn_id",
-                    "run_id",
-                ]
-                .iter()
-                .all(|name| {
-                    task.get(*name)
-                        .and_then(Value::as_str)
-                        .is_some_and(|value| !value.is_empty())
-                })
-                && task.get("user_input").is_some_and(Value::is_string)
-                && task.get("history").is_some_and(Value::is_array)
-        });
+        let valid = crate::private_task_input::valid_private_value(&task, true)
+            || task.as_object().is_some_and(|task| {
+                // Exact current root envelope. Rust-only claims/credentials and new
+                // protocol fields cannot silently enter ordinary Python task state.
+                ((task.len() == 7 && !task.contains_key("entry"))
+                    || (task.len() == 8
+                        && task
+                            .get("entry")
+                            .is_some_and(crate::task_entry::valid_value)))
+                    && [
+                        "task_token",
+                        "conversation_id",
+                        "message_id",
+                        "turn_id",
+                        "run_id",
+                    ]
+                    .iter()
+                    .all(|name| {
+                        task.get(*name)
+                            .and_then(Value::as_str)
+                            .is_some_and(|value| !value.is_empty())
+                    })
+                    && task.get("user_input").is_some_and(Value::is_string)
+                    && task.get("history").is_some_and(Value::is_array)
+            });
         if !valid {
             let mut error = VmError::kind(VmFailure::InvalidInputs);
             error.rejected_answer = Some(Box::new(HostAnswer::Return(task.into())));
