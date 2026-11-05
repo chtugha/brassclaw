@@ -139,6 +139,16 @@ defects, attached to the implementation record. No source reset or blanket clean
 
 - [ ] **B1-02 — Bind a queue candidate to its original immutable submission.**
 
+**Integrated bounded prerequisite, 2026-11-05:** B-01 through `668158a5c`
+adds exact immutable original/queue binding, V206, complete supported projections,
+readback/CAS and visible unresolved legacy/joint states. Actual original capture,
+changed-candidate/concurrent-author/ACK-loss, full paging/metadata/escaped-size,
+retained Q1 and Sempai draft cases pass. All 24 UI-state/paging cases pass.
+The corrected lifecycle cases and final twelve-package strict lint pass;
+full `/3` execution, legacy custody disposition and durable original Work remain
+open. See [the exact current repair scope](docs/validation/2026-11-03-bob-repair-progress.md).
+The complete B1-02 exit below is not claimed.
+
 1. Extend the existing review submission/queue transaction boundary to retain
    the exact submission identity and checksum with the queued candidate. This
    semantic binding belongs here; durable execution metadata belongs to B3-06.

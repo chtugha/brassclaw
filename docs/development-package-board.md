@@ -1,6 +1,6 @@
 # Development package board
 
-Latest user direction, 2026-11-03: a supervisor and at most two implementing
+Latest user direction, reiterated 2026-11-04: a supervisor and at most two implementing
 package chats, a fresh chat for each new package, one shared Modal compiler.
 The [development policy](development-policy.md#shared-source-and-central-build-ownership-2026-10-30)
 defines the workflow. This board is development coordination, not a new product
@@ -41,8 +41,10 @@ The supervisor accepts the connected behavior, not a successful build alone.
 | --- | --- | --- |
 | A-01 — native Codex/Auth custody | `01a1a022-90b1-7932-8dcf-c0ef34b79fee`, host `local`, title “Bob 3 — Native Codex/Auth via Modal”; `/Users/ollama/.codex/worktrees/e8ba/brassclaw`, branch `codex/bob3-auth-custody` | Accepted within the recorded source/native scope, integrated through `a63100515`. Run-6's 71 passing cases plus run-7's two corrected cases cover the selected 73-case matrix; eight-package strict Clippy passed. Actual OpenAI issuer, full product/platform/release and broader B3 gates remain open. Full mandatory reading confirmed. Package closed; no independent new task in this chat. |
 | B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Accepted in its bounded inherited repair scope: exact-source Modal CLI/native smoke, actual incomplete-execution regression and all six retained Q1 callers passed, along with Oracle/pure-link/shared-driver cases. Eight-package strict Clippy passed. General pure approval, canonical genuine qualification, durable scheduling and B2 cutover remain open. Package closed; no new task here. |
-| B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Complete mandatory reading and revised contract reviewed. Bounded implementation authorized after the terminal run-6 and passing B-00 native cases; final predecessor lint remains supervisor-owned. Implement exact immutable request/queue binding, coherent supported caller capture and final CAS in the existing owners. V206 reserved. Keep actual legacy and joint-runner gaps explicit; no replacement scheduler/approval owner or blanket disabling of authors. |
-| A-02 — exact Pure-approval readers | `01a1a139-eac1-7e32-9ac9-5ddfff64994a`, host `local`, title “Paket A-02 — Exakte Pure-Approval-Reader”; `/Users/ollama/.codex/worktrees/27f9/brassclaw` | Fresh chat performs complete mandatory reading and a read-only B2-03 reader/identity/caller inventory plus contract proposal. No product implementation or paid compilation until supervisor review. Preserve old narrow qualification profiles; no independent new approval owner or partial unversioned format cutover. |
+| B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Accepted in its bounded scope through `5c5e84bf3`: exact original/CAS/fault/readback, complete queue projections/paging, actual Q1/Sempai/lifecycle cases, 24 UI tests and strict twelve-package lint. Modal CLI/native smoke also passed. V206 integrated. Full `/3`, legacy custody disposition, complete Sempai/Docplan conversion and durable Work remain open. Package closed, no next task here. |
+| A-02 — exact Pure-approval readers | `01a1a139-eac1-7e32-9ac9-5ddfff64994a`, host `local`, title “Paket A-02 — Exakte Pure-Approval-Reader”; `/Users/ollama/.codex/worktrees/27f9/brassclaw` | Narrow A-02a `f62e17a12` integrated as `9c8d3c12a`, scoped acceptance complete: exact canonical `/1` prepare/recheck/reload, occurrence isolation, ordinary publication, retained child, complete deployment caller and strict affected lint. No new general Pure approval, migration or selection format. Package closed; successor gets a fresh chat. |
+| A-03 — genuine Pure approval and exact retained successor contract | `01a1ab08-ac3e-7812-bf0d-ba6afcc18fb0`, host `local`, title “Paket A-03 — Pure-Approval und Retained-Vertrag”; `/Users/ollama/.codex/worktrees/a7f2/brassclaw` | Mandatory reading and actual source/contract review complete. Only A-03a source slice authorized: existing pure/structure graph receipts, exact native-inventory/subject observations and genuine narrow parser prerequisite/usage qualification. General P22 approval, `/2` emission, Q2/activation and Work remain separate open gates. No paid compile until coherent diff/self-review. B-02 owns shared private admission mechanics. |
+| B-02 — durable private Monty Work | `01a1ab4e-ae8c-7342-98a3-7b6b8ab50650`, host `local`, title “Paket B-02 — Dauerhafte private Monty-Aufträge”; `/Users/ollama/.codex/worktrees/d230/brassclaw` | Mandatory reading, actual source inventory and PRECISION-1 reviewed. Connected first source slice authorized: genuine private Origin/PG claim/admission/cancellation/live settlement for existing structural validation and quarantined source-only Prefix, through the one driver/worker and existing configured fallback. V207 reserved exclusively here. No general Pure approval or durable-proof restore claim; full diff/schema review before compilation. A-03 owns review semantics and parser observations. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
@@ -50,8 +52,10 @@ A-01's snapshot-safe custody successor; do not modify applied V203/V204. Coordin
 any later migration with the supervisor before using its number. V206 is reserved
 for B-01 if its reviewed original-request contract needs a migration. B-00 requires no migration by default;
 it must explain any actual schema need before implementation.
-V207 may be reserved for A-02 only after its contract explains an actual need;
-it is not permission to edit or reinterpret prior migration bytes.
+A-02a uses no migration. V207 is reserved exclusively for B-02's reviewed
+connected private-Work/Origin/capture/guard successor. A-03a has no migration
+allocation. Further schema changes require a distinct reviewed reservation;
+no allocation permits editing or reinterpreting prior migration bytes.
 
 ## Current native evidence and handoff
 

@@ -30,15 +30,74 @@ The native Apple unwind linker warning remains visible and unresolved; passing
 Clippy does not fix it. Actual OpenAI compatibility, complete platform/product
 acceptance and all three full Bob plans remain open.
 
-B-01 owns the original queue/submission binding, V206, in its fresh worktree.
-Its source-only `957b493c` is **not integrated or accepted**. Supervisor review
-requires visible unresolved-state projection, correct infrastructure error
-classification, aligned deferral tests, justified resource bounds and connected
-caller capture before compilation. A fresh A-02 is being created for exact
-Pure-approval reader investigation; shared responsibilities stay assigned once.
-General own approval/required checks, genuine seed qualification, exact retained
-carriage/publication and durable private Work/claims/wakes remain open. No new
-approval service, scheduler, Rust workflow loop or VM is authorized.
+### Integrated candidates and native run-8 — 2026-11-04/05
+
+B-01 source is integrated through `668158a5c`; its report is `62e6ad48a`.
+A-02a is integrated as `9c8d3c12a`. The exact-source B-01 Modal job
+`c44d9601-93af-4156-81c8-35c87d24918d` succeeded; supervisor native Mach-O,
+dependencies, `--version` and `--help` acceptance passed with CLI SHA-256
+`02e1c110a90d738946b8460c2d40119d6c85c9fedd46c847d0ad193dd33639ff`.
+This is not native database or full product acceptance.
+
+One local Screen compilation on `9c8d3c12a` completed in 463.38 seconds,
+covering Composition/LLM/WebUI libraries and the actual WebUI handler-contract
+target. Thirty-six selected Composition cases actually ran: **33 passed,
+three failed**. All six retained Q1 callers, original binding/fault/readback,
+complete class projection/paging, escaped >64-MiB seal, Sempai draft semantics,
+three pure-occurrence cases, real canonical prepare/recheck/reload, ordinary
+catalogue publication and retained child passed. Two new rejection-lifecycle
+fixtures set state 2 without the seal required by `q1_review_seal_complete`;
+B-01 owns their correction without disabling constraints. The larger existing
+component-deployment test stopped at its missing
+`BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT`; its later assertions remain unverified.
+Exact commands, source, worker, artifacts and individual failures are retained
+at `target/validation/bob-native-repair-20261104/run-8/`.
+Composition test executable SHA-256:
+`d297e80114f234a6dc7a237f59eda2c6a4f595e9a0a1e78470ebb68535d81cfd`.
+Strict lint was not reached because the selected runtime batch failed.
+The Apple unwind-size warning remains visible and open.
+
+UI regression source `7bd1bcdba` integrated as `d1f60d90f`: **22/24** actual
+Node cases passed. Both German-row cases fail because their fixture omits the
+real English fallback; the package owner is correcting the fixture against the
+actual i18n owner. These are JS-state/transport tests, not backend approval.
+
+A-03 now inventories the genuine class-22 Pure approval producer and exact
+versioned B1-APP/B2-SEL contract before any implementation. General own
+approval/required checks, genuine seed qualification, retained successor
+carriage/publication and durable private Work/claims/wakes remain open.
+No new approval service, scheduler, Rust workflow loop or VM is authorized.
+
+### Scoped package acceptance — 2026-11-05
+
+B-01 and A-02a are now accepted **within their bounded package scopes**.
+Run-9's 40 unchanged passing cases plus run-10's two corrected cases supply the
+42-case matrix; run-8's other applicable passing cases are reused. This is not
+a new single-executable 42-test pass. Run-10 compiled `5b935b7b5` in 163.06
+seconds and both corrected caller cases actually passed. The RR race now checks
+exact SQLSTATE 40001 plus a fresh state-3 refusal, and the ToolSkill action test
+binds a complete actual original/context without claiming functional approval.
+All 24 UI cases passed. B-01's final style/doc-only corrections are integrated
+through `5c5e84bf3`.
+
+Strict twelve-package Clippy with Composition `postgres,skills-db`, all targets
+and `-D warnings` passed in **149.44 seconds** on that source, at
+`target/validation/bob-native-repair-20261105/lint-5/`. Earlier strict failures
+and the one visible-warning diagnostic run remain recorded; the diagnostic's
+exit zero was never counted as acceptance. Final lint-4 stopped at the disk
+guard **before Cargo**. All three actual Composition executables and workers
+were hash-verified on the external evidence volume, then only
+`cargo clean -p brassclaw_reborn_composition` removed 14.4 GiB. The canonical
+target had 32 GiB free (84% used) afterwards. No whole-target, source, PG-data
+or evidence cleanup occurred. `pre-clean-preservation.json` records exact files.
+
+General pure approval, full class checks/behavior, genuine broad seed
+qualification, successor carriage/publication, joint review and legacy custody
+resolution, durable private Work and full platform/product/release acceptance
+remain open. The Apple native unwind-size warning is still visible and
+unresolved; passing metadata lint is not its repair. No further routine tests
+are needed for these accepted bounded packages absent a relevant new change.
+Continue A-03a and the reviewed B-02 successor work; commits do not end the goal.
 
 ## Earlier scoped receipts (preserved history)
 

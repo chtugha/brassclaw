@@ -224,10 +224,21 @@ fixtures for every field, profile, version and optional-field presence rule.
 
 - [ ] **B2-03 — Replace UUID-only qualification and unify the check.**
 
-1. Replace `load_independently_qualified(tx, &[Uuid]) -> BTreeSet<Uuid>` as an
-   authorization decision. Supply actual selected revision/export references.
-   Load exact root version/checksum, supported approval bytes/checksum and
-   complete closure through B1's trusted checker in the same coherent read.
+**Implemented narrow prerequisite, 2026-11-05:** A-02a (`9c8d3c12a`) removed
+UUID-only lookup and uses the same exact canonical owner check for preparation
+and retained verification. It separates exact occurrence refs from rooted graph
+coverage without changing `/1` bytes or adding positive general approval.
+Native canonical prepare/recheck/reload, foreign occurrence/version/checksum,
+ordinary publication, retained child and full component-deployment regressions
+passed in the [current scoped repair record](docs/validation/2026-11-03-bob-repair-progress.md).
+Final twelve-package strict lint passes. The general own-approval producer and
+successor carriage below are still required; do not recreate the removed UUID-only helper.
+
+1. Keep the removed UUID-only `load_independently_qualified` absent. Extend the
+   current exact shared occurrence checker with B1's genuinely verified general
+   profile, supplying actual selected revision/export references. Load exact root
+   version/checksum, supported approval bytes/checksum and complete closure
+   through B1's trusted checker in the same coherent read.
 2. Do not trust `root_id` membership, existence of any approval row, copied
    `validation_mode`, or mere FK validity. A valid v1 record never approves v2.
 3. Separate two meanings in the existing catalogue model: dependency coverage
@@ -241,9 +252,11 @@ fixtures for every field, profile, version and optional-field presence rule.
    independently, even if its UUID is already a dependency of a bound usage.
    Merely extending `independently_qualified` while leaving `covered` unchanged
    still rejects legitimate pure-only steps at the final dependency gate.
-5. Reuse one checked helper for preparation and selected-program verification.
-   Do not leave `verify_selected_approvals` limited to canonical generation
-   exceptions after teaching preparation about general pure approvals.
+5. Extend the one checked helper already shared by preparation and
+   selected-program verification. Preserve its existing exact canonical proof;
+   add the general verified profile at both entries together. Never teach
+   preparation about general pure approvals while retained verification still
+   accepts only canonical generation exceptions.
 6. Check actual selected membership/export and exact dependency edges, not a
    recipe-wide UUID union or approval for another variant. Pure source must meet
    its qualified no-host-calls/effect-free preload profile.
