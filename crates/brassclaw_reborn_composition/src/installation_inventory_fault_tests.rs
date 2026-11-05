@@ -17,6 +17,9 @@ enum Fault {
     LateCancel,
     CancelAck,
     CloseReject,
+    CloseAck,
+    TurnCloseAck,
+    PreterminalAndCloseReject,
     Negative,
 }
 struct Plan {
@@ -25,6 +28,7 @@ struct Plan {
     transport: Arc<AckCutTransport>,
     context: StdMutex<Option<Arc<Context>>>,
     reserved_run: OnceLock<Uuid>,
+    original_run: OnceLock<Uuid>,
     cancel_run: OnceLock<Uuid>,
     baseline: tokio::sync::OnceCell<Audit>,
     after: tokio::sync::OnceCell<Audit>,
@@ -175,13 +179,22 @@ pub(super) async fn before_intent(context: &Arc<Context>) -> Result<(), RebornBu
         Fault::AdmissionBindingAck => plan.transport.arm(3).map_err(invalid)?,
         Fault::NativeAck => plan.transport.arm(4).map_err(invalid)?,
         Fault::CompletionAck => plan.transport.arm(5).map_err(invalid)?,
-        Fault::CloseReject | Fault::IntentTimeout => {
+        Fault::CloseReject | Fault::PreterminalAndCloseReject | Fault::IntentTimeout => {
             let client = context.pool.get().await.map_err(invalid)?;
-            if plan.fault == Fault::CloseReject {
+            if matches!(
+                plan.fault,
+                Fault::CloseReject | Fault::PreterminalAndCloseReject
+            ) {
                 let admission = context.id("original-admission");
                 client.batch_execute(&format!(r#"CREATE FUNCTION installation_close_fault() RETURNS trigger LANGUAGE plpgsql AS $$
                     BEGIN IF NEW.phase='settled' AND EXISTS(SELECT 1 FROM reborn_component_review_evidence WHERE evidence_id='{admission}'::uuid AND evidence_bytes::jsonb #>> '{{report,run_id}}'=NEW.run_id::text) THEN RAISE EXCEPTION 'original installation close rejected'; END IF; RETURN NEW; END $$;
                     CREATE TRIGGER installation_close_fault BEFORE UPDATE ON brassclaw_monty_task_admissions FOR EACH ROW EXECUTE FUNCTION installation_close_fault();"#)).await.map_err(invalid)?;
+                if plan.fault == Fault::PreterminalAndCloseReject {
+                    let preterminal = context.id("preterminal");
+                    client.batch_execute(&format!(r#"CREATE FUNCTION installation_preterminal_fault() RETURNS trigger LANGUAGE plpgsql AS $$
+                    BEGIN IF NEW.evidence_id='{preterminal}'::uuid THEN RAISE EXCEPTION 'original installation preterminal write rejected'; END IF; RETURN NEW; END $$;
+                    CREATE TRIGGER installation_preterminal_fault BEFORE INSERT ON reborn_component_review_evidence FOR EACH ROW EXECUTE FUNCTION installation_preterminal_fault();"#)).await.map_err(invalid)?;
+                }
             } else {
                 let delay = context
                     .storage
@@ -204,14 +217,17 @@ pub(super) async fn before_intent(context: &Arc<Context>) -> Result<(), RebornBu
 }
 /// Called immediately before the existing actual reservation transaction, only
 /// for the contained installation-source-observer identity in cfg(test).
-pub(crate) fn before_reservation(run: Uuid) -> Result<(), RebornBuildError> {
+pub(crate) fn before_reservation(run: Uuid, reference: &str) -> Result<(), RebornBuildError> {
     if let Some(plan) = plan() {
-        let selected = plan
-            .context
-            .lock()
-            .unwrap()
-            .as_ref()
-            .is_some_and(|c| c.selection.profile() == plan.profile);
+        let selected = plan.context.lock().unwrap().as_ref().is_some_and(|c| {
+            c.selection.profile() == plan.profile
+                && reference == format!("installation-source-observation:{}", c.operation)
+        });
+        if selected {
+            plan.original_run
+                .set(run)
+                .map_err(|_| invalid("test original run already captured"))?;
+        }
         if selected && plan.fault == Fault::AdmissionReserveAck {
             plan.reserved_run
                 .set(run)
@@ -268,6 +284,23 @@ pub(crate) fn before_cancel(run: Uuid) -> Result<(), RebornBuildError> {
     Ok(())
 }
 
+pub(crate) fn before_close(run: Uuid) -> Result<(), RebornBuildError> {
+    if let Some(plan) =
+        plan().filter(|p| p.fault == Fault::CloseAck && p.original_run.get() == Some(&run))
+    {
+        plan.transport.arm(7).map_err(invalid)?;
+    }
+    Ok(())
+}
+pub(crate) fn before_turn_close(run: Uuid) -> Result<(), RebornBuildError> {
+    if let Some(plan) =
+        plan().filter(|p| p.fault == Fault::TurnCloseAck && p.original_run.get() == Some(&run))
+    {
+        plan.transport.arm(8).map_err(invalid)?;
+    }
+    Ok(())
+}
+
 async fn run_case(fault: Fault, profile: store::InstallationProfile) {
     use secrecy::ExposeSecret;
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -286,6 +319,8 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
                 ),
                 AckCutRule::next_commit(2),
                 AckCutRule::next_commit(6),
+                AckCutRule::next_commit(7),
+                AckCutRule::next_commit(8),
                 AckCutRule::after_bind(
                     3,
                     vec![b"installation-validator-admission/1".to_vec()],
@@ -318,6 +353,7 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
         transport: transport.clone(),
         context: StdMutex::new(None),
         reserved_run: OnceLock::new(),
+        original_run: OnceLock::new(),
         cancel_run: OnceLock::new(),
         baseline: tokio::sync::OnceCell::new(),
         after: tokio::sync::OnceCell::new(),
@@ -351,9 +387,14 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
         plan.after.get(),
         "complete consumer owner/status comparison must actually run"
     );
+    let failure = result.as_ref().err().map(ToString::to_string);
     let succeeds = matches!(
         fault,
-        Fault::AdmissionBindingAck | Fault::CompletionAck | Fault::Negative
+        Fault::AdmissionBindingAck
+            | Fault::CompletionAck
+            | Fault::CloseAck
+            | Fault::TurnCloseAck
+            | Fault::Negative
     );
     assert_eq!(
         result.is_ok(),
@@ -371,6 +412,8 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
             | Fault::NativeAck
             | Fault::CompletionAck
             | Fault::CancelAck
+            | Fault::CloseAck
+            | Fault::TurnCloseAck
     ));
     assert_eq!(
         transport.cut_count(),
@@ -392,8 +435,35 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
             .unwrap();
         client.batch_execute("DROP TRIGGER installation_intent_delay ON reborn_component_review_evidence; DROP FUNCTION installation_intent_delay()").await.unwrap();
     }
-    if fault == Fault::CloseReject {
+    if matches!(fault, Fault::CloseReject | Fault::PreterminalAndCloseReject) {
         rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER installation_close_fault ON brassclaw_monty_task_admissions; DROP FUNCTION installation_close_fault()").await.unwrap();
+    }
+    if fault == Fault::PreterminalAndCloseReject {
+        rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER installation_preterminal_fault ON reborn_component_review_evidence; DROP FUNCTION installation_preterminal_fault()").await.unwrap();
+    }
+    if matches!(fault, Fault::LateCancel | Fault::CancelAck) {
+        let message = failure.as_ref().unwrap();
+        assert!(
+            message.contains("cleanup confirmed Cancelled"),
+            "confirmed cancellation must be reported as terminal cleanup: {message}"
+        );
+        assert!(!message.contains("unacknowledged") && !message.contains("unresolved"));
+    }
+    if matches!(fault, Fault::CloseReject | Fault::PreterminalAndCloseReject) {
+        let message = failure.as_ref().unwrap();
+        assert!(
+            message.contains("original cleanup failed")
+                && message.contains("original close readback failed"),
+            "both actual close failure and failed original readback must survive: {message}"
+        );
+        if fault == Fault::PreterminalAndCloseReject {
+            let operation = message.split("original cleanup failed").next().unwrap();
+            assert!(
+                operation.contains("model-free contained receipt or quiescence incomplete")
+                    || operation.contains("bootstrap Recipe"),
+                "actual worker/receipt observation failure must precede its additional cleanup failure: {message}"
+            );
+        }
     }
     let mut client = rig.pool.get().await.unwrap();
     let tx = client
@@ -483,10 +553,17 @@ async fn run_case(fault: Fault, profile: store::InstallationProfile) {
         assert!(quiescence.is_some());
         assert!(completion.is_none());
     }
-    if fault == Fault::NativeAck {
+    if matches!(fault, Fault::NativeAck | Fault::PreterminalAndCloseReject) {
         assert!(pre.is_none());
         assert!(completion.is_none());
     }
+    if fault == Fault::PreterminalAndCloseReject {
+        assert!(
+            quiescence.is_none(),
+            "failed original receipt has no model-free quiescence proof"
+        );
+    }
+
     if succeeds {
         assert!(pre.is_some());
         assert!(quiescence.is_some());
@@ -602,5 +679,11 @@ cases! {
     installation_pure_close_error:CloseReject,Pure;
     installation_structure_cancel_ack:CancelAck,Structure;
     installation_pure_cancel_ack:CancelAck,Pure;
+    installation_structure_close_ack:CloseAck,Structure;
+    installation_pure_close_ack:CloseAck,Pure;
+    installation_structure_turn_close_ack:TurnCloseAck,Structure;
+    installation_pure_turn_close_ack:TurnCloseAck,Pure;
+    installation_structure_operation_and_cleanup_fail:PreterminalAndCloseReject,Structure;
+    installation_pure_operation_and_cleanup_fail:PreterminalAndCloseReject,Pure;
     installation_actual_negative_rules:Negative,Pure;
 }

@@ -285,7 +285,7 @@ async fn observe_installation_inner(
     let identity=json!({"components":binding.combination(),"association":binding.association().exact_bytes(),
         "worker_checksum":hex::encode(worker.checksum()),"qualifier":evidence::checksum(include_str!("bootstrap_inventory_qualification.rs")),
         "completion":evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),"primitives":evidence::checksum(include_str!("bootstrap_inventory_primitives.rs")),
-        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":root.reference()}).to_string();
+        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":root.reference()}).to_string();
     let qualification_id = Uuid::new_v5(&binding.skill().uuid, identity.as_bytes());
     let cached = qualification::qualify_packaged(
         pool.clone(),
@@ -361,6 +361,7 @@ async fn observe_installation_inner(
             "coverage":evidence::checksum(include_str!("../../brassclaw_engine/src/memory/retained_validator.rs")),
             "subject_inputs":evidence::checksum(include_str!("../../brassclaw_engine/src/memory/retained_validator_subject.rs")),
             "subject_store":evidence::checksum(include_str!("../../brassclaw_skills/src/review_installation_subject.rs")),
+            "contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),
         }).to_string()),
         worker_checksum: hex::encode(worker.checksum()),
         association_checksum: evidence::checksum(binding.association().exact_bytes()),
@@ -1069,38 +1070,46 @@ impl Context {
             Some(proof) => {
                 io::bounded(
                     self.storage.as_ref(),
-                    crate::bootstrap_validation::settle_quiescent_closed(&admitted, proof),
+                    crate::bootstrap_validation::settle_quiescent_closed(
+                        &self.pool, &admitted, proof,
+                    ),
                 )
                 .await
             }
-            None => {
-                io::bounded(
-                    self.storage.as_ref(),
-                    crate::bootstrap_validation::settle_closed(&admitted),
-                )
-                .await
-            }
+            None => io::bounded(
+                self.storage.as_ref(),
+                crate::bootstrap_validation::settle_closed(&admitted),
+            )
+            .await
+            .map(|_| TurnStatus::Completed),
         };
+        let close = crate::bootstrap_validation::read_source_close(
+            &self.pool,
+            &admitted,
+            quiescence_proof.get(),
+            close,
+            self.storage.as_ref(),
+        )
+        .await;
         let (preterminal_bytes, quiescence_bytes) = match observed {
             Ok(facts) => facts,
-            Err(error) => {
-                let _closed = close;
-                return Err(error);
+            Err(operation) => {
+                return Err(match close {
+                    Ok(record) => invalid(format!(
+                        "{operation}; original cleanup confirmed {:?}",
+                        record.status
+                    )),
+                    Err(cleanup) => invalid(format!("{operation}; {cleanup}")),
+                });
             }
         };
-        // A close ACK may be lost. Query the actual original Turn owner, outside
-        // any held pool client, and still require immutable Admission close.
-        let turn = io::bounded(self.storage.as_ref(), async {
-            admitted
-                .state
-                .get_run_record(&binding.scope, TurnRunId::from_uuid(binding.run_id))
-                .await
-                .map_err(invalid)?
-                .ok_or_else(|| invalid("installation Turn missing before completion"))
-        })
-        .await?;
+        let turn = close?;
+        if turn.status == TurnStatus::Cancelled {
+            return Err(invalid(
+                "installation observation cancelled; original cleanup confirmed Cancelled",
+            ));
+        }
         verify_turn(&turn, &binding)?;
-        let _closed_ack = close;
         let preterminal: Preterminal = serde_json::from_value(
             strict_json(&preterminal_bytes, REVISION_LIMITS).map_err(invalid)?["report"].clone(),
         )

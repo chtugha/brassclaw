@@ -111,9 +111,10 @@ pub(super) async fn settle_closed(admitted: &Admitted) -> Result<(), RebornBuild
 /// the actual model-free worker, host calls and transport have quiesced. Other
 /// contained callers retain their existing cleanup contract.
 pub(super) async fn settle_quiescent_closed(
+    pool: &PgPool,
     admitted: &Admitted,
     proof: &crate::bootstrap_recipe_flow::ModelFreeQuiescence,
-) -> Result<(), RebornBuildError> {
+) -> Result<brassclaw_turns::TurnStatus, RebornBuildError> {
     use brassclaw_turns::{
         TurnSpawnTreeStateStore, TurnStatus, runner::CancelRunCompletionRequest,
     };
@@ -127,33 +128,44 @@ pub(super) async fn settle_quiescent_closed(
     if original.native_auth_wait.is_some() {
         return Err(invalid("contained native custody is unresolved"));
     }
-    admitted
+    #[cfg(test)]
+    crate::validator_inventory_review::installation_test_before_close(
+        admitted.attempt.run_id.as_uuid(),
+    )?;
+    if let Err(ack) = admitted
         .admission
         .settle(json!({"status":"failed","reason_kind":"bootstrap_validation_closed"}))
         .await
-        .map_err(invalid)?;
-    let complete = admitted
+    {
+        // Only re-read the exact immutable original. Resolving its lost ACK
+        // permits the first Turn close, never another effect or reservation.
+        require_source_admission_closed(pool, admitted)
+            .await
+            .map_err(|readback| {
+                invalid(format!(
+                    "original Admission close failed: {ack}; original readback failed: {readback}"
+                ))
+            })?;
+    }
+    #[cfg(test)]
+    crate::validator_inventory_review::installation_test_before_turn_close(
+        admitted.attempt.run_id.as_uuid(),
+    )?;
+    let complete_error = match admitted
         .state
         .complete_run(CompleteRunRequest {
             run_id: admitted.attempt.run_id,
             runner_id: admitted.attempt.runner_id,
             lease_token: admitted.attempt.lease_token,
         })
-        .await;
-    let complete_error = match complete {
-        Ok(_) => return Ok(()),
+        .await
+    {
+        Ok(state) => return Ok(state.status),
         Err(error) => error,
     };
-    // A failed/lost complete ACK is not permission to invent settlement. Read
-    // the exact original; only CancelRequested with no native-auth custody can
-    // enter the existing fenced cancel transition. Completed ACK loss is left
-    // for the caller's normal immutable original readback.
-    let record = admitted
-        .state
-        .get_run_record(&admitted.host.run_context().scope, admitted.attempt.run_id)
-        .await
-        .map_err(invalid)?
-        .ok_or_else(|| invalid("contained original Turn missing during settlement"))?;
+    let record=admitted.state.get_run_record(&admitted.host.run_context().scope,admitted.attempt.run_id).await.map_err(|readback|
+        invalid(format!("original Turn complete failed: {complete_error}; original Turn readback failed: {readback}")))?
+        .ok_or_else(||invalid(format!("original Turn complete failed: {complete_error}; original Turn missing during settlement")))?;
     if record.status != TurnStatus::CancelRequested || record.native_auth_wait.is_some() {
         return Err(invalid(complete_error));
     }
@@ -161,7 +173,7 @@ pub(super) async fn settle_quiescent_closed(
     crate::validator_inventory_review::installation_test_before_cancel(
         admitted.attempt.run_id.as_uuid(),
     )?;
-    admitted
+    let state = admitted
         .state
         .cancel_run(CancelRunCompletionRequest {
             run_id: admitted.attempt.run_id,
@@ -170,10 +182,104 @@ pub(super) async fn settle_quiescent_closed(
         })
         .await
         .map_err(invalid)?;
-    // Cancelled is terminal cleanup, never successful source qualification.
-    Err(invalid(
-        "contained source observation cancelled after quiescence",
-    ))
+    // Cancelled is successful technical cleanup, never qualification success.
+    Ok(state.status)
+}
+
+async fn require_source_admission_closed(
+    pool: &PgPool,
+    admitted: &Admitted,
+) -> Result<(), RebornBuildError> {
+    use sha2::{Digest, Sha256};
+    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool).await?;
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .map_err(invalid)?;
+    let row=tx.query_opt("SELECT phase,outcome,scope,runner_id,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1",&[&admitted.attempt.run_id.as_uuid()]).await.map_err(invalid)?
+        .ok_or_else(||invalid("contained original Admission missing"))?;
+    if row.get::<_, String>(0) != "settled"
+        || row.get::<_, Option<Value>>(1)
+            != Some(json!({"status":"failed","reason_kind":"bootstrap_validation_closed"}))
+        || row.get::<_, Value>(2) != json!(admitted.host.run_context().scope)
+        || row.get::<_, Uuid>(3) != admitted.attempt.runner_id.as_uuid()
+        || row.get::<_, Vec<u8>>(4)
+            != Sha256::digest(serde_json::to_vec(&admitted.attempt.lease_token).map_err(invalid)?)
+                .to_vec()
+    {
+        return Err(invalid("contained original Admission close not confirmed"));
+    }
+    tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
+    Ok(())
+}
+
+/// Read both original owners without holding a client across Turn lookup.
+/// The acknowledged technical Store source bounds this complete logical read.
+/// This can resolve a lost ACK but performs no transition or task replay.
+pub(super) async fn read_source_close(
+    pool: &PgPool,
+    admitted: &Admitted,
+    proof: Option<&crate::bootstrap_recipe_flow::ModelFreeQuiescence>,
+    acknowledgement: Result<brassclaw_turns::TurnStatus, RebornBuildError>,
+    storage: &dyn brassclaw_resources::PgResourceStoreSettingsSource,
+) -> Result<brassclaw_turns::TurnRunRecord, RebornBuildError> {
+    use brassclaw_turns::{TurnSpawnTreeStateStore, TurnStatus};
+    let readback = crate::bootstrap_evidence::io::bounded(storage, async {
+        require_source_admission_closed(pool, admitted).await?;
+        let record = admitted
+            .state
+            .get_run_record(&admitted.host.run_context().scope, admitted.attempt.run_id)
+            .await
+            .map_err(invalid)?
+            .ok_or_else(|| invalid("contained original Turn missing after close"))?;
+        if record.run_id != admitted.attempt.run_id
+            || record.scope != admitted.host.run_context().scope
+            || record.claim_count != 1
+            || record.runner_id.is_some()
+            || record.lease_token.is_some()
+            || record.lease_expires_at.is_some()
+            || record.failure.is_some()
+            || record.native_auth_wait.is_some()
+        {
+            return Err(invalid(
+                "contained original Turn settlement identity/custody incomplete",
+            ));
+        }
+        match record.status {
+            TurnStatus::Completed => {}
+            TurnStatus::Cancelled => proof
+                .ok_or_else(|| invalid("cancelled original lacks model-free quiescence"))?
+                .require_run(record.run_id)?,
+            other => {
+                return Err(invalid(format!(
+                    "contained original cleanup incomplete: Turn {other:?}"
+                )));
+            }
+        }
+        Ok(record)
+    })
+    .await;
+    match (acknowledgement, readback) {
+        (Ok(status), Ok(record)) if status == record.status => Ok(record),
+        (Ok(status), Ok(record)) => Err(invalid(format!(
+            "cleanup acknowledged {status:?}; original Turn instead {:?}",
+            record.status
+        ))),
+        (Err(ack), Ok(record)) => {
+            tracing::info!(acknowledgement_error=%ack,status=?record.status,"contained close ACK resolved by exact original Admission and Turn readback");
+            Ok(record)
+        }
+        (Ok(status), Err(readback)) => Err(invalid(format!(
+            "cleanup acknowledged {status:?}; original verification failed: {readback}"
+        ))),
+        (Err(ack), Err(readback)) => Err(invalid(format!(
+            "original cleanup failed: {ack}; original close readback failed: {readback}"
+        ))),
+    }
 }
 
 pub(crate) struct Admitted {
@@ -488,6 +594,7 @@ async fn prepare_admission(
         if identity == "installation-source-observer" && matches!(mode, AdmissionMode::Contained) {
             crate::validator_inventory_review::installation_test_before_reservation(
                 attempt.run_id.as_uuid(),
+                answer,
             )?;
         }
         admission.persist_reservation().await.map_err(invalid)?;
