@@ -492,14 +492,6 @@ impl PgPythonCodeStore {
 /// Phase-K-ready queue surface (§0.23.5). The whole module is gated to the
 /// `postgres` feature, so [`ValidationQueueStore`] is in scope here.
 impl PgPythonCodeStore {
-    /// Insert a new python_code row AND submit it to the Q1 validation queue
-    /// (state 1) in one transaction — the legacy save-path surface for both
-    /// WebUI manual authoring and Sempai auto-creation (§0.23.6).
-    ///
-    /// `proposed_payload` is `None` (new-component submission per §0.23.5);
-    /// the upgrade-copy path (edit of a validated row with a `proposed_payload`)
-    /// lands in Phase K/N. Returns the new component UUID.
-
     /// Complete immutable authoring path. Caller retains the original request ID
     /// and full revision bytes; constructor fields are independently compared by
     /// the DB binding verifier before either row or subject may commit.
@@ -557,9 +549,16 @@ impl PgPythonCodeStore {
         queue_store.fire_q1_kick_if_wired(&scope, id, 22);
         Ok(subject)
     }
-    /// Legacy constructor-only draft save. Its queue entry is visibly unresolved;
-    /// this cannot acknowledge an immutable v3 review submission or approval.
-    /// Complete review callers use create_and_submit_review with original bytes.
+    /// Insert a new python_code row and submit it to the Q1 validation queue
+    /// (state 1) in one transaction. This is the legacy constructor-only save
+    /// surface for WebUI manual authoring and Sempai auto-creation (§0.23.6).
+    /// Returns the new component UUID.
+    ///
+    /// `proposed_payload` is `None` (new-component submission per §0.23.5).
+    /// The upgrade-copy path for a validated row is separate Phase K/N work.
+    /// This queue entry remains visibly unresolved and cannot acknowledge an
+    /// immutable v3 review submission or approval. Complete review callers use
+    /// [`Self::create_and_submit_review`] with original bytes.
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgPythonCode,

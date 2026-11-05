@@ -434,18 +434,18 @@ impl PgRecipeStore {
         queue_store.fire_q1_kick_if_wired(&scope, id, 21);
         Ok(subject)
     }
-    /// Insert a new recipe AND submit it to the Q1 validation queue (state 1)
-    /// in one transaction — the legacy non-builtin save path for recipe
-    /// authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
+    /// Insert a new recipe and submit it to the Q1 validation queue (state 1)
+    /// in one transaction. This is the legacy constructor-only save path for
+    /// recipe authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
+    /// Returns the new component UUID.
     ///
     /// Mirrors `PgPythonCodeStore::create_and_submit` and
     /// `PgExtensionCatalogueStore::create_and_submit`. All non-builtin
-    /// components must go through the queue; builtins bypass it via
-    /// `builtin_bootstrap.rs` (exempt by design). Returns the new UUID.
-
-    /// Legacy constructor-only draft save. Its queue entry is visibly unresolved;
-    /// this cannot acknowledge an immutable v3 review submission or approval.
-    /// Complete review callers use create_and_submit_review with original bytes.
+    /// components use the queue; builtin installation projections use
+    /// `builtin_bootstrap.rs`. This queue entry remains visibly unresolved and
+    /// cannot acknowledge an immutable v3 review submission or approval.
+    /// Complete review callers use [`Self::create_and_submit_review`] with
+    /// original bytes.
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgRecipe,

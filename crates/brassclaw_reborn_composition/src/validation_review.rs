@@ -31,7 +31,7 @@ impl Q1Candidate {
         &brassclaw_skills::review_submission_store::queue::RetainedQueueReview,
         ValidationQueueError,
     > {
-        self.binding.as_ref().ok_or_else(|| {
+        self.binding.as_ref().ok_or({
             if self.original_binding_required {
                 ValidationQueueError::OriginalReviewUnresolved {
                     component_id: self.component_id,

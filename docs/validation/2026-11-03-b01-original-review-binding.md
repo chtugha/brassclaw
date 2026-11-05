@@ -610,3 +610,30 @@ Direct rustfmt checks and `git diff --check` pass. No local/cloud compilation,
 tests or Modal jobs were started here. The supervisor's targeted final strict
 lint remains pending; runtime cases are not repeated for this spelling change.
 The package is not end-accepted until that lint passes.
+
+## Final lint documentation/error-construction correction — 2026-11-05
+
+Supervisor lint-3 reached Composition and reported three
+`empty_line_after_doc_comments` diagnostics and one
+`unnecessary_lazy_evaluations` diagnostic. The PythonCode/ExtensionCatalogue
+legacy insertion/queue/UUID-return documentation had been left above the new
+retained-review methods. Those paragraphs now belong to their actual legacy
+`create_and_submit` owners, together with their explicit unresolved-draft
+boundary. The retained-review methods keep their own original-request/full-byte
+capture contract. The Recipe legacy method's documentation is consolidated
+around its actual constructor save, queue, bootstrap-routing and UUID-return
+behavior, with a link to the separate complete-review method. No unrelated
+method contracts are joined merely to remove blank lines.
+
+A source inventory of the other inserted methods found no additional displaced
+doc blocks or changed doc/blank gaps. `Q1Candidate::original` now uses `ok_or`
+for the pure enum/UUID error value: a present binding still returns that binding,
+and a missing binding still selects the exact same original-required versus
+legacy-custody error. No fallible/effectful operation is moved or suppressed.
+
+Direct rustfmt checks and `git diff --check` pass. No local/cloud compilation,
+tests or Modal jobs were started here. Before this handoff, the supervisor
+completed diagnostic collection across all 12 packages and library/test targets
+in 143.47 seconds: only these four warnings were reported, repeated for libtest,
+with no additional diagnostics. That warning-collecting run is not strict
+acceptance. The final `-D warnings` acceptance remains supervisor-owned.
