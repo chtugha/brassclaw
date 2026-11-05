@@ -614,12 +614,14 @@ exports, supported variants and the cases above.
 
 ### B1-11 validation procedure
 
-The sole agent reviews and validates the connected changes directly under the
-development policy; no delegation or build queue is used. Record exact hashes
-and required features. Keep one serial Cargo execution and run long checks in
-detached Screen; never overlap Cargo or change captured build inputs. No inline
-`CARGO_TARGET_DIR` and no explicit shell wrapper. For this document-only delivery,
-perform only Markdown/link/diff checks; do not compile.
+Follow the development policy's two-package-chat/supervisor workflow. Package
+chats implement in their isolated worktrees and share the serialized, activated
+Modal builder; the supervisor reviews, validates locally and integrates accepted
+changes. Record exact hashes and required features. Cargo is serial within each
+build environment; native and Modal builds may run concurrently with their
+independently frozen inputs. Run long local checks in detached Screen. No inline
+`CARGO_TARGET_DIR` or explicit shell wrapper. Prose-only corrections require
+Markdown/link/diff checks, not compilation.
 
 For implementation, use affected-package unit/contract checks and the existing
 composition native integration harness with `postgres,skills-db` and required

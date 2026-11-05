@@ -532,10 +532,13 @@ log-inspection workflow for actual pure reuse. Their meaning follows
 bounded preview must not claim whole-file coverage.
 
 Review the full connected diff before a consolidated affected-package build.
-Only the sole agent invokes Cargo, serially in the inherited canonical target,
-with long jobs detached in Screen. Reuse unchanged accepted evidence and compiled
-artifacts; freeze captured inputs only. No inline target assignment or explicit
-shell wrapper, no routine `cargo clean`, no second target or concurrent Cargo.
+Follow the development policy's two-package-chat/supervisor workflow. Package
+chats use the shared serialized, activated Modal builder; the supervisor alone
+runs native Cargo and tests in the inherited canonical target, with long jobs
+detached in Screen. Native and Modal builds may run concurrently, each preserving
+its own captured inputs. Reuse unchanged accepted evidence and compiled artifacts.
+No inline target assignment or explicit shell wrapper, routine `cargo clean`,
+second local target or simultaneous Cargo within one build environment.
 Capture source/patch hashes, exact flags, worker/artifact/migration/settings
 identities, nonempty test counts and native traces under the development policy.
 No source-tree copies in validation evidence. Repair warnings rather than hide them.
