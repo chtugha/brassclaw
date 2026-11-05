@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native test unwind repair (C-00)**: Apply basic optimization to the shared
+  test dependency graph while retaining debug checks, overflow checks and
+  unwinding. The actual Apple ARM64 Composition test executable now links
+  without the size warning: `__eh_frame` is 11.42 MiB instead of 19.12 MiB.
+  Both selected native PostgreSQL callers pass and all 1,353 prior test names
+  remain. This is scoped profile acceptance; the pending A-03/B-02 integration
+  and broader platform/product gates require their own validation.
+
 - **Original immutable review requests (B-01)**: V206 binds each supported queue
   generation to its exact original submission, complete candidate/context and
   comparison bytes. Preserve original-ID readback and CAS across lost replies

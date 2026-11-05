@@ -45,6 +45,7 @@ The supervisor accepts the connected behavior, not a successful build alone.
 | A-02 — exact Pure-approval readers | `01a1a139-eac1-7e32-9ac9-5ddfff64994a`, host `local`, title “Paket A-02 — Exakte Pure-Approval-Reader”; `/Users/ollama/.codex/worktrees/27f9/brassclaw` | Narrow A-02a `f62e17a12` integrated as `9c8d3c12a`, scoped acceptance complete: exact canonical `/1` prepare/recheck/reload, occurrence isolation, ordinary publication, retained child, complete deployment caller and strict affected lint. No new general Pure approval, migration or selection format. Package closed; successor gets a fresh chat. |
 | A-03 — genuine Pure approval and exact retained successor contract | `01a1ab08-ac3e-7812-bf0d-ba6afcc18fb0`, host `local`, title “Paket A-03 — Pure-Approval und Retained-Vertrag”; `/Users/ollama/.codex/worktrees/a7f2/brassclaw` | Mandatory reading and actual source/contract review complete. Only A-03a source slice authorized: existing pure/structure graph receipts, exact native-inventory/subject observations and genuine narrow parser prerequisite/usage qualification. General P22 approval, `/2` emission, Q2/activation and Work remain separate open gates. No paid compile until coherent diff/self-review. B-02 owns shared private admission mechanics. |
 | B-02 — durable private Monty Work | `01a1ab4e-ae8c-7342-98a3-7b6b8ab50650`, host `local`, title “Paket B-02 — Dauerhafte private Monty-Aufträge”; `/Users/ollama/.codex/worktrees/d230/brassclaw` | Mandatory reading, actual source inventory and PRECISION-1 reviewed. Connected first source slice authorized: genuine private Origin/PG claim/admission/cancellation/live settlement for existing structural validation and quarantined source-only Prefix, through the one driver/worker and existing configured fallback. V207 reserved exclusively here. No general Pure approval or durable-proof restore claim; full diff/schema review before compilation. A-03 owns review semantics and parser observations. |
+| C-00 — native test unwind/linker repair | `01a1acab-875c-7073-9ddc-b84b4cd73443`, host `local`, title “Paket C-00 — Native Unwind- und Testlinker-Reparatur”; `/Users/ollama/.codex/worktrees/4d31/brassclaw`, branch `codex/c00-test-unwind-profile` | Accepted in its bounded profile/link/caller scope. Source `36ce1c4c5` integrated as `e212e0ba2`; actual native Run-11 links without warnings, retains unwind/debug/overflow checks, has 11,978,176-byte `__eh_frame`, preserves all 1,353 prior test names and passes both selected real PG callers. Package closed; no independent new task here. A changed A-03/B-02 graph needs its own checks. Full B3-12 remains open. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
@@ -163,7 +164,7 @@ implementation objective.
 
 ### Current source-review findings — 2026-11-05
 
-Main checkpoint `dd8307eb5` is pushed. B-01 and A-02a retain their scoped
+Main checkpoint `6a440d715` is pushed. B-01 and A-02a retain their scoped
 acceptance above; all three complete Bob plans remain open.
 
 A-03a's first source checkpoint `e72119fb5` is not integrated or compiled.
@@ -205,9 +206,94 @@ is distinct from B-02's original task-preparation capture: ordinary private work
 uses the running global VM and keeps current shared memory/policy controls live.
 It does not create a per-task retained heap policy or another settings reader.
 
+A-03a's subsequent source work now connects a queue-free installation subject/
+selection adapter and the existing Structure/Pure checking graphs to catalogue
+boot. These remain uncompiled, unaccepted worktree changes. The installation
+records carry factual observations without authored submissions, Q1/Q2 grants
+or activation. The shared Engine serializer, receipt/dataflow checks and native
+fingerprint checks serve both actual observation and historical readback. Source
+review also requires original completion after normal Turn pruning, pool-size-one
+readback, unchanged execution counters and later smaller task limits. Historical
+metadata reads must not apply today's task limits; actual new execution uses its
+captured preparation. The consumer receives the actual startup root rather than
+selecting another root after admission. Finish review, reconcile accepted main
+changes and freeze exact inputs before compilation; source edits are not receipts.
+
+B-02's earlier pending tool approval is resolved. Its first shared
+`PreparationCapture` source handoff (`8bc93bd29`, not integrated) retains actual startup/effective revision,
+complete limits and original bytes through the existing catalogue/settings
+owner. Source review checked the actual acknowledged `effective_view`, getter
+delegation and original-byte restoration; no compilation or runtime acceptance
+is claimed. The owner commit is to be shared with A-03a for its one validator
+input/selection capture implementation. Connected LIVE Work/Origin/claim/admission
+integration and V207 remain B-02 work, not delivered functionality.
+
+Latest source-only successor: A-03a `71ad80547` incorporates accepted main
+`6a440d715`, B-02's actual preparation API and the domain
+`PreparedValidatorReview`/`ValidatorInputCapture` original-byte API. Its sealed
+installation adapter, boot consumer, parser qualification and original readback
+are now source implementations, superseding the earlier design-only observations
+above. The supervisor reviewed the contained cancellation/close correction:
+proven quiescence permits the original fenced Turn cancellation, lost close ACKs
+read back the original, and operations retain additional cleanup errors rather
+than discarding them. None of these source reviews is native acceptance or
+general Pure approval. The immutable STATUS7 manifest has SHA-256
+`4bd1a9bbbca5e202b215c1fd30ba79e82915dbf964a0509ef27df4b74428d094`;
+its handoff is under `/private/tmp/brassclaw-a03a-20261105/`.
+
+B-02 has checkpointed its connected private-origin work as `42ecb6afa`.
+The app approval for its Git integration is now resolved; the owner is merging
+the A-03 dependency chain in its own worktree. The supervisor did not bypass
+or reassign that pending action. B-02 received
+the complete A-03 successor and the read-only actual-origin compatibility report.
+It must reconcile the genuine optional Chat context with private claims, preserve
+the distinct contained-foundation and live-private settlement owners, finish both
+production consumers and deliver the combined source review before compilation.
+Neither branch is integrated into main or runtime-qualified. The preparation and
+validator capture APIs are shared owners, not duplicate implementations.
+
+The supervisor also returned a connected delivery finding from `42ecb6afa`:
+the worker may drop the private driver future on heartbeat/cancellation while
+the original is subsequently settled by `stop_attempt`; its waiting caller
+must still receive a correlated outcome or explicit unresolved error. Late
+waiter registration must not lose the original delivery. These are source-review
+findings for B-02 to resolve, not observed native failures. A-03's acceptance
+inventory names 32 existing primary cases. Its capture-restore helper runs in
+one process; it does not establish process-cold or durable Work recovery.
+
+The combined branch now includes A-03 through merge `2831a1bbf`; production
+consumer/caller corrections and native test sources are still being completed.
+Further source review identified two success windows: factory retention can be
+released before completion delivery, and a heartbeat must not mistake the same
+claim's already settled original for lost ownership. A delayed successful
+delivery must survive a heartbeat period without renewed dispatch authority.
+These fixes and their genuine negative cases remain B-02 acceptance work. The
+submission-to-Work transaction/startup gap also needs explicit coverage or a
+precise remaining B3-06/B3-07 handoff; durable rows alone do not prove dispatch.
+
+The independent C-00 source boundary is locally integrated as `e212e0ba2`.
+Its first native profile/link check completed in detached Screen while B-02
+continued in its isolated worktree. This used the development policy's
+targeted intermediate check of an unresolved shared build boundary: it can
+resolve a remaining unwind blocker before the larger Work integration, and
+Cargo can reuse unchanged optimized dependencies afterwards. It is not B-02 or
+A-03 runtime acceptance. Run-11 passed: 779.70-second graph compile, no warnings,
+11,978,176-byte `__eh_frame`, retained unwind sections and all 1,353 old test
+names, with both selected native PG callers passing. Source/HEAD stayed frozen
+throughout; the source freeze is now released. Exact artifacts and scope are in
+the [C-00 receipt](validation/2026-11-05-c00-test-unwind-profile.md).
+
 Final warning acceptance also remains open: the retained native test executable
 has a measured 19.12 MiB `__eh_frame` section, exceeding the linker's reported
 16 MiB compact-unwind offset limit. Metadata-only lint is not linked acceptance.
+Read-only DWARF inspection of that same hash-verified run-10 executable found
+348,854 FDE records totalling 19,750,896 bytes; many resolved symbols are generic
+`core`/`alloc` helpers. Symbol namespaces do not identify Rust compilation-unit
+ownership, so this is diagnostic evidence, not proof that optimizing one named
+crate fixes the limit. Detailed current-archive and actual-binary analysis is in
+`/private/tmp/brassclaw-bob-unwind-archives-review-20261105.json` and
+`/private/tmp/brassclaw-bob-unwind-fde-review-20261105.json`. No new build or
+optimizer/linker change was made for this inspection.
 The inherited composition-wide deprecated-type suppression requires the actual
 legacy-adapter/type migration audit in B2-09, consumed by B3-12. Neither warning
 suppression nor untested removal of retained compatibility closes these gates.

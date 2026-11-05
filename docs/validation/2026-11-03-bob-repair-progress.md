@@ -13,6 +13,15 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+Latest independent gate: C-00's shared test-profile repair is integrated as
+`e212e0ba2`. The actual native Run-11 profile/link batch passed without warnings:
+`__eh_frame` fell from 20,050,884 to 11,978,176 bytes, unwind sections remain,
+all 1,353 old test names remain and two selected real PostgreSQL callers pass.
+The first optimized-graph compile took 779.70 seconds; this is not a performance
+benchmark or an A-03/B-02 runtime result. The
+[exact C-00 receipt](2026-11-05-c00-test-unwind-profile.md) supersedes the warning
+observations in the older receipts below for its measured baseline only.
+
 Integrated source through `a63100515`: A-01 native Codex/Auth custody and B-00
 inherited Q1/Oracle repair are accepted within their documented boundaries.
 Run-6 executed 73 exact Composition cases: 71 passed; run-7 subsequently passed
