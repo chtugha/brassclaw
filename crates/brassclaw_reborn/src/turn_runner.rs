@@ -544,6 +544,9 @@ impl TurnRunnerWorker {
                             error!(?run_id,error=%error,"private Work reconciliation fencing failed");
                             cancel.cancel();
                         }
+                        if let Some(monty) = self.monty_driver.as_ref() {
+                            monty.private_attempt_stopped(private.attempt());
+                        }
                     }
                 }
             }
@@ -819,6 +822,13 @@ async fn heartbeat_loop(
                     Ok(WorkHeartbeat::CancellationRequested)=>return Err(TurnError::Unavailable {
                         reason:"private Work cancellation requested".into(),
                     }),
+                    Ok(WorkHeartbeat::OriginalSettled) => {
+                        // The exact claim has ended; stop renewal while the
+                        // existing driver delivers its native completion. The
+                        // outer Worker cancellation remains independently live.
+                        cancel.cancelled().await;
+                        return Ok(());
+                    }
                     Ok(WorkHeartbeat::Current) => {
                         debug!(
                             runner_id = ?runner_id,

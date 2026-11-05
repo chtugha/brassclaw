@@ -959,7 +959,7 @@ impl Context {
             format: "installation-validator-admission/1".into(),
             operation: reference(self.operation, &operation_bytes),
             run_id: admitted.attempt.run_id.as_uuid(),
-            scope: admitted.host.run_context().scope.clone(),
+            scope: admitted.chat_context()?.scope.clone(),
             runner_id: admitted.attempt.runner_id.as_uuid(),
             claim_checksum: hex::encode(Sha256::digest(
                 serde_json::to_vec(&admitted.attempt.lease_token).map_err(invalid)?,

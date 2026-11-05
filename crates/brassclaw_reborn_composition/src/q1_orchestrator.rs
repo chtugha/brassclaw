@@ -421,10 +421,9 @@ pub(crate) async fn run_q1_validation_retained(
             .await
             .map_err(|e| Q1Error::Admission(e.to_string()))?;
 
-    // Step 7 — submit through the trusted internal drive_turn path.
-    // drive_admitted calls build -> capture_internal -> GlobalRecipePorts::for_internal.
-    // On InternalCompleted, GlobalRecipePorts::finish calls source.verify_receipt,
-    // which persists the Q1 evidence. `settle_closed` must NOT be called after this.
+    // Step 7 — publish the original private Work to the existing Worker.
+    // A03's captured source owns receipt verification/evidence; the native
+    // driver owns settlement and delivers its actual opaque completion.
     let driven = bridge
         .driver
         .submit(Arc::new(pool.clone()), submission_id)

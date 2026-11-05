@@ -562,7 +562,7 @@ ALTER TABLE brassclaw_prefix_job_definitions ADD CONSTRAINT private_prefix_origi
 ) IS TRUE);
 
 CREATE FUNCTION verify_private_preparation_original() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE envelope jsonb:=NEW.definition_bytes::jsonb; work brassclaw_turns%ROWTYPE;
+DECLARE envelope jsonb:=NEW.definition_bytes::jsonb; work brassclaw_turns%ROWTYPE; capture jsonb;
 BEGIN
     SELECT * INTO STRICT work FROM brassclaw_turns WHERE work_id=NEW.work_id FOR UPDATE;
     IF (envelope ?& ARRAY['format','work_id','run_id','request_checksum','preparation_bytes','preparation_checksum',
@@ -618,6 +618,34 @@ BEGIN
                     FROM generate_series(0,31)n)) IS NOT TRUE THEN
             RAISE EXCEPTION 'private validator input capture mismatch' USING ERRCODE='23514';
         END IF;
+        capture:=(envelope->'domain'->>'capture_bytes')::jsonb;
+        IF (capture ?& ARRAY['format','submission_id','subject_checksum','validator_selection_bytes',
+                'validator_selection_checksum','validator_bytes','validator_checksum','input_bytes','input_checksum',
+                'preparation_bytes','preparation_checksum','worker_checksum']
+            AND capture-ARRAY['format','submission_id','subject_checksum','validator_selection_bytes',
+                'validator_selection_checksum','validator_bytes','validator_checksum','input_bytes','input_checksum',
+                'preparation_bytes','preparation_checksum','worker_checksum']='{}'::jsonb
+            AND capture->>'format'='validator-input-capture/1'
+            AND (capture->>'submission_id')::uuid=work.validator_submission_id
+            AND capture->>'preparation_bytes'=envelope->>'preparation_bytes'
+            AND capture->>'preparation_checksum'=envelope->>'preparation_checksum'
+            AND envelope->'worker_checksum'=
+                (SELECT jsonb_agg(get_byte(decode(capture->>'worker_checksum','hex'),n) ORDER BY n) FROM generate_series(0,31)n)
+            AND capture->>'validator_checksum'=encode(sha256(convert_to(capture->>'validator_bytes','UTF8')),'hex')
+            AND capture->>'input_checksum'=encode(sha256(convert_to(capture->>'input_bytes','UTF8')),'hex')
+            AND envelope->'workflow_checksum'=
+                (SELECT jsonb_agg(get_byte(decode(capture->>'validator_checksum','hex'),n) ORDER BY n) FROM generate_series(0,31)n)
+            AND envelope->'input_checksum'=
+                (SELECT jsonb_agg(get_byte(decode(capture->>'input_checksum','hex'),n) ORDER BY n) FROM generate_series(0,31)n)
+            AND EXISTS(SELECT 1 FROM reborn_component_validator_selections v
+                JOIN reborn_component_review_submissions subject USING(submission_id)
+                WHERE v.submission_id=work.validator_submission_id
+                    AND capture->>'subject_checksum'=subject.checksum
+                    AND capture->>'validator_selection_bytes'=v.selection_bytes
+                    AND capture->>'validator_selection_checksum'=v.checksum
+                    AND capture->>'validator_bytes'=v.selection_bytes::jsonb->>'validator_selection_bytes')) IS NOT TRUE THEN
+            RAISE EXCEPTION 'private validator capture differs from its domain originals' USING ERRCODE='23514';
+        END IF;
     END IF;
     RETURN NEW;
 END $$;
@@ -640,6 +668,7 @@ BEGIN
     IF (root ?& ARRAY['vm_id','source_checksum','aliases_checksum','workers']
         AND root-'vm_id'-'source_checksum'-'aliases_checksum'-'workers'='{}'::jsonb
         AND (root->>'vm_id')::uuid<>'00000000-0000-0000-0000-000000000000'::uuid
+        AND jsonb_typeof(root->'workers')='number' AND root->>'workers' ~ '^[1-9][0-9]*$'
         AND (root->>'workers')::numeric BETWEEN 1 AND 4294967295
         AND root->'vm_id'=report->'root'->'vm_id'
         AND root->'workers'=report->'root'->'workers'
@@ -655,6 +684,7 @@ BEGIN
     IF (account ?& ARRAY['task','effective_revision','compute_time','failure']
         AND account-'task'-'effective_revision'-'compute_time'-'failure'='{}'::jsonb
         AND (account->>'task')::uuid<>'00000000-0000-0000-0000-000000000000'::uuid
+        AND jsonb_typeof(account->'effective_revision')='number' AND account->>'effective_revision' ~ '^[1-9][0-9]*$'
         AND (account->>'effective_revision')::numeric BETWEEN 1 AND 18446744073709551615
         AND account->'effective_revision'=report->'accounting'->'effective_revision'
         AND jsonb_typeof(account->'failure') IN ('null','string')
@@ -664,6 +694,8 @@ BEGIN
         RETURN report->'accounting'->'compute_time'='null'::jsonb AND value->'outcome'->>'status'='failed';
     END IF;
     IF (time ?& ARRAY['seconds','nanoseconds'] AND time-'seconds'-'nanoseconds'='{}'::jsonb
+        AND jsonb_typeof(time->'seconds')='number' AND time->>'seconds' ~ '^(0|[1-9][0-9]*)$'
+        AND jsonb_typeof(time->'nanoseconds')='number' AND time->>'nanoseconds' ~ '^(0|[1-9][0-9]*)$'
         AND (time->>'seconds')::numeric BETWEEN 0 AND 18446744073709551615
         AND (time->>'nanoseconds')::numeric BETWEEN 0 AND 999999999
         AND time->'seconds'=report->'accounting'->'compute_time'->'secs'

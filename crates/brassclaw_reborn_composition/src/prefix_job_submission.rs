@@ -201,7 +201,7 @@ impl RebornRuntime {
                     original_input_limits,
                     origin: &crate::prefix_job_definitions::Origin::Private {
                         context,
-                        preparation,
+                        preparation: Box::new(preparation),
                     },
                     created_by: caller.user_id.as_str(),
                 })

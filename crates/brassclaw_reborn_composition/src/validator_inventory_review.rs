@@ -438,7 +438,7 @@ impl NativeInventoryObservation<'_> {
             return Err(invalid("inventory answer differs from original executor"));
         }
         let client = pool.get().await.map_err(invalid)?;
-        let rows = client.query("SELECT selection_bytes,selection_checksum,arguments_bytes,arguments_checksum,answer_bytes,answer_checksum,attempt_count,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND recipe_id=$2 AND step_id=$3", &[&host.run_context().run_id.as_uuid(), &program.inputs().instruction().recipe().uuid, &step]).await.map_err(invalid)?;
+        let rows = client.query("SELECT selection_bytes,selection_checksum,arguments_bytes,arguments_checksum,answer_bytes,answer_checksum,attempt_count,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1 AND recipe_id=$2 AND step_id=$3", &[&host.attempt().run_id.as_uuid(), &program.inputs().instruction().recipe().uuid, &step]).await.map_err(invalid)?;
         let [row] = rows.as_slice() else {
             return Err(invalid("original native inventory invocation missing"));
         };

@@ -138,6 +138,24 @@ impl PgTurnStateStore {
         reason: PrivatePreparationReason,
         verifier: &dyn PgPrivateOriginalVerifier,
     ) -> Result<[u8; 32], TurnError> {
+        let mut client = self.pool.get().await.map_err(map_pg_pool)?;
+        let tx = client.transaction().await.map_err(map_pg)?;
+        let digest = self
+            .submit_private_work_in_transaction(&tx, request, reason, verifier)
+            .await?;
+        tx.commit().await.map_err(map_pg)?;
+        Ok(digest)
+    }
+
+    /// The preparation owner can retain its complete original and Ready seal
+    /// atomically with this insertion. This method neither commits nor wakes.
+    pub async fn submit_private_work_in_transaction(
+        &self,
+        tx: &Transaction<'_>,
+        request: &PrivateWorkRequest,
+        reason: PrivatePreparationReason,
+        verifier: &dyn PgPrivateOriginalVerifier,
+    ) -> Result<[u8; 32], TurnError> {
         if request.context().tenant_id.as_str() != self.tenant_id {
             return Err(invalid());
         }
@@ -153,9 +171,7 @@ impl PgTurnStateStore {
             PrivatePreparationReason::PreparationPending => "preparation_pending",
             PrivatePreparationReason::QualificationUnavailable => "qualification_unavailable",
         };
-        let mut client = self.pool.get().await.map_err(map_pg_pool)?;
-        let tx = client.transaction().await.map_err(map_pg)?;
-        verifier.verify_original(&tx, request).await?;
+        verifier.verify_original(tx, request).await?;
         tx.execute(
             "INSERT INTO brassclaw_turns(id,tenant_id,turn_id,status,version,record_kind,
             work_id,execution_run_id,private_request_bytes,private_request_checksum,
@@ -193,7 +209,6 @@ impl PgTurnStateStore {
         if original != *request || stored != digest {
             return Err(invalid());
         }
-        tx.commit().await.map_err(map_pg)?;
         Ok(digest)
     }
 
@@ -298,7 +313,7 @@ impl PgTurnStateStore {
     pub async fn heartbeat_private_work(
         &self,
         claimed: &ClaimedPrivateWork,
-    ) -> Result<bool, TurnError> {
+    ) -> Result<crate::private_work::WorkHeartbeat, TurnError> {
         let ttl = self
             .limits
             .runner_lease_ttl
@@ -325,9 +340,44 @@ impl PgTurnStateStore {
                 ],
             )
             .await
-            .map_err(map_pg)?
-            .ok_or_else(invalid)?;
-        Ok(row.get::<_, i64>(0) > 0)
+            .map_err(map_pg)?;
+        let cancellation = if let Some(row) = row {
+            row.get::<_, i64>(0)
+        } else {
+            // A completed native settlement can precede drive_private's return.
+            // Authenticate this same immutable claim and its complete linked
+            // terminal without renewing a lease or accepting a JSON completion.
+            let row = client.query_opt(
+                "SELECT w.private_cancel_revision FROM brassclaw_turns w
+                JOIN brassclaw_monty_task_admissions a ON a.run_id=w.private_admission_run
+                JOIN brassclaw_monty_private_terminals t ON t.work_id=w.work_id AND t.run_id=a.run_id
+                WHERE w.record_kind='private_work' AND w.tenant_id=$1 AND w.work_id=$2
+                AND w.status='settled' AND w.execution_run_id=$3 AND w.private_runner_id=$4
+                AND w.private_claim_checksum=$5 AND w.private_claim_generation=$6
+                AND w.private_request_checksum=$7 AND w.private_definition_checksum=$8
+                AND a.origin_kind='private_work' AND a.private_work_id=w.work_id AND a.phase='settled'
+                AND a.runner_id=w.private_runner_id AND a.claim_checksum=w.private_claim_checksum
+                AND a.private_claim_generation=w.private_claim_generation
+                AND a.private_request_checksum=w.private_request_checksum
+                AND t.checksum=w.private_terminal_checksum
+                AND t.checksum=sha256(convert_to(t.terminal_bytes,'UTF8'))",
+                &[&self.tenant_id, &claimed.request().work_id(), &claimed.attempt().run_id.as_uuid(),
+                    &claimed.attempt().runner_id.as_uuid(), &&digest[..],
+                    &i64::try_from(claimed.generation()).map_err(|_| invalid())?,
+                    &&claimed.request_checksum()[..], &&claimed.definition_checksum()[..]],
+            ).await.map_err(map_pg)?.ok_or_else(invalid)?;
+            let cancellation = row.get::<_, i64>(0);
+            return Ok(if cancellation > 0 {
+                crate::private_work::WorkHeartbeat::CancellationRequested
+            } else {
+                crate::private_work::WorkHeartbeat::OriginalSettled
+            });
+        };
+        Ok(if cancellation > 0 {
+            crate::private_work::WorkHeartbeat::CancellationRequested
+        } else {
+            crate::private_work::WorkHeartbeat::Current
+        })
     }
 
     pub async fn cancel_private_work(&self, work_id: Uuid) -> Result<(), TurnError> {

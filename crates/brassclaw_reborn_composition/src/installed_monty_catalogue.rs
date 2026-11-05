@@ -132,8 +132,19 @@ impl BootstrapUsageApproval<'_> {
     }
 }
 
+/// The already acknowledged startup inputs, shared by catalogue qualification
+/// and the global runtime; this is a value bundle, not another settings owner.
+pub(crate) struct InstalledCatalogueStartup<'a> {
+    pub(crate) root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
+    pub(crate) settings: &'a brassclaw_product_workflow::MontyVmSettings,
+    pub(crate) executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    pub(crate) resource_store: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+}
+
 pub(crate) struct InstalledMontyCatalogue {
     initial_preparation: PreparationCapture,
+    pub(crate) private_work_wake:
+        std::sync::OnceLock<brassclaw_reborn::turn_runner::TurnRunnerWakeSender>,
     private_work_context:
         std::sync::OnceLock<brassclaw_turns::private_work::PrivateExecutionContext>,
     pub(crate) startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
@@ -519,11 +530,14 @@ impl InstalledMontyCatalogue {
         worker_image: Arc<PackagedExecutableImage>,
         scope: &IntentScope,
         memory_mounts: MountView,
-        root_definition: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
-        startup_settings: &brassclaw_product_workflow::MontyVmSettings,
-        startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
-        resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+        startup: InstalledCatalogueStartup<'_>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let InstalledCatalogueStartup {
+            root: root_definition,
+            settings: startup_settings,
+            executor: startup_executor,
+            resource_store: resource_store_settings,
+        } = startup;
         let root = root_definition.reference();
         let initial_preparation =
             PreparationCapture::capture(startup_settings, PreparationOrigin::AcknowledgedStartup)
@@ -1041,6 +1055,7 @@ impl InstalledMontyCatalogue {
         let catalogue = Arc::new(Self {
             initial_preparation,
             private_work_context: std::sync::OnceLock::new(),
+            private_work_wake: std::sync::OnceLock::new(),
             startup_executor,
             resource_store_settings,
             preparation_settings: std::sync::RwLock::new(None),
@@ -1224,6 +1239,13 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         self.capture_child_task(host, admission, input).await
     }
 
+    async fn prepare_private_validator(
+        &self,
+        submission_id: Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, RebornBuildError> {
+        InstalledMontyCatalogue::prepare_private_validator(self, submission_id).await
+    }
+
     async fn capture_private(
         &self,
         host: Arc<MontyTaskHost>,
@@ -1244,77 +1266,6 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         let context = host.run_context().ok_or_else(failed)?;
         if !context.trusted_internal_turn {
             return Ok(None);
-        }
-
-        // Validator review routing: trusted internal turn whose user_input matches
-        // "validator-review:<uuid>". This is a private admission path — no public
-        // intent example, no Tier-2 match, no run_validator_python_with_limits call.
-        if input
-            .user_input
-            .starts_with(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
-        {
-            use brassclaw_skills::{
-                component_revision::REVISION_LIMITS,
-                review_submission_store::{PgReviewSubmissionStore, selection},
-            };
-
-            // 1. Strip the known-length prefix and parse the submission UUID.
-            //    Reject malformed suffixes before any DB read.
-            let suffix = input
-                .user_input
-                .strip_prefix(crate::pg_review_admission_source::VALIDATOR_REVIEW_PREFIX)
-                .ok_or_else(failed)?;
-            let submission_id = Uuid::parse_str(suffix).map_err(|_| failed())?;
-
-            // 2. Read the sealed subject and selection from durable storage in a
-            //    single repeatable-read transaction. Reject if either is absent.
-            let mut client = self.pool.get().await.map_err(|_| failed())?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(|_| failed())?;
-            let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
-                &tx,
-                submission_id,
-                REVISION_LIMITS,
-            )
-            .await
-            .map_err(|_| failed())?
-            .ok_or_else(failed)?;
-            let selection =
-                selection::read_preparation_in_transaction(&tx, submission_id, REVISION_LIMITS)
-                    .await
-                    .map_err(|_| failed())?
-                    .ok_or_else(failed)?;
-            tx.commit().await.map_err(|_| failed())?;
-
-            // One acknowledged task capture and one shared domain serializer.
-            // B02 persists this same Prepared/input capture before Work admission;
-            // this existing direct route keeps its original authored behavior.
-            let preparation = self
-                .capture_task_preparation()
-                .await
-                .map_err(|_| failed())?;
-            let prepared = crate::pg_review_admission_source::PreparedValidatorReview::prepare(
-                Arc::new(subject),
-                Arc::new(selection),
-                self.worker_image.clone(),
-                preparation,
-            )
-            .await
-            .map_err(|_| failed())?;
-            let source = Arc::new(
-                crate::pg_review_admission_source::ReviewAdmissionSource::from_prepared(
-                    prepared,
-                    self.pool.clone(),
-                )
-                .map_err(|_| failed())?,
-            );
-
-            return Ok(Some(source));
         }
 
         let Some(definition) = crate::prefix_job_definitions::Store::new(self.pool.clone())

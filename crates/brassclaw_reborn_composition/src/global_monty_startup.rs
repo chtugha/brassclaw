@@ -293,10 +293,12 @@ pub(crate) async fn start(
         worker_image,
         scope,
         mounts,
-        root.clone(),
-        &settings,
-        executor.clone(),
-        resource_store_settings.clone(),
+        crate::installed_monty_catalogue::InstalledCatalogueStartup {
+            root: root.clone(),
+            settings: &settings,
+            executor: executor.clone(),
+            resource_store: resource_store_settings.clone(),
+        },
     )
     .await
     .map_err(|error| invalid(error.to_string()))?;

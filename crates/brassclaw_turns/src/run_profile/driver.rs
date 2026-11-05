@@ -226,6 +226,10 @@ pub trait MontyTurnDriverPort: Send + Sync {
         })
     }
 
+    /// Notify in-process result delivery after the existing addressed stop and
+    /// Work fencing path ends. This conveys no native settlement proof.
+    fn private_attempt_stopped(&self, _attempt: super::MontyTaskAttempt) {}
+
     /// Stop one claimed attempt. A completed/missing attempt is an idempotent
     /// no-op; another claim of the same run must never receive this signal.
     /// Success acknowledges actual owned attempt settlement, not merely

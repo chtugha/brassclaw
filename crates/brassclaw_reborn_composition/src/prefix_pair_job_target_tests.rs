@@ -319,12 +319,18 @@ async fn pair_job_target_retains_complete_source_owned_input_and_original_identi
     let (left, right) = tokio::join!(
         store.reserve(Reservation {
             id: race_id,
-            scope: &race_scope,
+            origin: &Origin::Chat {
+                scope: race_scope.clone(),
+                thread_scope: thread.clone()
+            },
             ..reservation
         }),
         store.reserve(Reservation {
             id: race_id,
-            scope: &race_scope,
+            origin: &Origin::Chat {
+                scope: race_scope.clone(),
+                thread_scope: thread.clone()
+            },
             target: &other_target,
             request: &other_request,
             input: &other_input,

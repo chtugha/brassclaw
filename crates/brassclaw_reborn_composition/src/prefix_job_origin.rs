@@ -15,7 +15,7 @@ pub(crate) enum Origin {
     },
     Private {
         context: PrivateExecutionContext,
-        preparation: PreparationCapture,
+        preparation: Box<PreparationCapture>,
     },
 }
 impl PartialEq for Origin {
@@ -130,6 +130,7 @@ pub(super) fn decode(
                 &preparation_bytes.ok_or(Error::Invalid)?,
                 &preparation_checksum.ok_or(Error::Invalid)?,
             )
+            .map(Box::new)
             .map_err(|_| Error::Invalid)?,
         },
         _ => return Err(Error::Invalid),

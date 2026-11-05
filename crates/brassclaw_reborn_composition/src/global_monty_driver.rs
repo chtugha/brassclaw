@@ -66,6 +66,15 @@ pub(crate) struct PreparedGlobalTask {
 /// by the already-running Python orchestrator after admission.
 #[async_trait]
 pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
+    async fn prepare_private_validator(
+        &self,
+        _submission_id: uuid::Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, crate::RebornBuildError> {
+        Err(crate::RebornBuildError::InvalidConfig {
+            reason: "private validator preparation unavailable".into(),
+        })
+    }
+
     fn retention_registry(&self) -> Arc<AttemptRetentionRegistry>;
     fn cancellation_acknowledgement(&self)
     -> Result<CancellationAckSettings, AgentLoopDriverError>;
@@ -74,6 +83,13 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         host: Arc<MontyTaskHost>,
         input: TaskInput,
     ) -> Result<PreparedGlobalTask, AgentLoopDriverError>;
+
+    fn private_attempt_retained(
+        &self,
+        _run: brassclaw_turns::TurnRunId,
+    ) -> Result<bool, AgentLoopDriverError> {
+        Ok(false)
+    }
 
     fn private_host(
         &self,
@@ -194,6 +210,9 @@ pub(crate) struct GlobalMontyDriver {
     ports: Arc<dyn GlobalTaskPortsFactory>,
     attempts: Mutex<HashMap<MontyTaskAttempt, Arc<Attempt>>>,
     private_deliveries: Arc<private_completion::PrivateDeliveries>,
+    #[cfg(test)]
+    private_publish_pauses:
+        Mutex<HashMap<brassclaw_turns::TurnRunId, Arc<private_completion::PublishPause>>>,
     retention: Arc<AttemptRetentionRegistry>,
 }
 
@@ -327,6 +346,8 @@ impl GlobalMontyDriver {
             ports,
             attempts: Mutex::new(HashMap::new()),
             private_deliveries: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(test)]
+            private_publish_pauses: Mutex::new(HashMap::new()),
             retention,
         })
     }
@@ -931,6 +952,10 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>,
     ) -> Result<(), AgentLoopDriverError> {
         self.drive_original_private(claimed).await
+    }
+
+    fn private_attempt_stopped(&self, attempt: MontyTaskAttempt) {
+        self.private_producer_stopped(attempt);
     }
 
     async fn stop_attempt(&self, attempt: MontyTaskAttempt) -> Result<(), AgentLoopDriverError> {

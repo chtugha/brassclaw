@@ -87,6 +87,15 @@ pub(crate) trait CapturedMontyCatalogue: Send + Sync {
 
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    async fn prepare_private_validator(
+        &self,
+        _submission_id: uuid::Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, crate::RebornBuildError> {
+        Err(crate::RebornBuildError::InvalidConfig {
+            reason: "private validator preparation unavailable".into(),
+        })
+    }
+
     /// Retain only a weak scheduling dependency after the actual task ports
     /// exist. This hook neither admits work nor supplies authority.
     fn observe_task_ports(
@@ -492,6 +501,24 @@ impl OwnedGlobalTaskFactory {
 
 #[async_trait]
 impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
+    async fn prepare_private_validator(
+        &self,
+        submission_id: uuid::Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, crate::RebornBuildError> {
+        self.catalogue
+            .prepare_private_validator(submission_id)
+            .await
+    }
+
+    fn private_attempt_retained(
+        &self,
+        run: brassclaw_turns::TurnRunId,
+    ) -> Result<bool, AgentLoopDriverError> {
+        Ok(self.tasks()?.iter().any(|(attempt, task)| {
+            attempt.run_id == run && task.host.private_claim().is_some() && !task.settled
+        }))
+    }
+
     fn retention_registry(&self) -> Arc<AttemptRetentionRegistry> {
         self.retention.clone()
     }

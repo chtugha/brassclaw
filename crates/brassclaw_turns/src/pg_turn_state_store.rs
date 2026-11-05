@@ -910,16 +910,9 @@ impl TurnRunTransitionPort for PgTurnStateStore {
                 .heartbeat(request)
                 .await
                 .map(|_| crate::private_work::WorkHeartbeat::Current),
-            crate::private_work::WorkHeartbeatRequest::Private(claimed) => self
-                .heartbeat_private_work(&claimed)
-                .await
-                .map(|cancelled| {
-                    if cancelled {
-                        crate::private_work::WorkHeartbeat::CancellationRequested
-                    } else {
-                        crate::private_work::WorkHeartbeat::Current
-                    }
-                }),
+            crate::private_work::WorkHeartbeatRequest::Private(claimed) => {
+                self.heartbeat_private_work(&claimed).await
+            }
         }
     }
     async fn fence_private_work(

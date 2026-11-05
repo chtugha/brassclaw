@@ -726,6 +726,9 @@ async fn global_no_match_uses_actual_scoped_model_and_persisted_reply_ports() {
             )
             .await
             .unwrap();
+        let brassclaw_monty_host::service::TaskEnvelope::Chat(input) = input else {
+            panic!("actual native chat fixture requires its chat envelope");
+        };
         if name == "A" {
             threads
                 .accept_inbound_message(AcceptInboundMessageRequest {

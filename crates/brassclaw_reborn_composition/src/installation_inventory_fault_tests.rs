@@ -253,10 +253,9 @@ pub(super) async fn after_quiescence(
         brassclaw_turns::TurnStateStore::request_cancel(
             admitted.state.as_ref(),
             brassclaw_turns::CancelRunRequest {
-                scope: admitted.host.run_context().scope.clone(),
+                scope: admitted.chat_context()?.scope.clone(),
                 actor: admitted
-                    .host
-                    .run_context()
+                    .chat_context()?
                     .actor
                     .clone()
                     .ok_or_else(|| invalid("test actual actor missing"))?,

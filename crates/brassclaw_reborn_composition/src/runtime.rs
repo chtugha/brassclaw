@@ -3558,6 +3558,13 @@ pub async fn build_reborn_runtime(
         system_bundle_source,
         monty_driver,
     })?;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    installed_catalogue
+        .private_work_wake
+        .set(composition.wake_sender.clone())
+        .map_err(|_| RebornRuntimeError::InvalidArgument {
+            reason: "private Work wake sender already bound".into(),
+        })?;
     let default_resolved_run_profile = composition
         .run_profile_resolver
         .resolve_run_profile(RunProfileResolutionRequest::interactive_default())
@@ -4584,6 +4591,9 @@ mod tests {
     mod resource_store_settings_tests;
     // review_admission_source_tests removed: old contained-runner approach superseded by
     // validation_queue_q1_retained_tests which uses the drive_admitted path (plan Revision 4).
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "private_prefix_work_tests.rs"]
+    mod private_prefix_work_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;

@@ -12,9 +12,9 @@
 //!
 //! This test exercises the full live path:
 //! `run_q1_validation_retained` → `ValidatorTaskDriver::submit` →
-//! `bootstrap_validation::admit_validator_handoff` → `GlobalMontyDriver::drive_admitted` →
-//! `GlobalTaskPortsFactory::build` → `capture_internal` → `ReviewAdmissionSource` →
-//! `verify_receipt` → `persist_validator_q1_evidence`.
+//! original private Work/Ready → existing TurnRunnerWorker → GlobalMontyDriver →
+//! private capture using A03's original validator input → ReviewAdmissionSource →
+//! verify_receipt → persist_validator_q1_evidence → native live settlement.
 use super::*;
 use crate::{
     installed_monty_catalogue::ValidatorServiceBridge,
@@ -44,15 +44,48 @@ fn q1_retained_scope() -> ComponentScope {
 /// asserts `Q1Outcome::Passed` plus real evidence rows in the DB.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_q1_validation_retained_passes_and_persists_evidence() {
+    retained_validator_pass(DeliveryCase::Ordinary).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_validator_delivers_after_factory_release_to_original_and_late_waiters() {
+    retained_validator_pass(DeliveryCase::DelayedPublish).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_validator_worker_shutdown_delivers_unresolved_without_replay() {
+    retained_validator_pass(DeliveryCase::WorkerShutdown).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_validator_heartbeat_loss_delivers_unresolved_without_replay() {
+    retained_validator_pass(DeliveryCase::HeartbeatLoss).await;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DeliveryCase {
+    Ordinary,
+    DelayedPublish,
+    WorkerShutdown,
+    HeartbeatLoss,
+}
+
+async fn retained_validator_pass(case: DeliveryCase) {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let directory = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
-        rig.build_input("q1-retained-pass-owner", directory.path())
-            .with_runtime_policy(local_dev_runtime_policy()),
-    )))
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("q1-retained-pass-owner", directory.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_runner_settings(crate::runtime_input::TurnRunnerSettings {
+            heartbeat_interval: std::time::Duration::from_millis(50),
+            ..Default::default()
+        }),
+    ))
     .await
     .unwrap();
 
@@ -215,8 +248,21 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         tx.commit().await.unwrap();
     }
 
-    // Run the full retained Q1 path.
-    let outcome = run_q1_validation_retained(
+    let counts_before: (i64, i64) = {
+        let client = rig.pool.get().await.unwrap();
+        let row = client.query_one("SELECT (SELECT count(*) FROM brassclaw_session_threads), (SELECT count(*) FROM brassclaw_inbound_message_receipts)", &[]).await.unwrap();
+        (row.get(0), row.get(1))
+    };
+    let run = brassclaw_turns::TurnRunId::from_uuid(submission_id);
+    let driver = runtime.monty_test_controls.0.clone();
+    let pause = match case {
+        DeliveryCase::Ordinary => None,
+        DeliveryCase::HeartbeatLoss => Some(driver.pause_private_start(run)),
+        _ => Some(driver.pause_private_publish(run)),
+    };
+    // The existing real Worker claims Ready Work. The hook only delays delivery
+    // after drive_host has completed its actual native/SQL settlement.
+    let validation = run_q1_validation_retained(
         &rig.pool,
         &scope,
         component_id,
@@ -224,10 +270,142 @@ async fn run_q1_validation_retained_passes_and_persists_evidence() {
         &store,
         brassclaw_monty_host::utility::UtilityLimits::from_execution(Default::default()).unwrap(),
         Some(&bridge),
-    )
-    .await
-    .expect("run_q1_validation_retained must not return Err");
+    );
+    let observe = async {
+        if let Some(pause) = pause {
+            pause.reached.notified().await;
+            if case == DeliveryCase::HeartbeatLoss {
+                // Fail the actual renewal of still-open Work at PostgreSQL.
+                // The real Worker receives that error, drops its driver future,
+                // stops/fences the exact claim and cannot submit a native task.
+                let client = rig.pool.get().await.unwrap();
+                client.batch_execute(&format!("CREATE FUNCTION b02_reject_private_heartbeat() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF OLD.work_id='{}'::uuid AND OLD.status='claimed' AND NEW.status='claimed' THEN RAISE EXCEPTION 'native heartbeat fault injection'; END IF; RETURN NEW; END $$; CREATE TRIGGER b02_reject_private_heartbeat BEFORE UPDATE ON brassclaw_turns FOR EACH ROW EXECUTE FUNCTION b02_reject_private_heartbeat();", submission_id)).await.unwrap();
+                drop(client);
+                let late = driver.private_completion_waiter(run).unwrap();
+                let result = tokio::time::timeout(std::time::Duration::from_secs(60), late.wait())
+                    .await
+                    .unwrap();
+                assert!(
+                    matches!(result, Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind })
+                    if reason_kind == "private_completion_producer_interrupted")
+                );
+                tokio::time::timeout(std::time::Duration::from_secs(60), async {
+                    loop {
+                        let client = rig.pool.get().await.unwrap();
+                        let status: String = client
+                            .query_one(
+                                "SELECT status FROM brassclaw_turns WHERE work_id=$1",
+                                &[&submission_id],
+                            )
+                            .await
+                            .unwrap()
+                            .get(0);
+                        if status == "reconciliation_required" {
+                            break;
+                        }
+                        drop(client);
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .unwrap();
+                rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER b02_reject_private_heartbeat ON brassclaw_turns; DROP FUNCTION b02_reject_private_heartbeat();").await.unwrap();
+                return;
+            }
+            let row = rig.pool.get().await.unwrap().query_one(
+                "SELECT w.status,a.phase FROM brassclaw_turns w JOIN brassclaw_monty_task_admissions a ON a.private_work_id=w.work_id WHERE w.work_id=$1",
+                &[&submission_id],
+            ).await.unwrap();
+            assert_eq!(row.get::<_, &str>(0), "settled");
+            assert_eq!(row.get::<_, &str>(1), "settled");
+            assert!(driver.private_completion_live(run).unwrap());
+            let departed = driver.private_completion_waiter(run).unwrap();
+            assert!(!departed.has_result());
+            drop(departed);
+            let late = driver.private_completion_waiter(run).unwrap();
+            assert!(!late.has_result());
+            assert!(driver.private_completion_live(run).unwrap());
+            if case == DeliveryCase::WorkerShutdown {
+                runtime.worker_cancel.cancel();
+                let result = tokio::time::timeout(std::time::Duration::from_secs(60), late.wait())
+                    .await
+                    .expect("actual Worker interruption must resolve its waiter");
+                assert!(
+                    matches!(result, Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind })
+                    if reason_kind == "private_completion_producer_interrupted")
+                );
+                return;
+            }
+            // Keep a healthy settled original pending across several actual
+            // Worker heartbeat periods. It must not lose native delivery.
+            tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            assert!(driver.private_completion_live(run).unwrap());
+            // Consume the first caller's signal. The second actual submit must
+            // pass its Settled-state/live-producer check before publication.
+            pause.consumer_waiting.notified().await;
+            let second_driver = ValidatorTaskDriver::new(driver.clone());
+            let second = second_driver.submit(rig.pool.clone(), submission_id);
+            let release = async {
+                pause.consumer_waiting.notified().await;
+                pause.release.notify_one();
+            };
+            let (second, ()) = tokio::join!(second, release);
+            assert_eq!(
+                second
+                    .unwrap()
+                    .internal_completion
+                    .unwrap()
+                    .attempt()
+                    .run_id,
+                run
+            );
+            let original = late.wait().await.unwrap();
+            assert_eq!(original.internal_completion.unwrap().attempt().run_id, run);
+        }
+    };
+    let (outcome, ()) = tokio::join!(validation, observe);
+    {
+        let client = rig.pool.get().await.unwrap();
+        let row = client.query_one("SELECT (SELECT count(*) FROM brassclaw_session_threads), (SELECT count(*) FROM brassclaw_inbound_message_receipts)", &[]).await.unwrap();
+        assert_eq!(
+            (row.get::<_, i64>(0), row.get::<_, i64>(1)),
+            counts_before,
+            "private validator must not fabricate threads or inbound messages"
+        );
+        let row = client.query_one("SELECT w.record_kind,w.turn_id,a.origin_kind,a.scope,(SELECT count(*) FROM brassclaw_monty_private_terminals t WHERE t.work_id=w.work_id) FROM brassclaw_turns w JOIN brassclaw_monty_task_admissions a ON a.private_work_id=w.work_id WHERE w.work_id=$1", &[&submission_id]).await.unwrap();
+        assert_eq!(row.get::<_, &str>(0), "private_work");
+        assert_eq!(row.get::<_, Option<String>>(1), None);
+        assert_eq!(row.get::<_, &str>(2), "private_work");
+        assert_eq!(row.get::<_, Option<serde_json::Value>>(3), None);
+        assert_eq!(
+            row.get::<_, i64>(4),
+            if case == DeliveryCase::HeartbeatLoss {
+                0
+            } else {
+                1
+            }
+        );
+    }
 
+    if matches!(
+        case,
+        DeliveryCase::WorkerShutdown | DeliveryCase::HeartbeatLoss
+    ) {
+        assert!(
+            outcome.is_err(),
+            "an interrupted native delivery cannot promote Q1"
+        );
+        assert!(
+            store
+                .list(&scope, Some(2))
+                .await
+                .unwrap()
+                .iter()
+                .all(|row| row.component_id != component_id)
+        );
+        return;
+    }
+    let outcome = outcome.expect("run_q1_validation_retained must not return Err");
     assert!(
         matches!(outcome, Q1Outcome::Passed),
         "expected Q1Outcome::Passed for a valid class-22 component; got {outcome:?}"

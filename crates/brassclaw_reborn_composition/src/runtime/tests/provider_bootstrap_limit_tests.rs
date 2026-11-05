@@ -20,7 +20,7 @@ pub(super) async fn assert_original_input_limits(
     caller: &WebUiAuthenticatedCaller,
 ) {
     use crate::prefix_job_definitions::{
-        LEGACY_INPUT_LIMITS, Reservation, Store, Target, captured_input_limits,
+        LEGACY_INPUT_LIMITS, Origin, Reservation, Store, Target, captured_input_limits,
     };
     let pool = runtime.installed_catalogue.pool.clone();
     let store = Store::new(pool.clone());
@@ -106,8 +106,10 @@ pub(super) async fn assert_original_input_limits(
         program,
         input: &input,
         original_input_limits: limits,
-        scope: &scope,
-        thread_scope: &thread,
+        origin: &Origin::Chat {
+            scope: scope.clone(),
+            thread_scope: thread.clone(),
+        },
         created_by: runtime.actor_user_id.as_str(),
     };
     let stored = store.reserve(Reservation { ..reservation }).await.unwrap();
@@ -145,7 +147,10 @@ pub(super) async fn assert_original_input_limits(
         store
             .reserve(Reservation {
                 id: too_large_id,
-                scope: &too_large_scope,
+                origin: &Origin::Chat {
+                    scope: too_large_scope.clone(),
+                    thread_scope: thread.clone()
+                },
                 original_input_limits: reduced_limits,
                 ..reservation
             })
@@ -158,7 +163,10 @@ pub(super) async fn assert_original_input_limits(
     let small_scope = job_scope(&scope, small_id);
     let small_reservation = Reservation {
         id: small_id,
-        scope: &small_scope,
+        origin: &Origin::Chat {
+            scope: small_scope.clone(),
+            thread_scope: thread.clone(),
+        },
         input: &small,
         original_input_limits: reduced_limits,
         ..reservation
@@ -189,7 +197,10 @@ pub(super) async fn assert_original_input_limits(
             store
                 .reserve(Reservation {
                     id: invalid_id,
-                    scope: &invalid_scope,
+                    origin: &Origin::Chat {
+                        scope: invalid_scope.clone(),
+                        thread_scope: thread.clone()
+                    },
                     original_input_limits: invalid,
                     ..small_reservation
                 })

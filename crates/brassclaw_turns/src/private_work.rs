@@ -202,6 +202,9 @@ pub enum WorkHeartbeatRequest {
 pub enum WorkHeartbeat {
     Current,
     CancellationRequested,
+    /// Exact original claim already settled. No lease renewal or dispatch
+    /// authority; keep only the original driver's completion delivery alive.
+    OriginalSettled,
 }
 impl ClaimedWork {
     pub fn heartbeat_request(&self) -> WorkHeartbeatRequest {

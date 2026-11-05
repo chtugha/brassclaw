@@ -85,6 +85,149 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for Install
 }
 
 impl InstalledMontyCatalogue {
+    pub(crate) async fn prepare_private_validator(
+        &self,
+        submission_id: Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, RebornBuildError> {
+        use brassclaw_skills::component_revision::REVISION_LIMITS;
+        use brassclaw_skills::review_submission_store::{PgReviewSubmissionStore, selection};
+        let mut context = self
+            .private_work_context
+            .get()
+            .cloned()
+            .ok_or_else(|| invalid("private validator runtime context unavailable"))?;
+        let store = PgTurnStateStore::new(self.pool.clone(), context.tenant_id.as_str());
+        // An original already published by this owner must never capture today's
+        // settings again, including after an unknown COMMIT acknowledgement.
+        if let Some(state) = store
+            .get_private_work_state(submission_id)
+            .await
+            .map_err(|_| invalid("private validator original unavailable"))?
+        {
+            if !matches!(state.request.original(), PrivateOriginalRef::ValidatorStructural { submission_id: original, .. } if *original == submission_id)
+            {
+                return Err(invalid("private validator original conflicts"));
+            }
+            return Ok(state);
+        }
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| invalid("private validator preparation unavailable"))?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(|_| invalid("private validator preparation unavailable"))?;
+        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+            &tx,
+            submission_id,
+            REVISION_LIMITS,
+        )
+        .await
+        .map_err(|error| invalid(error.to_string()))?
+        .ok_or_else(|| invalid("private validator subject missing"))?;
+        let selection =
+            selection::read_preparation_in_transaction(&tx, submission_id, REVISION_LIMITS)
+                .await
+                .map_err(|error| invalid(error.to_string()))?
+                .ok_or_else(|| invalid("private validator selection missing"))?;
+        let actor = tx
+            .query_one(
+                "SELECT actor FROM reborn_component_review_submissions WHERE submission_id=$1",
+                &[&submission_id],
+            )
+            .await
+            .map_err(|_| invalid("private validator actor unavailable"))?;
+        context.actor = Some(brassclaw_turns::TurnActor::new(
+            brassclaw_host_api::UserId::new(actor.get::<_, String>(0))
+                .map_err(|error| invalid(error.to_string()))?,
+        ));
+        let root = PgComponentRevisionStore::read_revision_in_transaction(&tx, self.root_reference)
+            .await
+            .map_err(|error| invalid(error.to_string()))?;
+        tx.commit()
+            .await
+            .map_err(|_| invalid("private validator original read failed"))?;
+        drop(client);
+        let prepared = crate::pg_review_admission_source::PreparedValidatorReview::prepare(
+            Arc::new(subject),
+            Arc::new(selection),
+            self.worker_image.clone(),
+            self.capture_task_preparation().await?,
+        )
+        .await?;
+        let capture = prepared.input_capture();
+        let request = PrivateWorkRequest::V1 {
+            work_id: submission_id,
+            run_id: TurnRunId::from_uuid(submission_id),
+            original: PrivateOriginalRef::ValidatorStructural {
+                submission_id,
+                subject_checksum: decode_checksum(prepared.subject().subject_checksum())?,
+            },
+            context,
+            original_preparation_checksum: Some(decode_checksum(capture.preparation().checksum())?),
+            original_workflow_checksum: Some(decode_checksum(capture.validator_checksum())?),
+        };
+        // All original bytes and the Ready seal commit together. No interrupted
+        // producer leaves only a hash whose original limits cannot be restored.
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| invalid("private validator retention unavailable"))?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| invalid("private validator retention unavailable"))?;
+        let request_checksum = store
+            .submit_private_work_in_transaction(
+                &tx,
+                &request,
+                PrivatePreparationReason::PreparationPending,
+                self,
+            )
+            .await
+            .map_err(|_| invalid("private validator original retention failed"))?;
+        let state = store
+            .get_private_work_state_in_transaction(&tx, submission_id)
+            .await
+            .map_err(|_| invalid("private validator original unavailable"))?
+            .ok_or_else(|| invalid("private validator original missing"))?;
+        if state.status == PrivateWorkStatus::AwaitingPreparation {
+            let definition = PrivateWorkDefinition::capture(DefinitionCapture {
+                request: &request,
+                request_checksum,
+                preparation: capture.preparation().clone(),
+                worker_checksum: self.worker_image.checksum(),
+                root: &root,
+                workflow_checksum: decode_checksum(capture.validator_checksum())?,
+                input_checksum: decode_checksum(capture.input_checksum())?,
+                domain: DomainCapture::ValidatorStructural {
+                    capture_bytes: capture.bytes().to_owned(),
+                    capture_checksum: decode_checksum(capture.checksum())?,
+                },
+            })?;
+            self.retain_private_definition(&tx, &definition, &store, &state)
+                .await?;
+        }
+        tx.commit()
+            .await
+            .map_err(|_| invalid("private validator preparation commit unknown"))?;
+        drop(client);
+        if let Some(wake) = self.private_work_wake.get() {
+            wake.wake();
+        }
+        store
+            .get_private_work_state(submission_id)
+            .await
+            .map_err(|_| invalid("private validator published original unavailable"))?
+            .ok_or_else(|| invalid("private validator published original missing"))
+    }
+
     pub(crate) async fn prepare_private_prefix(
         &self,
         definition: crate::prefix_job_definitions::Definition,
@@ -158,7 +301,7 @@ impl InstalledMontyCatalogue {
         let captured = PrivateWorkDefinition::capture(DefinitionCapture {
             request: &request,
             request_checksum,
-            preparation: preparation.clone(),
+            preparation: preparation.as_ref().clone(),
             worker_checksum: self.worker_image.checksum(),
             root: &root,
             workflow_checksum: checksum(&definition.program_bytes),

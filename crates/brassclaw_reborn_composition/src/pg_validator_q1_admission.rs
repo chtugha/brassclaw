@@ -2,7 +2,7 @@
 //!
 //! Provides `retain_validator_selection`, which prepares and durably stores the
 //! sealed `component-validator-selection/1` record required before a trusted
-//! internal validator task can be admitted via `admit_validator_handoff`.
+//! validator task can be published as message-free private Work.
 //!
 //! Steps performed by `retain_validator_selection`:
 //! 1. Calls `RetainedValidatorCoverage::selection_bytes` to derive the pinned
@@ -11,7 +11,7 @@
 //!    `selection::retain_in_transaction` (idempotent).
 //!
 //! Actual task submission is handled by `ValidatorTaskDriver::submit`, which
-//! calls `admit_validator_handoff` and `GlobalMontyDriver::drive_admitted`.
+//! publishes private Ready Work and awaits the existing Worker/native driver.
 //!
 //! # What this is NOT
 //!

@@ -463,8 +463,7 @@ impl QualificationRequest<'_> {
         let behavior = subject.behavior;
         let mut context = ExecutionContext::local_default(
             admitted
-                .host
-                .run_context()
+                .chat_context()?
                 .actor
                 .as_ref()
                 .ok_or_else(|| invalid("qualification actor missing"))?
@@ -477,10 +476,10 @@ impl QualificationRequest<'_> {
             MountView::default(),
         )
         .map_err(invalid)?;
-        context.tenant_id = admitted.host.run_context().scope.tenant_id.clone();
-        context.agent_id = admitted.host.run_context().scope.agent_id.clone();
-        context.project_id = admitted.host.run_context().scope.project_id.clone();
-        context.thread_id = Some(admitted.host.run_context().thread_id.clone());
+        context.tenant_id = admitted.chat_context()?.scope.tenant_id.clone();
+        context.agent_id = admitted.chat_context()?.scope.agent_id.clone();
+        context.project_id = admitted.chat_context()?.scope.project_id.clone();
+        context.thread_id = Some(admitted.chat_context()?.thread_id.clone());
         context.resource_scope.tenant_id = context.tenant_id.clone();
         context.resource_scope.agent_id = context.agent_id.clone();
         context.resource_scope.project_id = context.project_id.clone();
@@ -563,7 +562,7 @@ impl QualificationRequest<'_> {
             .map_err(invalid)?;
         let header = json!({"format":"contained-inventory-qualification/1","qualification_id":qualification_id,"manifest":subject.manifest,"recipe_selection":program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
         "association":binding.association().exact_bytes(),"worker_checksum":hex::encode(worker.checksum()),"native":native,
-        "run_id":admitted.host.run_context().run_id,"runner_id":admitted.attempt.runner_id,
+        "run_id":admitted.chat_context()?.run_id,"runner_id":admitted.attempt.runner_id,
         "claim_checksum":hex::encode(sha2::Sha256::digest(serde_json::to_vec(&admitted.attempt.lease_token).map_err(invalid)?)),
         "primitive_scope":context.resource_scope,"primitive_invocation":context.invocation_id,"sources":sources,
         "invalid_primitive_invocation":invalid_context.invocation_id,"invalid_arguments":{"sources":{"":""}},
@@ -806,7 +805,7 @@ impl QualificationRequest<'_> {
             .take()
             .ok_or_else(|| invalid("inventory usage proof missing"))?;
         let quiescence=subject.record(subject.quiescence,json!({"format":"inventory-quiescence-observation/1","manifest":subject.manifest,
-            "behavior_checksum":crate::bootstrap_evidence::checksum(&proof.behavior_bytes),"turn_scope":admitted.host.run_context().scope,"native":actual_quiescence}),false);
+            "behavior_checksum":crate::bootstrap_evidence::checksum(&proof.behavior_bytes),"turn_scope":admitted.chat_context()?.scope,"native":actual_quiescence}),false);
         primitives::retain_record(&pool, storage.as_ref(), subject.quiescence, &quiescence).await?;
         #[cfg(all(test, unix))]
         if matches!(fault, Some(QualificationFault::LateCancellation)) {
@@ -814,10 +813,9 @@ impl QualificationRequest<'_> {
                 brassclaw_turns::TurnStateStore::request_cancel(
                     admitted.state.as_ref(),
                     brassclaw_turns::CancelRunRequest {
-                        scope: admitted.host.run_context().scope.clone(),
+                        scope: admitted.chat_context()?.scope.clone(),
                         actor: admitted
-                            .host
-                            .run_context()
+                            .chat_context()?
                             .actor
                             .clone()
                             .ok_or_else(|| invalid("original cancel actor missing"))?,
