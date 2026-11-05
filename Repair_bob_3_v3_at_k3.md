@@ -699,10 +699,10 @@ immutable internal validator selection, full B1 M4-01–M4-12 production matrix 
 all applicable B2/B3 consumer gates. Mark an inherited case pending when it was
 not actually exercised; do not repeat the old plan's blanket closed-source claims.
 Superseding `missing4` does not satisfy any of these implementation gates.
-No commit/push/tag/release/deployment or test-machine wipe
-is part of this documentation request. Existing standing authorizations remain
-valid; future implementation/release work follows its applicable authorization
-and release contract. This delivery only writes the three requested plans.
+The original documentation delivery granted no new release, deployment or
+test-machine-wipe authorization. Ongoing implementation, integration and release
+work follows the user's applicable standing authorizations and the release
+contract; creating these plans was not itself implementation or acceptance.
 
 ## 9. Completion and v3.5 boundary
 

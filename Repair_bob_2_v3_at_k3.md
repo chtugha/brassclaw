@@ -490,6 +490,16 @@ qualification and B3-09 supplies the visible repair/review state.
    if already absent, record that fact. If present, retire the obsolete Rust
    audit workflow only after supported replacements and this plan's native gates
    pass and no active/retained owner needs it. Preserve needed historical bytes.
+   Also reconcile the inherited composition-wide `#![allow(deprecated)]` and its
+   DocType/MemoryDoc migration rationale against actual callers, including
+   `pg_thread_engine_store.rs` and the feature-gated `memory_doc_libsql_store.rs`.
+   Migrate supported uses through their actual current store/type owners, or
+   retire an adapter only after verifying that no supported or retained consumer
+   needs it. Preserve historical record/import semantics. Remove the blanket
+   suppression; do not replace it with narrower suppression, remove deprecation
+   annotations to hide a live migration, or certify an unchecked feature branch.
+   B3-12 consumes this migration and its applicable feature validation instead
+   of implementing a second cleanup.
 7. Acceptance includes fresh/existing/repeated boot, override-preserving upgrade,
    integrity fault -> supported repair -> checked readiness, interrupted review/
    commit, exact restore, old waiting tasks and no invented successful verdicts.

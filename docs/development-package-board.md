@@ -176,6 +176,16 @@ feasibility without guessed limits. Lost acknowledgement, cancellation and later
 cleanup failure need their real native cases. No paid compilation is approved
 until the corrected coherent diff is reviewed.
 
+The bounded scoped-fixture adapter design is reviewed for implementation in
+A-03a: the existing native registration and invocation-service owner retain the
+original handler/artifact and pass an exact private fixture preparation to the
+actual SourceInspection backend. Fixed package input determines the narrowed
+fixture bound; base and derived settings identities stay distinct. It must retain
+each actual primitive result before advancing, preserve current policy/custody
+and support completed-original readback without replay. This is source work to
+finish, not an implemented adapter or successful qualification. A temporary
+unavailable-only path for normal valid settings cannot close the package.
+
 B-02 owns the common acknowledged preparation capture at the existing settings/
 catalogue owner, pairing its actual revision with the exact limits. A-03 owns the
 validator input/selection capture and its checked original-byte restoration;
@@ -183,3 +193,21 @@ B-02 persists and consumes it without another serializer. Later native-dispatch
 revision and original task-preparation revision remain separate. V207 stays
 exclusive to B-02. Existing work must not recapture current settings or rematch
 on restart. These assignments describe work in progress, not implemented APIs.
+
+A-03 also owns the necessary correction of the existing contained-bootstrap
+executor configuration. Extract the current pure startup constructor once in
+its existing owner, using the actual settings already read before catalogue
+boot; both controlled qualification and the real global start consume it.
+The current helper's fixed frame/capacity/deadline values and utility-memory
+derivation cannot certify the new path. Utility parser physical limits and VM
+executor heap/backstop have different purposes. This executor-creation profile
+is distinct from B-02's original task-preparation capture: ordinary private work
+uses the running global VM and keeps current shared memory/policy controls live.
+It does not create a per-task retained heap policy or another settings reader.
+
+Final warning acceptance also remains open: the retained native test executable
+has a measured 19.12 MiB `__eh_frame` section, exceeding the linker's reported
+16 MiB compact-unwind offset limit. Metadata-only lint is not linked acceptance.
+The inherited composition-wide deprecated-type suppression requires the actual
+legacy-adapter/type migration audit in B2-09, consumed by B3-12. Neither warning
+suppression nor untested removal of retained compatibility closes these gates.
