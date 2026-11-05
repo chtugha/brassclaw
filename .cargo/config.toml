@@ -21,8 +21,8 @@ split-debuginfo = "unpacked"
 incremental = true
 debug = 1
 
-# Slightly faster incremental test builds; full optimisation for release stays
-# at the cargo default (opt-level = 3).
+# Test optimization is owned by the workspace Cargo.toml; retain the same
+# debug information and incremental settings here as for development builds.
 [profile.test]
 split-debuginfo = "unpacked"
 incremental = true
