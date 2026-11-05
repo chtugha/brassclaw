@@ -26,11 +26,12 @@ release and dist profiles are unchanged. The first test build after this change
 recompiles affected dependencies and needs additional cache space; earlier warm
 build timings do not estimate that rebuild. Keep the canonical target and
 retained evidence. This addresses the distributed unoptimized contributions to
-large native harnesses; the Apple unwind-size repair still requires an actual
-native link without the warning, retained unwind sections and `__eh_frame` below
-16 MiB, followed by real harness/caller checks. See the
-[source-only profile review](validation/2026-11-05-c00-test-unwind-profile.md);
-configuration inspection alone does not establish those acceptance gates.
+large native harnesses. The measured C-00 baseline passed its actual native
+link, unwind-section and selected caller gates; see the
+[scoped native profile record](validation/2026-11-05-c00-test-unwind-profile.md).
+A later changed graph still needs its own warning-free link, retained unwind
+sections and `__eh_frame` below 16 MiB. Configuration inspection alone does not
+establish those acceptance gates or cross-platform runtime support.
 
 | Setting | Meaning |
 | --- | --- |

@@ -669,6 +669,14 @@ file/template change and no remote compilation is required by this plan.
 
 - [ ] **B3-12 — Batch validation and record actual completion.**
 
+**Scoped linker gate accepted — 2026-11-05:** C-00's shared test-profile change
+is integrated as `e212e0ba2`. An actual Apple ARM64 native link completed without
+warnings, retaining unwind/debug/overflow checks; `__eh_frame` is 11,978,176 bytes
+and all 1,353 prior test names remain. Two selected real PostgreSQL callers pass.
+See the [exact source/artifact receipt](docs/validation/2026-11-05-c00-test-unwind-profile.md).
+This closes that measured baseline warning, not B3-12, other platforms, the
+deprecated-store migration or A-03/B-02's future linked/runtime acceptance.
+
 Complete each coherent source/consumer/test repair before compiling. Follow the
 development policy's two-package-chat/supervisor workflow: isolated package chats
 implement and share the serialized, activated Modal builder; the supervisor

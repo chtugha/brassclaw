@@ -1,3 +1,19 @@
+## 2026-11-05 — Scoped native test-profile/linker acceptance
+
+C-00 source `36ce1c4c5`, integrated as `e212e0ba2`, passed the actual native
+profile/link/caller gate. The complete original 1,353-test harness links without
+warnings; `__eh_frame` is 11,978,176 bytes, below 16 MiB, with unwind sections,
+debug assertions and overflow checks retained. Two selected real PostgreSQL
+callers executed and passed; this is not a full 1,353-test run. The first broad
+optimized test graph took 779.70 seconds to compile. See the
+[exact C-00 record](validation/2026-11-05-c00-test-unwind-profile.md).
+
+This resolves the earlier measured linker warning for that exact baseline.
+It does not validate the unintegrated A-03/B-02 code, general Pure approval,
+durable scheduling, other platforms or full B3-12. The combined runtime build
+must recheck its own linked artifact. Existing deprecated-store migration
+remains B2-09 work; metadata-only lint does not close it.
+
 ## 2026-11-05 — Bob candidate integration and actual native/JS progress
 
 B-01 original immutable queue binding V206 and A-02a exact canonical Pure
@@ -17,8 +33,9 @@ review/lifecycle cases passed: RR concurrent rejection preserves SQLSTATE 40001
 and a fresh state-3 refusal; the ToolSkill fixture binds a complete original.
 All 24 actual Node UI-state/paging cases pass after using the real i18n fallback.
 Strict twelve-package all-target lint passed on `5c5e84bf3` in 149.44 seconds.
-B-01/A-02a are accepted only in these bounded scopes; the native Apple unwind-size
-warning remains open. Reused receipts are not a new single-binary full-suite run.
+B-01/A-02a are accepted only in these bounded scopes. Their earlier unwind-size
+warning is superseded for the later exact baseline by C-00's receipt above.
+Reused receipts are not a new single-binary full-suite run.
 
 Exact sources, commands, failures, hashes and scope are in the
 [active repair record](validation/2026-11-03-bob-repair-progress.md) and
