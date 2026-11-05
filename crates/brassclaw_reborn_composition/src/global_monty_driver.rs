@@ -474,7 +474,13 @@ impl GlobalMontyDriver {
         let host = entry.host.clone();
         let owner = Arc::downgrade(entry);
         let factory = self.ports.clone();
+        #[cfg(test)]
+        let pause = self.private_submit_pause(host.attempt().run_id);
         let submission = async move {
+            #[cfg(test)]
+            if let Some(pause) = pause {
+                pause.wait().await;
+            }
             let result = if factory.before_submit(&host).await.is_ok() {
                 service
                     .submit_unless_cancelled(input, ports, host.cancellation_requested())

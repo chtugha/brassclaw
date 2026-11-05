@@ -253,7 +253,7 @@ fn same_request(existing: &Definition, r: &Reservation<'_>) -> bool {
         && existing.operation == r.operation
         && existing.mode == r.mode
         && existing.created_by == r.created_by
-        && existing.origin == *r.origin
+        && existing.origin.same_request_origin(r.origin)
     // Original codec meaning remains fixed when a retry arrives after a
     // live settings edit. Offered new limits cannot reinterpret old bytes.
 }
@@ -396,6 +396,17 @@ impl Store {
         }
         r.origin.validate(r.created_by)?;
         let (profile, revision) = r.target.columns(r.operation, r.mode, r.request)?;
+        // Serialize private first-capture writers before fresh-data validation.
+        // A same-ID loser reads its committed winner under ReadCommitted, using
+        // original limits. Legacy mutation writers retain their existing locks.
+        if matches!(r.origin, Origin::Private { .. }) {
+            tx.query_one(
+                "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                &[&format!("brassclaw-prefix-original:{}", r.id)],
+            )
+            .await
+            .map_err(|_| Error::Unavailable)?;
+        }
         let request_bytes = serde_json::to_string(r.request).map_err(|_| Error::Invalid)?;
         let request_checksum = sha(&request_bytes);
         if let Some(existing) = Self::get_in_transaction(tx, r.id).await? {
@@ -404,10 +415,9 @@ impl Store {
             }
             return Ok(existing);
         }
-        // Verify the offered input limits match the effective preparation policy
-        // at commit time. A concurrent live settings edit between qualification
-        // capture and this reserve must be detected and rejected rather than
-        // silently storing a stale codec boundary.
+        // Legacy callers keep their transaction-time limits check. Private
+        // fresh work uses its one acknowledged capture, never a desired-settings
+        // reread. An existing winner has already returned with its original bytes.
         let effective_limits = match r.origin {
             Origin::Chat { .. } => read_effective_limits_in_transaction(tx).await?,
             Origin::Private { preparation, .. } => {
@@ -438,6 +448,14 @@ impl Store {
             if Some(current.get::<_, i64>(0)) != revision {
                 return Err(Error::Conflict);
             }
+        }
+        if matches!(r.origin, Origin::Private { .. }) {
+            crate::prefix_job_execution::validate_snapshot(
+                profile.ok_or(Error::Invalid)?,
+                r.input["snapshot_bytes"].as_str().ok_or(Error::Invalid)?,
+                r.original_input_limits,
+            )
+            .map_err(|_| Error::Invalid)?;
         }
         // Inspecting/binding is mechanical; it cannot turn a draft into an
         // approved pipeline. Actual admission revalidates trusted provenance.

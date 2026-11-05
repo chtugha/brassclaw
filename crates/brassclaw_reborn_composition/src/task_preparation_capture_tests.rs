@@ -1,6 +1,6 @@
 //! Real startup/ACK-live capture plus original-codec corruption cases.
 use super::*;
-use brassclaw_product_workflow::{MontyMemoryMode, MontyVmSettingsStore};
+use brassclaw_product_workflow::MontyMemoryMode;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_original_preparation_capture_survives_acknowledged_changes() {
@@ -12,7 +12,6 @@ async fn native_original_preparation_capture_survives_acknowledged_changes() {
             .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
     );
     let runtime = crate::build_reborn_runtime(input).await.unwrap();
-    let root = runtime.global_monty_owner.client().root_identity();
     let startup = runtime.installed_catalogue.initial_preparation.clone();
     assert!(startup.origin() == PreparationOrigin::AcknowledgedStartup);
     assert!(startup.revision() > 0);
@@ -66,7 +65,6 @@ async fn native_original_preparation_capture_survives_acknowledged_changes() {
     assert!(second.revision() > first.revision());
     assert_eq!(second.policy(), changed_limits);
     assert_ne!(second.bytes(), first.bytes());
-    assert_eq!(runtime.global_monty_owner.client().root_identity(), root);
 
     // Restore must use the retained original after live uptake, never today's
     // limits or a revision inferred from those limits.

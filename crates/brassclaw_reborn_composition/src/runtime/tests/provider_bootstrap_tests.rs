@@ -64,7 +64,10 @@ async fn complete(runtime: &Arc<RebornRuntime>, receipt: &ProviderMutationReceip
     assert!(
         runtime
             .read_latest_assistant_text(
-                &definition.thread_scope,
+                definition
+                    .origin
+                    .thread_scope()
+                    .expect("actual legacy chat scope"),
                 &definition
                     .origin
                     .chat_scope()

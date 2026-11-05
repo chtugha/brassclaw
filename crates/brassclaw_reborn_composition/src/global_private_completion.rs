@@ -105,28 +105,55 @@ fn new_slot() -> DeliverySlot {
     }
 }
 #[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum PauseStage {
+    BeforeDrive,
+    BeforeSubmit,
+    BeforePublish,
+}
+#[cfg(test)]
 pub(crate) struct PublishPause {
     pub(crate) reached: Notify,
     pub(crate) release: Notify,
     pub(crate) consumer_waiting: Notify,
-    before_drive: bool,
+    stage: PauseStage,
+}
+#[cfg(test)]
+impl PublishPause {
+    pub(super) async fn wait(&self) {
+        self.reached.notify_one();
+        self.release.notified().await;
+    }
 }
 impl GlobalMontyDriver {
     #[cfg(test)]
     pub(crate) fn pause_private_publish(&self, run: TurnRunId) -> Arc<PublishPause> {
-        self.pause_private_at(run, false)
+        self.pause_private_at(run, PauseStage::BeforePublish)
     }
     #[cfg(test)]
     pub(crate) fn pause_private_start(&self, run: TurnRunId) -> Arc<PublishPause> {
-        self.pause_private_at(run, true)
+        self.pause_private_at(run, PauseStage::BeforeDrive)
     }
     #[cfg(test)]
-    fn pause_private_at(&self, run: TurnRunId, before_drive: bool) -> Arc<PublishPause> {
+    pub(crate) fn pause_private_before_submit(&self, run: TurnRunId) -> Arc<PublishPause> {
+        self.pause_private_at(run, PauseStage::BeforeSubmit)
+    }
+    #[cfg(test)]
+    pub(super) fn private_submit_pause(&self, run: TurnRunId) -> Option<Arc<PublishPause>> {
+        self.private_publish_pauses
+            .lock()
+            .unwrap()
+            .get(&run)
+            .filter(|pause| pause.stage == PauseStage::BeforeSubmit)
+            .cloned()
+    }
+    #[cfg(test)]
+    fn pause_private_at(&self, run: TurnRunId, stage: PauseStage) -> Arc<PublishPause> {
         let pause = Arc::new(PublishPause {
             reached: Notify::new(),
             release: Notify::new(),
             consumer_waiting: Notify::new(),
-            before_drive,
+            stage,
         });
         assert!(
             self.private_publish_pauses
@@ -138,13 +165,13 @@ impl GlobalMontyDriver {
         pause
     }
     #[cfg(test)]
-    async fn private_test_pause(&self, run: TurnRunId, before_drive: bool) {
+    async fn private_test_pause(&self, run: TurnRunId, stage: PauseStage) {
         let pause = self
             .private_publish_pauses
             .lock()
             .unwrap()
             .get(&run)
-            .filter(|pause| pause.before_drive == before_drive)
+            .filter(|pause| pause.stage == stage)
             .cloned();
         if let Some(pause) = pause {
             pause.reached.notify_one();
@@ -244,14 +271,17 @@ impl GlobalMontyDriver {
             published: false,
         };
         #[cfg(test)]
-        self.private_test_pause(run, true).await;
+        self.private_test_pause(run, PauseStage::BeforeDrive).await;
         let result = async {
             let host = self.ports.private_host(&claimed)?;
             self.drive_host(host).await
         }
         .await;
         #[cfg(test)]
-        self.private_test_pause(run, false).await;
+        self.private_test_pause(run, PauseStage::BeforePublish)
+            .await;
+        #[cfg(test)]
+        self.private_publish_pauses.lock().unwrap().remove(&run);
         delivery.publish(result.clone());
         result.map(|_| ())
     }

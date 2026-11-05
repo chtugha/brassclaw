@@ -42,52 +42,82 @@ impl RebornRuntime {
         if caller.tenant_id.as_str() != self.webui_tenant_id() {
             return Err(invalid("prefix original tenant differs"));
         }
-        let snapshot =
-            if crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone())
-                .get(id)
-                .await
-                .map_err(definition_error)?
-                .is_some()
-            {
-                // The shared submission boundary validates the retained request and
-                // reconstructs its scopes. A retry never recollects current sources.
-                None
+        let store =
+            crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone());
+        let snapshot = if store.get(id).await.map_err(definition_error)?.is_some() {
+            // The shared submission boundary validates the retained request and
+            // reconstructs its scopes. A retry never recollects current sources.
+            None
+        } else {
+            let captured = if release_documents {
+                self.installed_catalogue
+                    .capture_declared_release_prefix_sources(profile)
+                    .await
             } else {
-                let captured = if release_documents {
-                    self.installed_catalogue
-                        .capture_declared_release_prefix_sources(profile)
-                        .await
-                } else {
-                    self.installed_catalogue
-                        .capture_core_prefix_sources(profile)
-                        .await
-                };
-                Some(captured.map_err(|error| {
-                    use brassclaw_product_workflow::{
-                        InterceptorConfigServiceError as ProductError, RecipeStoreError,
-                    };
-                    match error {
-                        RecipeStoreError::Unavailable(_) | RecipeStoreError::Internal(_) => {
-                            RebornRuntimeError::PrefixJob(ProductError::Unavailable)
-                        }
-                        RecipeStoreError::Conflict(_) => {
-                            RebornRuntimeError::PrefixJob(ProductError::Conflict)
-                        }
-                        error => RebornRuntimeError::InvalidArgument {
-                            reason: error.to_string(),
-                        },
-                    }
-                })?)
+                self.installed_catalogue
+                    .capture_core_prefix_sources(profile)
+                    .await
             };
-        self.submit_prefix_source_snapshot(
-            id,
-            profile,
-            expected_revision,
-            snapshot.as_deref(),
-            caller,
-            release_documents,
-        )
-        .await
+            let captured = captured.map_err(|error| {
+                use brassclaw_product_workflow::{
+                    InterceptorConfigServiceError as ProductError, RecipeStoreError,
+                };
+                match error {
+                    RecipeStoreError::Unavailable(_) | RecipeStoreError::Internal(_) => {
+                        RebornRuntimeError::PrefixJob(ProductError::Unavailable)
+                    }
+                    RecipeStoreError::Conflict(_) => {
+                        RebornRuntimeError::PrefixJob(ProductError::Conflict)
+                    }
+                    error => RebornRuntimeError::InvalidArgument {
+                        reason: error.to_string(),
+                    },
+                }
+            });
+            match captured {
+                Ok(bytes) => Some(bytes),
+                Err(error) => {
+                    // A concurrent collector may have won while fresh
+                    // collection applied newer limits. Authenticate that
+                    // original request below instead of recapturing it.
+                    if store.get(id).await.map_err(definition_error)?.is_some() {
+                        None
+                    } else {
+                        return Err(error);
+                    }
+                }
+            }
+        };
+        let result = self
+            .submit_prefix_source_snapshot(
+                id,
+                profile,
+                expected_revision,
+                snapshot.as_deref(),
+                caller.clone(),
+                release_documents,
+            )
+            .await;
+        if snapshot.is_some()
+            && result.is_err()
+            && store.get(id).await.map_err(definition_error)?.is_some()
+        {
+            // Collected source/program bytes are internal capture, whereas the
+            // explicit request is profile/revision/owner/capture kind. Re-read
+            // only the winner of that exact request; the explicit-snapshot API
+            // below continues to require exact supplied input bytes.
+            return self
+                .submit_prefix_source_snapshot(
+                    id,
+                    profile,
+                    expected_revision,
+                    None,
+                    caller,
+                    release_documents,
+                )
+                .await;
+        }
+        result
     }
 
     /// Retain a source-only snapshot and asynchronously admit its pinned compiler
@@ -175,14 +205,9 @@ impl RebornRuntime {
             let original_input_limits =
                 crate::prefix_job_definitions::captured_input_limits(preparation.policy())
                     .map_err(definition_error)?;
-            crate::prefix_job_execution::validate_snapshot(
-                profile,
-                snapshot_bytes,
-                original_input_limits,
-            )
-            .map_err(|_| {
-                invalid("canonical source snapshot/procedures must match the selected compiler")
-            })?;
+            // The immutable reserve owner validates fresh source under its
+            // per-original transaction lock. A concurrent same-ID winner must
+            // be read using its original limits before applying this new capture.
             let program = self
                 .installed_catalogue
                 ._compiler_program

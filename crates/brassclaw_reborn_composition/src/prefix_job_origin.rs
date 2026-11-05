@@ -46,6 +46,24 @@ impl PartialEq for Origin {
     }
 }
 impl Origin {
+    /// Request identity excludes newly offered internal preparation settings.
+    /// Full PartialEq remains strict for original capture/integrity comparisons.
+    pub(super) fn same_request_origin(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Chat {
+                    scope: a,
+                    thread_scope: b,
+                },
+                Self::Chat {
+                    scope: c,
+                    thread_scope: d,
+                },
+            ) => a == c && b == d,
+            (Self::Private { context: a, .. }, Self::Private { context: b, .. }) => a == b,
+            _ => false,
+        }
+    }
     pub(crate) fn tenant_id(&self) -> &TenantId {
         match self {
             Self::Chat { scope, .. } => &scope.tenant_id,

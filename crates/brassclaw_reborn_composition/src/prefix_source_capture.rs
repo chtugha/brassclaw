@@ -43,6 +43,14 @@ impl InstalledMontyCatalogue {
                 "Sempai requires the declared release source inventory".into(),
             ));
         }
+        #[cfg(test)]
+        {
+            let gate = self.capture_gate.lock().await.take();
+            if let Some((captured, release)) = gate {
+                captured.notify_one();
+                release.notified().await;
+            }
+        }
         self.reference_sources.verify().map_err(|_| invalid())?;
         let packaged = if release_documents {
             self.reference_sources.snapshot.clone()

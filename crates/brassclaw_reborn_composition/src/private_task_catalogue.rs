@@ -251,17 +251,37 @@ impl InstalledMontyCatalogue {
             original_workflow_checksum: Some(checksum(&definition.program_bytes)),
         };
         let store = PgTurnStateStore::new(self.pool.clone(), context.tenant_id.as_str());
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| invalid("private prefix preparation unavailable"))?;
+        let tx = client
+            .transaction()
+            .await
+            .map_err(|_| invalid("private prefix preparation unavailable"))?;
         let request_checksum = store
-            .submit_private_work(&request, PrivatePreparationReason::PreparationPending, self)
+            .submit_private_work_in_transaction(
+                &tx,
+                &request,
+                PrivatePreparationReason::PreparationPending,
+                self,
+            )
             .await
             .map_err(|_| invalid("private prefix original retention failed"))?;
+        // submit holds the real Work row lock through definition retention and
+        // Ready CAS. An identical concurrent producer observes its committed
+        // winner before inspecting/preparing again; there is no second seal.
         let state = store
-            .get_private_work_state(definition.id)
+            .get_private_work_state_in_transaction(&tx, definition.id)
             .await
             .map_err(|_| invalid("private prefix original unavailable"))?
             .ok_or_else(|| invalid("private prefix original unavailable"))?;
         if state.status != PrivateWorkStatus::AwaitingPreparation {
-            return Ok(());
+            return tx
+                .commit()
+                .await
+                .map_err(|_| invalid("private prefix original read commit unknown"));
         }
         let program = self
             ._compiler_program
@@ -282,17 +302,6 @@ impl InstalledMontyCatalogue {
             .compiler_approval
             .as_ref()
             .ok_or_else(|| invalid("source compiler qualification unavailable"))?;
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| invalid("private prefix preparation unavailable"))?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .start()
-            .await
-            .map_err(|_| invalid("private prefix preparation unavailable"))?;
         approval.verify_in_transaction(&tx).await?;
         approval.require_selected_program(program)?;
         let root = PgComponentRevisionStore::read_revision_in_transaction(&tx, self.root_reference)

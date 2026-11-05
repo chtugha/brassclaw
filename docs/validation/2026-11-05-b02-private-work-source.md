@@ -139,3 +139,107 @@ and shared Worker owner, with a coherent original/Work transaction or retained
 preparation handoff. It must not add another poller/domain scheduler, replay native
 work or infer a completed proof from stored JSON. This checkpoint does not close
 B3-06/07 or full durable scheduling/recovery acceptance.
+
+## Acceptance correction 5 — additional native matrix sources
+
+Root requested four connected acceptance boundaries before its B02 build. The
+additional sources are in runtime/tests/private_work_admission_tests.rs. They have
+**not been compiled or run**. Exact selectors:
+
+1. `private_prepare_claim_cas_and_chat_execution_collision_preserve_one_original`
+   uses two actual concurrent producers, rejects a conflicting request and a stale
+   Ready CAS, then races two real PgTurnStateStore claims with the real native
+   reservation owner. It requires one claim/admission/native terminal, validates
+   the actual opaque completion against its original, and also checks cancellation
+   before claim. A genuine ordinary inbound/queued chat supplies the execution-ID
+   collision; the private original must fail before any native admission/effect.
+2. `private_ready_and_claim_lost_commit_ack_keep_original_native_reservation`
+   uses the existing AckCutTransport to withhold actual Ready and claim COMMIT
+   replies. Original readback must retain identical definition bytes and the real
+   reservation/host/token address captured before writes. Another claim returns
+   no Ready original; only an explicit test-supervisor continuation of that same
+   authenticated still-unsubmitted handle performs its first native dispatch.
+   A third cut loses the pre-service submission-intent COMMIT reply: the real
+   service issues its own sealed unsubmitted proof before any enqueue. The test
+   requires one settled original and rejects a second drive/claim, even with the
+   committed submission-intent marker. This is not general native transport ACK
+   recovery or a SQL-to-proof restore implementation.
+3. `private_cancel_before_submit_and_running_native_task_keep_exact_terminals`
+   cancels the real claimed Work after real private preparation but before the
+   first service submission, requiring the actual sealed-unsubmitted terminal.
+   It then starts a native task and blocks its actual selection journal INSERT
+   at PostgreSQL, observes the real started Admission/backend lock, cancels the
+   current Work and polls the actual addressed stop before releasing the lock.
+   The expected native cancellation terminal belongs to that original claim;
+   no Tool dispatch or validator success may appear, and no original is replayed.
+   The running case is before the first Tool effect, not external-effect recovery.
+4. `private_same_id_capture_race_ready_reconstruction_and_worker_fallback_keep_original_bytes`
+   holds the existing reserve-owner PG boundary so two public same-ID submissions
+   both observe initially absent metadata. Between captures it publishes and
+   verifies a real ACK settings change whose smaller fresh limit rejects the same
+   source if incorrectly reapplied. Both calls must retain the first complete
+   program/input/preparation original. Changed payload/owner/target or a real Chat
+   origin still conflicts; full Origin capture equality remains strict.
+   After another ACK change, a fresh actual catalogue/factory/host/driver is built
+   using the same retained worker Arc and existing global service. It executes the
+   persisted Ready original with byte-identical definition/program/input capture.
+   This is catalogue/host reconstruction in the same process and same worker/root,
+   not process restart or loading a different historical artifact. Finally the
+   actual Worker passes its existing startup gate through the existing real
+   loopback listener, completes an empty scan and consumes its initial wake. A
+   second original is published through a catalogue with no wake binding; the
+   configured existing Worker fallback must claim and execute it on the same root.
+
+The reservation observer forwards to OwnedGlobalTaskFactory and retains the exact
+returned PgPrivateClaimReservation Arc. It creates no claim, admission, native
+answer or permission. The only added native barrier extends the existing cfg(test)
+delivery pause to the boundary before first service submission; no product or SDK
+API, replacement host, fake backend, second queue/VM/scheduler or recovery loop was
+added. Test-only timeouts bound observations; production cancellation uses its
+existing acknowledged policy.
+
+The matrix exposed/addresses two connected source defects. Request identity now
+compares exact origin kind and real scope/context independently from new offered
+internal preparation bytes, while Origin::PartialEq keeps complete capture equality.
+The private immutable-prefix reserve writer serializes same-ID first captures with
+a transaction advisory lock, reads the winner before fresh validation, and validates
+fresh canonical source only when no original exists. The public submission boundary
+therefore cannot apply smaller newly captured limits to a concurrently won original.
+Legacy Chat reserve locking/limits semantics remain unchanged. Prefix Work insertion,
+complete immutable preparation and Ready seal now share the existing owner's single
+ReadCommitted transaction and Work row lock; an identical producer reads its committed
+winner rather than competing with a stale RR Ready CAS. The selected root/program /
+approval references are exact immutable originals; this introduces no latest lookup.
+
+Source-visible test caller repairs use the tagged legacy thread scope and remove
+an invalid private-runtime-field access from the separate preparation-codec test.
+Same-global-root assertions remain in actual private native execution cases.
+
+Performed only: source/type/ownership/lock review, standalone rustfmt and whitespace
+diff checks. No Cargo, DB/schema, native tests, remote tests or Modal execution.
+Second-process/restart/different-artifact loading, unknown native transport recovery,
+external-effect cancellation/reconciliation and original-commit-to-absent-Work
+startup dispatch remain unaccepted/open. The original submission/queue and prefix
+metadata commit still precede the new atomic Work+Ready transaction: B3-06/07 are
+not closed by these tests or source fixes. Root's separate C00 baseline PASS does
+not supply A03/B02 execution evidence.
+
+The same fourth selector also covers the authoritative collector entry, not just
+the explicit-snapshot boundary. It pauses the existing real source-capture seam
+after the API's absent-original read, lets a genuine first captured original win,
+then releases fresh collection under the acknowledged smaller limits. That public
+request must authenticate/read its exact original rather than reject it using the
+new capture. Collected internal bytes may differ while explicit profile/revision /
+owner/capture-kind remains the same; the explicit-snapshot API still requires exact
+supplied payload. The existing collector API now performs a bounded original
+readback after a concurrent collection/reservation failure, using its same original
+request validation and Work owner. It never retries a native task or restores proof.
+The test uses the existing cfg(test) catalogue capture gate and executes that other
+Ready original before checking the empty-queue/fallback boundary.
+
+The first three new selectors hold the actual Worker's existing startup gate and
+exercise real PgTurnStateStore/native-driver owners directly, retaining opaque
+claims from actual locked SQL transitions. The last selector releases the real
+Worker and observes its actual fallback. These are distinct claims: they do not
+pretend that every direct-owner failure case has already run through the complete
+Worker integration or that a second operating-system process was exercised.
