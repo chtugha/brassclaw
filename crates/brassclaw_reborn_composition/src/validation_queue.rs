@@ -2033,17 +2033,15 @@ mod tests {
             store.gate1_pass(&scope, cid, &[]).await.unwrap();
 
             // Keep an actual rejection write uncommitted. Approval's SELECT
-            // must wait for this row and then observe state 3; an unlocked read
-            // of state 2 followed by a later DELETE would graduate stale review.
+            // must wait for this row. Under REPEATABLE READ the intervening
+            // commit invalidates its snapshot and must remain SQLSTATE 40001,
+            // never a business conflict or a replay that graduates stale review.
             let mut rejecting = rig.pool.get().await.unwrap();
             let tx = rejecting.transaction().await.unwrap();
-            tx.execute(
-                "UPDATE reborn_validation_queue SET state=3, counter=counter+1,
-                 review_feedback='concurrent rejection' WHERE component_id=$1",
-                &[&cid],
-            )
-            .await
-            .unwrap();
+            store
+                .reject_in_transaction(&tx, &scope, cid, "concurrent rejection")
+                .await
+                .unwrap();
             let approving = Arc::clone(&store);
             let approval_scope = scope.clone();
             let approval = tokio::spawn(async move {
@@ -2076,21 +2074,31 @@ mod tests {
                 .unwrap()
                 .unwrap()
                 .unwrap_err();
-            assert!(matches!(
-                failure,
-                ValidationQueueError::NotQ1Passed {
-                    state: STATE_REJECTED,
-                    ..
-                }
-            ));
+            assert!(
+                matches!(&failure, ValidationQueueError::Db { reason } if reason == "SQLSTATE 40001"),
+                "the blocked RR transaction must preserve serialization failure: {failure:?}"
+            );
+            // A fresh transaction sees the committed rejection and returns the
+            // precise business error. No automatic retry masks the first error.
+            let fresh_failure = store.approve(&scope, cid, Some("human")).await.unwrap_err();
+            assert!(
+                matches!(&fresh_failure, ValidationQueueError::NotQ1Passed { component_id, state: STATE_REJECTED } if *component_id == cid),
+                "a fresh snapshot must see the rejected state: {fresh_failure:?}"
+            );
             assert_eq!(read_note_status(&rig.pool, &scope, cid).await, "pending");
             let queued = store.list(&scope, Some(3)).await.unwrap();
             assert_eq!(queued.len(), 1);
             assert_eq!(queued[0].component_id, cid);
+            assert_eq!(queued[0].counter, 1);
             assert_eq!(
                 queued[0].review_feedback.as_deref(),
                 Some("concurrent rejection")
             );
+            let receipts: i64 = observer.query_one(
+                "SELECT count(*) FROM reborn_component_graduation_receipts WHERE component_id=$1",
+                &[&cid],
+            ).await.unwrap().get(0);
+            assert_eq!(receipts, 0);
         }
 
         #[tokio::test]

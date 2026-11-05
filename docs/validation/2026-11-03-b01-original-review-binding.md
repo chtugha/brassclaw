@@ -548,3 +548,41 @@ Only the test source and this report change. `node --check` and
 `git diff --check` pass; the corrected cases were not executed in this package
 chat. This correction accompanies `75d237b7c` for the supervisor's focused
 JS/native reruns, with no extra Cargo compilation or Modal job here.
+
+## Shared-owner run-9 fixture correction — 2026-11-05
+
+The supervisor reported native compilation passing in 142.78 seconds and 40/42
+executed tests passing, including both corrected rejection fixtures. It also
+reported the six-original deployment workflow with its isolated real Qwen3_5
+oracle passing in 396.77 seconds, and all 24 UI cases passing after `9a870ddf7`.
+These are supervisor results for the prior integrated inputs, not reruns here.
+
+The expanded shared-owner matrix exposed two further fixture mismatches. The
+concurrent-rejection test still expected a fresh-state business error from an
+approval transaction blocked on a row changed after its repeatable-read snapshot.
+Its old assertion did not print the actual error. Source inspection establishes
+that this interleaving must preserve PostgreSQL serialization failure. The test
+now uses the existing `reject_in_transaction` writer under the held transaction,
+requires exactly `ValidationQueueError::Db` with `SQLSTATE 40001` after the real
+observed lock wait, and prints an unexpected error. A separate fresh approval
+transaction must return `NotQ1Passed` for that same component in state 3.
+Pending component status, retained rejection/feedback, exactly one rejection
+count and zero graduation receipts are required. Locks, RR isolation and
+production error mapping remain unchanged; there is no automatic retry.
+
+The ToolSkill HTTP gap fixture previously called the Recipe/PythonCode lifecycle
+helper without any original for class 13. It now captures the complete actual
+ToolSkill projection, declares its explicit Tool UUID dependency, stages the
+actual Tool-row projection as exact unqualified context, and submits the packet
+with the actual pending queue ID through the mounted authenticated submission
+endpoint. The bound readback must retain that exact submission ID before the
+existing reviewed-state writer seals the lifecycle fixture. The general helper
+is not extended to ToolSkills. No Tool registration, validator execution,
+functional approval or activation is inferred. All existing per-stage HTTP and
+service gap/error, authentication, scope, backend-failure, component/queue
+no-write and zero-graduation assertions remain in place.
+
+Only these two test bodies and this report change. Direct rustfmt checks and
+`git diff --check` pass. No Cargo command, native/JS test execution or Modal job
+was started here. The two corrected tests await supervisor review and focused
+rerun; the broader B1/B2/B3 acceptance boundaries remain open.
