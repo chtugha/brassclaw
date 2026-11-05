@@ -37,6 +37,7 @@ impl Subject {
             "primitive_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_inventory_primitives.rs")),
             "completion_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),
             "executor_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("global_monty_startup.rs")),
+            "close_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_validation.rs")),
             "root_checksum":hex::encode(root.source_checksum()),"root_reference":root.reference()});
         let intent = Uuid::new_v5(&qualification_id, b"inventory-qualification-intent/1");
         let association = crate::bootstrap_evidence::checksum(binding.association().exact_bytes());
@@ -306,16 +307,31 @@ impl Subject {
                 .map_err(invalid)?
                 .ok_or_else(|| invalid("qualification original Turn missing before completion"))?,
         };
-        if run_record.status != TurnStatus::Completed
-            || run_record.run_id != run
+        if run_record.run_id != run
             || run_record.scope != scope
             || run_record.claim_count != 1
             || run_record.runner_id.is_some()
             || run_record.lease_token.is_some()
             || run_record.lease_expires_at.is_some()
             || run_record.failure.is_some()
+            || run_record.native_auth_wait.is_some()
         {
-            return Err(invalid("qualification original Turn close unacknowledged"));
+            return Err(invalid(
+                "qualification original Turn settlement identity/custody differs",
+            ));
+        }
+        match run_record.status {
+            TurnStatus::Completed => {}
+            TurnStatus::Cancelled => {
+                return Err(invalid(
+                    "qualification original cancelled; cleanup confirmed Cancelled",
+                ));
+            }
+            other => {
+                return Err(invalid(format!(
+                    "qualification original Turn cleanup incomplete: {other:?}"
+                )));
+            }
         }
         let mut client = primitives::EvidenceClient::acquire(pool).await?;
         let tx = client

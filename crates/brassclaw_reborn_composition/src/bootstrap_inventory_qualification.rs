@@ -339,42 +339,59 @@ async fn qualify_inner(
         Some(proof) => {
             primitives::bounded(
                 storage.as_ref(),
-                crate::bootstrap_validation::settle_quiescent_closed(&admitted, proof),
+                crate::bootstrap_validation::settle_quiescent_closed(&pool, &admitted, proof),
             )
             .await
         }
-        None => {
-            primitives::bounded(
-                storage.as_ref(),
-                crate::bootstrap_validation::settle_closed(&admitted),
-            )
-            .await
-        }
+        None => primitives::bounded(
+            storage.as_ref(),
+            crate::bootstrap_validation::settle_closed(&admitted),
+        )
+        .await
+        .map(|_| brassclaw_turns::TurnStatus::Completed),
     };
+    let closed = crate::bootstrap_validation::read_source_close(
+        &pool,
+        &admitted,
+        quiescence_proof.get(),
+        closed,
+        storage.as_ref(),
+    )
+    .await;
     let observation = match qualification {
         Ok(observation) => observation,
         Err(operation) => {
             return Err(match closed {
-                Ok(()) => operation,
-                Err(cleanup) => invalid(format!(
-                    "{operation}; qualification cleanup unresolved: {cleanup}"
+                Ok(record) => invalid(format!(
+                    "{operation}; original cleanup confirmed {:?}",
+                    record.status
                 )),
+                Err(cleanup) => invalid(format!("{operation}; {cleanup}")),
             });
         }
     };
-    observation.verify(&pool).await?;
-    // A lost close ACK is resolved only by complete original native/PG/Turn
-    // readback. It cannot repeat an admission, fixture or close operation.
+    let record = closed?;
+    if record.status == brassclaw_turns::TurnStatus::Cancelled {
+        return Err(invalid(
+            "parser qualification cancelled; original cleanup confirmed Cancelled",
+        ));
+    }
+    observation
+        .verify(&pool)
+        .await
+        .map_err(|error| invalid(format!("{error}; original cleanup confirmed Completed")))?;
+    // Recheck complete original evidence; metadata/ACK loss never replays effects.
     let proof = match subject.read(&pool).await {
         Ok(Some(proof)) => proof,
-        Ok(None) => return Err(invalid("completed original qualification missing")),
+        Ok(None) => {
+            return Err(invalid(
+                "completed original qualification missing; original cleanup confirmed Completed",
+            ));
+        }
         Err(readback) => {
-            return Err(match closed {
-                Ok(()) => readback,
-                Err(cleanup) => invalid(format!(
-                    "{readback}; original cleanup acknowledgement unresolved: {cleanup}"
-                )),
-            });
+            return Err(invalid(format!(
+                "{readback}; original cleanup confirmed Completed"
+            )));
         }
     };
     Ok(Some(Arc::new(QualifiedSourceInventoryUsage {

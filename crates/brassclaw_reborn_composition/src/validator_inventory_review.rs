@@ -46,7 +46,11 @@ pub(crate) use installation::observe_installation;
 #[cfg(test)]
 pub(crate) use installation::tests::before_cancel as installation_test_before_cancel;
 #[cfg(test)]
+pub(crate) use installation::tests::before_close as installation_test_before_close;
+#[cfg(test)]
 pub(crate) use installation::tests::before_reservation as installation_test_before_reservation;
+#[cfg(test)]
+pub(crate) use installation::tests::before_turn_close as installation_test_before_turn_close;
 
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;

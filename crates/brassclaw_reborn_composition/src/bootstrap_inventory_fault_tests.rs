@@ -226,27 +226,29 @@ pub(crate) async fn assert_actual_ack_and_timeout_faults(
     // durable native and worker quiescence observations, before Turn completion.
     let id = Uuid::new_v4();
     let intent = Uuid::new_v5(&id, b"inventory-qualification-intent/1");
-    assert!(
-        qualify_inner(
-            catalogue.pool.clone(),
-            catalogue.kernel.clone(),
-            catalogue.worker_image.clone(),
-            match candidate.program() {
-                RetainedProgram::Tools(p) => p,
-                _ => panic!("actual Tool program"),
-            },
-            candidate.preparation_limits(),
-            reply,
-            id,
-            case.executor.clone(),
-            catalogue.resource_store_settings.clone(),
-            true,
-            Some(QualificationFault::LateCancellation),
-            catalogue.root_definition.clone(),
-        )
-        .await
-        .is_err()
-    );
+    let cancelled = qualify_inner(
+        catalogue.pool.clone(),
+        catalogue.kernel.clone(),
+        catalogue.worker_image.clone(),
+        match candidate.program() {
+            RetainedProgram::Tools(p) => p,
+            _ => panic!("actual Tool program"),
+        },
+        candidate.preparation_limits(),
+        reply,
+        id,
+        case.executor.clone(),
+        catalogue.resource_store_settings.clone(),
+        true,
+        Some(QualificationFault::LateCancellation),
+        catalogue.root_definition.clone(),
+    )
+    .await
+    .err()
+    .expect("cancelled original cannot qualify");
+    let message = cancelled.to_string();
+    assert!(message.contains("original cleanup confirmed Cancelled"));
+    assert!(!message.contains("unacknowledged") && !message.contains("unresolved"));
     assert!(
         case.bytes(Uuid::new_v5(&intent, b"actual-observations"))
             .await
