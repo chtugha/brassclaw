@@ -139,6 +139,16 @@ defects, attached to the implementation record. No source reset or blanket clean
 
 - [ ] **B1-02 — Bind a queue candidate to its original immutable submission.**
 
+**Integrated bounded prerequisite, 2026-11-05:** B-01 through `668158a5c`
+adds exact immutable original/queue binding, V206, complete supported projections,
+readback/CAS and visible unresolved legacy/joint states. Actual original capture,
+changed-candidate/concurrent-author/ACK-loss, full paging/metadata/escaped-size,
+retained Q1 and Sempai draft cases pass. All 24 UI-state/paging cases pass.
+The corrected lifecycle cases and final twelve-package strict lint pass;
+full `/3` execution, legacy custody disposition and durable original Work remain
+open. See [the exact current repair scope](docs/validation/2026-11-03-bob-repair-progress.md).
+The complete B1-02 exit below is not claimed.
+
 1. Extend the existing review submission/queue transaction boundary to retain
    the exact submission identity and checksum with the queued candidate. This
    semantic binding belongs here; durable execution metadata belongs to B3-06.
@@ -493,12 +503,14 @@ stored subject/selection or silently truncate it.
 structural outcome to failure instead of inferring pass from ResultOnly.
 The subsequent repair replaces the latest-row verdict query with an opaque
 post-terminal driver proof plus exact run/claim/VM/task/selection/subject and
-durable settlement checks, preserving actual rule diagnostics. The second
-native batch compiled and passed 18/19 tests; its sole failure was the new
-foreign-result fixture violating V102 before execution. The corrected fixture
-awaits the next bundled run. Original queue/submission binding, full required
-check coverage and idempotent durable graduation remain open; this step stays
-unchecked.
+durable settlement checks, preserving actual rule diagnostics. The early
+18/19 batch and its V102-invalid foreign-result fixture remain historical failed
+evidence. B-00's subsequent native acceptance covers the corrected original-bound
+verdict/Oracle cases and all six retained Q1 callers. B-01 also supplies the
+accepted bounded original queue/submission binding. Full required-check coverage,
+the connected private Work path and idempotent durable graduation remain open;
+this step stays unchecked. See the
+[current exact receipts](docs/validation/2026-11-03-bob-repair-progress.md).
 
 1. Inside `GlobalRecipePorts::finish`, the internal source verifies the original
    selected program, actual input/result observations and all required checks.
@@ -604,12 +616,14 @@ exports, supported variants and the cases above.
 
 ### B1-11 validation procedure
 
-The sole agent reviews and validates the connected changes directly under the
-development policy; no delegation or build queue is used. Record exact hashes
-and required features. Keep one serial Cargo execution and run long checks in
-detached Screen; never overlap Cargo or change captured build inputs. No inline
-`CARGO_TARGET_DIR` and no explicit shell wrapper. For this document-only delivery,
-perform only Markdown/link/diff checks; do not compile.
+Follow the development policy's two-package-chat/supervisor workflow. Package
+chats implement in their isolated worktrees and share the serialized, activated
+Modal builder; the supervisor reviews, validates locally and integrates accepted
+changes. Record exact hashes and required features. Cargo is serial within each
+build environment; native and Modal builds may run concurrently with their
+independently frozen inputs. Run long local checks in detached Screen. No inline
+`CARGO_TARGET_DIR` or explicit shell wrapper. Prose-only corrections require
+Markdown/link/diff checks, not compilation.
 
 For implementation, use affected-package unit/contract checks and the existing
 composition native integration harness with `postgres,skills-db` and required

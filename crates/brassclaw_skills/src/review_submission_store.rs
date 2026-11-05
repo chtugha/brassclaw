@@ -153,10 +153,10 @@ impl ReviewSubmissionDraft {
     }
     pub fn changed_roots(&self) -> Result<Vec<ComponentRevisionRef>, SubmissionStoreError> {
         let mut roots = vec![self.reference];
-        if let Some(partner) = &self.function_partner {
-            if partner.is_changed() {
-                roots.push(partner.reference()?);
-            }
+        if let Some(partner) = &self.function_partner
+            && partner.is_changed()
+        {
+            roots.push(partner.reference()?);
         }
         roots.sort_by_key(|r| r.uuid);
         Ok(roots)
@@ -168,10 +168,10 @@ impl ReviewSubmissionDraft {
         &self,
     ) -> Result<Vec<(ComponentRevisionRef, serde_json::Value)>, SubmissionStoreError> {
         let mut documents = vec![(self.reference, self.candidate.document().clone())];
-        if let Some(partner) = &self.function_partner {
-            if let FunctionReviewPartnerDraft::Changed { candidate, .. } = partner.to_draft()? {
-                documents.push((partner.reference()?, candidate.document().clone()));
-            }
+        if let Some(partner) = &self.function_partner
+            && let FunctionReviewPartnerDraft::Changed { candidate, .. } = partner.to_draft()?
+        {
+            documents.push((partner.reference()?, candidate.document().clone()));
         }
         documents.sort_by_key(|(reference, _)| reference.uuid);
         Ok(documents)

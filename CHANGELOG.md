@@ -7,12 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original immutable review requests (B-01)**: V206 binds each supported queue
+  generation to its exact original submission, complete candidate/context and
+  comparison bytes. Preserve original-ID readback and CAS across lost replies
+  and Q2 queue removal. Queue views cover all eight classes with complete paging,
+  actual rejection policy and visible unresolved legacy/joint states. Legacy
+  Sempai constructor saves are explicitly drafts. Native original/fault/lifecycle
+  cases, 24 UI cases and twelve-package strict lint pass within recorded scopes;
+  joint review execution and durable private scheduling remain open.
+
+- **Native Codex/Auth custody (A-01)**: V204/V205 retain encrypted original
+  credentials before filesystem custody transfer, fence fixed-snapshot owners
+  and recover pending originals through the real factory. Strict source-JSON
+  duplicate checks, native index conflict handling and host-managed refresh use
+  the shared Auth/provider owner without replaying model requests. Scoped native
+  PG/HTTP/host acceptance and strict lint pass; actual human issuer login and
+  complete platform/product acceptance remain open.
+
 - **Canonical pure occurrence coverage (A-02a)**: Catalogue preparation and
   retained verification share the exact existing canonical qualification check.
   Independent occurrences require matching step/revision coverage; arbitrary
   pure-approval UUID rows no longer qualify them. Existing `/1` bytes and narrow
-  bootstrap scopes remain unchanged. General pure activation remains open;
-  new regression sources await native execution.
+  bootstrap scopes remain unchanged. Exact canonical/ordinary/child/deployment
+  regression receipts and strict affected lint now pass. General pure activation
+  remains open.
 
 - **Bob approval boundary repair (partial)**: Restrict raw pure-approval JSON
   to resolving an exact existing decision. Check exact evidence stages,
@@ -23,41 +41,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and complete publication remain open; existing stored positive rows alone
   do not establish those guarantees.
 
-- **Validator Step 6 — retained Q1 execution fully closed**: All six
-  `run_q1_validation_retained` integration tests pass (T1–T5/T5b). Fixes include:
-  dependency-graph traversal in `bootstrap_l013_approval` (pass all four component
-  refs — skill, PC, ToolSkill, Tool — to `read_exact_in_transaction`); `lookup_id`
-  skip in `qualify_tool_calling_pair` for components not seeded in the test rig;
-  graceful `Ok(None)` skip in `bootstrap_free_workflow_approval` when
-  `kohai_complete`/JSON capability is absent; `bootstrap_validator_approval` reads
-  existing PC revision from `read_allocation_head` instead of creating a duplicate
-  wrong revision; `q1_orchestrator` queries `reborn_validator_q1_runs.succeeded` to
-  correctly route `Q1Outcome::Passed` vs `Q1Outcome::Failed` (T5b fix). Commits:
-  `e94d4b141`, `e4552e558`, `71d5c4f49`.
+- **Retained Q1 transport repair (scoped)**: All six actual
+  `run_q1_validation_retained` caller tests pass. Original queue bindings and
+  actual subject/selection observations are checked against terminal native
+  settlement before Q1 outcome handling. Completed negative results preserve
+  diagnostics; cancellation, incomplete execution and infrastructure failure
+  cannot become negative candidate verdicts. This closes the tested transport
+  boundary, not full class rules, behavior, trusted approval or scheduling.
 
 - **Validator Step 7-A — class-specific PC bodies**: Eight distinct Python bodies,
   one per validator class (Tool/0, Skill/1–3, ToolSkill/13, Recipe/21, PythonCode/22,
   ExtensionCatalogue/23) seeded in `builtin_bootstrap.rs`. Each checks class-specific
   required fields (`name`, `description`, `content`/`steps`/`body`/`variants`).
-  Commit: `1f0337469`.
+  These presence/shape checks are structural prerequisites, not complete class
+  Q1 or behavioral qualification. Commit: `1f0337469`.
 
 - **Validator Step 7-B — negative fixture tests**: 12 unit tests in
   `validator_pc_body_tests.rs` covering valid + invalid candidates for all 8 class
   routes via the real Monty utility worker. All pass. Commit: `5387fe588`.
 
-- **Validator Step 8 — pure-component-approval/1 at boot**: `bootstrap_validator_approval.rs`
-  produces one `pure-component-approval/1` record per structural validator PC
-  (8 total) during `initialize_runtime_components`, idempotently. Q1 + behavioral
-  evidence rows written in RepeatableRead transactions. Acceptance test
-  `validator_approval_writes_eight_pure_approvals_at_boot` verifies count = 8 and
-  idempotency. Commit: `e4552e558`.
-
-- **L013–L101 tool-calling pair qualification at boot**: `bootstrap_l013_approval.rs`
-  qualifies all seeded Tool-calling PCs and Skill pairs, and pure-logic PCs, during
-  boot via `qualify_all` in `initialize_runtime_components`. Covers L001–L006
-  filesystem tools, L010 `file_exists`, L011–L012 path helpers, all trigger/security
-  management pairs, QA/glob/grep pairs and remaining seeded components.
-  Commits: `68a0ebf7c`, `b824f0092`, `71c17a5fa`, `e94d4b141`.
+- **Historical bootstrap record population — qualification pending**:
+  `bootstrap_validator_approval.rs` and `bootstrap_l013_approval.rs` populate
+  structural-validator, Tool-usage and pure approval-shaped records at boot.
+  Existing count/idempotency cases prove row population only. Their named
+  successful-check lists and UUID-based skips do not prove performed Q1,
+  behavior or noncircular shipped qualification. Bob 1/2 retain those repair
+  requirements; records are not promoted to general Pure authority. Historical
+  commits include `e4552e558`, `68a0ebf7c`, `b824f0092`, `71c17a5fa` and
+  `e94d4b141`.
 
 - **`builtin.file_exists` Rust primitive**: New `FileExists` capability in
   `CodingCapabilityKind`; `file_exists()` handler, input schema, Tool and ToolSkill

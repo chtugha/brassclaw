@@ -1110,17 +1110,19 @@ async fn original_queue_rejection_api_retains_writer_deletion_candidates_and_cou
     drop(client);
     for (id, class) in [(recipe, 21), (code, 22)] {
         writer.submit(&sc, id, class, None).await.unwrap();
-        // Lifecycle setup only; this is no Q1/behavior/approval evidence.
+        // Seed only the attempt count before the existing lifecycle fixture owner
+        // captures the real candidate/queue seals. This is no Q1 approval evidence.
         rig.pool
             .get()
             .await
             .unwrap()
             .execute(
-                "UPDATE reborn_validation_queue SET state=2,counter=$2 WHERE component_id=$1",
+                "UPDATE reborn_validation_queue SET counter=$2 WHERE component_id=$1 AND state=1",
                 &[&id, &(threshold - 1)],
             )
             .await
             .unwrap();
+        writer.gate1_pass(&sc, id, &[]).await.unwrap();
         writer.reject(&sc, id, "Final rejection").await.unwrap();
     }
     let rows = writer.list(&sc, None).await.unwrap();

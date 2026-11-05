@@ -1,3 +1,33 @@
+## 2026-11-05 — Bob candidate integration and actual native/JS progress
+
+B-01 original immutable queue binding V206 and A-02a exact canonical Pure
+occurrence checking are integrated candidates. General Pure own approval,
+versioned successor pins, true required-class/behavior qualification and durable
+private Work remain open; no full Bob checkbox is closed by this entry.
+
+Native run-8 compiled on `9c8d3c12a` in 463.38 seconds: 33/36 selected cases
+passed. Run-9 compiled the reviewed fixture corrections on `8644860b9` in
+142.78 seconds: 40/42 selected cases passed. The two earlier rejection-projection
+fixtures now pass. Actual canonical prepare/recheck/reload, unchanged `/1`
+bytes, ordinary publication, retained child and the complete large component
+deployment regression pass; the latter used six hash-verified real model files
+and an isolated actual Qwen3_5 HF/tokenizer oracle (396.77 seconds).
+Run-10 compiled the exact corrections in 163.06 seconds and both remaining
+review/lifecycle cases passed: RR concurrent rejection preserves SQLSTATE 40001
+and a fresh state-3 refusal; the ToolSkill fixture binds a complete original.
+All 24 actual Node UI-state/paging cases pass after using the real i18n fallback.
+Strict twelve-package all-target lint passed on `5c5e84bf3` in 149.44 seconds.
+B-01/A-02a are accepted only in these bounded scopes; the native Apple unwind-size
+warning remains open. Reused receipts are not a new single-binary full-suite run.
+
+Exact sources, commands, failures, hashes and scope are in the
+[active repair record](validation/2026-11-03-bob-repair-progress.md) and
+[package board](development-package-board.md). A-03a now implements the reviewed
+bounded Receipt/native-observation and narrow SourceInventory qualification
+prerequisite. B-02 implements the reviewed connected private-Origin/PG-claim/
+admission/live-settlement source slice, with V207 reserved; neither package is
+accepted or activated yet. The supervisor owns reviews/native acceptance/
+integration; implementation stays in the two package chats.
 
 ## 2026-11-03 — Bob repair: current bounded native acceptance
 

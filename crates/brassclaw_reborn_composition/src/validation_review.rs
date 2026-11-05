@@ -31,7 +31,7 @@ impl Q1Candidate {
         &brassclaw_skills::review_submission_store::queue::RetainedQueueReview,
         ValidationQueueError,
     > {
-        self.binding.as_ref().ok_or_else(|| {
+        self.binding.as_ref().ok_or({
             if self.original_binding_required {
                 ValidationQueueError::OriginalReviewUnresolved {
                     component_id: self.component_id,
@@ -174,11 +174,11 @@ impl ValidationQueueStore {
             brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
                 .await
                 .map_err(|error| map_original_store(error, component_id))?;
-        if let Some(binding) = &binding {
-            if binding.component_bytes() != component_bytes || binding.queue_bytes() != queue_bytes
-            {
-                return Err(ValidationQueueError::ReviewChanged { component_id });
-            }
+        if let Some(binding) = &binding
+            && (binding.component_bytes() != component_bytes
+                || binding.queue_bytes() != queue_bytes)
+        {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
         }
         Ok(Q1Candidate {
             component_id,
@@ -512,19 +512,22 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::InvalidGate1Result { component_id });
         }
         let review = self.capture_q1_candidate(scope, component_id).await?;
-        if review.class_code == 21 && review.binding.is_none() {
+        let empty_code_fixture = review.class_code == 22
+            && review.reviewed.get("includes") == Some(&serde_json::json!([]))
+            && review.reviewed.get("dependency_registry") == Some(&Value::Null);
+        if (review.class_code == 21 || empty_code_fixture) && review.binding.is_none() {
             use brassclaw_skills::{
                 component_revision::ComponentRevisionDraft,
                 review_submission_store::ReviewSubmissionDraft,
                 revision_store::PgComponentRevisionStore,
             };
-            // Existing Recipe lifecycle fixtures declare no retained dependency
-            // graph. This helper is deliberately limited to those fixtures; it
-            // cannot reconstruct a Skill association or certify executable Q1.
+            // Existing Recipe and explicitly dependency-free PythonCode lifecycle
+            // fixtures declare no retained graph. This test-only helper cannot
+            // reconstruct dependencies/Skill associations or certify executable Q1.
             let revision = |document: Value| {
                 ComponentRevisionDraft::from_json(
                     &serde_json::json!({
-                        "format":"component-revision/1","uuid":component_id,"class_code":21,
+                        "format":"component-revision/1","uuid":component_id,"class_code":review.class_code,
                         "document":document,"dependencies":[],"association":null,
                     })
                     .to_string(),

@@ -499,3 +499,141 @@ node --test crates/brassclaw_webui_v2_static/static/js/pages/settings/components
 The successful Modal CLI receipt above still applies only to its frozen
 419a132e3 inputs. These test-source additions neither broaden that receipt nor
 claim completion of the open B1-02/whole-plan/native acceptance scope.
+
+## Native run-8 lifecycle fixture correction — 2026-11-05
+
+Supervisor run-8 reported a successful native test compilation (463.38 seconds)
+and 33/36 passing tests. The two new rejection fixtures failed at their direct
+`state=2` setup with `q1_review_seal_complete`, before reaching the rejection
+writer. This section records their source correction, not a successful rerun.
+
+Both fixtures now seed only their counter while pending, then use the existing
+test-only `ValidationQueueStore::gate1_pass` lifecycle owner. That owner captures
+actual candidate/queue bytes and seals through the existing reviewed-state writer.
+Its existing Recipe fixture support now also permits PythonCode with explicitly
+empty `includes` and null `dependency_registry`; it does not infer dependencies
+or Skill associations. The resulting originals remain unreviewed lifecycle
+fixtures, never executable Q1/behavior/approval evidence.
+
+The threshold projection test uses fresh terminal candidates in a separate
+project scope after checking the nonterminal threshold projections. It does not
+reopen rejected originals or reuse their stale seals. Both classes still reach
+terminal state through the actual rejection writer, and retain garbage labels,
+counts and rejection-bucket placement after a higher threshold is configured.
+
+Production paths, database constraints and approval contracts are unchanged.
+Direct rustfmt parser/format checks and `git diff --check` pass. No Cargo command,
+test execution or Modal job was started for this correction; supervisor-owned
+native reruns remain required. The previous build receipt does not cover these
+changed test inputs, and general B1/B2/B3 acceptance remains open.
+
+## UI translation fixture correction — 2026-11-05
+
+The supervisor executed all 24 UI cases after integration and reported 22 passes
+and two failures in the new German queue-row cases. Their fixture loaded only
+the German message pack and substituted raw keys for missing translations;
+its button lookup then used an absent raw German value. The real `lib/i18n.js`
+owner instead falls back to the English pack for those button labels.
+
+The queue-row fixture now executes the actual i18n provider, language detection,
+translation function and `useT` hook in its controlled VM, with actual English
+and selected-language packs. Only React context/hook storage is controlled;
+fallback and interpolation are not copied into the fixture. It asserts the
+selected provider/document language and looks up the real rendered button by
+the actual translated/fallback label. The visible localized diagnosis, queue
+ID, disabled approval and absence of mutation calls remain required. Joint
+non-Recipe rows still require the absence of both actions, using valid labels.
+
+Only the test source and this report change. `node --check` and
+`git diff --check` pass; the corrected cases were not executed in this package
+chat. This correction accompanies `75d237b7c` for the supervisor's focused
+JS/native reruns, with no extra Cargo compilation or Modal job here.
+
+## Shared-owner run-9 fixture correction — 2026-11-05
+
+The supervisor reported native compilation passing in 142.78 seconds and 40/42
+executed tests passing, including both corrected rejection fixtures. It also
+reported the six-original deployment workflow with its isolated real Qwen3_5
+oracle passing in 396.77 seconds, and all 24 UI cases passing after `9a870ddf7`.
+These are supervisor results for the prior integrated inputs, not reruns here.
+
+The expanded shared-owner matrix exposed two further fixture mismatches. The
+concurrent-rejection test still expected a fresh-state business error from an
+approval transaction blocked on a row changed after its repeatable-read snapshot.
+Its old assertion did not print the actual error. Source inspection establishes
+that this interleaving must preserve PostgreSQL serialization failure. The test
+now uses the existing `reject_in_transaction` writer under the held transaction,
+requires exactly `ValidationQueueError::Db` with `SQLSTATE 40001` after the real
+observed lock wait, and prints an unexpected error. A separate fresh approval
+transaction must return `NotQ1Passed` for that same component in state 3.
+Pending component status, retained rejection/feedback, exactly one rejection
+count and zero graduation receipts are required. Locks, RR isolation and
+production error mapping remain unchanged; there is no automatic retry.
+
+The ToolSkill HTTP gap fixture previously called the Recipe/PythonCode lifecycle
+helper without any original for class 13. It now captures the complete actual
+ToolSkill projection, declares its explicit Tool UUID dependency, stages the
+actual Tool-row projection as exact unqualified context, and submits the packet
+with the actual pending queue ID through the mounted authenticated submission
+endpoint. The bound readback must retain that exact submission ID before the
+existing reviewed-state writer seals the lifecycle fixture. The general helper
+is not extended to ToolSkills. No Tool registration, validator execution,
+functional approval or activation is inferred. All existing per-stage HTTP and
+service gap/error, authentication, scope, backend-failure, component/queue
+no-write and zero-graduation assertions remain in place.
+
+Only these two test bodies and this report change. Direct rustfmt checks and
+`git diff --check` pass. No Cargo command, native/JS test execution or Modal job
+was started here. The two corrected tests await supervisor review and focused
+rerun; the broader B1/B2/B3 acceptance boundaries remain open.
+
+## Run-10 lint spelling correction — 2026-11-05
+
+The supervisor reported native test compilation passing in 163.06 seconds and
+both corrected shared-owner cases actually passing. Strict Clippy for the 12
+affected packages then stopped after 25.74 seconds on two `collapsible_if`
+diagnostics in `ReviewSubmissionDraft::changed_roots` and
+`changed_root_documents`. These are run-10 results for the prior integrated
+inputs; this correction does not replace or broaden their runtime evidence.
+
+Both conditions now use Edition-2024 let-chains. The optional partner is still
+checked first; `is_changed`/`to_draft()?` are evaluated only for a present partner,
+and `reference()?` still runs only in the corresponding changed-partner branch.
+Errors, ordering and document cloning remain unchanged. A source review of the
+other added Rust blocks across the package also found one equivalent nested
+guard in candidate capture. It now uses the same let-chain with the byte
+comparisons explicitly grouped, preserving short-circuiting and `ReviewChanged`.
+Other nested candidates retain additional outer-block work/returns and are not
+equivalent single guards. No lint suppression or behavior change was added.
+
+Direct rustfmt checks and `git diff --check` pass. No local/cloud compilation,
+tests or Modal jobs were started here. The supervisor's targeted final strict
+lint remains pending; runtime cases are not repeated for this spelling change.
+The package is not end-accepted until that lint passes.
+
+## Final lint documentation/error-construction correction — 2026-11-05
+
+Supervisor lint-3 reached Composition and reported three
+`empty_line_after_doc_comments` diagnostics and one
+`unnecessary_lazy_evaluations` diagnostic. The PythonCode/ExtensionCatalogue
+legacy insertion/queue/UUID-return documentation had been left above the new
+retained-review methods. Those paragraphs now belong to their actual legacy
+`create_and_submit` owners, together with their explicit unresolved-draft
+boundary. The retained-review methods keep their own original-request/full-byte
+capture contract. The Recipe legacy method's documentation is consolidated
+around its actual constructor save, queue, bootstrap-routing and UUID-return
+behavior, with a link to the separate complete-review method. No unrelated
+method contracts are joined merely to remove blank lines.
+
+A source inventory of the other inserted methods found no additional displaced
+doc blocks or changed doc/blank gaps. `Q1Candidate::original` now uses `ok_or`
+for the pure enum/UUID error value: a present binding still returns that binding,
+and a missing binding still selects the exact same original-required versus
+legacy-custody error. No fallible/effectful operation is moved or suppressed.
+
+Direct rustfmt checks and `git diff --check` pass. No local/cloud compilation,
+tests or Modal jobs were started here. Before this handoff, the supervisor
+completed diagnostic collection across all 12 packages and library/test targets
+in 143.47 seconds: only these four warnings were reported, repeated for libtest,
+with no additional diagnostics. That warning-collecting run is not strict
+acceptance. The final `-D warnings` acceptance remains supervisor-owned.

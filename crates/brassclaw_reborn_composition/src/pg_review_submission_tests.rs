@@ -1796,7 +1796,7 @@ async fn native_http_tool_skill_inventory_reads_real_scoped_rows_and_backend_err
     );
 }
 
-/// Sealed legacy queue state is not a substitute for the missing connected
+/// A sealed, explicitly bound queue is not a substitute for the missing connected
 /// ToolSkill functional-review writer. No existing action may acknowledge a no-op.
 #[tokio::test]
 async fn native_http_tool_skill_review_actions_fail_visibly_without_any_write() {
@@ -1815,18 +1815,42 @@ async fn native_http_tool_skill_review_actions_fail_visibly_without_any_write() 
     };
     let queue = crate::validation_queue::ValidationQueueStore::new(rig.pool.clone());
     let client = rig.pool.get().await.unwrap();
+    // Actual retained, unqualified Tool context for this binding fixture. No
+    // registration, executable Q1 or functional approval is claimed by staging it.
+    let tool: Uuid = client.query_one(
+        "INSERT INTO reborn_tools(tenant_id,user_id,agent_id,project_id,name,description,source)
+         VALUES($1,$2,$3,$4,'ls','Tool context for review-action gap fixture','authored') RETURNING id",
+        &[&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id],
+    ).await.unwrap().get(0);
+    let tool_document: Value = client.query_one(
+        "SELECT review_queue_projection(0::smallint,to_jsonb(t)) FROM reborn_tools t WHERE id=$1",
+        &[&tool],
+    ).await.unwrap().get(0);
+    let tool_draft = ComponentRevisionDraft::from_json(
+        &json!({
+            "format":"component-revision/1","uuid":tool,"class_code":0,
+            "document":tool_document,"dependencies":[],"association":null,
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let tool_ref = PgComponentRevisionStore::new(rig.pool.clone())
+        .stage(&tool_draft, 0)
+        .await
+        .unwrap();
     let id: Uuid = client
         .query_one(
             "INSERT INTO reborn_tool_skills
          (tenant_id,user_id,agent_id,project_id,name,description,content,tool_name,
-          source,consumer_tags)
+          source,consumer_tags,dependency_registry)
          VALUES ($1,$2,$3,$4,'review-target','actual ToolSkill','binding metadata','ls',
-                 'authored',ARRAY['00:rusty','05:validator']) RETURNING id",
+                 'authored',ARRAY['00:rusty','05:validator'],$5) RETURNING id",
             &[
                 &scope.tenant_id,
                 &scope.user_id,
                 &scope.agent_id,
                 &scope.project_id,
+                &json!({"tool":tool}),
             ],
         )
         .await
@@ -1836,9 +1860,41 @@ async fn native_http_tool_skill_review_actions_fail_visibly_without_any_write() 
     for stage in 0..4 {
         match stage {
             1 => queue.submit(&scope, id, 13, None).await.unwrap(),
-            // Queue lifecycle fixture, not execution of production Q1 or a
-            // functional pass: even a sealed legacy queue cannot bypass this gap.
-            2 => queue.gate1_pass(&scope, id, &[]).await.unwrap(),
+            // Capture/bind the complete actual candidate and exact Tool context
+            // through the real operator path. Sealing below remains a lifecycle
+            // fixture, not production Q1 execution or functional approval.
+            2 => {
+                let captured = queue.capture_q1_candidate(&scope, id).await.unwrap();
+                let candidate = ComponentRevisionDraft::from_json(
+                    &json!({
+                        "format":"component-revision/1","uuid":id,"class_code":13,
+                        "document":captured.reviewed(),"dependencies":[tool],"association":null,
+                    })
+                    .to_string(),
+                )
+                .unwrap();
+                let pending = queue.list(&scope, Some(1)).await.unwrap();
+                assert_eq!(pending.len(), 1);
+                assert_eq!(pending[0].component_id, id);
+                let original_id = Uuid::new_v4();
+                let mut original = self::request(original_id, &candidate, None, &[tool_ref]);
+                original["queue_ids"] = json!([pending[0].id]);
+                let (status, body) = send(
+                    &app,
+                    "POST",
+                    "/api/webchat/v2/component-review-submissions",
+                    Some(&original),
+                    true,
+                )
+                .await;
+                assert!(status.is_success(), "original capture: {status}: {body}");
+                let bound = queue.capture_q1_candidate(&scope, id).await.unwrap();
+                assert_eq!(bound.original().unwrap().submission_id(), original_id);
+                queue
+                    .gate1_pass_reviewed(&scope, &bound, &[])
+                    .await
+                    .unwrap();
+            }
             3 => {
                 client.execute(
                     "UPDATE reborn_tool_skills SET content='changed since legacy Q1' WHERE id=$1",

@@ -224,10 +224,21 @@ fixtures for every field, profile, version and optional-field presence rule.
 
 - [ ] **B2-03 — Replace UUID-only qualification and unify the check.**
 
-1. Replace `load_independently_qualified(tx, &[Uuid]) -> BTreeSet<Uuid>` as an
-   authorization decision. Supply actual selected revision/export references.
-   Load exact root version/checksum, supported approval bytes/checksum and
-   complete closure through B1's trusted checker in the same coherent read.
+**Implemented narrow prerequisite, 2026-11-05:** A-02a (`9c8d3c12a`) removed
+UUID-only lookup and uses the same exact canonical owner check for preparation
+and retained verification. It separates exact occurrence refs from rooted graph
+coverage without changing `/1` bytes or adding positive general approval.
+Native canonical prepare/recheck/reload, foreign occurrence/version/checksum,
+ordinary publication, retained child and full component-deployment regressions
+passed in the [current scoped repair record](docs/validation/2026-11-03-bob-repair-progress.md).
+Final twelve-package strict lint passes. The general own-approval producer and
+successor carriage below are still required; do not recreate the removed UUID-only helper.
+
+1. Keep the removed UUID-only `load_independently_qualified` absent. Extend the
+   current exact shared occurrence checker with B1's genuinely verified general
+   profile, supplying actual selected revision/export references. Load exact root
+   version/checksum, supported approval bytes/checksum and complete closure
+   through B1's trusted checker in the same coherent read.
 2. Do not trust `root_id` membership, existence of any approval row, copied
    `validation_mode`, or mere FK validity. A valid v1 record never approves v2.
 3. Separate two meanings in the existing catalogue model: dependency coverage
@@ -241,9 +252,11 @@ fixtures for every field, profile, version and optional-field presence rule.
    independently, even if its UUID is already a dependency of a bound usage.
    Merely extending `independently_qualified` while leaving `covered` unchanged
    still rejects legitimate pure-only steps at the final dependency gate.
-5. Reuse one checked helper for preparation and selected-program verification.
-   Do not leave `verify_selected_approvals` limited to canonical generation
-   exceptions after teaching preparation about general pure approvals.
+5. Extend the one checked helper already shared by preparation and
+   selected-program verification. Preserve its existing exact canonical proof;
+   add the general verified profile at both entries together. Never teach
+   preparation about general pure approvals while retained verification still
+   accepts only canonical generation exceptions.
 6. Check actual selected membership/export and exact dependency edges, not a
    recipe-wide UUID union or approval for another variant. Pure source must meet
    its qualified no-host-calls/effect-free preload profile.
@@ -477,6 +490,16 @@ qualification and B3-09 supplies the visible repair/review state.
    if already absent, record that fact. If present, retire the obsolete Rust
    audit workflow only after supported replacements and this plan's native gates
    pass and no active/retained owner needs it. Preserve needed historical bytes.
+   Also reconcile the inherited composition-wide `#![allow(deprecated)]` and its
+   DocType/MemoryDoc migration rationale against actual callers, including
+   `pg_thread_engine_store.rs` and the feature-gated `memory_doc_libsql_store.rs`.
+   Migrate supported uses through their actual current store/type owners, or
+   retire an adapter only after verifying that no supported or retained consumer
+   needs it. Preserve historical record/import semantics. Remove the blanket
+   suppression; do not replace it with narrower suppression, remove deprecation
+   annotations to hide a live migration, or certify an unchecked feature branch.
+   B3-12 consumes this migration and its applicable feature validation instead
+   of implementing a second cleanup.
 7. Acceptance includes fresh/existing/repeated boot, override-preserving upgrade,
    integrity fault -> supported repair -> checked readiness, interrupted review/
    commit, exact restore, old waiting tasks and no invented successful verdicts.
@@ -519,10 +542,13 @@ log-inspection workflow for actual pure reuse. Their meaning follows
 bounded preview must not claim whole-file coverage.
 
 Review the full connected diff before a consolidated affected-package build.
-Only the sole agent invokes Cargo, serially in the inherited canonical target,
-with long jobs detached in Screen. Reuse unchanged accepted evidence and compiled
-artifacts; freeze captured inputs only. No inline target assignment or explicit
-shell wrapper, no routine `cargo clean`, no second target or concurrent Cargo.
+Follow the development policy's two-package-chat/supervisor workflow. Package
+chats use the shared serialized, activated Modal builder; the supervisor alone
+runs native Cargo and tests in the inherited canonical target, with long jobs
+detached in Screen. Native and Modal builds may run concurrently, each preserving
+its own captured inputs. Reuse unchanged accepted evidence and compiled artifacts.
+No inline target assignment or explicit shell wrapper, routine `cargo clean`,
+second local target or simultaneous Cargo within one build environment.
 Capture source/patch hashes, exact flags, worker/artifact/migration/settings
 identities, nonempty test counts and native traces under the development policy.
 No source-tree copies in validation evidence. Repair warnings rather than hide them.

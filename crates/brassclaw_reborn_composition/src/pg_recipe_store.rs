@@ -434,18 +434,18 @@ impl PgRecipeStore {
         queue_store.fire_q1_kick_if_wired(&scope, id, 21);
         Ok(subject)
     }
-    /// Insert a new recipe AND submit it to the Q1 validation queue (state 1)
-    /// in one transaction — the legacy non-builtin save path for recipe
-    /// authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
+    /// Insert a new recipe and submit it to the Q1 validation queue (state 1)
+    /// in one transaction. This is the legacy constructor-only save path for
+    /// recipe authoring (WebUI manual, Sempai auto-creation, DocPlan dissector).
+    /// Returns the new component UUID.
     ///
     /// Mirrors `PgPythonCodeStore::create_and_submit` and
     /// `PgExtensionCatalogueStore::create_and_submit`. All non-builtin
-    /// components must go through the queue; builtins bypass it via
-    /// `builtin_bootstrap.rs` (exempt by design). Returns the new UUID.
-
-    /// Legacy constructor-only draft save. Its queue entry is visibly unresolved;
-    /// this cannot acknowledge an immutable v3 review submission or approval.
-    /// Complete review callers use create_and_submit_review with original bytes.
+    /// components use the queue; builtin installation projections use
+    /// `builtin_bootstrap.rs`. This queue entry remains visibly unresolved and
+    /// cannot acknowledge an immutable v3 review submission or approval.
+    /// Complete review callers use [`Self::create_and_submit_review`] with
+    /// original bytes.
     pub(crate) async fn create_and_submit(
         &self,
         row: NewPgRecipe,
@@ -2537,18 +2537,19 @@ mod tests {
             &[&code,&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id]).await.unwrap();
         for (component, class) in [(recipe, 21), (code, 22)] {
             writer.submit(&scope, component, class, None).await.unwrap();
-            // Queue lifecycle fixture only. No Q1 execution/evidence is claimed:
-            // exercise the actual rejection writer from its existing Q2 state.
+            // Seed the count before the lifecycle fixture owner captures actual
+            // candidate/queue seals. This is no executable Q1 evidence.
             rig.pool
                 .get()
                 .await
                 .unwrap()
                 .execute(
-                    "UPDATE reborn_validation_queue SET state=2,counter=3 WHERE component_id=$1",
+                    "UPDATE reborn_validation_queue SET counter=3 WHERE component_id=$1 AND state=1",
                     &[&component],
                 )
                 .await
                 .unwrap();
+            writer.gate1_pass(&scope, component, &[]).await.unwrap();
             writer
                 .reject(&scope, component, "Revision needed")
                 .await
@@ -2618,26 +2619,48 @@ mod tests {
                 .iter()
                 .all(|row| row.queue_code == "q4_rejection")
         );
-        for component in [recipe, code] {
-            // Q2 lifecycle fixture only; the real writer makes the persisted
-            // terminal transition, not the projection or a synthetic verdict.
+        // A separate scope supplies fresh terminal candidates. Reopening the
+        // rejected originals above would reuse stale seals and original bindings.
+        let terminal_scope = ComponentScope {
+            project_id: format!("{}-terminal", scope.project_id),
+            ..scope.clone()
+        };
+        let terminal_recipe = pending_recipe(&rig.pool, &terminal_scope).await;
+        let terminal_code = Uuid::new_v4();
+        rig.pool.get().await.unwrap().execute("INSERT INTO reborn_python_code(id,tenant_id,user_id,agent_id,project_id,name,description) VALUES($1,$2,$3,$4,$5,'threshold-terminal-code','Rejection lifecycle fixture')",
+            &[&terminal_code,&terminal_scope.tenant_id,&terminal_scope.user_id,&terminal_scope.agent_id,&terminal_scope.project_id]).await.unwrap();
+        for (component, class) in [(terminal_recipe, 21), (terminal_code, 22)] {
+            facade
+                .queue_store
+                .submit(&terminal_scope, component, class, None)
+                .await
+                .unwrap();
             rig.pool
                 .get()
                 .await
                 .unwrap()
                 .execute(
-                    "UPDATE reborn_validation_queue SET state=2 WHERE component_id=$1",
+                    "UPDATE reborn_validation_queue SET counter=1 WHERE component_id=$1 AND state=1",
                     &[&component],
                 )
                 .await
                 .unwrap();
             facade
                 .queue_store
-                .reject(&scope, component, "Deletion candidate")
+                .gate1_pass(&terminal_scope, component, &[])
+                .await
+                .unwrap();
+            facade
+                .queue_store
+                .reject(&terminal_scope, component, "Deletion candidate")
                 .await
                 .unwrap();
         }
-        let terminal = facade.queue_store.list(&scope, None).await.unwrap();
+        let terminal = facade
+            .queue_store
+            .list(&terminal_scope, None)
+            .await
+            .unwrap();
         assert!(terminal.iter().all(|row| row.state == 4));
         let higher =
             u8::try_from(terminal.iter().map(|row| row.counter).max().unwrap() + 1).unwrap();
@@ -2645,7 +2668,7 @@ mod tests {
         let still_terminal = facade
             .list_validation_queue(
                 &scope.user_id,
-                &scope.project_id,
+                &terminal_scope.project_id,
                 ValidationQueueFilter::Rejection,
                 None,
             )
@@ -2664,7 +2687,7 @@ mod tests {
             facade
                 .list_validation_queue(
                     &scope.user_id,
-                    &scope.project_id,
+                    &terminal_scope.project_id,
                     ValidationQueueFilter::Revision,
                     None
                 )
@@ -2675,14 +2698,14 @@ mod tests {
         );
         assert_eq!(
             facade
-                .count_by_status(&scope.user_id, &scope.project_id, "garbage")
+                .count_by_status(&scope.user_id, &terminal_scope.project_id, "garbage")
                 .await
                 .unwrap(),
             2
         );
         assert_eq!(
             facade
-                .count_by_status(&scope.user_id, &scope.project_id, "rejected")
+                .count_by_status(&scope.user_id, &terminal_scope.project_id, "rejected")
                 .await
                 .unwrap(),
             0
