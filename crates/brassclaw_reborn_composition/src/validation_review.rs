@@ -174,11 +174,11 @@ impl ValidationQueueStore {
             brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
                 .await
                 .map_err(|error| map_original_store(error, component_id))?;
-        if let Some(binding) = &binding {
-            if binding.component_bytes() != component_bytes || binding.queue_bytes() != queue_bytes
-            {
-                return Err(ValidationQueueError::ReviewChanged { component_id });
-            }
+        if let Some(binding) = &binding
+            && (binding.component_bytes() != component_bytes
+                || binding.queue_bytes() != queue_bytes)
+        {
+            return Err(ValidationQueueError::ReviewChanged { component_id });
         }
         Ok(Q1Candidate {
             component_id,

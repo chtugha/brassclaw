@@ -586,3 +586,27 @@ Only these two test bodies and this report change. Direct rustfmt checks and
 `git diff --check` pass. No Cargo command, native/JS test execution or Modal job
 was started here. The two corrected tests await supervisor review and focused
 rerun; the broader B1/B2/B3 acceptance boundaries remain open.
+
+## Run-10 lint spelling correction — 2026-11-05
+
+The supervisor reported native test compilation passing in 163.06 seconds and
+both corrected shared-owner cases actually passing. Strict Clippy for the 12
+affected packages then stopped after 25.74 seconds on two `collapsible_if`
+diagnostics in `ReviewSubmissionDraft::changed_roots` and
+`changed_root_documents`. These are run-10 results for the prior integrated
+inputs; this correction does not replace or broaden their runtime evidence.
+
+Both conditions now use Edition-2024 let-chains. The optional partner is still
+checked first; `is_changed`/`to_draft()?` are evaluated only for a present partner,
+and `reference()?` still runs only in the corresponding changed-partner branch.
+Errors, ordering and document cloning remain unchanged. A source review of the
+other added Rust blocks across the package also found one equivalent nested
+guard in candidate capture. It now uses the same let-chain with the byte
+comparisons explicitly grouped, preserving short-circuiting and `ReviewChanged`.
+Other nested candidates retain additional outer-block work/returns and are not
+equivalent single guards. No lint suppression or behavior change was added.
+
+Direct rustfmt checks and `git diff --check` pass. No local/cloud compilation,
+tests or Modal jobs were started here. The supervisor's targeted final strict
+lint remains pending; runtime cases are not repeated for this spelling change.
+The package is not end-accepted until that lint passes.
