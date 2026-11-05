@@ -445,6 +445,7 @@ async fn private_ready_and_claim_lost_commit_ack_keep_original_native_reservatio
     );
     assert!(readback.get::<_, bool>(3));
     assert!(fixture.claim(runner).await.is_none());
+    assert!(fixture.claim(TurnRunnerId::new()).await.is_none());
     assert!(Arc::ptr_eq(
         &host,
         &fixture.reservations.owner.private_host(&original).unwrap()
@@ -566,6 +567,31 @@ async fn private_cancel_before_submit_and_running_native_task_keep_exact_termina
         }).await.unwrap();
         let started: bool = rig.pool.get().await.unwrap().query_one("SELECT phase='started' AND private_submission_intent_at IS NOT NULL FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&running]).await.unwrap().get(0);
         assert!(started, "cancel a genuinely admitted running native task");
+        assert!(fixture.claim(TurnRunnerId::new()).await.is_none());
+        let state = fixture
+            .store
+            .get_private_work_state(running)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut client = fixture.pool.get().await.unwrap();
+        let no_replay = client.transaction().await.unwrap();
+        assert!(
+            fixture
+                .store
+                .seal_private_work_in_transaction(
+                    &no_replay,
+                    running,
+                    i64::try_from(state.version).unwrap(),
+                    claim.request_checksum(),
+                    claim.definition_checksum()
+                )
+                .await
+                .is_err(),
+            "even this original's current metadata cannot return started Work to Ready"
+        );
+        no_replay.rollback().await.unwrap();
+        drop(client);
         fixture.store.cancel_private_work(running).await.unwrap();
         let stop = driver.stop_attempt(claim.attempt());
         tokio::pin!(stop);
