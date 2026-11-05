@@ -160,3 +160,26 @@ Assign each shared contract once, record dependencies before splitting packages,
 and keep at most two implementing chats. Archive/finish an accepted package chat;
 create a fresh chat for its successor. Commits and pushes do not end the overall
 implementation objective.
+
+### Current source-review findings — 2026-11-05
+
+Main checkpoint `dd8307eb5` is pushed. B-01 and A-02a retain their scoped
+acceptance above; all three complete Bob plans remain open.
+
+A-03a's first source checkpoint `e72119fb5` is not integrated or compiled.
+Its connected review requires installation-owner reachability beyond test-only
+callers, exact terminal qualification readback before any new admission/effect,
+original preparation capture and actual shared-host negative fixtures. A generic
+resource/input failure cannot stand in for the intended native guard rejection.
+Configuration-sized qualification buffers must also respect actual resource
+feasibility without guessed limits. Lost acknowledgement, cancellation and later
+cleanup failure need their real native cases. No paid compilation is approved
+until the corrected coherent diff is reviewed.
+
+B-02 owns the common acknowledged preparation capture at the existing settings/
+catalogue owner, pairing its actual revision with the exact limits. A-03 owns the
+validator input/selection capture and its checked original-byte restoration;
+B-02 persists and consumes it without another serializer. Later native-dispatch
+revision and original task-preparation revision remain separate. V207 stays
+exclusive to B-02. Existing work must not recapture current settings or rematch
+on restart. These assignments describe work in progress, not implemented APIs.

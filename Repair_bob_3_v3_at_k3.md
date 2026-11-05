@@ -669,12 +669,15 @@ file/template change and no remote compilation is required by this plan.
 
 - [ ] **B3-12 — Batch validation and record actual completion.**
 
-Complete each coherent source/consumer/test repair before compiling. The sole
-agent owns implementation, review and Cargo directly; no delegation, inter-chat
-handoff or build queue is used. Run required long batches detached in Screen and
-continue independent implementation outside frozen captured inputs. One Cargo
-execution/target only; inherited `CARGO_TARGET_DIR`, direct Cargo invocation,
-no inline override or explicit `/bin/zsh -lc`, no routine clean.
+Complete each coherent source/consumer/test repair before compiling. Follow the
+development policy's two-package-chat/supervisor workflow: isolated package chats
+implement and share the serialized, activated Modal builder; the supervisor
+reviews, owns native tests/final validation and integrates accepted changes.
+Run required long local batches detached in Screen and continue independent work
+outside frozen captured inputs. Keep one Cargo execution per build environment
+and one canonical local target. Native and Modal builds may run concurrently.
+Inherit `CARGO_TARGET_DIR`, invoke Cargo directly, and use no inline override,
+explicit `/bin/zsh -lc` wrapper or routine clean.
 
 Validate affected Auth/LLM/Host/Secrets/Composition features and WebUI contracts,
 then required real PG/global-worker/ordinary-caller cases. Read actual Cargo
