@@ -398,9 +398,7 @@ impl InstalledMontyCatalogue {
         &self,
         definition: &crate::prefix_job_definitions::Definition,
     ) -> Result<(), RebornBuildError> {
-        let mut client = self
-            .pool
-            .get()
+        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool)
             .await
             .map_err(|_| invalid("private prefix original unavailable"))?;
         let tx = client
@@ -414,7 +412,9 @@ impl InstalledMontyCatalogue {
             .await?;
         tx.commit()
             .await
-            .map_err(|_| invalid("private prefix original readback unknown"))
+            .map_err(|_| invalid("private prefix original readback unknown"))?;
+        client.recycle_after_commit();
+        Ok(())
     }
 
     pub(crate) async fn read_private_prefix_original_in_transaction(
@@ -546,9 +546,7 @@ impl InstalledMontyCatalogue {
         &self,
         definition: crate::prefix_job_definitions::Definition,
     ) -> Result<(), RebornBuildError> {
-        let mut client = self
-            .pool
-            .get()
+        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool)
             .await
             .map_err(|_| invalid("private prefix preparation unavailable"))?;
         let tx = client
@@ -561,7 +559,9 @@ impl InstalledMontyCatalogue {
             .await?;
         tx.commit()
             .await
-            .map_err(|_| invalid("private prefix preparation commit unknown"))
+            .map_err(|_| invalid("private prefix preparation commit unknown"))?;
+        client.recycle_after_commit();
+        Ok(())
     }
 
     pub(crate) async fn prepare_private_prefix_in_transaction(

@@ -223,7 +223,11 @@ impl RebornRuntime {
                 let unavailable = || RebornRuntimeError::PrefixJob(
                     brassclaw_product_workflow::InterceptorConfigServiceError::Unavailable,
                 );
-                let mut client = self.installed_catalogue.pool.get().await.map_err(|_| unavailable())?;
+                // The driver's BEGIN-abort guard queues rollback; this owner
+                // still recycles only after an acknowledged COMMIT.
+                let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(
+                    &self.installed_catalogue.pool,
+                ).await.map_err(|_| unavailable())?;
                 let tx = client.build_transaction()
                     .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
                     .start().await.map_err(|_| unavailable())?;
@@ -252,6 +256,7 @@ impl RebornRuntime {
                         .await.map_err(RebornRuntimeError::Build)?;
                 }
                 tx.commit().await.map_err(|_| unavailable())?;
+                client.recycle_after_commit();
                 Ok::<_, RebornRuntimeError>(reserved.into_definition())
             }.await;
             match result {
