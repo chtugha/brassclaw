@@ -5839,6 +5839,29 @@ async fn native_filesystem_metadata_projection_works_without_payload_privileges(
 #[path = "../../../../brassclaw_memory/tests/support/archive_contract.rs"]
 mod memory_archive_contract;
 
+#[path = "../../../../brassclaw_memory/tests/support/scope_codec.rs"]
+mod memory_scope_codec_contract;
+
+#[tokio::test]
+async fn native_memory_scope_codec_preserves_ids_addresses_and_attribution() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let filesystem = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+        rig.pool.as_ref().clone(),
+    ));
+    filesystem.run_migrations().await.unwrap();
+    memory_scope_codec_contract::assert_round_trips(filesystem).await;
+}
+
+#[tokio::test]
+async fn native_memory_scope_codec_rejects_noncanonical_addresses_before_writes() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let filesystem = Arc::new(brassclaw_filesystem::PostgresRootFilesystem::new(
+        rig.pool.as_ref().clone(),
+    ));
+    filesystem.run_migrations().await.unwrap();
+    memory_scope_codec_contract::assert_invalid_addresses(filesystem).await;
+}
+
 #[tokio::test]
 async fn native_memory_archive_projection_validates_counters_and_committed_effects() {
     let rig = crate::runtime::test_pg::pg_rig().await;

@@ -6,8 +6,14 @@ use brassclaw_host_api::VirtualPath;
 use brassclaw_memory::*;
 
 #[test]
-fn memory_scope_rejects_segments_that_cannot_round_trip_or_collide_in_owner_keys() {
-    assert!(MemoryDocumentScope::new("tenant:admin", "alice", None).is_err());
+fn memory_scope_preserves_host_ids_and_rejects_invalid_structure() {
+    let scope =
+        MemoryDocumentScope::new_with_agent("tenant:admin", " ", Some("_none"), Some("\u{2003}"))
+            .unwrap();
+    assert_eq!(scope.tenant_id(), "tenant:admin");
+    assert_eq!(scope.user_id(), " ");
+    assert_eq!(scope.agent_id(), Some("_none"));
+    assert_eq!(scope.project_id(), Some("\u{2003}"));
     assert!(MemoryDocumentScope::new(".", "alice", None).is_err());
     assert!(MemoryDocumentScope::new("tenant-a", "..", None).is_err());
 }

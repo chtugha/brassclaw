@@ -95,3 +95,82 @@ composer and align the seed contract, consumer documentation and applicable
 qualification. It must preserve genuine generic consumers, retained originals
 and historical evidence; it cannot reinterpret already-approved component bytes
 or fabricate a replacement consumer. This gate remains open after D01.
+
+## Native15 Memory scope correction — source handoff
+
+Correction base: `0e2b53c30b9159e6269166ac6b6f25901b4a947b` (including the
+separately owned E01 source). The branch remains
+`codex/d01-private-engine-bridge-retirement`.
+
+Native15 independently passed the real no-Monty Worker selector. Its opaque
+global-driver selector failed first at the actual `builtin.memory_write`
+dispatch: Memory rejected `:` in the original agent, before the write. The
+subsequent reconciliation error followed the fixture panic. Root's receipt is
+`target/validation/bob-native-repair-20261105/run-15-composition/native-cases-1/test-042.log`.
+That failure is preserved; it is not a pass for the correction below.
+
+The authorized correction uses the existing Memory owner. MemoryScope now
+accepts the unchanged Host-ID grammar, including colon, Unicode, whitespace-only
+and literal optional `_none`. Exactly the original admissibility predicate
+selects legacy VFS bytes. Other valid scopes use the disjoint strict
+`/memory/scopes-v2/t/s<hex>/u/s<hex>/a/<option>/p/<option>` prefix: lowercase UTF-8
+byte hex, `n` for None and `s<hex>` for Some. The parser checks decoded Host IDs,
+rejects V2 encodings of legacy scopes and raw legacy encodings of new scopes,
+and requires canonical re-encoding. Relative paths and sidecar prohibitions
+remain unchanged. The documented historical legacy no-agent input alias stays;
+global alias freedom is not claimed. Original IDs and typed scope axes never
+become encoded Host IDs or defaults.
+
+The existing Host-ID byte limit is exposed as `ids::MAX_SCOPE_ID_BYTES` and used
+by its original validator; the Memory decoder derives its allocation bound from
+it. Host-ID validation behavior is unchanged. New attribution uses disjoint
+`memory-owner/2:` or `memory-changed-by/2:` prefixes plus canonical JSON tuples;
+old representable attribution stays byte-identical. Owner attribution still
+omits agent intentionally. Version payloads, prior VFS rows and component/seed/
+approval bytes are not rewritten. Existing retained implementations keep their
+old contract; source changes do not retroactively qualify artifacts.
+
+Production and the native fixture use PostgresRootFilesystem SQL path keys;
+local-dev Memory uses PostgreSQL or explicitly ephemeral InMemoryBackend.
+Neither physically creates Windows filenames from these scope paths.
+LocalFilesystem remains byte-only and is not attached under `/memory`; no
+generic Host/RootFilesystem codec, mount, authority or backend schema changes.
+This is not Windows native acceptance or an arbitrary external-backend promise.
+
+Source test disposition and exact additional selectors for the supervisor:
+
+- `brassclaw_memory --lib`: affected Memory internals and existing coverage.
+- `brassclaw_memory --test scope_codec_contract`:
+  `scope_codec_preserves_ids_addresses_and_attribution_in_memory` and
+  `scope_codec_rejects_noncanonical_addresses_before_writes_in_memory`.
+- `brassclaw_memory --test memory_filesystem_contract`:
+  deliberate **1:1 rename** of
+  `memory_scope_rejects_segments_that_cannot_round_trip_or_collide_in_owner_keys`
+  to `memory_scope_preserves_host_ids_and_rejects_invalid_structure`.
+  The legitimate scope contract changed; dot/structural bans remain. Preserve
+  the actual legacy no-agent and agent-scoped VFS cases in this binary.
+- `brassclaw_reborn_composition` library:
+  `runtime::tests::provider_boot_tests::native_memory_scope_codec_preserves_ids_addresses_and_attribution`
+  and
+  `runtime::tests::provider_boot_tests::native_memory_scope_codec_rejects_noncanonical_addresses_before_writes`.
+- Repeat the unchanged
+  `runtime::tests::model_host_compatibility::global_driver_hands_opaque_admitted_tasks_to_one_existing_service`,
+  with the original colon/Unicode identities, explicit owner, Some(project)/None,
+  metadata, goal and timestamp assertions. Its test body is unchanged here.
+
+The two new backend pairs share one actual Repository/VFS contract. Its 19
+distinct scopes cover all nine independent optional-axis combinations, all four
+whitespace-only positions, colon/Unicode, marker/percent-like literals,
+delimiter-collision probes and four maximum 256-byte IDs at short `n.md`.
+Both VFS adapters round-trip persisted originals; scope indexes, distinct keys,
+list/read, metadata, chunks, two versions and scope-denied writes are checked.
+Four maximum IDs exercise the actual PostgreSQL TEXT primary/pattern-index keys
+without inventing an unrelated filesystem cap. The invalid-address cases cover
+noncanonical legacy/V2 aliases, labels/tokens, uppercase/odd/nonhex, invalid
+UTF-8, overlong/empty/structurally invalid IDs, traversal and sidecar collisions,
+then require an unchanged empty backend.
+
+No Cargo, DB, test or Modal run was performed for this correction. Standalone
+formatting and connected source review are its only local checks; native
+acceptance remains supervisor-owned. The original 47 retirement disposition and
+all broader B2-09/Engine/private-composer gates above remain unchanged.

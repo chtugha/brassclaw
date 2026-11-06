@@ -11,6 +11,9 @@ use uuid::Uuid;
 
 use crate::HostApiError;
 
+/// Maximum UTF-8 byte length of a tenant, user, agent, project or thread ID.
+pub const MAX_SCOPE_ID_BYTES: usize = 256;
+
 fn has_forbidden_control(value: &str) -> bool {
     value.chars().any(|c| c == '\0' || c.is_control())
 }
@@ -19,7 +22,7 @@ fn validate_scope_id(kind: &'static str, value: &str) -> Result<(), HostApiError
     if value.is_empty() {
         return Err(HostApiError::invalid_id(kind, value, "must not be empty"));
     }
-    if value.len() > 256 {
+    if value.len() > MAX_SCOPE_ID_BYTES {
         return Err(HostApiError::invalid_id(
             kind,
             value,

@@ -57,10 +57,38 @@ The current implementation path without `agents/{agent}` is transitional. Contra
 
 Rules:
 
-- `_none` is reserved and means an absent optional scope;
+- In the legacy grammar, `_none` means an absent optional scope. Existing
+  representable scopes retain their exact path bytes and the historical
+  no-agent input alias. Scope values otherwise follow the shared Host ID
+  contract unchanged, including colon, Unicode, whitespace-only and literal
+  `_none`. Newly representable scopes use the disjoint grammar below; None
+  never becomes a literal identifier.
 - backends receive a host-resolved `MemoryContext` and must not widen authority;
 - memory plugins do not decide tenant/user/project/agent authority;
 - all persistence, search, events, resources, and audit records must carry the relevant memory scope.
+
+For scopes not representable under the original grammar:
+
+```text
+/memory/scopes-v2/t/s<hex>/u/s<hex>/a/<option>/p/<option>/{relative/path}
+```
+
+`hex` is canonical lowercase UTF-8 byte hex of the original ID. An optional slot
+is exactly `n` for None or `s<hex>` for Some; `s5f6e6f6e65` represents literal
+`_none`. Decoded IDs retain the Host ID byte bound and structural checks. V2
+must not encode an originally representable scope; newly representable values
+must not acquire raw legacy addresses. Readers validate the grammar and require
+exact canonical re-encoding. Relative-path, sidecar, authority and mount rules
+are unchanged. This is a Memory codec over structured PostgreSQL/InMemory VFS
+keys, not a new physical local-filesystem attachment or generic Host path codec.
+
+Legacy owner/changed-by attribution strings retain their exact bytes for their
+previously representable fields. Other values use disjoint `memory-owner/2:`
+plus canonical JSON `[tenant,user,project_or_null]`, or `memory-changed-by/2:`
+plus `[tenant,user,agent,project_or_null]` when an agent is present. Absent agent
+delegates to the owner form; owner attribution still intentionally omits agent.
+Attribution is version metadata, not a grant, path or scope lookup key. Existing
+version records and retained implementation contracts are not rewritten.
 
 ---
 

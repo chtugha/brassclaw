@@ -7,13 +7,9 @@ use brassclaw_host_api::{AgentId, HostApiError, ProjectId, TenantId, UserId, Vir
 
 /// Tenant/user/agent/project scope for DB-backed memory documents exposed as virtual files.
 ///
-/// Structural validation (non-empty, length, dot segments, path separators,
-/// control characters) is delegated to the shared [`TenantId`]/[`UserId`]/
-/// [`AgentId`]/[`ProjectId`] newtypes from `brassclaw_host_api` rather than
-/// re-implemented here. Only the memory-specific extra constraints (segments
-/// must not be whitespace-only, and must not contain `:`, which is reserved
-/// for owner-key encoding in [`crate::repo::scoped_memory_owner_key`]) are
-/// layered on top.
+/// Scope values use the shared Host API ID contract unchanged. Scopes that
+/// the original memory grammar could represent retain their exact VFS bytes;
+/// other valid scopes use the disjoint, canonical `scopes-v2` grammar.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MemoryDocumentScope {
     pub(crate) tenant_id: TenantId,
@@ -37,28 +33,10 @@ impl MemoryDocumentScope {
         agent_id: Option<&str>,
         project_id: Option<&str>,
     ) -> Result<Self, HostApiError> {
-        let tenant_id = validated_memory_tenant(tenant_id.into())?;
-        let user_id = validated_memory_user(user_id.into())?;
-        let agent_id = agent_id
-            .map(|agent_id| validated_memory_agent(agent_id.to_string()))
-            .transpose()?;
-        if agent_id.as_ref().map(AgentId::as_str) == Some("_none") {
-            return Err(HostApiError::InvalidId {
-                kind: "memory agent",
-                value: "_none".to_string(),
-                reason: "_none is reserved for absent agent ids".to_string(),
-            });
-        }
-        let project_id = project_id
-            .map(|project_id| validated_memory_project(project_id.to_string()))
-            .transpose()?;
-        if project_id.as_ref().map(ProjectId::as_str) == Some("_none") {
-            return Err(HostApiError::InvalidId {
-                kind: "memory project",
-                value: "_none".to_string(),
-                reason: "_none is reserved for absent project ids".to_string(),
-            });
-        }
+        let tenant_id = TenantId::new(tenant_id.into())?;
+        let user_id = UserId::new(user_id.into())?;
+        let agent_id = agent_id.map(AgentId::new).transpose()?;
+        let project_id = project_id.map(ProjectId::new).transpose()?;
         Ok(Self {
             tenant_id,
             user_id,
@@ -83,7 +61,23 @@ impl MemoryDocumentScope {
         self.project_id.as_ref().map(ProjectId::as_str)
     }
 
+    pub(crate) fn legacy_representable(&self) -> bool {
+        legacy_segment(self.tenant_id())
+            && legacy_segment(self.user_id())
+            && legacy_optional_segment(self.agent_id())
+            && legacy_optional_segment(self.project_id())
+    }
+
     pub(crate) fn virtual_prefix(&self) -> Result<VirtualPath, HostApiError> {
+        if !self.legacy_representable() {
+            return VirtualPath::new(format!(
+                "/memory/scopes-v2/t/{}/u/{}/a/{}/p/{}",
+                encode_scope_token(Some(self.tenant_id())),
+                encode_scope_token(Some(self.user_id())),
+                encode_scope_token(self.agent_id()),
+                encode_scope_token(self.project_id()),
+            ));
+        }
         VirtualPath::new(format!(
             "/memory/tenants/{}/users/{}/agents/{}/projects/{}",
             self.tenant_id,
@@ -176,6 +170,9 @@ impl ParsedMemoryPath {
         operation: FilesystemOperation,
     ) -> Result<Self, FilesystemError> {
         let segments: Vec<&str> = path.as_str().trim_matches('/').split('/').collect();
+        if segments.get(1) == Some(&"scopes-v2") {
+            return Self::from_v2(path, &segments, operation);
+        }
         if segments.len() < 7
             || segments.first() != Some(&"memory")
             || segments.get(1) != Some(&"tenants")
@@ -241,6 +238,14 @@ impl ParsedMemoryPath {
                 format!("invalid memory document scope: {error}"),
             )
         })?;
+        // Newly admitted raw values must never acquire a second legacy address.
+        if !scope.legacy_representable() {
+            return Err(memory_error(
+                path.clone(),
+                operation,
+                "noncanonical memory scope",
+            ));
+        }
         let relative_path = if segments.len() > relative_start {
             Some(
                 validated_memory_relative_path(segments[relative_start..].join("/")).map_err(
@@ -262,66 +267,100 @@ impl ParsedMemoryPath {
             relative_path,
         })
     }
-}
 
-/// Rejects whitespace-only segments before the newtype constructor runs,
-/// so this check (which is stricter than the newtype's plain `is_empty`)
-/// takes precedence over the newtype's own structural checks (e.g. the
-/// 256-byte length limit) — matching the error precedence this crate had
-/// before validation was delegated to `brassclaw_host_api::ids`.
-fn reject_whitespace_only_segment(kind: &'static str, value: &str) -> Result<(), HostApiError> {
-    if value.trim().is_empty() {
-        return Err(HostApiError::InvalidId {
-            kind,
-            value: value.to_string(),
-            reason: "segment must not be empty".to_string(),
-        });
+    fn from_v2(
+        path: &VirtualPath,
+        segments: &[&str],
+        operation: FilesystemOperation,
+    ) -> Result<Self, FilesystemError> {
+        let invalid = || memory_error(path.clone(), operation, "invalid canonical memory scope");
+        if segments.len() < 10
+            || segments[0] != "memory"
+            || segments[2] != "t"
+            || segments[4] != "u"
+            || segments[6] != "a"
+            || segments[8] != "p"
+        {
+            return Err(invalid());
+        }
+        let tenant = decode_scope_token(segments[3]).ok_or_else(invalid)?;
+        let user = decode_scope_token(segments[5]).ok_or_else(invalid)?;
+        let agent = decode_optional_scope_token(segments[7]).ok_or_else(invalid)?;
+        let project = decode_optional_scope_token(segments[9]).ok_or_else(invalid)?;
+        let scope =
+            MemoryDocumentScope::new_with_agent(tenant, user, agent.as_deref(), project.as_deref())
+                .map_err(|_| invalid())?;
+        if scope.legacy_representable()
+            || scope.virtual_prefix().map_err(|_| invalid())?.as_str()
+                != format!("/{}", segments[..10].join("/"))
+        {
+            return Err(invalid());
+        }
+        let relative_path = if segments.len() > 10 {
+            Some(validated_memory_relative_path(segments[10..].join("/")).map_err(|_| invalid())?)
+        } else {
+            None
+        };
+        Ok(Self {
+            scope,
+            relative_path,
+        })
     }
-    Ok(())
 }
 
-/// Rejects `:` in an already newtype-validated segment value: the colon is
-/// reserved for owner-key encoding in [`crate::repo::scoped_memory_owner_key`].
-/// Structural checks (empty, length, dot segments, path separators, control
-/// characters) are the newtype constructor's responsibility and are not
-/// repeated here.
-fn reject_colon_in_segment(kind: &'static str, value: &str) -> Result<(), HostApiError> {
-    if value.contains(':') {
-        return Err(HostApiError::InvalidId {
-            kind,
-            value: value.to_string(),
-            reason: "colon is reserved for memory owner key encoding".to_string(),
-        });
+/// Exact original memory-scope grammar, applied only to already valid Host IDs.
+/// Keep it separate from admission so old persisted addresses remain unchanged.
+pub(crate) fn legacy_segment(value: &str) -> bool {
+    !value.trim().is_empty() && !value.contains(':')
+}
+
+pub(crate) fn legacy_optional_segment(value: Option<&str>) -> bool {
+    value.is_none_or(|value| value != "_none" && legacy_segment(value))
+}
+
+fn encode_scope_token(value: Option<&str>) -> String {
+    let Some(value) = value else {
+        return "n".into();
+    };
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut token = String::with_capacity(1 + 2 * value.len());
+    token.push('s');
+    for byte in value.bytes() {
+        token.push(HEX[usize::from(byte >> 4)] as char);
+        token.push(HEX[usize::from(byte & 15)] as char);
     }
-    Ok(())
+    token
 }
 
-pub(crate) fn validated_memory_tenant(value: String) -> Result<TenantId, HostApiError> {
-    reject_whitespace_only_segment("memory tenant", &value)?;
-    let id = TenantId::new(value)?;
-    reject_colon_in_segment("memory tenant", id.as_str())?;
-    Ok(id)
+fn decode_optional_scope_token(token: &str) -> Option<Option<String>> {
+    if token == "n" {
+        Some(None)
+    } else {
+        decode_scope_token(token).map(Some)
+    }
 }
 
-pub(crate) fn validated_memory_user(value: String) -> Result<UserId, HostApiError> {
-    reject_whitespace_only_segment("memory user", &value)?;
-    let id = UserId::new(value)?;
-    reject_colon_in_segment("memory user", id.as_str())?;
-    Ok(id)
-}
-
-pub(crate) fn validated_memory_agent(value: String) -> Result<AgentId, HostApiError> {
-    reject_whitespace_only_segment("memory agent", &value)?;
-    let id = AgentId::new(value)?;
-    reject_colon_in_segment("memory agent", id.as_str())?;
-    Ok(id)
-}
-
-pub(crate) fn validated_memory_project(value: String) -> Result<ProjectId, HostApiError> {
-    reject_whitespace_only_segment("memory project", &value)?;
-    let id = ProjectId::new(value)?;
-    reject_colon_in_segment("memory project", id.as_str())?;
-    Ok(id)
+fn decode_scope_token(token: &str) -> Option<String> {
+    let hex = token.strip_prefix('s')?;
+    // Bound allocation using the same source limit as Host API ID admission.
+    if hex.is_empty()
+        || hex.len() > 2 * brassclaw_host_api::ids::MAX_SCOPE_ID_BYTES
+        || !hex.len().is_multiple_of(2)
+    {
+        return None;
+    }
+    fn digit(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            _ => None,
+        }
+    }
+    let mut bytes = Vec::with_capacity(hex.len() / 2);
+    for pair in hex.as_bytes().chunks_exact(2) {
+        bytes.push((digit(pair[0])? << 4) | digit(pair[1])?);
+    }
+    String::from_utf8(bytes).ok()
 }
 
 pub(crate) fn validated_memory_relative_path(value: String) -> Result<String, HostApiError> {

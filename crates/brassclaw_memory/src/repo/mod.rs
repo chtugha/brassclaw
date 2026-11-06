@@ -8,8 +8,8 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::metadata::MemoryWriteOptions;
 use crate::path::{
-    MemoryDocumentPath, MemoryDocumentScope, memory_backend_unsupported, memory_error,
-    memory_not_found, valid_memory_path,
+    MemoryDocumentPath, MemoryDocumentScope, legacy_optional_segment, legacy_segment,
+    memory_backend_unsupported, memory_error, memory_not_found, valid_memory_path,
 };
 use crate::search::{MemorySearchRequest, MemorySearchResult};
 
@@ -145,6 +145,15 @@ pub trait MemoryDocumentRepository: Send + Sync {
 }
 
 pub(crate) fn scoped_memory_owner_key(scope: &MemoryDocumentScope) -> String {
+    if !legacy_segment(scope.tenant_id())
+        || !legacy_segment(scope.user_id())
+        || !legacy_optional_segment(scope.project_id())
+    {
+        return format!(
+            "memory-owner/2:{}",
+            serde_json::json!([scope.tenant_id(), scope.user_id(), scope.project_id()])
+        );
+    }
     format!(
         "tenant:{}:user:{}:project:{}",
         scope.tenant_id(),
@@ -155,6 +164,17 @@ pub(crate) fn scoped_memory_owner_key(scope: &MemoryDocumentScope) -> String {
 
 pub(crate) fn scoped_memory_changed_by_key(scope: &MemoryDocumentScope) -> String {
     if let Some(agent_id) = scope.agent_id() {
+        if !scope.legacy_representable() {
+            return format!(
+                "memory-changed-by/2:{}",
+                serde_json::json!([
+                    scope.tenant_id(),
+                    scope.user_id(),
+                    agent_id,
+                    scope.project_id()
+                ])
+            );
+        }
         return format!(
             "tenant:{}:user:{}:agent:{}:project:{}",
             scope.tenant_id(),

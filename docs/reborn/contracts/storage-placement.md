@@ -188,6 +188,9 @@ Rules:
 - memory docs are file-shaped, but memory search/chunks/versions are structured derived state;
 - memory path grammar, metadata inheritance, versioning, search, prompt context, and layer rules live in `brassclaw_memory`;
 - `brassclaw_filesystem` may route/mount memory backends but must not encode memory semantics.
+- The [Memory scope grammar](memory.md#2-scope-model) preserves legacy keys and
+  defines the canonical `scopes-v2` representation for newly representable Host
+  IDs. It changes structured Memory addresses, not filesystem backend placement.
 
 ### 5.3 Structured control-plane state
 
