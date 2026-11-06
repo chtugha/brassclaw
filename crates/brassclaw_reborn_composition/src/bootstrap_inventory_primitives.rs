@@ -105,10 +105,10 @@ impl PrimitiveEvidence {
                 json!({"kind":"approval_required","capability_id":gate.capability_id,"approval_request_id":gate.approval_request_id,"reason":blocked_reason(gate.reason)})
             }
             Ok(RuntimeCapabilityOutcome::AuthRequired(gate)) => {
-                json!({"kind":"auth_required","capability_id":gate.capability_id,"gate_id":gate.gate_id,"boundary":gate.boundary,"reason":blocked_reason(gate.reason)})
+                json!({"kind":"auth_required","capability_id":gate.capability_id,"gate_id":gate.gate_id.as_str(),"boundary":gate.boundary,"reason":blocked_reason(gate.reason)})
             }
             Ok(RuntimeCapabilityOutcome::ResourceBlocked(gate)) => {
-                json!({"kind":"resource_blocked","capability_id":gate.capability_id,"gate_id":gate.gate_id,"reason":blocked_reason(gate.reason)})
+                json!({"kind":"resource_blocked","capability_id":gate.capability_id,"gate_id":gate.gate_id.as_str(),"reason":blocked_reason(gate.reason)})
             }
             Ok(RuntimeCapabilityOutcome::SpawnedProcess(process)) => {
                 json!({"kind":"spawned_process","capability_id":process.capability_id,"process_id":process.process_id})
