@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Private Monty Work and original captures (B-02, validation pending)**:
+  Integrate message-free structural review and quarantined source-only Prefix
+  work into the existing PostgreSQL Work owner, Worker and single global Monty
+  driver. V207 retains exact preparation/definition/claim/terminal identities;
+  interrupted and late completion consumers preserve the original outcome.
+  Concurrent preparations preserve the first complete capture across settings
+  changes without replay. Native acceptance is pending; original-to-Work startup
+  discovery and general durable recovery remain open.
+
+- **Installation observation prerequisites (A-03, validation pending)**:
+  Connect contained parser qualification and Structure/Pure factual observations
+  to the existing installation owner, with exact native, subject, selection and
+  terminal readback. JSON reference data is checked against the actual immutable
+  root; it grants no approval. General pure approval and complete class checking
+  remain open, and this integration has not yet passed its native acceptance.
+
+- **Private legacy Engine bridge retirement (D-01, validation pending)**:
+  Remove the unreachable Composition Engine-thread/lookup/effect bridge and its
+  sole-dependent builder/guard, the unregistered MemoryDoc adapter and the unused
+  Store argument. Preserve ordinary Monty, public compatibility ports and actual
+  migration/import readers. Inventory 47 retired compiled tests explicitly;
+  replacement native scope/startup/no-fallback cases await execution. Broader
+  legacy composer/seed-contract and Engine codec migration remain open.
+
 - **Native test unwind repair (C-00)**: Apply basic optimization to the shared
   test dependency graph while retaining debug checks, overflow checks and
   unwinding. The actual Apple ARM64 Composition test executable now links
