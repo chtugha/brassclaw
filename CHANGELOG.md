@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   driver. V207 retains exact preparation/definition/claim/terminal identities;
   interrupted and late completion consumers preserve the original outcome.
   Concurrent preparations preserve the first complete capture across settings
-  changes without replay. Native acceptance is pending; original-to-Work startup
+  changes without replay. Native acceptance is pending; validator original-to-Work
   discovery and general durable recovery remain open.
 
 - **Installation observation prerequisites (A-03, validation pending)**:
@@ -28,8 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sole-dependent builder/guard, the unregistered MemoryDoc adapter and the unused
   Store argument. Preserve ordinary Monty, public compatibility ports and actual
   migration/import readers. Inventory 47 retired compiled tests explicitly;
-  replacement native scope/startup/no-fallback cases await execution. Broader
-  legacy composer/seed-contract and Engine codec migration remain open.
+  the selected real no-Monty Worker case passes without a model fallback. The
+  opaque-identity case exposed a memory attribution encoding defect and remains
+  open. Broader native acceptance, legacy composer/seed-contract and Engine codec
+  migration remain open.
+
+- **Atomic private Prefix publication (B03a, validation pending)**: Commit the
+  original source-only Profile job, Work, complete preparation and Ready in one
+  existing-owner transaction. Retry reads the exact original; it cannot append
+  missing Work to historical metadata. Reuse the shared Worker and connection
+  lifecycle, with no new scheduler or schema. Native ACK/rollback/fallback
+  acceptance remains pending.
 
 - **Native test unwind repair (C-00)**: Apply basic optimization to the shared
   test dependency graph while retaining debug checks, overflow checks and

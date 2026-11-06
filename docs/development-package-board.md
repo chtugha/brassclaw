@@ -39,40 +39,46 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ### Current integration checkpoint — 2026-11-06
 
-Local `main` contains the source-reviewed A-03/B-02/D-01 chain through `fac8b0e67`;
-the latest pushed accepted checkpoint remains `68f8b798e`. Source integration is
-not native acceptance. Run-12 built the current worker, then failed before tests
-on the new cancellation wait's incompatible return types. B-02 corrected that
-boundary and the unused WebUI import. Run-13 reused the canonical cache and
-failed before tests on remaining origin-field consumers and A-03's factual
-reference serialization/visibility. Both failed receipts remain unchanged under
-`target/validation/bob-native-repair-20261105/`; no selected case has passed on
-these new sources yet. The native compiler is idle while the owners correct the
-connected source issues; no simultaneous Cargo or new paid Modal job is running.
+Local `main` contains the source-reviewed A-03/B-02/D-01 chain and the bounded
+B03a atomic Prefix producer through `576372fe2`; the latest pushed accepted
+checkpoint remains `68f8b798e`. Source integration is not native acceptance.
+Run-14's combined test compilation failed on test-only consumers; their reviewed
+corrections are integrated. Its six unchanged retained executables subsequently
+passed 11 selected host/WebUI/HTTP/real SQLite-to-PostgreSQL migration cases.
 
-B-02's origin/consumer corrections `7ed6ef83a` and concurrent original-preparation
-repair `aacf4f291` are reviewed and integrated. Exact WorkRequest equality stays
-strict; bounded authenticated original readback preserves the first complete
-capture after a concurrent smaller ACK. Its new deterministic native case is
-unexecuted. B-02 remains available only for its own concrete acceptance fixes.
-A-03's four-file correction `1e7f664fe` has been source-reviewed and integrated:
-explicit factual reference encoding/full selected-root equality, immutable root
-lookup, original gate strings and owner-local visibility. Its source/artifact
-hashes are independently verified; native acceptance remains pending. A-03 is
-idle for its own concrete review corrections. D-01 `f30dbcf6a` is now reviewed and
-integrated with actual startup/opaque-owner/no-Monty Worker test sources, still
-unexecuted. All 47 distinct retired test names and five original source hashes
-are independently checked against Run-11's actual baseline. D-01 is idle for its
-own acceptance fixes. The combined formatting check passed after A-03's one-line
-attribute correction. E-01 prepares a read-only next-package proposal, with no
-source/build authorization. Original-review-to-absent-Work
-discovery, general pure approval, successor publication/all readers and full
-durable recovery remain open; atomic Ready publication does not close them.
+Run-15 compiled its current worker and Composition harness successfully, with no
+compiler/link warnings. Its immutable 70-case native batch passed 25 and failed
+45; neither ignored nor empty selection counted as passing. Both explicit actual
+Ornith model calls passed. The source/profile/unwind/test-inventory gate passed:
+`__eh_frame` is 12,341,644 bytes; all 1,353 baseline tests remain except the exact
+47 reviewed D-01 retirements, with 45 new tests. Failed receipts are retained.
+Most failures stop at the shared installation readback; others expose the missing
+contract-test receipt declaration, the old generation qualifier's artificial
+frame reduction, and colon-bearing opaque memory attribution. A-03's first two
+runtime corrections are integrated as `0cba4f04b`, still awaiting native rerun.
 
-Before Run-12, required executable evidence was independently hash-verified and
-retained on the repository volume. Serial Composition-only cleanup freed 7.2 GiB
-(1,941 disposable files); no whole target or retained evidence was removed.
-The recorded post-clean target capacity was 25 GiB free / 88% used.
+B03a `f686cfd226`/`83efab192` is reviewed and integrated as
+`a9021aba9`/`576372fe2`: the actual private source-only Prefix producer commits
+original, Work, complete preparation and Ready together. Existing originals get
+strict readback only; historical absent/unsealed Work is not completed using
+current data. It reuses the existing transaction-client owner and Worker, without
+new schema, queue or preparation service. Its real ACK/rollback/historical native
+cases are source-only pending acceptance. Validator original-to-Work discovery
+and post-native domain acknowledgement remain open.
+
+The two implementing packages are E-01 (genuine own-checker qualification) and
+A-03's bounded generation configuration/frame correction. B03a is idle for its
+own acceptance corrections. D-01 has supplied read-only diagnosis of the opaque
+memory-key defect; no memory implementation is authorized yet. No package runs
+local Cargo or tests, and no new paid Modal job is running. The preceding source
+freeze ended with Run-15; no test receipt is attributed to later corrections.
+
+Before Run-15, worker and required executables were hash-verified and retained
+on the external evidence volume. Required four-package cleanup removed 11.2 GiB;
+no whole target, source, PG data or retained evidence was removed. Space is again
+below the mandatory usage threshold; further package-only cleanup is required
+before another compilation. Current Run-15 executable hashes are independently
+verified outside the canonical cache.
 
 | Package | Chat/worktree | Scope and state |
 | --- | --- | --- |
@@ -80,11 +86,12 @@ The recorded post-clean target capacity was 25 GiB free / 88% used.
 | B-00 — review inherited Q1/Oracle repair and finish its acceptance fixes | `01a1a062-b1c4-7ba0-8506-b7c8b3ee4b33`, host `local`, title “Paket B-00 — Q1- und Oracle-Reparatur”; `/Users/ollama/.codex/worktrees/ac66/brassclaw` | Accepted in its bounded inherited repair scope: exact-source Modal CLI/native smoke, actual incomplete-execution regression and all six retained Q1 callers passed, along with Oracle/pure-link/shared-driver cases. Eight-package strict Clippy passed. General pure approval, canonical genuine qualification, durable scheduling and B2 cutover remain open. Package closed; no new task here. |
 | B-01 — original immutable review request | `01a1a0d0-de89-7a73-9fd2-af06d5d1ca81`, host `local`, title “Paket B-01 — Originale Review-Anforderung”; `/Users/ollama/.codex/worktrees/2f1e/brassclaw` | Accepted in its bounded scope through `5c5e84bf3`: exact original/CAS/fault/readback, complete queue projections/paging, actual Q1/Sempai/lifecycle cases, 24 UI tests and strict twelve-package lint. Modal CLI/native smoke also passed. V206 integrated. Full `/3`, legacy custody disposition, complete Sempai/Docplan conversion and durable Work remain open. Package closed, no next task here. |
 | A-02 — exact Pure-approval readers | `01a1a139-eac1-7e32-9ac9-5ddfff64994a`, host `local`, title “Paket A-02 — Exakte Pure-Approval-Reader”; `/Users/ollama/.codex/worktrees/27f9/brassclaw` | Narrow A-02a `f62e17a12` integrated as `9c8d3c12a`, scoped acceptance complete: exact canonical `/1` prepare/recheck/reload, occurrence isolation, ordinary publication, retained child, complete deployment caller and strict affected lint. No new general Pure approval, migration or selection format. Package closed; successor gets a fresh chat. |
-| A-03 — genuine Pure approval and exact retained successor contract | `01a1ab08-ac3e-7812-bf0d-ba6afcc18fb0`, host `local`; `/Users/ollama/.codex/worktrees/a7f2/brassclaw` | Narrow A-03a source chain through `71ad80547`, correction `1e7f664fe` and attribute formatting are reviewed and integrated. Real installation parser/Structure/Pure observations remain prerequisites; no general Pure approval, own-Q1/Q2/activation or `/2` publication. Mandatory reading complete. Native acceptance pending; idle for own concrete corrections. |
+| A-03 — genuine Pure approval and exact retained successor contract | `01a1ab08-ac3e-7812-bf0d-ba6afcc18fb0`, host `local`; `/Users/ollama/.codex/worktrees/a7f2/brassclaw` | Narrow A-03a source and corrections through `a90363b432` are reviewed and integrated. Run-15 compiled but its selected runtime acceptance failed. The writer-spelling/receipt fixes await rerun; A-03 now implements the reviewed generation-frame/original-configuration correction. Real parser/Structure/Pure facts remain prerequisites, not general Pure/Q1/Q2/activation or `/2` publication. Mandatory reading complete. |
 | B-02 — durable private Monty Work | `01a1ab4e-ae8c-7342-98a3-7b6b8ab50650`, host `local`; `/Users/ollama/.codex/worktrees/d230/brassclaw`, branch `codex/b02-private-work` | Connected source and corrections through `aacf4f291` are reviewed and integrated: V207, genuine private structural/Q1 and source-only Prefix consumers, shared driver/Worker, exact captures, original readback, bounded cancellation/attempt custody and live completion delivery. Native acceptance pending; idle for own concrete corrections. No absent-Work discovery, old-image proof restoration or general Pure/serving claim. |
 | C-00 — native test unwind/linker repair | `01a1acab-875c-7073-9ddc-b84b4cd73443`, host `local`, title “Paket C-00 — Native Unwind- und Testlinker-Reparatur”; `/Users/ollama/.codex/worktrees/4d31/brassclaw`, branch `codex/c00-test-unwind-profile` | Accepted in its bounded profile/link/caller scope. Source `36ce1c4c5` integrated as `e212e0ba2`; actual native Run-11 links without warnings, retains unwind/debug/overflow checks, has 11,978,176-byte `__eh_frame`, preserves all 1,353 prior test names and passes both selected real PG callers. Package closed; no independent new task here. A changed A-03/B-02 graph needs its own checks. Full B3-12 remains open. |
-| D-01 — retire the private legacy Engine/Store bridge | `01a1ad6e-f507-78b2-883f-c3078c5c3678`, host `local`; `/Users/ollama/.codex/worktrees/9920/brassclaw`, branch `codex/d01-private-engine-bridge-retirement` | Source `f30dbcf6a` is reviewed and integrated. Removes the unreachable private bridge and solely dependent adapters/builders/guard, unused Store argument and unregistered LibSQL adapter. Preserves public compatibility, ordinary Monty and actual migration/import readers. Exact 47 retirements verified; new startup/opaque/no-driver cases await native execution. Formatting/self-review complete; idle for own corrections. Broader B2-09, remaining private composer/seed alignment and Engine codec/suppression migration stay open. |
-| E-01 — genuine shipped seed qualification | `01a1b0d3-5a16-7932-86b1-786b2906224f`, host `local`, title “Paket E-01 — Echte Seed-Qualifikation”; `/Users/ollama/.codex/worktrees/ac2c/brassclaw` | Read-only architecture/source proposal for the next B1-03/04/05/06/07 and B2-04 producer boundary. Inspect actual canonical seed bytes, noncircular checking-helper behavior, trusted evidence, immutable idempotence and invalid historical disposition. No product edits, migration allocation or builds authorized. Does not inherit general Pure/class-Q1 or activation acceptance from A-03 facts. |
+| D-01 — retire the private legacy Engine/Store bridge | `01a1ad6e-f507-78b2-883f-c3078c5c3678`, host `local`; `/Users/ollama/.codex/worktrees/9920/brassclaw`, branch `codex/d01-private-engine-bridge-retirement` | Source `f30dbcf6a` is reviewed and integrated. Removes the unreachable private bridge and solely dependent adapters/builders/guard, unused Store argument and unregistered LibSQL adapter. Preserves public compatibility, ordinary Monty and actual migration/import readers. Exact 47 retirements verified. Run-15 passes the real no-Monty Worker case; startup is blocked by shared bootstrap and opaque scope fails the real memory attribution codec. D-01 has supplied read-only diagnosis, with memory implementation not yet authorized. Broader B2-09, private composer/seed alignment and Engine codec/suppression migration stay open. |
+| E-01 — genuine shipped seed qualification | `01a1b0d3-5a16-7932-86b1-786b2906224f`, host `local`, title “Paket E-01 — Echte Seed-Qualifikation”; `/Users/ollama/.codex/worktrees/ac2c/brassclaw` | Reviewed proposal 2 is authorized for bounded implementation: exact canonical eight checker roots plus independently qualified receipt support, real contained fixtures/settlement, strict original proof and later mandatory startup readback. Source review/native acceptance pending. No general class-Q1, remaining 24-root approval, successor publication or migration claim. |
+| B03a — atomic private Prefix original/Ready publication | `01a1b10a-5a89-7712-a37c-f77f5a66c70f`, host `local`, title “Paket B-03 — Atomare Review-Arbeit”; `/Users/ollama/.codex/worktrees/dddf/brassclaw`, branch `codex/b03a-prefix-original-ready` | Four-file source package and existing-client lifecycle correction through `83efab192` reviewed and integrated. No schema/Worker/validator change. Three new real native cases and updated existing fallback/claim/readback cases await execution. Genuine withheld-BEGIN cancellation requires the existing test transport's hold/release extension before full B3-11 closure; its current cut-connection cases do not prove that boundary. Idle for own corrections. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

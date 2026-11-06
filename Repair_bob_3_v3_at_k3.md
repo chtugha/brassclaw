@@ -650,10 +650,22 @@ source, runtime diagnostics, tests and receipts were not modified.
 | Portable config and host-managed Codex canary credentials | No absolute target dependency and no secrets in logs/events/DTOs |
 | Validator catalogue/review/editing product flow | B3-09's ten integration requirements pass for class 21 and 22 with actual native backend state, private-route exclusion and immutable edit/CAS |
 | Private review admission repeated after lost acknowledgement | Same durable job/run/selection, no synthetic chat message or new random conversation, no extra validator execution |
+| Cancellation while a real BEGIN/COMMIT acknowledgement is withheld | Existing shared transport holds/releases the actual acknowledgement without first closing the backend; uncertain transaction client is discarded, confirmed success recycles normally, a pool-size-one readback resolves only the original, and no duplicate Work/admission/native effects occur |
 | Observation retained before terminal receipt/settlement | No successful Q1 or custody release until actual terminal proof; no finish/receipt deadlock |
 | Two concurrent refresh request IDs for one credential generation | Same original admitted refresh; a subsequent actual new access generation remains refreshable without reusing the old action |
 | Listener loss, restart and capacity pressure | Committed original work is reconciled under shared configured controls; no new domain scheduler or false ownership failure |
 | Codex unconfigured while another provider is selected | Existing API-key/other protocol connector and role startup remain functional; no Codex credential requirement or side effect leaks across providers |
+
+**Concrete B03a follow-up — 2026-11-06:** atomic Prefix producer source is
+integrated through `576372fe2`, but its native tests remain pending. The existing
+shared `AckCutTransport` currently cuts Commit/IdleReady connections; those cases
+cannot prove cancellation with a still-connected, withheld BEGIN response.
+Extend that same test owner with a real hold/release boundary for the row above
+before closing B3-11, without a parallel transport or simulated pool/PG success.
+The pinned tokio-postgres 0.7.18 already queues rollback on BEGIN cancellation;
+do not claim it lacks that guard. Verify the stricter acknowledgement/discard
+contract and unchanged normal recycling rather than inventing a contamination
+failure. This is mandatory remaining acceptance, not completed evidence.
 
 Use existing `pg_auth_device_tests`, `pg_auth_refresh_tests`, provider mutation/
 bootstrap/request-policy tests, Codex host-session tests, Q1 retained/queue tests

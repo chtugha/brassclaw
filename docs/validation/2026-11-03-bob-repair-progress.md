@@ -13,6 +13,41 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+The newest combined native attempt is Run-15 on `b84285780`: worker and
+Composition compile successfully without warnings (0.615 and 710.15 seconds),
+then **25 of 70 actual selected cases pass and 45 fail**. Both explicitly enabled
+real Ornith model cases pass; no ignored/zero case is accepted. The exact source,
+all required optimization/debug/assertion/overflow profiles, retained unwind
+sections and baseline test inventory pass their gate. `__eh_frame` is 12,341,644
+bytes; 47 explicitly reviewed D-01 retirements and 45 additions explain the
+1,353-to-1,351 test count. Receipts remain at
+`target/validation/bob-native-repair-20261105/run-15-composition/native-cases-1/`.
+This is a failed runtime batch, not A-03/B-02/D-01 acceptance.
+
+The failures identify four distinct causes: shared native dispatch-kind readback
+uses the wrong spelling; a contract-test Recipe omits its required receipt step;
+the old generation qualifier shrinks the frame below valid configured source/
+stdout bounds; and colon-bearing opaque agent/project identities fail the memory
+scope attribution codec. Installation fault cases mostly fail before their
+selected intent, so they do not establish their intended fault coverage. A-03's
+first two source corrections are integrated as `0cba4f04b`; the configuration
+repair is assigned, and D-01's memory diagnosis awaits its own reviewed source
+package. None of these later changes inherits Run-15 runtime acceptance.
+
+Run-14's Composition test compilation failed before producing its harness. Six
+other preserved executables then passed **11 actual independent cases**: six
+Monty host contracts, two WebUI wire cases, one HTTP original-model-setup route
+and two real SQLite/PostgreSQL migration cases. These are their exact executable
+scopes, not a successful combined Composition run.
+
+B03a's reviewed source through `83efab192` is integrated as `576372fe2`, with
+atomic original/Work/preparation/Ready publication for supported private
+source-only Prefix jobs and strict historical readback. Its three added native
+cases are unexecuted. E-01 implements the reviewed own-checker qualification
+boundary. Validator original-to-Work discovery, post-native domain ACK, complete
+class rules, general Pure approval, successor publication/readers and all three
+full Bob plans remain open. The supervisor continues after integration commits.
+
 Latest independent gate: C-00's shared test-profile repair is integrated as
 `e212e0ba2`. The actual native Run-11 profile/link batch passed without warnings:
 `__eh_frame` fell from 20,050,884 to 11,978,176 bytes, unwind sections remain,
