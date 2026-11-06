@@ -394,10 +394,131 @@ impl InstalledMontyCatalogue {
         Ok(Some(state))
     }
 
-    pub(crate) async fn prepare_private_prefix(
+    pub(crate) async fn read_private_prefix_original(
         &self,
-        definition: crate::prefix_job_definitions::Definition,
+        definition: &crate::prefix_job_definitions::Definition,
     ) -> Result<(), RebornBuildError> {
+        let mut client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| invalid("private prefix original unavailable"))?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(|_| invalid("private prefix original unavailable"))?;
+        self.read_private_prefix_original_in_transaction(&tx, definition)
+            .await?;
+        tx.commit()
+            .await
+            .map_err(|_| invalid("private prefix original readback unknown"))
+    }
+
+    pub(crate) async fn read_private_prefix_original_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        definition: &crate::prefix_job_definitions::Definition,
+    ) -> Result<(), RebornBuildError> {
+        use brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier;
+        let unresolved =
+            || invalid("private prefix original Work and Ready seal unresolved; do not replay");
+        let request = Self::private_prefix_request(definition)?;
+        let state = PgTurnStateStore::read_private_work_state_in_transaction(
+            tx,
+            request.context().tenant_id.as_str(),
+            definition.id,
+        )
+        .await
+        .map_err(|_| unresolved())?
+        .ok_or_else(unresolved)?;
+        if state.request != request || state.status == PrivateWorkStatus::AwaitingPreparation {
+            return Err(unresolved());
+        }
+        self.verify_original(tx, &state.request)
+            .await
+            .map_err(|_| unresolved())?;
+        let row = tx
+            .query_opt(
+                "SELECT p.definition_bytes,p.checksum FROM brassclaw_turns w
+            JOIN brassclaw_monty_private_preparations p ON p.work_id=w.work_id
+                AND p.checksum=w.private_definition_checksum
+            WHERE w.record_kind='private_work' AND w.tenant_id=$1 AND w.work_id=$2",
+                &[&request.context().tenant_id.as_str(), &definition.id],
+            )
+            .await
+            .map_err(|_| unresolved())?
+            .ok_or_else(unresolved)?;
+        let captured = PrivateWorkDefinition::restore(
+            &request,
+            state.request_checksum,
+            row.get(0),
+            row.get::<_, Vec<u8>>(1)
+                .try_into()
+                .map_err(|_| unresolved())?,
+        )?;
+        let crate::prefix_job_definitions::Origin::Private { preparation, .. } = &definition.origin
+        else {
+            return Err(unresolved());
+        };
+        if captured.preparation().bytes() != preparation.bytes()
+            || captured.workflow_checksum() != checksum(&definition.program_bytes)
+            || captured.input_checksum() != checksum(&definition.input_bytes)
+            || !matches!(captured.domain(), DomainCapture::PrefixSourceOnly { job_id } if *job_id == definition.id)
+        {
+            return Err(unresolved());
+        }
+        // Historical readback checks the retained root, never today's startup
+        // root, worker image, compiler selection or effective limits.
+        PgComponentRevisionStore::read_revision_in_transaction(tx, captured.root().reference())
+            .await
+            .map_err(|_| unresolved())?;
+        let coherent: bool = tx
+            .query_one(
+                "SELECT COALESCE(w.private_request_checksum=$3 AND
+            CASE WHEN w.status IN ('ready','cancelled') THEN
+                w.private_claim_generation=0 AND w.private_claim_attempts=0
+                AND a.run_id IS NULL AND t.work_id IS NULL AND w.private_terminal_checksum IS NULL
+            WHEN w.status IN ('claimed','reconciliation_required','settled') THEN
+                w.private_claim_generation=1 AND w.private_claim_attempts=1
+                AND a.origin_kind='private_work' AND a.private_work_id=w.work_id
+                AND a.run_id=w.execution_run_id AND a.runner_id=w.private_runner_id
+                AND a.claim_checksum=w.private_claim_checksum
+                AND a.private_claim_generation=w.private_claim_generation
+                AND a.private_request_checksum=w.private_request_checksum
+                AND a.private_execution_context=w.private_request_bytes::jsonb->'context'
+                AND a.native_actor=a.private_execution_context->'actor'
+                AND a.turn_id IS NULL AND a.scope IS NULL AND a.accepted_message_ref IS NULL
+                AND CASE WHEN w.status='settled' THEN a.phase='settled'
+                    AND t.run_id=w.execution_run_id AND t.checksum=w.private_terminal_checksum
+                    AND t.checksum=sha256(convert_to(t.terminal_bytes,'UTF8'))
+                ELSE a.phase IN ('reserved','started') AND t.work_id IS NULL
+                    AND w.private_terminal_checksum IS NULL END
+            ELSE false END,false)
+            FROM brassclaw_turns w
+            LEFT JOIN brassclaw_monty_task_admissions a ON a.run_id=w.private_admission_run
+            LEFT JOIN brassclaw_monty_private_terminals t ON t.work_id=w.work_id
+            WHERE w.record_kind='private_work' AND w.tenant_id=$1 AND w.work_id=$2",
+                &[
+                    &request.context().tenant_id.as_str(),
+                    &definition.id,
+                    &&state.request_checksum[..],
+                ],
+            )
+            .await
+            .map_err(|_| unresolved())?
+            .get(0);
+        if !coherent {
+            return Err(unresolved());
+        }
+        Ok(())
+    }
+
+    fn private_prefix_request(
+        definition: &crate::prefix_job_definitions::Definition,
+    ) -> Result<PrivateWorkRequest, RebornBuildError> {
         let crate::prefix_job_definitions::Origin::Private {
             context,
             preparation,
@@ -405,7 +526,7 @@ impl InstalledMontyCatalogue {
         else {
             return Err(invalid("private prefix origin required"));
         };
-        let request = PrivateWorkRequest::V1 {
+        Ok(PrivateWorkRequest::V1 {
             work_id: definition.id,
             run_id: TurnRunId::from_uuid(definition.id),
             original: PrivateOriginalRef::PrefixSourceOnly {
@@ -415,20 +536,65 @@ impl InstalledMontyCatalogue {
             context: context.clone(),
             original_preparation_checksum: Some(decode_checksum(preparation.checksum())?),
             original_workflow_checksum: Some(checksum(&definition.program_bytes)),
-        };
-        let store = PgTurnStateStore::new(self.pool.clone(), context.tenant_id.as_str());
+        })
+    }
+
+    // Historical protocol fixtures deliberately create metadata before Work so
+    // native claim/ACK/cancellation boundaries can be exercised independently.
+    #[cfg(test)]
+    pub(crate) async fn prepare_private_prefix_for_test(
+        &self,
+        definition: crate::prefix_job_definitions::Definition,
+    ) -> Result<(), RebornBuildError> {
         let mut client = self
             .pool
             .get()
             .await
             .map_err(|_| invalid("private prefix preparation unavailable"))?;
         let tx = client
-            .transaction()
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
             .await
             .map_err(|_| invalid("private prefix preparation unavailable"))?;
+        self.prepare_private_prefix_definition_in_transaction(&tx, &definition)
+            .await?;
+        tx.commit()
+            .await
+            .map_err(|_| invalid("private prefix preparation commit unknown"))
+    }
+
+    pub(crate) async fn prepare_private_prefix_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        reserved: &crate::prefix_job_definitions::ReservedPrivateDefinition,
+    ) -> Result<(), RebornBuildError> {
+        if !reserved.newly_retained() {
+            return Err(invalid(
+                "only a newly retained prefix original may prepare Work",
+            ));
+        }
+        self.prepare_private_prefix_definition_in_transaction(tx, reserved.definition())
+            .await
+    }
+
+    async fn prepare_private_prefix_definition_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        definition: &crate::prefix_job_definitions::Definition,
+    ) -> Result<(), RebornBuildError> {
+        let crate::prefix_job_definitions::Origin::Private {
+            context,
+            preparation,
+        } = &definition.origin
+        else {
+            return Err(invalid("private prefix origin required"));
+        };
+        let request = Self::private_prefix_request(definition)?;
+        let store = PgTurnStateStore::new(self.pool.clone(), context.tenant_id.as_str());
         let request_checksum = store
             .submit_private_work_in_transaction(
-                &tx,
+                tx,
                 &request,
                 PrivatePreparationReason::PreparationPending,
                 self,
@@ -439,15 +605,12 @@ impl InstalledMontyCatalogue {
         // Ready CAS. An identical concurrent producer observes its committed
         // winner before inspecting/preparing again; there is no second seal.
         let state = store
-            .get_private_work_state_in_transaction(&tx, definition.id)
+            .get_private_work_state_in_transaction(tx, definition.id)
             .await
             .map_err(|_| invalid("private prefix original unavailable"))?
             .ok_or_else(|| invalid("private prefix original unavailable"))?;
         if state.status != PrivateWorkStatus::AwaitingPreparation {
-            return tx
-                .commit()
-                .await
-                .map_err(|_| invalid("private prefix original read commit unknown"));
+            return Ok(());
         }
         let program = self
             ._compiler_program
@@ -468,9 +631,9 @@ impl InstalledMontyCatalogue {
             .compiler_approval
             .as_ref()
             .ok_or_else(|| invalid("source compiler qualification unavailable"))?;
-        approval.verify_in_transaction(&tx).await?;
+        approval.verify_in_transaction(tx).await?;
         approval.require_selected_program(program)?;
-        let root = PgComponentRevisionStore::read_revision_in_transaction(&tx, self.root_reference)
+        let root = PgComponentRevisionStore::read_revision_in_transaction(tx, self.root_reference)
             .await
             .map_err(|error| invalid(error.to_string()))?;
         let captured = PrivateWorkDefinition::capture(DefinitionCapture {
@@ -485,11 +648,8 @@ impl InstalledMontyCatalogue {
                 job_id: definition.id,
             },
         })?;
-        self.retain_private_definition(&tx, &captured, &store, &state)
-            .await?;
-        tx.commit()
+        self.retain_private_definition(tx, &captured, &store, &state)
             .await
-            .map_err(|_| invalid("private prefix preparation commit unknown"))
     }
 
     async fn retain_private_definition(

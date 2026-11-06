@@ -61,6 +61,21 @@ pub(crate) struct Reservation<'a> {
     pub(crate) origin: &'a Origin,
     pub(crate) created_by: &'a str,
 }
+pub(crate) struct ReservedPrivateDefinition {
+    definition: Definition,
+    newly_retained: bool,
+}
+impl ReservedPrivateDefinition {
+    pub(crate) fn definition(&self) -> &Definition {
+        &self.definition
+    }
+    pub(crate) fn newly_retained(&self) -> bool {
+        self.newly_retained
+    }
+    pub(crate) fn into_definition(self) -> Definition {
+        self.definition
+    }
+}
 pub(crate) struct Header {
     pub(crate) id: Uuid,
     pub(crate) target: Target,
@@ -369,7 +384,7 @@ impl Store {
         }
         let mut client = self.pool.get().await.map_err(|_| Error::Unavailable)?;
         let tx = client.transaction().await.map_err(|_| Error::Unavailable)?;
-        let stored = Self::reserve_prepared_in_transaction(&tx, r).await?;
+        let (stored, _) = Self::reserve_prepared_in_transaction(&tx, r).await?;
         tx.commit().await.map_err(|_| Error::Unavailable)?;
         Ok(stored)
     }
@@ -384,13 +399,33 @@ impl Store {
         if matches!(r.target, Target::Pair { .. }) {
             return Err(Error::Invalid);
         }
-        Self::reserve_prepared_in_transaction(tx, r).await
+        Self::reserve_prepared_in_transaction(tx, r)
+            .await
+            .map(|(definition, _)| definition)
+    }
+
+    /// The original-ID lock and INSERT result belong to this store. An outer
+    /// absence read cannot distinguish a new original from a concurrent winner.
+    pub(crate) async fn reserve_private_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        r: Reservation<'_>,
+    ) -> Result<ReservedPrivateDefinition, Error> {
+        if !matches!(r.origin, Origin::Private { .. })
+            || !matches!(r.target, Target::Profile { .. })
+        {
+            return Err(Error::Invalid);
+        }
+        let (definition, newly_retained) = Self::reserve_prepared_in_transaction(tx, r).await?;
+        Ok(ReservedPrivateDefinition {
+            definition,
+            newly_retained,
+        })
     }
 
     async fn reserve_prepared_in_transaction(
         tx: &tokio_postgres::Transaction<'_>,
         r: Reservation<'_>,
-    ) -> Result<Definition, Error> {
+    ) -> Result<(Definition, bool), Error> {
         if r.id.is_nil() || r.created_by.is_empty() || r.created_by.len() > 512 {
             return Err(Error::Invalid);
         }
@@ -413,7 +448,7 @@ impl Store {
             if !same_request(&existing, &r) {
                 return Err(Error::Conflict);
             }
-            return Ok(existing);
+            return Ok((existing, false));
         }
         // Legacy callers keep their transaction-time limits check. Private
         // fresh work uses its one acknowledged capture, never a desired-settings
@@ -514,14 +549,14 @@ impl Store {
                     Some(preparation.checksum()),
                 ),
             };
-        tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits,definition_format,private_context,original_preparation_bytes,original_preparation_checksum) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by,&original_input_limits,&r.origin.format(),&private_context,&preparation_bytes,&preparation_checksum]).await.map_err(|_| Error::Unavailable)?;
+        let inserted = tx.execute("INSERT INTO brassclaw_prefix_job_definitions(job_id,profile_name,profile_revision,operation,mode,request_bytes,request_checksum,program_bytes,program_checksum,input_bytes,input_checksum,scope,thread_scope,created_by,original_input_limits,definition_format,private_context,original_preparation_bytes,original_preparation_checksum) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT(job_id) DO NOTHING",&[&r.id,&profile,&revision,&r.operation,&r.mode,&request_bytes,&request_checksum,&program_bytes,&sha(&program_bytes),&input_bytes,&sha(&input_bytes),&scope,&thread_scope,&r.created_by,&original_input_limits,&r.origin.format(),&private_context,&preparation_bytes,&preparation_checksum]).await.map_err(|_| Error::Unavailable)?;
         let stored = Self::get_in_transaction(tx, r.id)
             .await?
             .ok_or(Error::Unavailable)?;
         if !same_request(&stored, &r) {
             return Err(Error::Conflict);
         }
-        Ok(stored)
+        Ok((stored, inserted == 1))
     }
 }
 

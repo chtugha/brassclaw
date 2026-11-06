@@ -160,7 +160,7 @@ impl Fixture {
     async fn ready(&self, id: Uuid) {
         self.runtime
             .installed_catalogue
-            .prepare_private_prefix(self.definition(id).await)
+            .prepare_private_prefix_for_test(self.definition(id).await)
             .await
             .unwrap();
     }
@@ -234,8 +234,8 @@ async fn private_prepare_claim_cas_and_chat_execution_collision_preserve_one_ori
     let b = fixture.definition(id).await;
     let catalogue = &fixture.runtime.installed_catalogue;
     let (a, b) = tokio::join!(
-        catalogue.prepare_private_prefix(a),
-        catalogue.prepare_private_prefix(b)
+        catalogue.prepare_private_prefix_for_test(a),
+        catalogue.prepare_private_prefix_for_test(b)
     );
     a.unwrap();
     b.unwrap();
@@ -300,9 +300,17 @@ async fn private_prepare_claim_cas_and_chat_execution_collision_preserve_one_ori
         _ => panic!("exactly one real claim"),
     };
     assert_eq!(fixture.counts(id).await, ("claimed".into(), 1, 1, 0));
+    catalogue
+        .read_private_prefix_original(&fixture.definition(id).await)
+        .await
+        .unwrap();
     assert_eq!(fixture.reservations.originals.lock().unwrap().len(), 1);
     fixture.drive(claim).await;
     assert_eq!(fixture.counts(id).await, ("settled".into(), 1, 1, 1));
+    catalogue
+        .read_private_prefix_original(&fixture.definition(id).await)
+        .await
+        .unwrap();
 
     let cancelled = Uuid::new_v4();
     fixture.original(cancelled).await;
@@ -335,7 +343,7 @@ async fn private_prepare_claim_cas_and_chat_execution_collision_preserve_one_ori
     fixture.original(collision).await;
     assert!(
         catalogue
-            .prepare_private_prefix(fixture.definition(collision).await)
+            .prepare_private_prefix_for_test(fixture.definition(collision).await)
             .await
             .is_err()
     );
@@ -395,7 +403,7 @@ async fn private_ready_and_claim_lost_commit_ack_keep_original_native_reservatio
         fixture
             .runtime
             .installed_catalogue
-            .prepare_private_prefix(fixture.definition(id).await)
+            .prepare_private_prefix_for_test(fixture.definition(id).await)
             .await
             .is_err()
     );
@@ -806,6 +814,35 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
         origin: &original.origin,
         created_by: &original.created_by,
     };
+    let mut client = fixture.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let existing = Store::reserve_private_in_transaction(
+        &tx,
+        Reservation {
+            origin: &offered_b,
+            ..reservation
+        },
+    )
+    .await
+    .unwrap();
+    assert!(!existing.newly_retained());
+    assert!(
+        catalogue
+            .prepare_private_prefix_in_transaction(&tx, &existing)
+            .await
+            .is_err()
+    );
+    catalogue
+        .read_private_prefix_original_in_transaction(&tx, existing.definition())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    drop(client);
     let mut foreign_context = fixture.context();
     foreign_context.actor = Some(brassclaw_turns::TurnActor::new(
         brassclaw_host_api::UserId::new("other-original-owner").unwrap(),
@@ -886,7 +923,10 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
         .await
         .unwrap();
     let winner_input = winner.input_bytes.clone();
-    catalogue.prepare_private_prefix(winner).await.unwrap();
+    catalogue
+        .prepare_private_prefix_for_test(winner)
+        .await
+        .unwrap();
     release.notify_one();
     assert_eq!(collected.await.unwrap().unwrap(), derived);
     let derived_original = fixture.definition(derived).await;
@@ -929,7 +969,7 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
         preparation_a.bytes()
     );
     rebuilt
-        .prepare_private_prefix(fixture.definition(id).await)
+        .prepare_private_prefix_for_test(fixture.definition(id).await)
         .await
         .unwrap();
     let same_bytes: String = fixture
@@ -1016,20 +1056,60 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
     }).await.unwrap();
     tokio::time::sleep(Duration::from_millis(250)).await;
     let missed = Uuid::new_v4();
-    fixture.original(missed).await;
     let waiter = fixture
         .runtime
         .monty_test_controls
         .0
         .private_completion_waiter(TurnRunId::from_uuid(missed))
         .unwrap();
-    // This original producer has no wake binding and calls no runtime wake.
+    // Commit the actual production participants without its subsequent wake:
+    // the producer may disappear after COMMIT before returning to the caller.
     // The existing Worker's configured 100 ms fallback is the only claim trigger.
     assert!(rebuilt.private_work_wake.get().is_none());
-    rebuilt
-        .prepare_private_prefix(fixture.definition(missed).await)
+    let preparation = rebuilt.capture_task_preparation().await.unwrap();
+    let target = Target::Profile {
+        name: "base-prompt".into(),
+        revision,
+    };
+    let request =
+        json!({"profile":"base-prompt","expected_revision":revision,"mode":"source_only"});
+    let input =
+        json!({"profile":"base-prompt","revision":revision.to_string(),"snapshot_bytes":source});
+    let origin = Origin::Private {
+        context: fixture.context(),
+        preparation: Box::new(preparation),
+    };
+    let mut client = fixture.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
         .await
         .unwrap();
+    let reserved = Store::reserve_private_in_transaction(
+        &tx,
+        Reservation {
+            id: missed,
+            target: &target,
+            operation: "generate",
+            mode: "source_only",
+            request: &request,
+            program: rebuilt._compiler_program.as_ref().unwrap(),
+            input: &input,
+            original_input_limits: original.original_input_limits,
+            origin: &origin,
+            created_by: fixture.runtime.actor_user_id.as_str(),
+        },
+    )
+    .await
+    .unwrap();
+    assert!(reserved.newly_retained());
+    rebuilt
+        .prepare_private_prefix_in_transaction(&tx, &reserved)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    drop(client);
     let result = tokio::time::timeout(Duration::from_secs(30), waiter.wait())
         .await
         .unwrap()
@@ -1039,5 +1119,368 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
     listener.shutdown().await;
     drop(rebuilt);
     drop(settings);
+    fixture.finish().await;
+}
+
+// B03a exercises the real producer transaction. The earlier fixtures above
+// deliberately retain historical split originals to test native protocol cuts.
+async fn atomic_prefix_request(
+    fixture: &Fixture,
+) -> (
+    u64,
+    String,
+    brassclaw_product_workflow::WebUiAuthenticatedCaller,
+) {
+    let revision: i64 = fixture
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT revision FROM reborn_prefix_profiles WHERE name='base-prompt'",
+            &[],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let source = fixture
+        .runtime
+        .installed_catalogue
+        .capture_core_prefix_sources("base-prompt")
+        .await
+        .unwrap();
+    let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+        fixture.context().tenant_id,
+        fixture.runtime.actor_user_id.clone(),
+        fixture.context().agent_id,
+        fixture.context().project_id,
+    );
+    (u64::try_from(revision).unwrap(), source, caller)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_commit_ack_recovers_complete_original_with_one_connection() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let id = Uuid::new_v4();
+    let wire = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![AckCutRule::after_bind(
+            1,
+            vec![
+                id.as_bytes().to_vec(),
+                b"private-work-definition/1".to_vec(),
+            ],
+            vec![],
+            AckBoundary::Commit,
+        )],
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::start(&rig, wire.pool.clone()).await;
+    let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+    fixture.pool.resize(1);
+    wire.arm(1).unwrap();
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            fixture.runtime.submit_prefix_generation_snapshot(
+                id,
+                "base-prompt",
+                revision,
+                &source,
+                caller.clone()
+            )
+        )
+        .await
+        .unwrap()
+        .unwrap(),
+        id
+    );
+    assert_eq!(wire.cut_count(), 1);
+    assert_eq!(fixture.counts(id).await, ("ready".into(), 0, 0, 0));
+    let original: String = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT definition_bytes FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
+    let settings = fixture.runtime.webui_monty_settings_store();
+    let before = settings.get("default", "default").await.unwrap();
+    let mut smaller = before.execution_limits;
+    smaller.max_value_bytes = u64::try_from(source.len() / 2).unwrap();
+    settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(json!({
+                "expected_revision":before.revision,"execution_limits":smaller,
+            }))
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    // A historical read never applies current input limits or profile revision.
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .execute(
+            "UPDATE reborn_prefix_profiles SET revision=revision+1 WHERE name='base-prompt'",
+            &[],
+        )
+        .await
+        .unwrap();
+    fixture.pool.resize(1);
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            fixture.runtime.submit_prefix_generation_snapshot(
+                id,
+                "base-prompt",
+                revision,
+                &source,
+                caller.clone()
+            )
+        )
+        .await
+        .unwrap()
+        .unwrap(),
+        id
+    );
+    fixture.store.cancel_private_work(id).await.unwrap();
+    assert_eq!(fixture.runtime.submit_prefix_generation_snapshot(
+        id, "base-prompt", revision, &source, caller.clone(),
+    ).await.unwrap(), id);
+    assert!(
+        fixture
+            .runtime
+            .submit_prefix_generation_snapshot(
+                id,
+                "base-prompt",
+                revision,
+                "changed explicit input",
+                caller,
+            )
+            .await
+            .is_err()
+    );
+    assert_eq!(fixture.counts(id).await, ("cancelled".into(), 0, 0, 0));
+    let preserved: String = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT definition_bytes FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(original, preserved);
+    assert_eq!(wire.cut_count(), 1);
+    fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
+    drop(settings);
+    fixture.finish().await;
+    wire.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_rolls_back_original_work_definition_and_ready_together() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let fixture = Fixture::start(&rig, rig.pool.clone()).await;
+    let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+    rig.pool.get().await.unwrap().batch_execute(
+        "CREATE FUNCTION b03a_reject_prefix_write() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN RAISE EXCEPTION 'actual prefix transaction rejection' USING ERRCODE='23514'; END $$;",
+    ).await.unwrap();
+    for (table, trigger) in [
+        (
+            "brassclaw_turns",
+            "CREATE TRIGGER b03a_reject BEFORE INSERT ON brassclaw_turns FOR EACH ROW WHEN (NEW.record_kind='private_work') EXECUTE FUNCTION b03a_reject_prefix_write()",
+        ),
+        (
+            "brassclaw_monty_private_preparations",
+            "CREATE TRIGGER b03a_reject BEFORE INSERT ON brassclaw_monty_private_preparations FOR EACH ROW EXECUTE FUNCTION b03a_reject_prefix_write()",
+        ),
+        (
+            "brassclaw_turns",
+            "CREATE TRIGGER b03a_reject BEFORE UPDATE ON brassclaw_turns FOR EACH ROW WHEN (NEW.record_kind='private_work' AND NEW.status='ready') EXECUTE FUNCTION b03a_reject_prefix_write()",
+        ),
+        (
+            "brassclaw_monty_private_preparations",
+            "CREATE CONSTRAINT TRIGGER b03a_reject AFTER INSERT ON brassclaw_monty_private_preparations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION b03a_reject_prefix_write()",
+        ),
+    ] {
+        let id = Uuid::new_v4();
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .batch_execute(trigger)
+            .await
+            .unwrap();
+        assert!(
+            fixture
+                .runtime
+                .submit_prefix_generation_snapshot(
+                    id,
+                    "base-prompt",
+                    revision,
+                    &source,
+                    caller.clone(),
+                )
+                .await
+                .is_err()
+        );
+        let row = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT (SELECT count(*) FROM brassclaw_prefix_job_definitions WHERE job_id=$1),
+             (SELECT count(*) FROM brassclaw_turns WHERE work_id=$1),
+             (SELECT count(*) FROM brassclaw_monty_private_preparations WHERE work_id=$1),
+             (SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1)",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                row.get::<_, i64>(0),
+                row.get::<_, i64>(1),
+                row.get::<_, i64>(2),
+                row.get::<_, i64>(3)
+            ),
+            (0, 0, 0, 0)
+        );
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .batch_execute(&format!("DROP TRIGGER b03a_reject ON {table}"))
+            .await
+            .unwrap();
+    }
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute("DROP FUNCTION b03a_reject_prefix_write()")
+        .await
+        .unwrap();
+    fixture.finish().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_does_not_complete_historical_absent_or_unsealed_work() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let fixture = Fixture::start(&rig, rig.pool.clone()).await;
+    for unsealed in [false, true] {
+        let id = Uuid::new_v4();
+        let definition = fixture.original(id).await;
+        if unsealed {
+            use sha2::Digest as _;
+            let Origin::Private {
+                context,
+                preparation,
+            } = &definition.origin
+            else {
+                panic!("private original")
+            };
+            let request = brassclaw_turns::private_work::PrivateWorkRequest::V1 {
+                work_id: id,
+                run_id: TurnRunId::from_uuid(id),
+                original: brassclaw_turns::private_work::PrivateOriginalRef::PrefixSourceOnly {
+                    job_id: id,
+                    definition_checksum: definition.original_checksum(),
+                },
+                context: context.clone(),
+                original_preparation_checksum: Some(
+                    hex::decode(preparation.checksum())
+                        .unwrap()
+                        .try_into()
+                        .unwrap(),
+                ),
+                original_workflow_checksum: Some(
+                    sha2::Sha256::digest(definition.program_bytes.as_bytes()).into(),
+                ),
+            };
+            fixture
+                .store
+                .submit_private_work(
+                    &request,
+                    brassclaw_turns::private_work::PrivatePreparationReason::PreparationPending,
+                    fixture.runtime.installed_catalogue.as_ref(),
+                )
+                .await
+                .unwrap();
+        }
+        let caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
+            fixture.context().tenant_id,
+            fixture.runtime.actor_user_id.clone(),
+            fixture.context().agent_id,
+            fixture.context().project_id,
+        );
+        let Target::Profile { revision, .. } = definition.target else {
+            panic!("profile original")
+        };
+        assert!(
+            fixture
+                .runtime
+                .submit_prefix_generation_snapshot(
+                    id,
+                    "base-prompt",
+                    revision,
+                    definition.input["snapshot_bytes"].as_str().unwrap(),
+                    caller
+                )
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            fixture.definition(id).await.input_bytes,
+            definition.input_bytes
+        );
+        let row = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT (SELECT count(*) FROM brassclaw_turns WHERE work_id=$1),
+             (SELECT count(*) FROM brassclaw_monty_private_preparations WHERE work_id=$1),
+             (SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1)",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            (
+                row.get::<_, i64>(0),
+                row.get::<_, i64>(1),
+                row.get::<_, i64>(2)
+            ),
+            (i64::from(unsealed), 0, 0)
+        );
+    }
     fixture.finish().await;
 }

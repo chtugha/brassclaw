@@ -176,7 +176,7 @@ impl RebornRuntime {
         };
         let store = Store::new(self.installed_catalogue.pool.clone());
         let existing = store.get(id).await.map_err(definition_error)?;
-        let definition = if let Some(existing) = existing {
+        let require_original = |existing: crate::prefix_job_definitions::Definition| {
             if existing.request != request
                 || existing.target != target
                 || existing.operation != "generate"
@@ -195,45 +195,77 @@ impl RebornRuntime {
                     brassclaw_product_workflow::InterceptorConfigServiceError::Conflict,
                 ));
             }
-            existing
+            Ok(existing)
+        };
+        let definition = if let Some(existing) = existing {
+            require_original(existing)?
         } else {
-            let snapshot_bytes = snapshot_bytes
-                .ok_or_else(|| invalid("source snapshot required for a new prefix job"))?;
-            let preparation = self
-                .installed_catalogue
-                .capture_task_preparation()
-                .await
-                .map_err(|_| invalid("acknowledged preparation capture unavailable"))?;
-            let original_input_limits =
-                crate::prefix_job_definitions::captured_input_limits(preparation.policy())
+            let result = async {
+                let snapshot_bytes = snapshot_bytes
+                    .ok_or_else(|| invalid("source snapshot required for a new prefix job"))?;
+                let preparation = self
+                    .installed_catalogue
+                    .capture_task_preparation()
+                    .await
+                    .map_err(|_| invalid("acknowledged preparation capture unavailable"))?;
+                let original_input_limits =
+                    crate::prefix_job_definitions::captured_input_limits(preparation.policy())
+                        .map_err(definition_error)?;
+                // The immutable reserve owner validates fresh source under its
+                // per-original transaction lock. A concurrent same-ID winner must
+                // be read using its original limits before applying this new capture.
+                let program = self
+                    .installed_catalogue
+                    ._compiler_program
+                    .as_ref()
+                    .ok_or_else(|| invalid("source compiler qualification unavailable"))?;
+                let input = serde_json::json!({"profile":profile,"revision":expected_revision.to_string(),"snapshot_bytes":snapshot_bytes});
+                let unavailable = || RebornRuntimeError::PrefixJob(
+                    brassclaw_product_workflow::InterceptorConfigServiceError::Unavailable,
+                );
+                let mut client = self.installed_catalogue.pool.get().await.map_err(|_| unavailable())?;
+                let tx = client.build_transaction()
+                    .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                    .start().await.map_err(|_| unavailable())?;
+                let reserved = Store::reserve_private_in_transaction(&tx, Reservation {
+                        id,
+                        target: &target,
+                        operation: "generate",
+                        mode: "source_only",
+                        request: &request,
+                        program,
+                        input: &input,
+                        original_input_limits,
+                        origin: &crate::prefix_job_definitions::Origin::Private {
+                            context: context.clone(),
+                            preparation: Box::new(preparation),
+                        },
+                        created_by: caller.user_id.as_str(),
+                    })
+                    .await
                     .map_err(definition_error)?;
-            // The immutable reserve owner validates fresh source under its
-            // per-original transaction lock. A concurrent same-ID winner must
-            // be read using its original limits before applying this new capture.
-            let program = self
-                .installed_catalogue
-                ._compiler_program
-                .as_ref()
-                .ok_or_else(|| invalid("source compiler qualification unavailable"))?;
-            let input = serde_json::json!({"profile":profile,"revision":expected_revision.to_string(),"snapshot_bytes":snapshot_bytes});
-            store
-                .reserve(Reservation {
-                    id,
-                    target: &target,
-                    operation: "generate",
-                    mode: "source_only",
-                    request: &request,
-                    program,
-                    input: &input,
-                    original_input_limits,
-                    origin: &crate::prefix_job_definitions::Origin::Private {
-                        context,
-                        preparation: Box::new(preparation),
-                    },
-                    created_by: caller.user_id.as_str(),
-                })
-                .await
-                .map_err(definition_error)?
+                if reserved.newly_retained() {
+                    self.installed_catalogue.prepare_private_prefix_in_transaction(&tx, &reserved)
+                        .await.map_err(RebornRuntimeError::Build)?;
+                } else {
+                    self.installed_catalogue.read_private_prefix_original_in_transaction(&tx, reserved.definition())
+                        .await.map_err(RebornRuntimeError::Build)?;
+                }
+                tx.commit().await.map_err(|_| unavailable())?;
+                Ok::<_, RebornRuntimeError>(reserved.into_definition())
+            }.await;
+            match result {
+                Ok(definition) => definition,
+                Err(primary) => {
+                    // The transaction/connection above is gone before bounded
+                    // readback. A concurrent or lost-ACK winner supplies all
+                    // original bytes; no fresh capture or replacement run.
+                    match store.get(id).await.map_err(definition_error)? {
+                        Some(original) => require_original(original)?,
+                        None => return Err(primary),
+                    }
+                }
+            }
         };
         self.admit_prefix_definition(definition).await
     }
@@ -1130,7 +1162,7 @@ impl RebornRuntime {
     ) -> Result<Uuid, RebornRuntimeError> {
         let id = definition.id;
         self.installed_catalogue
-            .prepare_private_prefix(definition)
+            .read_private_prefix_original(&definition)
             .await
             .map_err(RebornRuntimeError::Build)?;
         self.wake_sender.wake();
