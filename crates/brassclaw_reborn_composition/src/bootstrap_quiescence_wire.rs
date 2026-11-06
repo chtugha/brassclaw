@@ -59,7 +59,7 @@ struct ExecutionReport {
     capability_dispatch_count: usize,
     semantic_approval: bool,
     catalogue_activation: bool,
-    internal_receipt: String,
+    internal_receipt: Value,
     controlled_executor_configuration: String,
     controlled_executor_configuration_checksum: String,
 }
@@ -113,6 +113,29 @@ pub(super) fn verify(
     program: &RetainedToolProgram,
     task: &Value,
     receipt: &str,
+) -> Result<(), RebornBuildError> {
+    verify_projection(value, program, task, Some(receipt), None)
+}
+
+/// Closed one-step Python-stop fixture only. This never accepts an IPC,
+/// resource or service failure and never constructs successful quiescence.
+pub(super) fn verify_expected_stop(
+    value: &Value,
+    program: &RetainedToolProgram,
+    task: &Value,
+    failed_step: &str,
+) -> Result<(), RebornBuildError> {
+    if program.program().steplist.len() != 1 {
+        return Err(invalid("expected stop requires one fixed fixture step"));
+    }
+    verify_projection(value, program, task, None, Some(failed_step))
+}
+fn verify_projection(
+    value: &Value,
+    program: &RetainedToolProgram,
+    task: &Value,
+    receipt: Option<&str>,
+    failed_step: Option<&str>,
 ) -> Result<(), RebornBuildError> {
     fields(
         value,
@@ -246,8 +269,8 @@ pub(super) fn verify(
         || execution.root.source_checksum != hex::encode(root.source_checksum())
         || execution.root.aliases_checksum != hex::encode(root.aliases_checksum())
         || execution.root.workers != root.workers()
-        || !execution.root_completed
-        || !execution.all_selected_recipes_complete
+        || execution.root_completed != receipt.is_some()
+        || execution.all_selected_recipes_complete != receipt.is_some()
         || execution.intent_outcome != "internal_recipe"
         || !execution.reply.is_null()
         || execution.checked_recipe_capacity.revision != original.capacity().revision
@@ -261,7 +284,7 @@ pub(super) fn verify(
         || execution.model_exchange_count != 0
         || execution.semantic_approval
         || execution.catalogue_activation
-        || execution.internal_receipt != receipt
+        || execution.internal_receipt != serde_json::json!(receipt)
         || execution.recipes.len() != 1
     {
         return Err(invalid("actual contained receipt/accounting differs"));
@@ -274,18 +297,24 @@ pub(super) fn verify(
         .instruction()
         .retained_selection()
         .map_err(invalid)?;
-    let expected_steps = program
+    let mut expected_steps = program
         .program()
         .steplist
         .iter()
         .map(|step| step.step_id.as_str())
         .collect::<Vec<_>>();
+    if let Some(failed) = failed_step {
+        if expected_steps != [failed] || execution.capability_dispatch_count != 0 {
+            return Err(invalid("failed fixture does not match original occurrence"));
+        }
+        expected_steps.clear();
+    }
     if recipe.recipe_id != program.inputs().instruction().recipe().uuid
         || recipe.selection_checksum != hex::encode(expected.checksum())
         || !recipe.composed
-        || !recipe.complete
+        || recipe.complete != receipt.is_some()
         || !recipe.pending_step.is_null()
-        || !recipe.failed_step.is_null()
+        || recipe.failed_step != serde_json::json!(failed_step)
         || !recipe.normal_match.is_null()
         || recipe
             .completed_steps

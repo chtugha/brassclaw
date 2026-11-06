@@ -567,10 +567,12 @@ pub fn structural_validator_recipe_drafts(
     // RetainedValidatorCoverage::subject_task_inputs finds a step binding for
     // `subject_json` and satisfies its "consume its complete subject input" check.
     let pc_description = format!(
-        "Tier-0 structural validator executor for class {class_code} ({class_label}). \
-         Receives the complete sealed subject as inputs[\"subject_json\"] (a JSON string). \
-         Parses it to extract name/description/content and checks they are non-empty. \
-         Pure-logic, no host calls. Returns {{\"pass\": bool, \"errors\": [str]}}."
+        "Shipped shallow structural-checking function for class {class_code} ({class_label}). \
+         Receives subject_json as typed string data and inspects the candidate document. \
+         Checks name/description and the class-specific presence markers in its actual body. \
+         Pure logic with no host calls; returns {{rule_id: structural_presence, ok: bool, errors: list[string]}}. \
+         Own-export qualification proves only this checking behavior, never complete candidate-class Q1, \
+         semantic agreement, primitive registration, workflow validity or component activation."
     );
     let rule_contract = rule_contract();
     let pc_draft = ComponentRevisionDraft::from_json(
@@ -685,9 +687,10 @@ pub fn structural_validator_recipe_drafts(
     // 5. Recipe with validator_coverage.
     // Build document using Value directly because the variant_key is dynamic.
     let recipe_description = format!(
-        "Tier-0 structural validator for class {class_code} ({class_label}). \
-         Checks name, description, and content/steps are non-empty. \
-         Seeds the trusted-root Q1 gate. Private: consumer_tags=[05:validator]."
+        "Private incomplete shallow structural-check workflow for class {class_code} ({class_label}). \
+         Collects actual presence-check diagnostics; neither helper qualification nor this draft \
+         supplies complete candidate-class Q1 or approval for its other pure steps. \
+         Consumer_tags=[05:validator]; no public activation is implied."
     );
     let variant_key = format!("validator-class-{class_code}");
     // The task input is the full sealed subject JSON string. The PC body parses

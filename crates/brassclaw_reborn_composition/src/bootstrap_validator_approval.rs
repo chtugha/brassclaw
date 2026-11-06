@@ -1,235 +1,982 @@
-//! Bootstrap qualification for the eight structural validator PythonCode components.
-//!
-//! Produces `"pure-component-approval/1"` records in
-//! `reborn_pure_component_approvals` and behavioral evidence rows in
-//! `reborn_component_review_evidence` for each of the eight class validator
-//! PythonCode drafts retained by `retain_validator_check_drafts`.
-//!
-//! This implements `missing4_v3_at_k3.md §Step 8` for the system-seed path.
-//! Each PC is pure-logic (no `host.*` calls); its body uses `import json` to
-//! decode the candidate string and returns `{"pass": bool, "errors": [str]}`.
-//!
-//! # Idempotency
-//!
-//! Approval UUIDs are UUID v5 derived from a stable seed
-//! `"validator:class-{N}:{pc_uuid}"`, so re-runs produce no duplicate inserts.
-//! If the `reborn_pure_component_approvals` row already exists for an approval_id,
-//! the class is skipped without any write.
-//!
-//! # System-seed qualification
-//!
-//! `q2_ref` is null per the `system_seed` bootstrap contract; no external human
-//! action is required for first-party packaged validator components.
-
+//! Closed installation qualification of checking functions, not candidate-class
+//! Q1, general Pure publication or permission to run the structural class routes.
 use crate::{
-    RebornBuildError, bootstrap_evidence as evidence, bootstrap_reply_validation::invalid,
+    RebornBuildError, bootstrap_evidence as evidence, bootstrap_evidence::io,
+    bootstrap_reply_validation::invalid,
+};
+use brassclaw_engine::{
+    executor::{
+        retained_recipe::{
+            RetainedProgram, RetainedRecipeExecution, RetainedStepFailure,
+            RetainedTransportEvidence, typed_value_checksum_with_limits,
+        },
+        retained_source::InspectedRetainedProgram,
+    },
+    memory::{
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
+        retained_tools::{RetainedToolProgram, prepare_retained_tool_program},
+    },
+};
+use brassclaw_host_runtime::PackagedExecutableImage;
+use brassclaw_monty_host::{
+    VmFailure,
+    process::{ProcessFailure, RecipeCommand, WorkerCommand},
+    service::PortFailure,
+    source_structure::SourceStructure,
 };
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
-    component_revision::REVISION_LIMITS,
+    association_contract::ComponentRevisionRef,
+    component_revision::{ComponentRevisionDraft, REVISION_LIMITS},
+    global_bootstrap_components::packaged_component_id,
     pure_component_contract::PureComponentApprovalDeclaration,
     revision_store::PgComponentRevisionStore,
-    validator_components::{VALIDATOR_CLASS_CODES, structural_validator_pc_id},
+    value_contract::{ContractLimits, strict_json},
 };
-use serde_json::json;
-use std::sync::Arc;
-use tokio_postgres::IsolationLevel;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, OnceLock},
+};
+use tokio_postgres::{IsolationLevel, Transaction};
 use uuid::Uuid;
+#[path = "bootstrap_checker_execution.rs"]
+mod execution;
+#[path = "bootstrap_checker_fixtures.rs"]
+mod fixtures;
+#[cfg(test)]
+#[path = "bootstrap_checker_tests.rs"]
+mod tests;
+use fixtures::Suite;
 
-// ---------------------------------------------------------------------------
-// Qualification namespace — stable UUID v5 seed for all derived IDs.
-// Distinct from QUAL_NAMESPACE in bootstrap_l013_approval to avoid collisions.
-// ---------------------------------------------------------------------------
-
-const VALIDATOR_QUAL_NAMESPACE: Uuid = Uuid::from_u128(0xb8a7_3c5f_1d92_4e6a_9f30_2c84_e7d1_5b02);
-
-// ---------------------------------------------------------------------------
-// Per-class qualification
-// ---------------------------------------------------------------------------
-
-async fn qualify_validator_pc(
-    pool: &Arc<PgPool>,
-    revision_store: &PgComponentRevisionStore,
-    class_code: i16,
-) -> Result<(), RebornBuildError> {
-    let pc_id = structural_validator_pc_id(class_code);
-
-    // 1. Read the PC revision already retained by retain_validator_check_drafts.
-    //    We must NOT retain our own version — doing so would store a different
-    //    revision (different checksum) than what the recipe drafts reference,
-    //    causing compile_retained_recipe / prepare_retained_unbound_program to
-    //    pick up the wrong PC when reading the allocation head.
-    let (_, pc_version) = revision_store
-        .read_allocation_head(pc_id)
-        .await
-        .map_err(invalid)?
-        .ok_or_else(|| RebornBuildError::InvalidConfig {
-            reason: format!(
-                "validator-approval: structural validator PC draft not found for class {class_code}; \
-                 retain_validator_check_drafts must run before qualify_all_validators"
-            ),
-        })?;
-    let pc_revision = revision_store
-        .read_revision(pc_id, pc_version)
-        .await
-        .map_err(invalid)?;
-    let pc_ref = pc_revision.reference();
-
-    // 2. Deterministic approval UUIDs derived from class code + PC UUID.
-    let seed = format!("validator:class-{class_code}:{pc_id}");
-    let identity = Uuid::new_v5(&VALIDATOR_QUAL_NAMESPACE, seed.as_bytes());
-    let q1_id = Uuid::new_v5(&identity, b"q1");
-    let behavior_id = Uuid::new_v5(&identity, b"behavior");
-    let approval_id = Uuid::new_v5(&identity, b"approval");
-
-    let component_entry = json!({
-        "uuid": pc_ref.uuid,
-        "class_code": pc_ref.class_code,
-        "version": pc_ref.version,
-        "checksum": hex::encode(pc_ref.checksum),
-    });
-
-    // 3. Idempotency guard — skip if approval row already present.
-    let client = pool.get().await.map_err(invalid)?;
-    let existing: bool = client
-        .query_one(
-            "SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id=$1)",
-            &[&approval_id],
-        )
-        .await
-        .map_err(invalid)?
-        .get(0);
-    drop(client);
-    if existing {
-        return Ok(());
-    }
-
-    // 4. Write Q1 + behavioral evidence in one RepeatableRead transaction.
-    let association_seed = pc_id.to_string();
-    let assoc_checksum = evidence::checksum(&association_seed);
-
-    let mut client = pool.get().await.map_err(invalid)?;
-    let tx = client
-        .build_transaction()
-        .isolation_level(IsolationLevel::RepeatableRead)
-        .start()
-        .await
-        .map_err(invalid)?;
-    evidence::require_coherent(&tx).await?;
-
-    let q1_bytes = json!({
-        "format": "component-review-evidence/1",
-        "evidence_id": q1_id,
-        "kind": "q1",
-        "validation_mode": "system_seed",
-        "association_checksum": assoc_checksum,
-        "components": [component_entry],
-        "succeeded": true,
-        "reviewed_evidence": [],
-        "report": {
-            "checks": [
-                "no-host-calls",
-                "effect-free-load",
-                "declared-export-matches-body",
-                "import-json-only-declared-import"
-            ]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Reference {
+    uuid: Uuid,
+    class_code: i32,
+    version: u64,
+    checksum: String,
+}
+impl From<ComponentRevisionRef> for Reference {
+    fn from(r: ComponentRevisionRef) -> Self {
+        Self {
+            uuid: r.uuid,
+            class_code: r.class_code,
+            version: r.version,
+            checksum: hex::encode(r.checksum),
         }
-    })
-    .to_string();
-    let inserted = evidence::retain_intent(&tx, q1_id, &q1_bytes).await?;
-    if !inserted {
-        tx.rollback().await.map_err(invalid)?;
-        return Ok(()); // Already in progress elsewhere; skip.
     }
-
-    let behavior_bytes = json!({
-        "format": "component-review-evidence/1",
-        "evidence_id": behavior_id,
-        "kind": "behavior",
-        "validation_mode": "system_seed",
-        "association_checksum": assoc_checksum,
-        "components": [component_entry],
-        "succeeded": true,
-        "reviewed_evidence": [],
-        "report": {
-            "checks": [
-                "no-prohibited-identifiers",
-                "no-effectful-top-level",
-                "json-loads-used-for-candidate-decode",
-                "no-eval-exec-open",
-                "returns-pass-bool-errors-list"
-            ]
-        }
-    })
-    .to_string();
-
-    tx.execute(
-        "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
-         VALUES($1,$2,$3)",
-        &[
-            &behavior_id,
-            &behavior_bytes,
-            &evidence::checksum(&behavior_bytes),
-        ],
-    )
-    .await
-    .map_err(invalid)?;
-
-    tx.commit().await.map_err(invalid)?;
-    drop(client);
-
-    // 5. Record the pure-component approval (uses its own transaction internally).
-    let approval_json = json!({
-        "format": "pure-component-approval/1",
-        "approval_id": approval_id,
-        "root": component_entry,
-        "components": [component_entry],
-        "validation_mode": "system_seed",
-        "q1_ref": q1_id,
-        "q2_ref": null,
-        "behavioral_refs": [behavior_id],
-    })
-    .to_string();
-    let decl = PureComponentApprovalDeclaration::from_json(&approval_json, REVISION_LIMITS)
-        .map_err(invalid)?;
-    crate::pg_pure_component_approval::record_pure_component_approval(pool, &decl)
-        .await
-        .map_err(invalid)?;
-
-    tracing::debug!(
-        class_code,
-        pc = %pc_id,
-        "validator-approval: qualified structural validator PC"
-    );
-    Ok(())
+}
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RecordRef {
+    id: Uuid,
+    checksum: String,
+}
+fn reference(id: Uuid, bytes: &str) -> RecordRef {
+    RecordRef {
+        id,
+        checksum: evidence::checksum(bytes),
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Claim {
+    format: String,
+    scope: String,
+    root: Reference,
+    components: Vec<Reference>,
+    recipe: Reference,
+    selection_bytes: BTreeMap<String, String>,
+    suites: Vec<Suite>,
+    support: Option<RecordRef>,
+    worker_checksum: String,
+    application_checksum: String,
+    global_root: Reference,
+    global_source_checksum: String,
+    owner_checksum: String,
+    fixture_execution_checksum: String,
+    factory_checksum: String,
+    receipt_checksum: String,
+    inspector_checksum: String,
+    executor_checksum: String,
+    quiescence_checksum: String,
+    io_checksum: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Reservation {
+    format: String,
+    claim: Claim,
+    execution_request_id: Uuid,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Operation {
+    format: String,
+    reservation: RecordRef,
+    executor_bytes: String,
+    executor_checksum: String,
+    preparation_bytes: String,
+    preparation_checksum: String,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SourceProof {
+    format: String,
+    operation: RecordRef,
+    root: Reference,
+    closure: Vec<Reference>,
+    exports: BTreeMap<String, String>,
+    sources: BTreeMap<Uuid, Value>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Admission {
+    format: String,
+    operation: RecordRef,
+    variant: String,
+    run_id: Uuid,
+    scope: brassclaw_turns::TurnScope,
+    runner_id: Uuid,
+    claim_checksum: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct StepFact {
+    id: String,
+    input_checksum: String,
+    result_checksum: Option<String>,
+    max_depth: usize,
+    max_nodes: usize,
+    max_bytes: usize,
+    python_failure_command: Option<String>,
+    python_diagnostic: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Observed {
+    format: String,
+    operation: RecordRef,
+    admission: RecordRef,
+    source: RecordRef,
+    variant: String,
+    task: Uuid,
+    receipt: Option<String>,
+    steps: Vec<StepFact>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Quiescence {
+    format: String,
+    operation: RecordRef,
+    admission: RecordRef,
+    observed: RecordRef,
+    actual: Value,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Completed {
+    format: String,
+    operation: RecordRef,
+    admission: RecordRef,
+    observed: RecordRef,
+    quiescence: RecordRef,
+    turn: Value,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Qualified {
+    format: String,
+    scope: String,
+    operation: RecordRef,
+    source: RecordRef,
+    completed: Vec<RecordRef>,
+    root: Reference,
+    exports: BTreeMap<String, String>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Envelope {
+    format: String,
+    evidence_id: Uuid,
+    kind: String,
+    validation_mode: String,
+    association_checksum: String,
+    components: Vec<Reference>,
+    succeeded: bool,
+    reviewed_evidence: Vec<Value>,
+    report: Value,
 }
 
-// ---------------------------------------------------------------------------
-// Public entry point
-// ---------------------------------------------------------------------------
-
-/// Qualify all eight structural validator PythonCode components.
-///
-/// Called from [`crate::component_boot::initialize_runtime_components`] after
-/// `qualify_all` (L013–L101) has completed. Takes the pool directly because it
-/// manages its own per-class RepeatableRead transactions.
-///
-/// Idempotent: classes whose approval already exists are skipped without any
-/// write. This must be called after `retain_validator_check_drafts` has seeded
-/// the `ComponentRevisionDraft` envelopes for all eight class codes.
-pub(crate) async fn qualify_all_validators(pool: Arc<PgPool>) -> Result<(), RebornBuildError> {
-    let revision_store = PgComponentRevisionStore::new(pool.clone());
-
-    for &class_code in VALIDATOR_CLASS_CODES {
-        qualify_validator_pc(&pool, &revision_store, class_code)
-            .await
-            .map_err(|e| RebornBuildError::InvalidConfig {
-                reason: format!(
-                    "validator-approval: class-{class_code} PC qualification failed: {e}"
-                ),
-            })?;
+struct Context {
+    pool: Arc<PgPool>,
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+    worker: Arc<PackagedExecutableImage>,
+    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
+    claim: Claim,
+    reservation: RecordRef,
+    operation_id: Uuid,
+    operation: Operation,
+    operation_bytes: String,
+    programs: BTreeMap<String, Arc<RetainedToolProgram>>,
+}
+impl Context {
+    fn id(&self, stage: &str) -> Uuid {
+        Uuid::new_v5(&self.operation_id, stage.as_bytes())
     }
+    fn op(&self) -> RecordRef {
+        reference(self.operation_id, &self.operation_bytes)
+    }
+    fn encode<T: Serialize>(
+        &self,
+        id: Uuid,
+        kind: &str,
+        success: bool,
+        report: &T,
+    ) -> Result<String, RebornBuildError> {
+        Ok(evidence::system_record(
+            id,
+            kind,
+            success,
+            &evidence::checksum(&serde_json::to_string(&self.claim).map_err(invalid)?),
+            &[serde_json::to_value(&self.claim.root).map_err(invalid)?],
+            serde_json::to_value(report).map_err(invalid)?,
+        ))
+    }
+    async fn read<T: serde::de::DeserializeOwned + Serialize>(
+        &self,
+        tx: &Transaction<'_>,
+        id: Uuid,
+        kind: &str,
+        success: bool,
+    ) -> Result<Option<(String, T)>, RebornBuildError> {
+        let Some(bytes) = evidence::read_evidence(tx, id).await? else {
+            return Ok(None);
+        };
+        let envelope: Envelope =
+            serde_json::from_value(strict_json(&bytes, REVISION_LIMITS).map_err(invalid)?)
+                .map_err(invalid)?;
+        let report: T = serde_json::from_value(envelope.report).map_err(invalid)?;
+        if self.encode(id, kind, success, &report)? != bytes {
+            return Err(invalid("checker original envelope differs"));
+        }
+        Ok(Some((bytes, report)))
+    }
+    async fn retain<T: Serialize>(&self, id: Uuid, report: &T) -> Result<String, RebornBuildError> {
+        let bytes = self.encode(id, "behavior", false, report)?;
+        io::retain_record(&self.pool, self.storage.as_ref(), id, &bytes).await?;
+        Ok(bytes)
+    }
+    fn executor(
+        &self,
+    ) -> Result<Arc<crate::global_monty_startup::ControlledExecutorConfiguration>, RebornBuildError>
+    {
+        let executor =
+            crate::global_monty_startup::ControlledExecutorConfiguration::restore_original(
+                &self.operation.executor_bytes,
+            )?;
+        if executor.checksum() != self.operation.executor_checksum {
+            return Err(invalid("checker original executor checksum differs"));
+        }
+        Ok(Arc::new(executor))
+    }
+    fn preparation(
+        &self,
+    ) -> Result<crate::installed_monty_catalogue::PreparationCapture, RebornBuildError> {
+        crate::installed_monty_catalogue::PreparationCapture::restore_original(
+            &self.operation.preparation_bytes,
+            &self.operation.preparation_checksum,
+        )
+        .map_err(invalid)
+    }
+    fn suite(&self, variant: &str) -> Result<&Suite, RebornBuildError> {
+        self.claim
+            .suites
+            .iter()
+            .find(|s| s.variant == variant)
+            .ok_or_else(|| invalid("foreign checker fixture variant"))
+    }
+    fn program(&self, variant: &str) -> Result<&Arc<RetainedToolProgram>, RebornBuildError> {
+        self.programs
+            .get(variant)
+            .ok_or_else(|| invalid("checker program missing"))
+    }
+    fn limits(&self) -> Result<ContractLimits, RebornBuildError> {
+        Ok(self.executor()?.capacity().data_limits)
+    }
+    async fn verify_source(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<(RecordRef, BTreeMap<String, String>), RebornBuildError> {
+        let (bytes, source) = self
+            .read::<SourceProof>(tx, self.id("source"), "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker source original missing"))?;
+        if source.format != "structural-checker-source/1"
+            || source.operation != self.op()
+            || source.root != self.claim.root
+            || source.closure != [self.claim.root.clone()]
+            || source.exports.len() != 1
+        {
+            return Err(invalid("checker source subject/closure differs"));
+        }
+        let program = self.program(&self.claim.suites[0].variant)?;
+        let graph = program.inputs().instruction().snapshot().revisions();
+        let expected_ids = program
+            .inputs()
+            .components()
+            .values()
+            .map(|r| r.uuid)
+            .collect::<BTreeSet<_>>();
+        if source.sources.keys().copied().collect::<BTreeSet<_>>() != expected_ids {
+            return Err(invalid("checker source inventory incomplete"));
+        }
+        for (id, facts) in &source.sources {
+            let facts: SourceStructure = serde_json::from_value(facts.clone()).map_err(invalid)?;
+            let revision = &graph[id];
+            let doc = revision.draft().document();
+            let declaration =
+                brassclaw_engine::executor::retained_preload::PreloadDeclaration::parse(
+                    doc,
+                    revision.draft().dependencies(),
+                )
+                .map_err(invalid)?
+                .ok_or_else(|| invalid("checker has no preload declaration"))?;
+            let preload = facts
+                .preload
+                .as_ref()
+                .ok_or_else(|| invalid("checker preload observation missing"))?;
+            let functions = declaration
+                .exports
+                .values()
+                .map(|e| (e.symbol.clone(), e.parameters.clone()))
+                .chain(declaration.private_functions.clone())
+                .collect::<BTreeMap<_, _>>();
+            if !revision.draft().dependencies().is_empty()
+                || !facts.direct_host_calls.is_empty()
+                || facts.relative_imports
+                || facts.host_value_references != 0
+                || !facts.reserved_name_references.is_empty()
+                || facts.source_checksum
+                    != evidence::checksum(
+                        doc["content"]
+                            .as_str()
+                            .ok_or_else(|| invalid("checker source missing"))?,
+                    )
+                || preload.functions != functions
+                || preload.constants != declaration.constants.iter().cloned().collect()
+                || facts.imports != declaration.imports.iter().cloned().collect()
+            {
+                return Err(invalid(
+                    "checker original pure/native definition facts differ",
+                ));
+            }
+        }
+        let revision = &graph[&self.claim.root.uuid];
+        let doc = revision.draft().document();
+        brassclaw_skills::value_contract::InputContract::from_value(
+            &doc["input_contract"],
+            REVISION_LIMITS,
+        )
+        .map_err(invalid)?;
+        brassclaw_skills::value_contract::ValueContract::result_from_value(
+            &doc["result_contract"],
+            REVISION_LIMITS,
+        )
+        .map_err(invalid)?;
+        let declaration = brassclaw_engine::executor::retained_preload::PreloadDeclaration::parse(
+            doc,
+            revision.draft().dependencies(),
+        )
+        .map_err(invalid)?
+        .ok_or_else(|| invalid("checker export missing"))?;
+        let exports = declaration
+            .exports
+            .keys()
+            .map(|name| {
+                Ok((
+                    name.clone(),
+                    declaration
+                        .invocation(name, &doc["input_contract"])
+                        .map_err(invalid)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>, RebornBuildError>>()?;
+        if source.exports != exports {
+            return Err(invalid("checker entire export interface changed"));
+        }
+        Ok((reference(self.id("source"), &bytes), exports))
+    }
+    async fn verify_completed(
+        &self,
+        tx: &Transaction<'_>,
+        suite: &Suite,
+        source: &RecordRef,
+    ) -> Result<RecordRef, RebornBuildError> {
+        let stage = |name: &str| self.id(&format!("{}:{name}", suite.variant));
+        let (admission_bytes, admission) = self
+            .read::<Admission>(tx, stage("admission"), "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker original admission missing"))?;
+        let (observed_bytes, observed) = self
+            .read::<Observed>(tx, stage("observed"), "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker original result missing"))?;
+        let (quiescence_bytes, quiescence) = self
+            .read::<Quiescence>(tx, stage("quiescence"), "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker original quiescence missing"))?;
+        let (completed_bytes, completed) = self
+            .read::<Completed>(tx, stage("completed"), "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker original completion missing; do not replay"))?;
+        let admission_ref = reference(stage("admission"), &admission_bytes);
+        let observed_ref = reference(stage("observed"), &observed_bytes);
+        if admission.format != "structural-checker-admission/1"
+            || admission.operation != self.op()
+            || admission.variant != suite.variant
+            || admission.run_id.is_nil()
+            || admission.runner_id.is_nil()
+            || observed.operation != self.op()
+            || observed.admission != admission_ref
+            || observed.source != *source
+            || observed.variant != suite.variant
+            || quiescence.format != "structural-checker-quiescence/1"
+            || quiescence.operation != self.op()
+            || quiescence.admission != admission_ref
+            || quiescence.observed != observed_ref
+            || completed.format != "structural-checker-completed/1"
+            || completed.operation != self.op()
+            || completed.admission != admission_ref
+            || completed.observed != observed_ref
+            || completed.quiescence != reference(stage("quiescence"), &quiescence_bytes)
+        {
+            return Err(invalid("checker original custody graph differs"));
+        }
+        self.verify_observed(suite, &observed)?;
+        let program = self.program(&suite.variant)?;
+        if suite.python_stop {
+            crate::bootstrap_quiescence_wire::verify_expected_stop(
+                &quiescence.actual,
+                program,
+                &json!(observed.task),
+                &suite.steps[0].id,
+            )?;
+        } else {
+            crate::bootstrap_quiescence_wire::verify(
+                &quiescence.actual,
+                program,
+                &json!(observed.task),
+                observed
+                    .receipt
+                    .as_deref()
+                    .ok_or_else(|| invalid("checker receipt missing"))?,
+            )?;
+        }
+        if quiescence.actual["execution"]["controlled_executor_configuration"]
+            != self.operation.executor_bytes
+            || quiescence.actual["execution"]["controlled_executor_configuration_checksum"]
+                != self.operation.executor_checksum
+        {
+            return Err(invalid("checker historical executor differs"));
+        }
+        let turn: brassclaw_turns::TurnRunRecord =
+            serde_json::from_value(completed.turn).map_err(invalid)?;
+        if turn.run_id.as_uuid() != admission.run_id
+            || turn.scope != admission.scope
+            || turn.status != brassclaw_turns::TurnStatus::Completed
+            || turn.claim_count != 1
+            || turn.runner_id.is_some()
+            || turn.lease_token.is_some()
+            || turn.lease_expires_at.is_some()
+            || turn.failure.is_some()
+            || turn.native_auth_wait.is_some()
+        {
+            return Err(invalid("checker terminal original differs"));
+        }
+        let row=tx.query_one("SELECT phase,outcome,scope,runner_id,claim_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1",&[&admission.run_id]).await.map_err(invalid)?;
+        if row.get::<_, String>(0) != "settled"
+            || row.get::<_, Option<Value>>(1)
+                != Some(json!({"status":"failed","reason_kind":"bootstrap_validation_closed"}))
+            || row.get::<_, Value>(2) != json!(admission.scope)
+            || row.get::<_, Uuid>(3) != admission.runner_id
+            || hex::encode(row.get::<_, Vec<u8>>(4)) != admission.claim_checksum
+        {
+            return Err(invalid("checker durable native close differs"));
+        }
+        Ok(reference(stage("completed"), &completed_bytes))
+    }
+    async fn qualified(&self, tx: &Transaction<'_>) -> Result<Qualified, RebornBuildError> {
+        let reservation_bytes = evidence::read_evidence(tx, self.reservation.id)
+            .await?
+            .ok_or_else(|| invalid("checker original reservation missing"))?;
+        let envelope: Envelope = serde_json::from_value(
+            strict_json(&reservation_bytes, REVISION_LIMITS).map_err(invalid)?,
+        )
+        .map_err(invalid)?;
+        let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
+        let claim_bytes = serde_json::to_string(&self.claim).map_err(invalid)?;
+        if reference(self.reservation.id, &reservation_bytes) != self.reservation
+            || serde_json::to_string(&reservation.claim).map_err(invalid)? != claim_bytes
+            || reservation.execution_request_id.is_nil()
+            || Uuid::new_v5(
+                &self.reservation.id,
+                reservation.execution_request_id.as_bytes(),
+            ) != self.operation_id
+            || evidence::system_record(
+                self.reservation.id,
+                "behavior",
+                false,
+                &evidence::checksum(&claim_bytes),
+                &[serde_json::to_value(&self.claim.root).map_err(invalid)?],
+                serde_json::to_value(&reservation).map_err(invalid)?,
+            ) != reservation_bytes
+        {
+            return Err(invalid("checker qualification reservation changed"));
+        }
+        let (operation_bytes, operation) = self
+            .read::<Operation>(tx, self.operation_id, "behavior", false)
+            .await?
+            .ok_or_else(|| invalid("checker original intent missing"))?;
+        if operation_bytes != self.operation_bytes
+            || operation.format != "structural-checker-operation/1"
+            || operation.reservation != self.reservation
+        {
+            return Err(invalid("checker original intent differs"));
+        }
+        self.executor()?;
+        self.preparation()?;
+        let graph = self
+            .program(&self.claim.suites[0].variant)?
+            .inputs()
+            .instruction()
+            .snapshot();
+        let refs = graph
+            .revisions()
+            .values()
+            .map(|r| r.reference())
+            .collect::<Vec<_>>();
+        PgComponentRevisionStore::read_exact_in_transaction(tx, &[self.claim.recipe.uuid], &refs)
+            .await
+            .map_err(invalid)?;
+        PgComponentRevisionStore::read_revision_in_transaction(tx, self.root.reference())
+            .await
+            .map_err(invalid)?;
+        let (source, exports) = self.verify_source(tx).await?;
+        let mut completed = Vec::new();
+        for suite in &self.claim.suites {
+            completed.push(self.verify_completed(tx, suite, &source).await?);
+        }
+        Ok(Qualified {
+            format: "structural-checker-qualified-own-function/1".into(),
+            scope: "installation-own-checker-only".into(),
+            operation: self.op(),
+            source,
+            completed,
+            root: self.claim.root.clone(),
+            exports,
+        })
+    }
+    fn approval_bytes(&self) -> Result<String, RebornBuildError> {
+        Ok(json!({"format":"pure-component-approval/1","approval_id":self.id("approval"),"root":self.claim.root,"components":[self.claim.root],"validation_mode":"system_seed","q1_ref":self.id("q1"),"q2_ref":null,"behavioral_refs":[self.id("behavior")]}).to_string())
+    }
+    async fn verify_approval(&self, tx: &Transaction<'_>) -> Result<RecordRef, RebornBuildError> {
+        let qualified = self.qualified(tx).await?;
+        for (kind, id) in [("q1", self.id("q1")), ("behavior", self.id("behavior"))] {
+            let (bytes, _) = self
+                .read::<Qualified>(tx, id, kind, true)
+                .await?
+                .ok_or_else(|| invalid("checker successful original evidence missing"))?;
+            if bytes != self.encode(id, kind, true, &qualified)? {
+                return Err(invalid("checker qualification evidence differs"));
+            }
+        }
+        let bytes = self.approval_bytes()?;
+        let row=tx.query_opt("SELECT approval_bytes,checksum,root_id,root_version,root_checksum,validation_mode,q1_ref,q2_ref FROM reborn_pure_component_approvals WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?.ok_or_else(||invalid("checker original approval missing"))?;
+        if row.get::<_, String>(0) != bytes
+            || row.get::<_, String>(1) != evidence::checksum(&bytes)
+            || row.get::<_, Uuid>(2) != self.claim.root.uuid
+            || row.get::<_, i64>(3) != i64::try_from(self.claim.root.version).map_err(invalid)?
+            || row.get::<_, String>(4) != self.claim.root.checksum
+            || row.get::<_, String>(5) != "system_seed"
+            || row.get::<_, Uuid>(6) != self.id("q1")
+            || row.get::<_, Option<Uuid>>(7).is_some()
+        {
+            return Err(invalid("checker approval original differs"));
+        }
+        let rows=tx.query("SELECT component_id,component_version,component_checksum FROM reborn_pure_component_approval_closure WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?;
+        if rows.len() != 1
+            || rows[0].get::<_, Uuid>(0) != self.claim.root.uuid
+            || rows[0].get::<_, i64>(1)
+                != i64::try_from(self.claim.root.version).map_err(invalid)?
+            || rows[0].get::<_, String>(2) != self.claim.root.checksum
+        {
+            return Err(invalid("checker approval borrowed a different closure"));
+        }
+        Ok(reference(self.id("approval"), &bytes))
+    }
+}
 
-    tracing::info!("validator-approval: all eight structural validator PCs qualified");
-    Ok(())
+pub(crate) struct CheckedStructuralHelpers {
+    contexts: Vec<Arc<Context>>,
+}
+impl CheckedStructuralHelpers {
+    pub(crate) async fn verify_in_transaction(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<(), RebornBuildError> {
+        let expected = std::iter::once(fixtures::receipt_id())
+            .chain(
+                brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES
+                    .iter()
+                    .map(|c| {
+                        brassclaw_skills::validator_components::structural_validator_pc_id(*c)
+                    }),
+            )
+            .collect::<BTreeSet<_>>();
+        if self.contexts.len() != expected.len()
+            || self
+                .contexts
+                .iter()
+                .map(|c| c.claim.root.uuid)
+                .collect::<BTreeSet<_>>()
+                != expected
+        {
+            return Err(invalid(
+                "all eight structural helpers and their receipt prerequisite required",
+            ));
+        }
+        evidence::require_coherent(tx).await?;
+        let mut support = None;
+        for context in &self.contexts {
+            if context.claim.support != support {
+                return Err(invalid("checker receipt prerequisite differs"));
+            }
+            let proof = context.verify_approval(tx).await?;
+            if support.is_none() {
+                support = Some(proof);
+            }
+        }
+        Ok(())
+    }
+}
+
+pub(crate) async fn qualify(
+    pool: Arc<PgPool>,
+    worker: Arc<PackagedExecutableImage>,
+    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    preparation: crate::installed_monty_catalogue::PreparationCapture,
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+    application_checksum: String,
+) -> Result<CheckedStructuralHelpers, RebornBuildError> {
+    let receipt = fixtures::receipt_draft()?;
+    let mut specs = vec![(receipt.clone(), None, fixtures::receipt_suites())];
+    for &class in brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES {
+        let root_id = brassclaw_skills::validator_components::structural_validator_pc_id(class);
+        let root = crate::builtin_bootstrap::validator_recipe_drafts_for_class(class)
+            .map_err(invalid)?
+            .into_iter()
+            .find(|d| d.uuid() == root_id)
+            .ok_or_else(|| invalid("canonical checker root missing"))?;
+        specs.push((root, Some(class), fixtures::checker_suites(class, root_id)));
+    }
+    let store = PgComponentRevisionStore::new(pool.clone());
+    let mut contexts = Vec::new();
+    let mut support = None;
+    for (candidate, class, suites) in specs {
+        let recipe = fixtures::recipe(candidate.uuid(), class, &suites)?;
+        let mut refs = Vec::new();
+        for draft in [&candidate, &receipt, &recipe] {
+            if refs
+                .iter()
+                .any(|r: &ComponentRevisionRef| r.uuid == draft.uuid())
+            {
+                continue;
+            }
+            refs.push(
+                io::bounded(storage.as_ref(), async {
+                    store.retain_packaged_draft(draft).await.map_err(invalid)
+                })
+                .await?,
+            );
+        }
+        // A support-only graph must not retain an unrelated candidate identity.
+        let snapshot = Arc::new(
+            io::bounded(storage.as_ref(), async {
+                store
+                    .read_exact(&[recipe.uuid()], &refs)
+                    .await
+                    .map_err(invalid)
+            })
+            .await?,
+        );
+        let mut programs = BTreeMap::new();
+        let mut selections = BTreeMap::new();
+        let mut normalized = Vec::new();
+        for (desc, mut suite) in suites.into_iter().enumerate() {
+            for step in &mut suite.steps {
+                let (_, number) = step
+                    .id
+                    .split_once(':')
+                    .ok_or_else(|| invalid("fixture step identity invalid"))?;
+                step.id = format!("{desc}:{number}");
+                for producer in step.results.values_mut() {
+                    let (_, number) = producer
+                        .split_once(':')
+                        .ok_or_else(|| invalid("fixture edge identity invalid"))?;
+                    *producer = format!("{desc}:{number}");
+                }
+            }
+            let program = Arc::new(
+                prepare_retained_tool_program(
+                    compile_retained_recipe(
+                        snapshot.clone(),
+                        recipe.uuid(),
+                        &suite.variant,
+                        WorkflowClass::Deterministic,
+                    )
+                    .map_err(invalid)?,
+                )
+                .map_err(invalid)?,
+            );
+            if !program.bindings().is_empty() {
+                return Err(invalid("pure checker fixture acquired a Tool binding"));
+            }
+            selections.insert(
+                suite.variant.clone(),
+                program
+                    .inputs()
+                    .instruction()
+                    .retained_selection()
+                    .map_err(invalid)?
+                    .exact_bytes()
+                    .to_owned(),
+            );
+            programs.insert(suite.variant.clone(), program);
+            normalized.push(suite);
+        }
+        let claim = Claim {
+            format: "structural-checker-claim/1".into(),
+            scope: "installation-own-checker-only".into(),
+            root: snapshot.revisions()[&candidate.uuid()].reference().into(),
+            components: refs.iter().copied().map(Into::into).collect(),
+            recipe: snapshot.revisions()[&recipe.uuid()].reference().into(),
+            selection_bytes: selections,
+            suites: normalized,
+            support: support.clone(),
+            worker_checksum: hex::encode(worker.checksum()),
+            application_checksum: application_checksum.clone(),
+            global_root: root.reference().into(),
+            global_source_checksum: hex::encode(root.source_checksum()),
+            owner_checksum: evidence::checksum(include_str!("bootstrap_validator_approval.rs")),
+            fixture_execution_checksum: evidence::checksum(include_str!(
+                "bootstrap_checker_execution.rs"
+            )),
+            factory_checksum: evidence::checksum(include_str!("bootstrap_checker_fixtures.rs")),
+            receipt_checksum: evidence::checksum(fixtures::RECEIPT_SOURCE),
+            inspector_checksum: evidence::checksum(include_str!(
+                "../../brassclaw_engine/src/executor/retained_source.rs"
+            )),
+            executor_checksum: evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),
+            quiescence_checksum: evidence::checksum(include_str!("bootstrap_quiescence_wire.rs")),
+            io_checksum: evidence::checksum(include_str!("bootstrap_evidence_io.rs")),
+        };
+        let claim_bytes = serde_json::to_string(&claim).map_err(invalid)?;
+        let claim_id = Uuid::new_v5(
+            &candidate.uuid(),
+            format!(
+                "structural-checker-reservation/1:{}",
+                evidence::checksum(&claim_bytes)
+            )
+            .as_bytes(),
+        );
+        let offered = Reservation {
+            format: "structural-checker-reservation/1".into(),
+            claim: claim.clone(),
+            execution_request_id: Uuid::new_v4(),
+        };
+        let components = [serde_json::to_value(&claim.root).map_err(invalid)?];
+        let offered_bytes = evidence::system_record(
+            claim_id,
+            "behavior",
+            false,
+            &evidence::checksum(&claim_bytes),
+            &components,
+            serde_json::to_value(&offered).map_err(invalid)?,
+        );
+        let reservation_bytes = match io::read_record(&pool, storage.as_ref(), claim_id).await? {
+            Some(bytes) => bytes,
+            None => {
+                // A losing first-claim proposal reads the winner's complete
+                // canonical original. Its offered request ID is never admitted.
+                let _write =
+                    io::retain_record(&pool, storage.as_ref(), claim_id, &offered_bytes).await;
+                io::read_record(&pool, storage.as_ref(), claim_id)
+                    .await?
+                    .ok_or_else(|| invalid("checker reservation unresolved; no admission"))?
+            }
+        };
+        let envelope: Envelope = serde_json::from_value(
+            strict_json(&reservation_bytes, REVISION_LIMITS).map_err(invalid)?,
+        )
+        .map_err(invalid)?;
+        let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
+        if reservation.format != "structural-checker-reservation/1"
+            || reservation.execution_request_id.is_nil()
+            || serde_json::to_string(&reservation.claim).map_err(invalid)? != claim_bytes
+            || evidence::system_record(
+                claim_id,
+                "behavior",
+                false,
+                &evidence::checksum(&claim_bytes),
+                &components,
+                serde_json::to_value(&reservation).map_err(invalid)?,
+            ) != reservation_bytes
+        {
+            return Err(invalid(
+                "checker reservation does not identify canonical package",
+            ));
+        }
+        let reservation_ref = reference(claim_id, &reservation_bytes);
+        let operation_id = Uuid::new_v5(&claim_id, reservation.execution_request_id.as_bytes());
+        let existing = io::read_record(&pool, storage.as_ref(), operation_id).await?;
+        let offered_operation = Operation {
+            format: "structural-checker-operation/1".into(),
+            reservation: reservation_ref.clone(),
+            executor_bytes: executor.exact_bytes().into(),
+            executor_checksum: executor.checksum(),
+            preparation_bytes: preparation.bytes().into(),
+            preparation_checksum: preparation.checksum().into(),
+        };
+        let operation = match &existing {
+            Some(bytes) => {
+                let envelope: Envelope =
+                    serde_json::from_value(strict_json(bytes, REVISION_LIMITS).map_err(invalid)?)
+                        .map_err(invalid)?;
+                serde_json::from_value(envelope.report).map_err(invalid)?
+            }
+            None => offered_operation,
+        };
+        let mut context = Context {
+            pool: pool.clone(),
+            storage: storage.clone(),
+            worker: worker.clone(),
+            root: root.clone(),
+            claim,
+            reservation: reservation_ref,
+            operation_id,
+            operation,
+            operation_bytes: String::new(),
+            programs,
+        };
+        context.operation_bytes =
+            context.encode(operation_id, "behavior", false, &context.operation)?;
+        if existing
+            .as_ref()
+            .is_some_and(|bytes| bytes != &context.operation_bytes)
+        {
+            return Err(invalid("checker original operation bytes differ"));
+        }
+        let context = Arc::new(context);
+        if existing.is_some() {
+            let original = io::bounded(storage.as_ref(), async {
+                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true).start().await.map_err(invalid)?;
+                let present = tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id=$1)", &[&context.id("approval")]).await.map_err(invalid)?.get::<_,bool>(0);
+                let proof = if present { Some(context.verify_approval(&tx).await?) } else { None };
+                tx.commit().await.map_err(invalid)?;client.recycle_after_commit();Ok(proof)
+            }).await?;
+            if let Some(proof) = original {
+                if support.is_none() {
+                    support = Some(proof);
+                }
+                contexts.push(context);
+                continue;
+            }
+        }
+        if existing.is_none() {
+            #[cfg(test)]
+            tests::before_new_intent(&context).await;
+            io::retain_new_intent(
+                &pool,
+                storage.as_ref(),
+                operation_id,
+                &context.operation_bytes,
+            )
+            .await?;
+            context.execute().await?;
+        }
+        // Existing complete native originals can finish publication without VM
+        // execution; incomplete intent fails here and cannot restart fixtures.
+        let qualified = io::bounded(storage.as_ref(), async {
+            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            let qualified = context.qualified(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(qualified)
+        })
+        .await?;
+        for (kind, id) in [
+            ("q1", context.id("q1")),
+            ("behavior", context.id("behavior")),
+        ] {
+            io::retain_record(
+                &pool,
+                storage.as_ref(),
+                id,
+                &context.encode(id, kind, true, &qualified)?,
+            )
+            .await?;
+        }
+        let approval = context.approval_bytes()?;
+        let declaration = PureComponentApprovalDeclaration::from_json(&approval, REVISION_LIMITS)
+            .map_err(invalid)?;
+        let write = io::bounded(storage.as_ref(), async {
+            crate::pg_pure_component_approval::record_pure_component_approval(&pool, &declaration)
+                .await
+                .map_err(invalid)
+        })
+        .await;
+        let readback = io::bounded(storage.as_ref(), async {
+            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            let proof = context.verify_approval(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(proof)
+        })
+        .await;
+        let proof = match readback {
+            Ok(proof) => proof,
+            Err(error) => {
+                return Err(match write {
+                    Ok(_) => error,
+                    Err(write) => invalid(format!("checker approval unresolved: {write}; {error}")),
+                });
+            }
+        };
+        if support.is_none() {
+            support = Some(proof);
+        }
+        contexts.push(context);
+    }
+    Ok(CheckedStructuralHelpers { contexts })
 }

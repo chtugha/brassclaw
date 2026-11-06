@@ -419,7 +419,10 @@ impl InspectedRetainedProgram {
         &self,
         component: Uuid,
     ) -> Result<InspectedPureComponent<'_>, RetainedSourceError> {
-        use brassclaw_skills::value_contract::{ContractLimits, InputContract, ValueContract};
+        use brassclaw_skills::{
+            component_revision::REVISION_LIMITS,
+            value_contract::{InputContract, ValueContract},
+        };
 
         use super::retained_preload::PreloadDeclaration;
 
@@ -429,15 +432,14 @@ impl InspectedRetainedProgram {
             .get(&component)
             .filter(|revision| revision.reference().class_code == 22)
             .ok_or_else(|| fail("pure root must be retained PythonCode"))?;
-        let limits = ContractLimits {
-            max_depth: self.preparation_limits.bounds.max_value_depth,
-            max_nodes: self.preparation_limits.bounds.max_value_nodes,
-            max_bytes: self.preparation_limits.bounds.max_value_bytes,
-        };
         let document = root.draft().document();
-        InputContract::from_value(&document["input_contract"], limits)
+        // Schema declarations are immutable revision metadata, not executing
+        // task values. A larger valid task-depth setting must not violate the
+        // schema parser's separate storage profile; invocation still binds and
+        // checks actual values under its acknowledged per-step limits.
+        InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
             .map_err(|_| fail("pure root input contract is invalid"))?;
-        ValueContract::result_from_value(&document["result_contract"], limits)
+        ValueContract::result_from_value(&document["result_contract"], REVISION_LIMITS)
             .map_err(|_| fail("pure root result contract is invalid"))?;
         let library = PreloadDeclaration::parse(document, root.draft().dependencies())
             .map_err(fail)?

@@ -9,9 +9,7 @@ use brassclaw_skills::{
 use serde_json::{Value, json};
 
 use super::{PreparedReference, RetainedValidatorCoverage};
-use crate::executor::retained_recipe::{
-    RetainedRecipeExecution, typed_object_checksum_with_limits,
-};
+use crate::executor::retained_recipe::RetainedRecipeExecution;
 
 use brassclaw_skills::review_submission_store::installation::{
     RetainedInstallationValidatorSelection, RetainedInstallationValidatorSubject,
@@ -255,49 +253,7 @@ impl RetainedValidatorCoverage {
             return Err("complete original input evidence required");
         }
         let task_inputs = self.subject_task_inputs_view(subject, inputs, limits)?;
-        // Verify dataflow, not workflow decisions: Monty already executed the
-        // pinned flat order. A changed input producing the same output is still
-        // a different observation and cannot become evidence for this subject.
-        for step in order {
-            let step = *step;
-            let actual = fingerprints
-                .get(step)
-                .ok_or("validator input observation missing")?;
-            let bindings = inputs
-                .layout()
-                .steps()
-                .get(step)
-                .ok_or("validator input layout missing")?;
-            let mut expected = BTreeMap::new();
-            for (name, reference) in bindings {
-                let value = match reference {
-                    PreparedReference::Input { name } => task_inputs
-                        .get(name)
-                        .ok_or("validator task input missing")?,
-                    PreparedReference::Constant { value } => value,
-                    PreparedReference::Result { step_id, path } => {
-                        let mut value = results
-                            .get(step_id)
-                            .ok_or("validator predecessor result missing")?;
-                        for field in path {
-                            value = value
-                                .as_object()
-                                .and_then(|object| object.get(field))
-                                .ok_or("validator predecessor result field missing")?;
-                        }
-                        value
-                    }
-                };
-                expected.insert(name.clone(), value);
-            }
-            if typed_object_checksum_with_limits(&expected, actual.limits)
-                .map_err(|_| "validator expected input exceeds captured limits")?
-                != actual.checksum
-            {
-                return Err("validator input differs from sealed subject dataflow");
-            }
-        }
-        Ok(())
+        inputs.verify_recorded_input_fingerprints(&task_inputs, order, results, fingerprints)
     }
 
     fn observe_subject_view(

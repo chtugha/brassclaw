@@ -13,10 +13,15 @@ pub(crate) struct EvidenceClient {
 }
 impl EvidenceClient {
     pub(crate) async fn acquire(pool: &PgPool) -> Result<Self, RebornBuildError> {
-        Ok(Self {
-            inner: Some(pool.get().await.map_err(invalid)?),
+        Ok(Self::from_client(pool.get().await.map_err(invalid)?))
+    }
+    /// Retain the caller's existing connection error classification while
+    /// applying the same uncertain-transaction custody and drop discipline.
+    pub(crate) fn from_client(client: brassclaw_pg::PgClient) -> Self {
+        Self {
+            inner: Some(client),
             recyclable: false,
-        })
+        }
     }
     pub(crate) fn recycle_after_commit(&mut self) {
         self.recyclable = true;

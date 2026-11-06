@@ -13,6 +13,20 @@ pub(super) fn checksum(bytes: &str) -> String {
     hex::encode(Sha256::digest(bytes.as_bytes()))
 }
 
+/// Existing system installation envelope encoding only; report authority stays
+/// with each closed native owner and its checked original-execution reader.
+pub(super) fn system_record(
+    id: Uuid,
+    kind: &str,
+    succeeded: bool,
+    association: &str,
+    components: &[serde_json::Value],
+    report: serde_json::Value,
+) -> String {
+    serde_json::json!({"format":"component-review-evidence/1","evidence_id":id,"kind":kind,"validation_mode":"system_seed",
+        "association_checksum":association,"components":components,"succeeded":succeeded,"reviewed_evidence":[],"report":report}).to_string()
+}
+
 pub(super) async fn require_coherent(tx: &Transaction<'_>) -> Result<(), RebornBuildError> {
     let coherent: bool = tx
         .query_one(

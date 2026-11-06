@@ -28,16 +28,9 @@ pub(crate) async fn initialize_runtime_components(
             reason: format!("L013-L101 qualification failed: {e}"),
         })?;
 
-    // Step 3c — qualify the eight structural validator PythonCode components.
-    // Idempotent: classes already approved are skipped. Must run after
-    // retain_validator_check_drafts (called inside seed_builtin_components above)
-    // has retained all eight ComponentRevisionDraft envelopes.
-    #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    crate::bootstrap_validator_approval::qualify_all_validators(booted_db.pool().clone())
-        .await
-        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-            reason: format!("validator PC qualification failed: {e}"),
-        })?;
+    // Structural checking code is only retained here. Its actual own-export
+    // qualification needs the installation kernel, retained worker and original
+    // executor/root, and runs in InstalledMontyCatalogue::boot before readiness.
 
     let recovered = crate::boot_integrity::run_boot_integrity_check(booted_db)
         .await
@@ -518,12 +511,10 @@ mod tests {
         );
     }
 
-    /// Verify that `qualify_all_validators` writes exactly eight
-    /// `pure-component-approval/1` rows — one per structural validator class —
-    /// and that a second boot is fully idempotent (still exactly eight rows).
+    /// Early draft retention must never manufacture successful qualification.
     #[cfg(feature = "skills-db")]
     #[tokio::test]
-    async fn validator_approval_writes_eight_pure_approvals_at_boot() {
+    async fn early_validator_retention_never_manufactures_pure_approval() {
         use brassclaw_skills::validator_components::{
             VALIDATOR_CLASS_CODES, structural_validator_pc_id,
         };
@@ -535,7 +526,7 @@ mod tests {
             .expect("schema migrations");
         let tenant = "validator-approval-test";
 
-        // First boot — should produce 8 approval rows.
+        // First boot retains drafts without producing approval rows.
         initialize_runtime_components(&booted, tenant)
             .await
             .expect("first boot must succeed");
@@ -569,12 +560,12 @@ mod tests {
                 .get(0)
         };
         assert_eq!(
-            count, 8,
-            "expected 8 validator approval rows after first boot, got {count}"
+            count, 0,
+            "draft-only boot must not qualify checking functions"
         );
         drop(client);
 
-        // Second boot — idempotent, still exactly 8.
+        // Second boot remains draft-only and produces no approval rows.
         initialize_runtime_components(&booted, tenant)
             .await
             .expect("second boot must succeed");
@@ -602,8 +593,8 @@ mod tests {
                 .get(0)
         };
         assert_eq!(
-            count2, 8,
-            "idempotent second boot must still yield exactly 8 approval rows, got {count2}"
+            count2, 0,
+            "repeated draft retention must not manufacture qualification"
         );
         drop(client);
         drop(booted);

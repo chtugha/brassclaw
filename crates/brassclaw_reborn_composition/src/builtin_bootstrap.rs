@@ -27,10 +27,11 @@
 //! user_id = SYSTEM_RESERVED_ID, agent_id = "default", project_id = "system")`
 //! with `source = "system"` + `validation_status = "validated"`. The
 //! `system_seed` bootstrap contract requires no additional external maintainer
-//! approval or human Q2 on the installed instance; Q1 and behavioral evidence
-//! are satisfied at boot-time via `qualify_all` (L013–L101) and
-//! `qualify_all_validators` (eight structural validator classes), not via inline
-//! Q1 queue submission.
+//! approval or human Q2 on the installed instance. Retention here supplies no
+//! qualification. Structural checking functions receive actual own-export
+//! qualification later in the contained installation owner before readiness;
+//! that does not qualify complete candidate-class Q1. L013–L101's historical
+//! placeholder qualification remains separate repair work, not evidence to reuse.
 //! Every insert is idempotent (ON-CONFLICT / get-then-insert) and
 //! `append_child_component_ids` deduplicates, so the whole seeder is safe to
 //! call on every composition boot.
@@ -971,9 +972,7 @@ pub(crate) fn validator_check_drafts() -> Vec<
 pub(crate) async fn retain_validator_check_drafts(
     pool: &Arc<PgPool>,
 ) -> Result<(), SeedBuiltinBootstrapError> {
-    use brassclaw_skills::validator_components::{
-        VALIDATOR_CLASS_CODES, structural_validator_recipe_drafts,
-    };
+    use brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES;
 
     let store = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
 
@@ -993,26 +992,8 @@ pub(crate) async fn retain_validator_check_drafts(
     // (PC + collect + aggregate + receipt-encoder + Recipe with validator_coverage).
     // These supply the RetainedValidatorCoverage::from_inputs() path; they are
     // separate from the legacy mutable reborn_recipes rows seeded by seed_validator_recipes.
-    let class_labels: &[(i16, &str)] = &[
-        (0, "Tool"),
-        (1, "leaf Skill"),
-        (2, "domain Skill"),
-        (3, "LLM Skill"),
-        (13, "ToolSkill"),
-        (21, "Recipe"),
-        (22, "PythonCode"),
-        (23, "ExtensionCatalogue"),
-    ];
-    debug_assert_eq!(class_labels.len(), VALIDATOR_CLASS_CODES.len());
-    for (class_code, class_label) in class_labels {
-        let drafts = structural_validator_recipe_drafts(
-            *class_code,
-            class_label,
-            validator_pc_body_for_class(*class_code),
-        )
-        .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
-            reason: error.to_string(),
-        })?;
+    for &class_code in VALIDATOR_CLASS_CODES {
+        let drafts = validator_recipe_drafts_for_class(class_code)?;
         for draft in drafts {
             store.retain_packaged_draft(&draft).await.map_err(|error| {
                 SeedBuiltinBootstrapError::ComponentRevision {
@@ -1027,6 +1008,37 @@ pub(crate) async fn retain_validator_check_drafts(
          + 8 class validator Recipe revision drafts (source-only, no approval)"
     );
     Ok(())
+}
+
+/// Exact canonical package bytes, shared by retention and closed qualification.
+/// This selects no ordinary active revision and confers no class-Q1 coverage.
+pub(crate) fn validator_recipe_drafts_for_class(
+    class_code: i16,
+) -> Result<
+    Vec<brassclaw_skills::component_revision::ComponentRevisionDraft>,
+    SeedBuiltinBootstrapError,
+> {
+    let label = match class_code {
+        0 => "Tool",
+        1..=3 => "Skill usage",
+        13 => "ToolSkill",
+        21 => "Recipe",
+        22 => "PythonCode",
+        23 => "ExtensionCatalogue",
+        _ => {
+            return Err(SeedBuiltinBootstrapError::ComponentRevision {
+                reason: "unsupported structural-check class".into(),
+            });
+        }
+    };
+    brassclaw_skills::validator_components::structural_validator_recipe_drafts(
+        class_code,
+        label,
+        validator_pc_body_for_class(class_code),
+    )
+    .map_err(|error| SeedBuiltinBootstrapError::ComponentRevision {
+        reason: error.to_string(),
+    })
 }
 
 /// Retain the private incomplete source/definition/contract Recipe after the
@@ -12552,7 +12564,8 @@ const PC_VALIDATOR_STRUCTURAL_BODY: &str = r#"def check_structural_presence(inpu
 // Pure-logic: import json only, no host calls.
 // ---------------------------------------------------------------------------
 
-/// Class 0 — Tool: checks operation/effect contract, capability_id, param_schema presence.
+/// Class 0 — shallow capability/schema presence and supported effect marker;
+/// not native identity, registration, recursive contract or primitive behavior.
 pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])
@@ -12573,7 +12586,7 @@ pub(crate) const PC_VALIDATOR_CLASS_0_BODY: &str = r#"def check_structural_prese
     return {"rule_id": "structural_presence", "ok": len(_errors) == 0, "errors": _errors}
 "#;
 
-/// Class 1–3 — Skill: checks body sections, skill-association/1 present, class_code.
+/// Classes 1–3 — shallow body/usage-marker presence, not association or own usage review.
 pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])
@@ -12594,7 +12607,7 @@ pub(crate) const PC_VALIDATOR_CLASS_SKILL_BODY: &str = r#"def check_structural_p
     return {"rule_id": "structural_presence", "ok": len(_errors) == 0, "errors": _errors}
 "#;
 
-/// Class 13 — ToolSkill: checks tool_name, param_schema, content (prose) non-empty.
+/// Class 13 — shallow name/description/prose presence, not binding compatibility.
 pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])
@@ -12611,7 +12624,7 @@ pub(crate) const PC_VALIDATOR_CLASS_13_BODY: &str = r#"def check_structural_pres
     return {"rule_id": "structural_presence", "ok": len(_errors) == 0, "errors": _errors}
 "#;
 
-/// Class 21 — Recipe: checks step_descriptions non-empty, at least one variant/step_link.
+/// Class 21 — nonempty step-description list only, not variant/step/edge validity.
 pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])
@@ -12629,7 +12642,7 @@ pub(crate) const PC_VALIDATOR_CLASS_21_BODY: &str = r#"def check_structural_pres
     return {"rule_id": "structural_presence", "ok": len(_errors) == 0, "errors": _errors}
 "#;
 
-/// Class 22 — PythonCode: checks `def` function declaration, non-empty content.
+/// Class 22 — nonempty content containing the literal `def ` marker; not parsing.
 pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])
@@ -12649,7 +12662,7 @@ pub(crate) const PC_VALIDATOR_CLASS_22_BODY: &str = r#"def check_structural_pres
     return {"rule_id": "structural_presence", "ok": len(_errors) == 0, "errors": _errors}
 "#;
 
-/// Class 23 — ExtensionCatalogue: checks overview_doc non-empty, task_groups present.
+/// Class 23 — nonempty overview only, not schema/task-group/reference validity.
 pub(crate) const PC_VALIDATOR_CLASS_23_BODY: &str = r#"def check_structural_presence(inputs):
     import json as _json
     _subj = _json.loads(inputs["subject_json"])

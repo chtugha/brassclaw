@@ -917,6 +917,17 @@ impl InstalledMontyCatalogue {
                 root_definition.clone(),
             ))
             .await?;
+        inventory_observations.require_positive_for_qualification()?;
+        let structural_helpers = crate::bootstrap_validator_approval::qualify(
+            pool.clone(),
+            worker_image.clone(),
+            root_definition.clone(),
+            startup_executor.clone(),
+            initial_preparation.clone(),
+            resource_store_settings.clone(),
+            hex::encode(image.checksum()),
+        )
+        .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -981,6 +992,11 @@ impl InstalledMontyCatalogue {
         crate::bootstrap_evidence::io::bounded(
             resource_store_settings.as_ref(),
             inventory_observations.verify_in_transaction(&tx),
+        )
+        .await?;
+        crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            structural_helpers.verify_in_transaction(&tx),
         )
         .await?;
         tracing::info!(

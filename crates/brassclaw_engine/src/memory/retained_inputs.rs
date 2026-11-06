@@ -377,6 +377,64 @@ impl RetainedRecipeInputs {
             contract.inputs.bind_with_limits(supplied, limits)?,
         ))
     }
+    /// Authenticate complete recorded typed input edges against this original
+    /// selection. Shared by authored/installation observations and closed fixture
+    /// review; this checks data custody and neither schedules nor approves.
+    pub fn verify_recorded_input_fingerprints(
+        &self,
+        task_inputs: &Value,
+        order: &[&str],
+        results: &BTreeMap<String, Value>,
+        fingerprints: &BTreeMap<String, super::retained_validator::ValidatorInputFingerprint>,
+    ) -> Result<(), &'static str> {
+        use crate::executor::retained_recipe::typed_object_checksum_with_limits;
+        if fingerprints.len() != order.len() {
+            return Err("complete original input evidence required");
+        }
+        // Verify dataflow, not workflow decisions: Monty already executed the
+        // pinned flat order. A changed input producing the same output is still
+        // a different observation and cannot become evidence for this subject.
+        for step in order {
+            let step = *step;
+            let actual = fingerprints
+                .get(step)
+                .ok_or("validator input observation missing")?;
+            let bindings = self
+                .layout()
+                .steps()
+                .get(step)
+                .ok_or("validator input layout missing")?;
+            let mut expected = BTreeMap::new();
+            for (name, reference) in bindings {
+                let value = match reference {
+                    PreparedReference::Input { name } => task_inputs
+                        .get(name)
+                        .ok_or("validator task input missing")?,
+                    PreparedReference::Constant { value } => value,
+                    PreparedReference::Result { step_id, path } => {
+                        let mut value = results
+                            .get(step_id)
+                            .ok_or("validator predecessor result missing")?;
+                        for field in path {
+                            value = value
+                                .as_object()
+                                .and_then(|object| object.get(field))
+                                .ok_or("validator predecessor result field missing")?;
+                        }
+                        value
+                    }
+                };
+                expected.insert(name.clone(), value);
+            }
+            if typed_object_checksum_with_limits(&expected, actual.limits)
+                .map_err(|_| "validator expected input exceeds captured limits")?
+                != actual.checksum
+            {
+                return Err("validator input differs from sealed subject dataflow");
+            }
+        }
+        Ok(())
+    }
     /// Validation never creates an output or changes completed effect evidence.
     pub fn validate_step_result(
         &self,

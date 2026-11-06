@@ -877,8 +877,7 @@ fn evidence_record(
     components: &[Value],
     report: Value,
 ) -> String {
-    json!({"format":"component-review-evidence/1","evidence_id":id,"kind":kind,"validation_mode":"system_seed",
-        "association_checksum":association,"components":components,"succeeded":succeeded,"reviewed_evidence":[],"report":report}).to_string()
+    evidence::system_record(id, kind, succeeded, association, components, report)
 }
 struct InventoryProofContext {
     intent: Uuid,

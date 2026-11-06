@@ -86,7 +86,12 @@ pub(crate) async fn record_pure_component_approval(
         evidence_kinds.insert(*id, "behavior");
     }
 
-    let mut client = pool.get().await.map_err(PureApprovalError::Connection)?;
+    // This write is also used by closed installation publication under the
+    // acknowledged store deadline. A cancelled/unknown COMMIT connection must
+    // not return to a size-one pool before original readback.
+    let mut client = crate::bootstrap_evidence::io::EvidenceClient::from_client(
+        pool.get().await.map_err(PureApprovalError::Connection)?,
+    );
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -238,6 +243,7 @@ pub(crate) async fn record_pure_component_approval(
     }
 
     tx.commit().await.map_err(db)?;
+    client.recycle_after_commit();
     Ok(root.uuid)
 }
 

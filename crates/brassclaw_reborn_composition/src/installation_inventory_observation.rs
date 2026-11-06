@@ -136,6 +136,19 @@ pub(crate) struct CheckedProfile {
     completion_bytes: String,
 }
 impl InstallationSourceObservations {
+    /// Availability prerequisite only. This does not promote factual source
+    /// observations into own Q1, semantic approval or catalogue activation.
+    pub(crate) fn require_positive_for_qualification(&self) -> Result<(), RebornBuildError> {
+        match self {
+            Self::ObservedPositive(_) => Ok(()),
+            Self::CompletedNegative(_) => Err(invalid(
+                "required installation source checks completed negative",
+            )),
+            Self::UnavailableBeforeFirstExecution { reason } => Err(invalid(format!(
+                "required installation source qualification unavailable: {reason}"
+            ))),
+        }
+    }
     /// Uses only the supplied final-boot snapshot, never a nested pool/Turn read.
     pub(crate) async fn verify_in_transaction(
         &self,

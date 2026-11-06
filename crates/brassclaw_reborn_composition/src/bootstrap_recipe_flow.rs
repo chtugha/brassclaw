@@ -101,7 +101,7 @@ impl Observation {
     /// Actual model-free internal receipt/account/worker facts, before durable
     /// admission/Turn cleanup. This value alone is deliberately not settlement.
     pub(super) fn model_free_quiescence(&self) -> Result<Value, RebornBuildError> {
-        use brassclaw_monty_host::{service::TaskOutcome, transport_actor::StopKind};
+        use brassclaw_monty_host::service::TaskOutcome;
         if !matches!(self.receipt.outcome, TaskOutcome::InternalCompleted { .. })
             || self.exit.failure.is_some()
             || self.exit.root != self.receipt.root
@@ -123,6 +123,38 @@ impl Observation {
                 "model-free contained receipt or quiescence incomplete",
             ));
         }
+        self.closed_projection()
+    }
+    /// A failed fixture is never successful quiescence. Its native Python
+    /// failure must be authenticated separately by the owning observer before
+    /// this joined model-free lifecycle projection can be consumed.
+    pub(super) fn ended_failure_projection(&self) -> Result<Value, RebornBuildError> {
+        use brassclaw_monty_host::service::TaskOutcome;
+        if !matches!(self.receipt.outcome, TaskOutcome::Failed { .. })
+            || self.exit.failure.is_some()
+            || self.exit.root != self.receipt.root
+            || !self.exit.tasks.is_empty()
+            || self.exit.pending_admission.is_some()
+            || !self.exit.queued_admissions.is_empty()
+            || !self.exit.failed_exchanges.is_empty()
+            || !self.exit.rejected_commands.is_empty()
+            || self.report["root_completed"] != false
+            || self.report["all_selected_recipes_complete"] != false
+            || self.report["withheld_root_answers"] != 0
+            || self.report["withheld_host_answers"] != false
+            || self.report["model_exchange_count"] != 0
+            || self.report["capability_dispatch_count"] != 0
+            || !self.report["reply"].is_null()
+            || self.report["semantic_approval"] != false
+            || self.report["catalogue_activation"] != false
+            || !self.report["internal_receipt"].is_null()
+        {
+            return Err(invalid("contained expected-stop lifecycle incomplete"));
+        }
+        self.closed_projection()
+    }
+    fn closed_projection(&self) -> Result<Value, RebornBuildError> {
+        use brassclaw_monty_host::transport_actor::StopKind;
         let exit = self
             .exit
             .transport
