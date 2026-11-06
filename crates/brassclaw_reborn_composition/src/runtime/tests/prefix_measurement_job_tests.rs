@@ -281,7 +281,10 @@ pub(super) async fn assert_durable_measurement(
     assert!(
         runtime
             .read_latest_assistant_text(
-                &definition.thread_scope,
+                definition
+                    .origin
+                    .thread_scope()
+                    .expect("actual legacy measurement chat"),
                 &definition
                     .origin
                     .chat_scope()

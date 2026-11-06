@@ -137,7 +137,13 @@ pub(super) async fn assert_registered_encoding(
         .inspect_prefix_job("base-prompt", prefix_job_id)
         .await
         .unwrap();
-    assert_eq!(job.run_status, Some(brassclaw_turns::TurnStatus::Completed));
+    assert!(matches!(
+        &job,
+        brassclaw_product_workflow::PrefixJobDetail::PrivateWork {
+            work_status: Some(brassclaw_turns::private_work::PrivateWorkStatus::Settled),
+            ..
+        }
+    ));
     let receipt = job.internal_receipt.as_deref().unwrap();
     let generation = receipt
         .strip_prefix("prefix-generation:base-prompt:")
@@ -353,10 +359,13 @@ pub(super) async fn assert_registered_encoding(
         .inspect_prefix_job("sempai", sempai_job_id)
         .await
         .unwrap();
-    assert_eq!(
-        sempai_job.run_status,
-        Some(brassclaw_turns::TurnStatus::Completed)
-    );
+    assert!(matches!(
+        &sempai_job,
+        brassclaw_product_workflow::PrefixJobDetail::PrivateWork {
+            work_status: Some(brassclaw_turns::private_work::PrivateWorkStatus::Settled),
+            ..
+        }
+    ));
     let sempai_generation = sempai_job
         .internal_receipt
         .as_deref()

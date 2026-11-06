@@ -835,7 +835,10 @@ async fn assert_admitted_pair_jobs(runtime: &Arc<RebornRuntime>, document: &Valu
         assert!(
             runtime
                 .read_latest_assistant_text(
-                    &retained.thread_scope,
+                    retained
+                        .origin
+                        .thread_scope()
+                        .expect("actual legacy pair chat"),
                     &retained
                         .origin
                         .chat_scope()
