@@ -2,7 +2,8 @@
 //! come from the existing owners; the observer only retains their actual handle.
 use super::*;
 use crate::{
-    global_task_factory::{GlobalTaskPortsFactory, OwnedGlobalTaskFactory},
+    global_monty_driver::GlobalTaskPortsFactory,
+    global_task_factory::OwnedGlobalTaskFactory,
     prefix_job_definitions::{Definition, Origin, Reservation, Store, Target},
 };
 use brassclaw_pg::{
