@@ -243,3 +243,30 @@ claims from actual locked SQL transitions. The last selector releases the real
 Worker and observes its actual fallback. These are distinct claims: they do not
 pretend that every direct-owner failure case has already run through the complete
 Worker integration or that a second operating-system process was exercised.
+
+## Validator concurrent preparation correction (source only, 2026-11-06)
+
+The Structural producer authenticates an existing complete original against the
+actual immutable subject, retained validator selection, actor/context, root, worker
+and original preparation. It reuses PgPrivateOriginalVerifier and the existing
+PrivateWorkDefinition/A03 strict capture readers. Ready/cancelled and claimed/
+reconciliation/settled metadata must be relationally coherent. SQL does not
+construct native completion proof. Native inspection runs after releasing PG.
+
+Fresh producers retain exact request/checksum semantics. A per-original advisory
+transaction lock serializes insertion/sealing; any fresh preparation, insert, seal
+or COMMIT error permits one bounded authenticated original readback. Missing or
+incomplete originals remain errors. No current ACK limits rewrite winning bytes.
+
+Added native test source
+`private_validator_prepare_race_keeps_first_raw_original_across_ack_changes`
+in the existing retained Q1 owner. Both real producers stop after absent lookup
+and capture, the second retains an actual smaller ACK, dispatch limits are
+restored before the winner runs, and the second must return the complete winning
+original. It checks input exceeds offered bounds, immutable preparation bytes,
+changed subject/original/actor rejection, one claim/admission/definition/terminal
+and genuine Q1 completion. This source has not been compiled or executed.
+
+Standalone rustfmt and git diff --check only. Root owns Cargo/native acceptance.
+Absent-Work startup discovery, differing-old-artifact restoration, general
+recovery, GeneralPureApproval and prefix serving remain outside this correction.

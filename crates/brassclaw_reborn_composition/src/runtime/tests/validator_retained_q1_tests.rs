@@ -62,9 +62,15 @@ async fn private_validator_heartbeat_loss_delivers_unresolved_without_replay() {
     retained_validator_pass(DeliveryCase::HeartbeatLoss).await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_validator_prepare_race_keeps_first_raw_original_across_ack_changes() {
+    retained_validator_pass(DeliveryCase::PrepareRace).await;
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DeliveryCase {
     Ordinary,
+    PrepareRace,
     DelayedPublish,
     WorkerShutdown,
     HeartbeatLoss,
@@ -256,10 +262,17 @@ async fn retained_validator_pass(case: DeliveryCase) {
     let run = brassclaw_turns::TurnRunId::from_uuid(submission_id);
     let driver = runtime.monty_test_controls.0.clone();
     let pause = match case {
-        DeliveryCase::Ordinary => None,
+        DeliveryCase::Ordinary | DeliveryCase::PrepareRace => None,
         DeliveryCase::HeartbeatLoss => Some(driver.pause_private_start(run)),
         _ => Some(driver.pause_private_publish(run)),
     };
+    let catalogue = runtime.installed_catalogue.clone();
+    let first_entered = std::sync::Arc::new(tokio::sync::Notify::new());
+    let first_release = std::sync::Arc::new(tokio::sync::Notify::new());
+    let first_capture = catalogue.capture_task_preparation().await.unwrap();
+    if case == DeliveryCase::PrepareRace {
+        *catalogue.capture_gate.lock().await = Some((first_entered.clone(), first_release.clone()));
+    }
     // The existing real Worker claims Ready Work. The hook only delays delivery
     // after drive_host has completed its actual native/SQL settlement.
     let validation = run_q1_validation_retained(
@@ -272,6 +285,109 @@ async fn retained_validator_pass(case: DeliveryCase) {
         Some(&bridge),
     );
     let observe = async {
+        if case == DeliveryCase::PrepareRace {
+            tokio::time::timeout(std::time::Duration::from_secs(60), first_entered.notified())
+                .await
+                .unwrap();
+            let settings = runtime.webui_monty_settings_store();
+            let before = settings.get("default", "default").await.unwrap();
+            let mut smaller = before.execution_limits;
+            smaller.max_value_bytes = 256;
+            smaller.validate().unwrap();
+            let changed = settings.upsert("default", "default", &serde_json::from_value(
+                serde_json::json!({"expected_revision":before.revision,"execution_limits":smaller})
+            ).unwrap()).await.unwrap();
+            let second_capture = catalogue.capture_task_preparation().await.unwrap();
+            assert_eq!(second_capture.revision(), changed.revision);
+            assert_ne!(first_capture.bytes(), second_capture.bytes());
+            let second_entered = std::sync::Arc::new(tokio::sync::Notify::new());
+            let second_release = std::sync::Arc::new(tokio::sync::Notify::new());
+            *catalogue.capture_gate.lock().await =
+                Some((second_entered.clone(), second_release.clone()));
+            let second = catalogue.prepare_private_validator(submission_id);
+            let release = async {
+                tokio::time::timeout(
+                    std::time::Duration::from_secs(60),
+                    second_entered.notified(),
+                )
+                .await
+                .unwrap();
+                // Both real producers saw absent Work. Restore current dispatch
+                // limits, while the second preparation retains its smaller ACK.
+                settings.upsert("default", "default", &serde_json::from_value(
+                    serde_json::json!({"expected_revision":changed.revision,"execution_limits":before.execution_limits})
+                ).unwrap()).await.unwrap();
+                first_release.notify_one();
+                let original = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+                    loop {
+                        let row = rig.pool.get().await.unwrap().query_opt(
+                            "SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+                            &[&submission_id]).await.unwrap();
+                        if let Some(row) = row { break (row.get::<_,String>(0),row.get::<_,Vec<u8>>(1)); }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                    }
+                }).await.unwrap();
+                second_release.notify_one();
+                original
+            };
+            let (second, original) =
+                tokio::time::timeout(std::time::Duration::from_secs(90), async {
+                    tokio::join!(second, release)
+                })
+                .await
+                .unwrap();
+            let second =
+                second.expect("smaller fresh preparation must return authenticated original");
+            let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+                &second.request,
+                second.request_checksum,
+                &original.0,
+                original.1.clone().try_into().unwrap(),
+            )
+            .unwrap();
+            let crate::private_work_definition::DomainCapture::ValidatorStructural {
+                capture_bytes,
+                ..
+            } = definition.domain()
+            else {
+                panic!("validator capture")
+            };
+            let capture: serde_json::Value = serde_json::from_str(capture_bytes).unwrap();
+            assert!(
+                capture["input_bytes"].as_str().unwrap().len() > 256,
+                "the offered ACK must actually reject fresh original input"
+            );
+            assert_eq!(definition.preparation().bytes(), first_capture.bytes());
+            assert_ne!(definition.preparation().bytes(), second_capture.bytes());
+            let state_store = brassclaw_turns::PgTurnStateStore::new(
+                rig.pool.clone(),
+                second.request.context().tenant_id.as_str(),
+            );
+            // Same UUID never authorizes a changed raw subject, original or actor.
+            for mutation in 0..3 {
+                let mut changed_request = second.request.clone();
+                let brassclaw_turns::private_work::PrivateWorkRequest::V1 {
+                    original, context, ..
+                } = &mut changed_request;
+                match mutation {
+                    0 => {
+                        let brassclaw_turns::private_work::PrivateOriginalRef::ValidatorStructural { subject_checksum, .. } = original else { panic!("validator original") };
+                        subject_checksum[0] ^= 1;
+                    }
+                    1 => {
+                        let brassclaw_turns::private_work::PrivateOriginalRef::ValidatorStructural { submission_id, .. } = original else { panic!("validator original") };
+                        *submission_id = Uuid::new_v4();
+                    }
+                    _ => context.actor = None,
+                }
+                assert!(state_store.submit_private_work(&changed_request,
+                    brassclaw_turns::private_work::PrivatePreparationReason::PreparationPending, catalogue.as_ref()).await.is_err());
+            }
+            let row = rig.pool.get().await.unwrap().query_one(
+                "SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1", &[&submission_id]).await.unwrap();
+            assert_eq!(row.get::<_, String>(0), original.0);
+            assert_eq!(row.get::<_, Vec<u8>>(1), original.1);
+        }
         if let Some(pause) = pause {
             pause.reached.notified().await;
             if case == DeliveryCase::HeartbeatLoss {
@@ -373,6 +489,21 @@ async fn retained_validator_pass(case: DeliveryCase) {
             "private validator must not fabricate threads or inbound messages"
         );
         let row = client.query_one("SELECT w.record_kind,w.turn_id,a.origin_kind,a.scope,(SELECT count(*) FROM brassclaw_monty_private_terminals t WHERE t.work_id=w.work_id) FROM brassclaw_turns w JOIN brassclaw_monty_task_admissions a ON a.private_work_id=w.work_id WHERE w.work_id=$1", &[&submission_id]).await.unwrap();
+        if case == DeliveryCase::PrepareRace {
+            let counts = client.query_one("SELECT private_claim_generation,private_claim_attempts,
+                (SELECT count(*) FROM brassclaw_monty_task_admissions a WHERE a.private_work_id=w.work_id),
+                (SELECT count(*) FROM brassclaw_monty_private_preparations p WHERE p.work_id=w.work_id)
+                FROM brassclaw_turns w WHERE work_id=$1", &[&submission_id]).await.unwrap();
+            assert_eq!(
+                (
+                    counts.get::<_, i64>(0),
+                    counts.get::<_, i64>(1),
+                    counts.get::<_, i64>(2),
+                    counts.get::<_, i64>(3)
+                ),
+                (1, 1, 1, 1)
+            );
+        }
         assert_eq!(row.get::<_, &str>(0), "private_work");
         assert_eq!(row.get::<_, Option<String>>(1), None);
         assert_eq!(row.get::<_, &str>(2), "private_work");
