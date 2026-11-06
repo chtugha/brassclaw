@@ -40,7 +40,9 @@ impl RebornRuntime {
     ) -> Result<Uuid, RebornRuntimeError> {
         validate_source_request(id, profile, expected_revision)?;
         if caller.tenant_id.as_str() != self.webui_tenant_id() {
-            return Err(invalid("prefix original tenant differs"));
+            return Err(RebornRuntimeError::InvalidArgument {
+                reason: "prefix original tenant differs".into(),
+            });
         }
         let store =
             crate::prefix_job_definitions::Store::new(self.installed_catalogue.pool.clone());
@@ -655,6 +657,11 @@ pub(super) async fn assert_global_snapshot_submission(
             .is_none()
     );
     let identity = runtime.global_monty_owner.client().root_identity();
+    let waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(id))
+        .unwrap();
     // Lose this public call's actual reservation COMMIT acknowledgement.
     // Retry must recover the same stored definition/run, without new capture.
     {
@@ -740,17 +747,15 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(
-        runtime
-            .wait_for_terminal(
-                definition.origin.chat_scope().map_err(definition_error)?,
-                TurnRunId::from_uuid(id),
-                &CancellationToken::new()
-            )
-            .await
-            .unwrap(),
-        TurnStatus::Completed
-    );
+    assert!(matches!(
+        &definition.origin,
+        crate::prefix_job_definitions::Origin::Private { .. }
+    ));
+    let driven = tokio::time::timeout(runtime.poll_settings.max_total, waiter.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_private_snapshot_completion(runtime, driven, id).await;
     let client = pool.get().await.unwrap();
     let row = client
         .query_one(
@@ -842,6 +847,11 @@ pub(super) async fn assert_global_snapshot_submission(
     );
     let core_started = std::time::Instant::now();
     let core_id = Uuid::new_v4();
+    let core_waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(core_id))
+        .unwrap();
     let core_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         runtime.thread_scope.tenant_id.clone(),
         runtime.actor_user_id.clone(),
@@ -862,35 +872,15 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap()
         .unwrap();
-    let status = runtime
-        .wait_for_terminal(
-            &core.scope,
-            TurnRunId::from_uuid(core_id),
-            &CancellationToken::new(),
-        )
-        .await;
-    if !matches!(&status, Ok(TurnStatus::Completed)) {
-        let admission = client.query_opt("SELECT phase,outcome->>'reason_kind' FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&core_id]).await.unwrap().map(|row| (row.get::<_, String>(0),row.get::<_, Option<String>>(1)));
-        let calls = client.query("SELECT step_id,phase FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY step_id", &[&core_id]).await.unwrap().into_iter().map(|row| (row.get::<_, String>(0),row.get::<_, String>(1))).collect::<Vec<_>>();
-        panic!(
-            "core source job did not complete: {status:?}; admission={admission:?}; calls={calls:?}"
-        );
-    }
+    let driven = tokio::time::timeout(runtime.poll_settings.max_total, core_waiter.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_private_snapshot_completion(runtime, driven, core_id).await;
     eprintln!(
         "core source job elapsed_ms={} snapshot_bytes={}",
         core_started.elapsed().as_millis(),
         core.input["snapshot_bytes"].as_str().unwrap().len()
-    );
-    assert!(
-        runtime
-            .read_latest_assistant_text(
-                &core.thread_scope,
-                &core.scope.thread_id,
-                TurnRunId::from_uuid(core_id)
-            )
-            .await
-            .unwrap()
-            .is_none()
     );
     let source: Value =
         serde_json::from_str(core.input["snapshot_bytes"].as_str().unwrap()).unwrap();
@@ -943,6 +933,11 @@ pub(super) async fn assert_global_snapshot_submission(
     );
     let release_started = std::time::Instant::now();
     let release_id = Uuid::new_v4();
+    let release_waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(release_id))
+        .unwrap();
     let release_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         runtime.thread_scope.tenant_id.clone(),
         runtime.actor_user_id.clone(),
@@ -963,29 +958,11 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap()
         .unwrap();
-    let terminal = runtime
-        .wait_for_terminal(
-            release_definition
-                .origin
-                .chat_scope()
-                .map_err(definition_error)?,
-            TurnRunId::from_uuid(release_id),
-            &CancellationToken::new(),
-        )
-        .await;
-    if terminal.is_err()
-        && let Ok(job) = runtime.inspect_prefix_job("base-prompt", release_id).await
-    {
-        eprintln!(
-            "release source observation failed: elapsed_ms={} phase={:?} status={:?} answered={} pending={}",
-            release_started.elapsed().as_millis(),
-            job.admission_phase,
-            job.run_status,
-            job.answered_tool_calls,
-            job.pending_tool_calls,
-        );
-    }
-    assert_eq!(terminal.unwrap(), TurnStatus::Completed);
+    let driven = tokio::time::timeout(runtime.poll_settings.max_total, release_waiter.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_private_snapshot_completion(runtime, driven, release_id).await;
     let release_job = runtime
         .inspect_prefix_job("base-prompt", release_id)
         .await
@@ -1051,6 +1028,11 @@ pub(super) async fn assert_global_snapshot_submission(
             .is_err()
     );
     let sempai_id = Uuid::new_v4();
+    let sempai_waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(sempai_id))
+        .unwrap();
     let sempai_caller = brassclaw_product_workflow::WebUiAuthenticatedCaller::new(
         runtime.thread_scope.tenant_id.clone(),
         runtime.actor_user_id.clone(),
@@ -1071,17 +1053,11 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(
-        runtime
-            .wait_for_terminal(
-                &sempai.scope,
-                TurnRunId::from_uuid(sempai_id),
-                &CancellationToken::new()
-            )
-            .await
-            .unwrap(),
-        TurnStatus::Completed
-    );
+    let driven = tokio::time::timeout(runtime.poll_settings.max_total, sempai_waiter.wait())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_private_snapshot_completion(runtime, driven, sempai_id).await;
     let sempai_capture: Value =
         serde_json::from_str(sempai.input["snapshot_bytes"].as_str().unwrap()).unwrap();
     assert_eq!(
@@ -1127,7 +1103,10 @@ pub(super) async fn assert_global_snapshot_submission(
         .await
         .unwrap();
     assert_eq!(job.answered_tool_calls, 5);
-    assert_eq!(job.run_status, Some(TurnStatus::Completed));
+    let wire = serde_json::to_value(&job).unwrap();
+    assert_eq!(wire["format"], "prefix-job-detail/2");
+    assert_eq!(wire["work_status"], "settled");
+    assert!(wire.get("thread_id").is_none());
     assert_eq!(job.admission_phase.as_deref(), Some("settled"));
     eprintln!(
         "Sempai declared-release source job: sources={}; 5 calls, no replay or activation",
@@ -1157,4 +1136,42 @@ impl RebornRuntime {
         self.wake_sender.wake();
         Ok(id)
     }
+}
+
+#[cfg(test)]
+async fn assert_private_snapshot_completion(
+    runtime: &RebornRuntime,
+    driven: crate::global_monty_driver::DrivenMontyTask,
+    job: Uuid,
+) {
+    let completion = driven
+        .internal_completion
+        .expect("actual private native completion");
+    assert_eq!(
+        completion.receipt().root,
+        runtime.global_monty_owner.client().root_identity()
+    );
+    let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let original = crate::pg_monty_admission::PgMontyAdmission::verify_private_live_completion(
+        &tx,
+        &completion,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert!(
+        matches!(original.request().original(),brassclaw_turns::private_work::PrivateOriginalRef::PrefixSourceOnly { job_id,.. } if *job_id==job)
+    );
+    let row = tx.query_one("SELECT w.turn_id,a.scope,a.accepted_message_ref FROM brassclaw_turns w JOIN brassclaw_monty_task_admissions a ON a.private_work_id=w.work_id WHERE w.work_id=$1",&[&job]).await.unwrap();
+    assert!(row.get::<_, Option<String>>(0).is_none());
+    assert!(row.get::<_, Option<serde_json::Value>>(1).is_none());
+    assert!(row.get::<_, Option<String>>(2).is_none());
+    tx.commit().await.unwrap();
 }

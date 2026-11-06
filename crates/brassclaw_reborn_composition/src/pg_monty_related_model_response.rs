@@ -66,6 +66,8 @@ impl Handle {
         request_bytes: &str,
     ) -> Result<Arc<dyn RecipeModelResponseRecord>, AgentLoopHostError> {
         let parent = &self.0;
+        let admission = &parent.invocation.admission;
+        let chat = admission.chat_origin().map_err(|_| error())?;
         let id = work.work_id.ok_or_else(error)?;
         if parent.related_work.is_some()
             || id.as_uuid() == parent.invocation.id
@@ -88,10 +90,9 @@ impl Handle {
         let input_reference = original_review_input(selected.clone()).await?;
         let limits = parent.invocation.data_limits;
         let request = strict_json(request_bytes, limits).map_err(|_| error())?;
-        let admission = &parent.invocation.admission;
         if request["run_id"]
             != serde_json::to_value(admission.attempt.run_id).map_err(|_| error())?
-            || request["turn_id"] != serde_json::to_value(admission.turn_id).map_err(|_| error())?
+            || request["turn_id"] != serde_json::to_value(chat.turn_id).map_err(|_| error())?
             || request["model_profile_id"]
                 != serde_json::to_value(&work.model_profile_id).map_err(|_| error())?
             || request["resolved_model_route"]

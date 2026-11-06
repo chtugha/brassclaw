@@ -328,8 +328,11 @@ async fn monty_task_host_preserves_opaque_identity_prompt_authority_and_reply_sc
         )
         .unwrap(),
     );
-    assert_eq!(task.run_context(), &fixture.context);
-    assert_eq!(task.request().run_id, fixture.claimed.state.run_id);
+    assert_eq!(task.run_context(), Some(&fixture.context));
+    assert_eq!(
+        task.request().expect("actual chat fixture").run_id,
+        fixture.claimed.state.run_id
+    );
     assert_eq!(task.attempt().lease_token, fixture.claimed.lease_token);
     let surface: VisibleCapabilitySurface = serde_json::from_value(
         task.dispatch_port("visible_capabilities", json!({}))

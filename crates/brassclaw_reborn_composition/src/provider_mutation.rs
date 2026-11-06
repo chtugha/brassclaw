@@ -254,6 +254,10 @@ async fn decode<C: tokio_postgres::GenericClient + Sync>(
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?
             .ok_or(LlmConfigServiceError::Unavailable)?;
+        let job_scope = job
+            .origin
+            .chat_scope()
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
         let actor: String = row.try_get("actor_id").map_err(error)?;
         let mutation_id: uuid::Uuid = row.try_get("mutation_id").map_err(error)?;
         let provider_id: Option<String> = row.try_get("provider_id").map_err(error)?;
@@ -295,7 +299,7 @@ async fn decode<C: tokio_postgres::GenericClient + Sync>(
             || job.operation != "bootstrap_setup"
             || job.mode != "target"
             || job.created_by != actor
-            || job.scope.tenant_id.as_str() != tenant
+            || job_scope.tenant_id.as_str() != tenant
             || job.request["origin_mutation"] != mutation_id.to_string()
             || original["origin_mutation"] != mutation_id.to_string()
             || original["job_id"] != job_id.to_string()
