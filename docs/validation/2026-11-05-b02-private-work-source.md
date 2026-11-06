@@ -294,3 +294,16 @@ compares the complete original preparation bytes. No new authority check.
 Only standalone rustfmt (skip_children) and git diff --check were run. These
 are source corrections for Root batch14 diagnostics, not a warning-free build
 claim. No Cargo/DB/native/Modal execution. A03 owns its separate getter changes.
+
+### Batch 14 cfg(test) diagnostics follow-up (source only)
+
+After batch14 ended before test execution, added explicit RebornRuntime, json!
+and CancellationToken imports in private_work_admission_tests. Pair original
+conflict test now binds each genuine Chat origin before concurrent reserve
+futures; tokio::join! and winner/conflict assertions are unchanged. Removed only
+the invalid Option expect on the actual LoopDriverHost context in the dropped-
+waiter test; MontyTaskHost Option checks elsewhere remain. No D01 redesign.
+
+Together with 6df39f884 these address all B02 diagnostics in run-14-diagnostics.json
+seen at this handoff. A03 owns its ExposeSecret/BootstrapRequest/getter changes.
+Standalone rustfmt/diff checks only; no compile/native success claim.
