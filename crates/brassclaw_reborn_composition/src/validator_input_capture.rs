@@ -48,20 +48,8 @@ impl ValidatorInputCapture {
     pub(crate) fn inputs(&self) -> &brassclaw_host_api::JsonValue {
         &self.inputs
     }
-    pub(crate) fn input_bytes(&self) -> &str {
-        &self.wire.input_bytes
-    }
     pub(crate) fn input_checksum(&self) -> &str {
         &self.wire.input_checksum
-    }
-    pub(crate) fn selection_bytes(&self) -> &str {
-        &self.wire.validator_selection_bytes
-    }
-    pub(crate) fn selection_checksum(&self) -> &str {
-        &self.wire.validator_selection_checksum
-    }
-    pub(crate) fn validator_bytes(&self) -> &str {
-        &self.wire.validator_bytes
     }
     pub(crate) fn validator_checksum(&self) -> &str {
         &self.wire.validator_checksum
@@ -263,10 +251,18 @@ pub(crate) async fn assert_original_capture(
     .await
     .unwrap();
     let capture = prepared.input_capture();
-    assert_eq!(capture.input_checksum(), checksum(capture.input_bytes()));
-    assert_eq!(capture.selection_bytes(), selection.bytes());
-    assert_eq!(capture.selection_checksum(), checksum(selection.bytes()));
-    assert_eq!(capture.validator_bytes(), selection.validator_bytes());
+    // Inspect this owner's actual retained envelope directly; callers need the
+    // complete bytes/checksum, not separate getters for its internal fields.
+    assert_eq!(
+        capture.input_checksum(),
+        checksum(&capture.wire.input_bytes)
+    );
+    assert_eq!(capture.wire.validator_selection_bytes, selection.bytes());
+    assert_eq!(
+        capture.wire.validator_selection_checksum,
+        checksum(selection.bytes())
+    );
+    assert_eq!(capture.wire.validator_bytes, selection.validator_bytes());
     assert_eq!(
         capture.validator_checksum(),
         checksum(selection.validator_bytes())
