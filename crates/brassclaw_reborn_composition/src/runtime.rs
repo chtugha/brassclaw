@@ -4589,8 +4589,8 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "resource_store_settings_tests.rs"]
     mod resource_store_settings_tests;
-    // review_admission_source_tests removed: old contained-runner approach superseded by
-    // validation_queue_q1_retained_tests which uses the drive_admitted path (plan Revision 4).
+    // Retained validator Q1 tests use private Work through the existing Worker
+    // and the common global driver lifecycle.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_prefix_work_tests.rs"]
     mod private_prefix_work_tests;

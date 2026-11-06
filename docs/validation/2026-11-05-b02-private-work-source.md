@@ -270,3 +270,27 @@ and genuine Q1 completion. This source has not been compiled or executed.
 Standalone rustfmt and git diff --check only. Root owns Cargo/native acceptance.
 Absent-Work startup discovery, differing-old-artifact restoration, general
 recovery, GeneralPureApproval and prefix serving remain outside this correction.
+
+## Batch 14 warning review correction (source only, 2026-11-06)
+
+Source caller review removed obsolete GlobalMontyDriver::drive_admitted: no
+production/test callers remained after Structural migration to private Work.
+Both Chat and private Work still use drive_host and the same global service,
+factory, result contract checks and native settlement. Stale comments updated.
+
+InstalledMontyCatalogue's retained startup_executor/resource_store_settings
+projections and Prefix Origin::thread_scope accessor have only test callers.
+Their fields/initializers/accessor are cfg(test); real startup passes the same
+local executor/resource Arc values into bootstrap, installation observation and
+other actual consumers before catalogue construction. Required production
+behavior is not gated; contained rebuild/native fixtures keep original ports.
+
+PreparationCapture no longer stores an unused duplicate Origin projection or
+exports origin(). The immutable /1 wire, provenance enum, exact checksums,
+revision, policy and restore checks are unchanged. Codec tests inspect serialized
+startup/live provenance directly; the existing validator capture assertion now
+compares the complete original preparation bytes. No new authority check.
+
+Only standalone rustfmt (skip_children) and git diff --check were run. These
+are source corrections for Root batch14 diagnostics, not a warning-free build
+claim. No Cargo/DB/native/Modal execution. A03 owns its separate getter changes.

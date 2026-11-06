@@ -76,6 +76,7 @@ impl Origin {
             Self::Private { .. } => Err(Error::Invalid),
         }
     }
+    #[cfg(test)]
     pub(crate) fn thread_scope(&self) -> Result<&ThreadScope, Error> {
         match self {
             Self::Chat { thread_scope, .. } => Ok(thread_scope),
