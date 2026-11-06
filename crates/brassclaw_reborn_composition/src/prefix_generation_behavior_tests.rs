@@ -384,30 +384,8 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
     let cases: Vec<Value> = serde_json::from_slice(&oracle.stdout).unwrap();
     let package = cases[4]["expected"].as_str().unwrap();
     let generation = hex::encode(Sha256::digest(package.as_bytes()));
-    let limits = inspected.preparation_limits();
-    // A frame carries one stage exchange, never the concatenation of every
-    // independent CPython oracle input and output retained by this test.
-    let frame = cases
-        .iter()
-        .flat_map(|case| [&case["inputs"], &case["expected"]])
-        .map(|value| serde_json::to_vec(value).unwrap().len())
-        .max()
-        .unwrap()
-        .checked_mul(2)
-        .unwrap()
-        .checked_add(1024 * 1024)
-        .unwrap();
-    assert!(frame <= limits.process.max_frame_bytes);
-    let mut process = limits.process;
-    process.max_frame_bytes = frame;
-    let mut bounds = limits.bounds;
-    bounds.max_value_bytes = frame;
-    let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
-    let heap = process
-        .hard_memory_bytes
-        .checked_sub(frame * 2 + adapter)
-        .unwrap();
-    assert!(heap > frame);
+    // Use the catalogue's actual startup selection and checked executor policy,
+    // including its frame, heap, task, actor and Recipe data limits.
     for mode in ["valid", "duplicate", "missing-guide", "denied"] {
         let mut source: Value =
             serde_json::from_str(cases[0]["inputs"]["snapshot_bytes"].as_str().unwrap()).unwrap();
@@ -433,40 +411,6 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
             mode == "denied",
         )
         .unwrap();
-        let root = crate::global_root_seed::retain_packaged_global_root(
-            catalogue.pool.clone(),
-            crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
-        )
-        .await
-        .unwrap();
-        let boot = RootBoot {
-            source: root.source().to_owned(),
-            checksum: root.source_checksum(),
-            aliases: root.ports().iter().cloned().collect(),
-            bounds: GlobalBounds {
-                values: bounds,
-                workers: 1,
-                max_pending_calls: 8,
-            },
-            heap_settings: Some(HeapSettings {
-                revision: 1,
-                max_vm_bytes: heap,
-            }),
-            adapter_reserve_bytes: adapter,
-            startup_timeout: Duration::from_secs(10),
-            task_settings: TaskSettings {
-                revision: 1,
-                max_compute_time: Duration::from_secs(60),
-                token_budgets_enabled: false,
-            },
-            max_recipe_contexts: 8,
-        };
-        let actor = ActorLimits {
-            max_unclaimed: 8,
-            max_reserved_frame_bytes: frame * 2,
-            max_control_unclaimed: 8,
-            max_control_reserved_frame_bytes: frame * 2,
-        };
         let source = CompilerFlowSource {
             reference: admitted.input["user_input"].as_str().unwrap().to_owned(),
             inputs: task_inputs,
@@ -478,21 +422,13 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
         };
         let observed = crate::bootstrap_recipe_flow::execute(
             &admitted,
-            crate::bootstrap_recipe_flow::Request {
-                worker: catalogue.worker.clone(),
-                boot,
-                process,
-                actor,
-                capacity: crate::global_recipe_ports::RecipeCapacity {
-                    revision: 1,
-                    max_recipes: 8,
-                    data_limits: brassclaw_skills::value_contract::ContractLimits {
-                        max_bytes: frame,
-                        ..brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS
-                    },
-                },
-                source: Arc::new(source),
-            },
+            crate::bootstrap_recipe_flow::Request::contained(
+                catalogue.worker.clone(),
+                catalogue.startup_executor.clone(),
+                catalogue.root_definition.as_ref(),
+                Arc::new(source),
+            )
+            .unwrap(),
         )
         .await
         .unwrap();

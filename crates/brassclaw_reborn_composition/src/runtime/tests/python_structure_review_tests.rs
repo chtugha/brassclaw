@@ -16,6 +16,7 @@ use brassclaw_skills::{
     validator_components::{python_pure_structure_drafts, python_structure_drafts},
     value_contract::strict_json,
 };
+use secrecy::ExposeSecret;
 use tokio::sync::Mutex;
 
 struct StructureInvocation {
