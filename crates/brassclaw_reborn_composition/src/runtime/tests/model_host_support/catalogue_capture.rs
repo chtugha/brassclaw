@@ -17,7 +17,14 @@ pub(super) fn scope(host: &MontyTaskHost) -> IntentScope {
         tenant_id: context.scope.tenant_id.to_string(),
         user_id: context.actor.as_ref().unwrap().user_id.to_string(),
         agent_id: context.scope.agent_id.as_ref().unwrap().to_string(),
-        project_id: context.scope.project_id.as_ref().unwrap().to_string(),
+        // Match the installed catalogue's existing matcher namespace policy.
+        // This does not rewrite the admitted task's optional project identity.
+        project_id: context
+            .scope
+            .project_id
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_else(|| "default".into()),
     }
 }
 

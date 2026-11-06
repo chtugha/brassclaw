@@ -159,12 +159,9 @@ where
     /// The engine-backed `RetrievalLookup` impl is supplied by composition
     /// (skills-db-gated), mirroring `recipe_lookup` / `RecipeLookup`.
     pub retrieval_lookup: Option<Arc<dyn RetrievalLookup>>,
-    /// Tier-0 orchestrator bridge (v3 plan §H12). When `Some`,
-    /// `RecipeStage`'s Tier-0/Tier-1 branches delegate to this
-    /// `OrchestratorLookup` (the composition `PgOrchestratorLookup` wrapping
-    /// the engine `TierZeroOrchestrator` facade); when `None`, the host
-    /// inherits `NoOrchestrator` and `RecipeStage` falls through to Tier 2.
-    /// Supplied by composition (skills-db-gated), mirroring `retrieval_lookup`.
+    /// Optional compatibility port for callers of the legacy planned driver.
+    /// A selected Tier-0 recipe fails closed when this port is absent.
+    /// Ordinary Composition work uses its global Monty driver and supplies None.
     pub orchestrator_lookup: Option<Arc<dyn OrchestratorLookup>>,
     /// Raw accepted-message text resolver (v3 Phase E.0 / plan §H3). When
     /// `Some`, `LoopContextPort::resolve_message_text` returns the unsanitized

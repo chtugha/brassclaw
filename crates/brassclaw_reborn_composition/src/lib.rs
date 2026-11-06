@@ -1,7 +1,4 @@
 #![forbid(unsafe_code)]
-// Allow deprecated DocType/MemoryDoc during the migration to class-code component
-// tables (V027–V043). These types are bridge adapters retained until PG-8 is complete.
-#![allow(deprecated)]
 
 //! Reborn composition root.
 //!
@@ -100,7 +97,6 @@ mod oauth_dcr;
 mod oauth_dcr_protocol;
 mod oauth_gate;
 mod oauth_provider_client;
-mod orchestrator_effect_executor;
 #[cfg(feature = "root-llm-provider")]
 pub mod pg_provider_repo;
 #[cfg(all(
@@ -149,7 +145,6 @@ mod memory_embedding_source;
 pub mod migration;
 #[cfg(feature = "skills-db")]
 mod monty_task_input;
-pub(crate) mod orchestrator_lookup_impl;
 /// Inbound MCP transport: qualified Recipe commands through ordinary chat.
 pub mod orchestrator_mcp_server;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -198,8 +193,6 @@ pub(crate) mod pg_security_settings_store;
 pub(crate) mod pg_settings_listing;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_skill_store;
-#[cfg(feature = "postgres")]
-pub(crate) mod pg_thread_engine_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_token_settings_store;
 #[cfg(feature = "postgres")]
@@ -257,7 +250,6 @@ mod task_model_capture_record;
 mod task_model_provider;
 #[cfg(feature = "test-support")]
 pub mod test_support;
-mod tier_zero_llm_guard;
 mod trigger_poller;
 mod trigger_poller_trusted_submit;
 mod web_access;
