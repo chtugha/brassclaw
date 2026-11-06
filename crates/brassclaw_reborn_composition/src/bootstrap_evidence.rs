@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use tokio_postgres::Transaction;
 use uuid::Uuid;
 
-#[path="bootstrap_evidence_io.rs"]
+#[path = "bootstrap_evidence_io.rs"]
 pub(crate) mod io;
 
 pub(super) fn checksum(bytes: &str) -> String {
