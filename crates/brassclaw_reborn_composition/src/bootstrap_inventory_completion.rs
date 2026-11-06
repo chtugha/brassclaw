@@ -742,9 +742,9 @@ impl Subject {
                         }
                     || facts["outcome"]["dispatch_kind"]
                         != if index == 1 {
-                            "input_encode"
+                            brassclaw_host_api::RuntimeDispatchErrorKind::InputEncode.as_str()
                         } else {
-                            "resource"
+                            brassclaw_host_api::RuntimeDispatchErrorKind::Resource.as_str()
                         }
                 {
                     return Err(invalid("negative native fixture has unrelated failure"));

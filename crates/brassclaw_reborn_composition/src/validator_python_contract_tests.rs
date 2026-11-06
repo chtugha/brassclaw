@@ -104,7 +104,7 @@ impl InternalRecipeSource for Invocation {
             .iter()
             .map(|(key, value)| (key.clone(), value.clone()))
             .collect();
-        results.insert("0:4".into(), json!(receipt));
+        results.insert(self.coverage.receipt_step().to_owned(), json!(receipt));
         assert!(execution.is_complete());
         assert_eq!(
             execution.completed_step_ids().collect::<Vec<_>>(),
@@ -203,7 +203,7 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
     let recipe_draft=ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":recipe,"class_code":21,
         "document":{"name":"development-contract-review","validates_class_code":22,"consumer_tags":["05:validator"],
-            "validator_coverage":{"format":"validator-coverage/1","rules":[{"rule_id":"python_contracts","step_id":"0:1"}],"aggregate_step":"0:3"},
+            "validator_coverage":{"format":"validator-coverage/1","rules":[{"rule_id":"python_contracts","step_id":"0:1"}],"aggregate_step":"0:3","receipt_step":"0:4"},
             "variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
             "step_descriptions":[{"desc_idx":0,"label":"Closed contract review only","yaml_source":"","steps":[
                 {"stepnumber":1,"knowledge":"orchestrator","goal":"Check original public contracts","content":"","type":"component","include":[rule.uuid()]},
@@ -245,6 +245,8 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
     assert_eq!(pure.components().len(), 3);
     let coverage =
         Arc::new(RetainedValidatorCoverage::from_inputs(inspected.program().inputs()).unwrap());
+    assert_eq!(coverage.aggregate_step(), "0:3");
+    assert_eq!(coverage.receipt_step(), "0:4");
     let private=ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":Uuid::new_v4(),"class_code":22,
         "document":{"content":"def private_helper(value):\n    return value\n","preload":{"format":"python-preload/2","exports":{},"private_functions":{"private_helper":["value"]},"constants":[],"imports":[],"dependencies":[],"default_export":null}},
