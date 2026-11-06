@@ -1,0 +1,96 @@
+{
+  "format": "d01-private-bridge-retirement-source-inventory/1",
+  "date": "2026-11-06",
+  "base_commit": "1e7f664fe42dc67f083623eca818b88a86017a60",
+  "validation": "source-only; no Cargo, tests, DB or Modal run in this package chat",
+  "retired_compiled_tests": 47,
+  "original_approved_inventory": 44,
+  "separately_approved_sole_dependent_guard_tests": 3,
+  "retired": [
+    {
+      "original_source": "crates/brassclaw_reborn_composition/src/orchestrator_lookup_impl.rs",
+      "original_sha256": "4827fbb030ca229b206f1dfb5cae3c9a6bdfbca8d8e3338dfbc49a0ca67981fe",
+      "retired_test_selectors": [
+        "orchestrator_lookup_impl::tests::map_pkr_to_bundle_preserves_core_fields_and_drops_vestigial",
+        "orchestrator_lookup_impl::tests::map_result_to_reply_renames_formatted_output_to_text"
+      ]
+    },
+    {
+      "original_source": "crates/brassclaw_reborn_composition/src/pg_thread_engine_store.rs",
+      "original_sha256": "7a7ab5f4fddc0ea04a2f908b5c2239d5a1b58a4a96fa126bd8efd246cc834395",
+      "retired_test_selectors": [
+        "pg_thread_engine_store::tests::map_record_carries_full_fidelity_fields",
+        "pg_thread_engine_store::tests::map_record_falls_back_for_missing_identity",
+        "pg_thread_engine_store::tests::load_thread_round_trips_through_in_memory_service",
+        "pg_thread_engine_store::tests::load_thread_missing_returns_none",
+        "pg_thread_engine_store::tests::load_thread_cross_tenant_returns_none",
+        "pg_thread_engine_store::tests::non_load_thread_methods_stub"
+      ]
+    },
+    {
+      "original_source": "crates/brassclaw_reborn_composition/src/orchestrator_effect_executor.rs",
+      "original_sha256": "8aff7a7841599cdcd81b911860a5690576aa7b41b7bdba461fe74f25c8ec1670",
+      "retired_test_selectors": [
+        "orchestrator_effect_executor::tests::build_projects_engine_scope_into_host_execution_context",
+        "orchestrator_effect_executor::tests::build_fails_closed_when_engine_user_id_contains_a_path_separator",
+        "orchestrator_effect_executor::tests::build_fails_closed_when_engine_user_id_is_empty",
+        "orchestrator_effect_executor::tests::build_converts_engine_uuid_project_and_thread_ids_to_host_api_ids",
+        "orchestrator_effect_executor::tests::registry_passes_through_a_valid_two_segment_capability_id",
+        "orchestrator_effect_executor::tests::registry_passes_through_a_valid_namespaced_capability_id",
+        "orchestrator_effect_executor::tests::registry_fails_closed_when_action_name_has_no_dot",
+        "orchestrator_effect_executor::tests::registry_fails_closed_when_action_name_has_an_empty_segment",
+        "orchestrator_effect_executor::tests::registry_fails_closed_when_action_name_is_empty",
+        "orchestrator_effect_executor::tests::registry_fails_closed_when_action_name_has_an_uppercase_segment",
+        "orchestrator_effect_executor::tests::dispatch_completed_outcome_returns_non_error_action_result",
+        "orchestrator_effect_executor::tests::dispatch_failed_outcome_returns_error_result_with_safe_message",
+        "orchestrator_effect_executor::tests::dispatch_spawned_process_outcome_returns_a_process_handle",
+        "orchestrator_effect_executor::tests::dispatch_approval_required_degrades_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_auth_required_degrades_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_resource_blocked_degrades_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_unknown_capability_degrades_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_maps_host_runtime_unavailable_error_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_maps_host_runtime_invalid_request_error_to_engine_error",
+        "orchestrator_effect_executor::tests::dispatch_rejects_a_revoked_lease_without_invoking_the_host_runtime",
+        "orchestrator_effect_executor::tests::dispatch_rejects_a_lease_for_a_different_thread_without_invoking",
+        "orchestrator_effect_executor::tests::dispatch_rejects_a_lease_that_does_not_cover_the_action_without_invoking",
+        "orchestrator_effect_executor::tests::dispatch_rejects_an_invalid_action_name_without_invoking_the_host_runtime",
+        "orchestrator_effect_executor::tests::dispatch_projects_engine_scope_and_input_into_the_invoke_request",
+        "orchestrator_effect_executor::tests::available_actions_projects_visible_descriptors_into_action_defs",
+        "orchestrator_effect_executor::tests::available_actions_filters_to_leased_capabilities",
+        "orchestrator_effect_executor::tests::available_actions_omits_capabilities_with_no_lease",
+        "orchestrator_effect_executor::tests::available_actions_marks_askable_or_ask_permission_as_requires_approval",
+        "orchestrator_effect_executor::tests::available_actions_maps_host_runtime_error_to_engine_error",
+        "orchestrator_effect_executor::tests::available_actions_passes_per_run_visibility_config_into_the_request",
+        "orchestrator_effect_executor::tests::available_capabilities_projects_visible_descriptors_into_summaries",
+        "orchestrator_effect_executor::tests::available_capabilities_does_not_filter_by_lease",
+        "orchestrator_effect_executor::tests::effect_executor_execute_action_delegates_to_dispatch_action",
+        "orchestrator_effect_executor::tests::available_action_inventory_wraps_available_actions_inline"
+      ]
+    },
+    {
+      "original_source": "crates/brassclaw_reborn_composition/src/runtime/local_dev/tests.rs",
+      "original_sha256": "ab7e21b3724b7dbb1f9b885bf5b91b887037b262b3d6bfc2cb7ec45bae614d02",
+      "retired_test_selectors": [
+        "runtime::local_dev::tests::tests::tier_zero_builder_build_for_run_assembles_executor_for_local_dev_path",
+        "runtime::local_dev::tests::tests::tier_zero_builder_build_for_run_assembles_executor_for_pg_path"
+      ]
+    },
+    {
+      "original_source": "crates/brassclaw_reborn_composition/src/tier_zero_llm_guard.rs",
+      "original_sha256": "9c0415d52d6196d2bff36db9914344cfd1231b135709d8265ee185c087867c2c",
+      "retired_test_selectors": [
+        "tier_zero_llm_guard::tests::complete_always_errors_with_semantic_reason",
+        "tier_zero_llm_guard::tests::model_name_identifies_the_guard",
+        "tier_zero_llm_guard::tests::default_constructs_without_args"
+      ]
+    }
+  ],
+  "unregistered_source": {
+    "path": "crates/brassclaw_reborn_composition/src/memory_doc_libsql_store.rs",
+    "never_compiled_test_functions": [
+      "save_then_load_round_trips_tags_metadata_and_timestamps",
+      "save_upserts_in_place_on_conflict",
+      "list_segregates_per_user_and_per_project"
+    ]
+  }
+}

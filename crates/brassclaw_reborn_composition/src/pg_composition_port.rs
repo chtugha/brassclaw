@@ -40,8 +40,7 @@
 //! `skills-db` feature (the engine recipe/component/intent free functions it
 //! delegates to are `skills-db`-gated). The pure mapping helpers + their unit
 //! tests touch only always-available engine types and compile/run under both
-//! configs,
-//! mirroring `orchestrator_lookup_impl.rs`. `#![allow(dead_code)]` covers the
+//! configurations. `#![allow(dead_code)]` covers the
 //! unused-until-C.5/C.6-wiring window.
 
 #![allow(dead_code)]
@@ -87,8 +86,6 @@ use brassclaw_engine::memory::retrieval_source::{
 };
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::memory::{ComposedProgram, ResolvedComponent};
-#[cfg(feature = "skills-db")]
-use brassclaw_engine::traits::store::Store;
 #[cfg(feature = "skills-db")]
 use brassclaw_engine::types::recipe::RecipeVariant;
 #[cfg(feature = "skills-db")]
@@ -139,17 +136,13 @@ impl<'a> ComponentResolver for MapComponentResolver<'a> {
 }
 
 /// Postgres-backed [`ComponentPort`] (the IBS). Constructed once at runtime
-/// wiring time with the shared `PgPool` (+ optional `Store` for the
-/// MemoryDoc `list_skills` fallback) and plumbed into the composition
+/// wiring time with the shared `PgPool` and plumbed into the composition
 /// driver via `with_component_port`. The pool the SEC-01-validated host fns
 /// read lives inside this port (C.6 slice 4c-prep collapsed the separate
 /// `pg_pool` plumbing).
 #[cfg(feature = "skills-db")]
 pub(crate) struct PgCompositionPort {
     pool: Arc<PgPool>,
-    /// MemoryDoc `Store` fallback for `list_skills` when the skills-db fast
-    /// path is absent / fails. `None` → empty list on fallback.
-    store: Option<Arc<dyn Store>>,
     /// Basic prompt store for `mark_stale` after Q2 graduation (§K.1.4 / Phase N).
     /// `None` → stale mark skipped (non-fatal per spec).
     #[cfg(feature = "postgres")]
@@ -160,14 +153,12 @@ pub(crate) struct PgCompositionPort {
 impl PgCompositionPort {
     pub(crate) fn new(
         pool: Arc<PgPool>,
-        store: Option<Arc<dyn Store>>,
         #[cfg(feature = "postgres")] basic_prompt_store: Option<
             Arc<crate::pg_basic_prompt_store::PgBasicPromptStore>,
         >,
     ) -> Self {
         Self {
             pool,
-            store,
             #[cfg(feature = "postgres")]
             basic_prompt_store,
         }
@@ -557,9 +548,6 @@ impl ComponentPort for PgCompositionPort {
         // which are incompatible with v3 skill delivery. An empty list is
         // correct: skill injection will be skipped for this turn. The MemoryDoc
         // fallback has been retired here per the v3 architecture audit (FIND-05).
-        //
-        // The MemoryDoc Store parameter is retained on PgCompositionPort for
-        // the existing callers that wire it; it is no longer consulted here.
         let pool = self.pool.clone();
         let scope = scope_from_thread_ids(
             thread.tenant_id.clone(),
@@ -679,7 +667,7 @@ mod tests {
             agent_id: "agent".into(),
             project_id: "project".into(),
         };
-        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let port = PgCompositionPort::new(pool.clone(), None);
         let recipe = port
             .resolve_component_by_name(&scope, "host-save-history", 21)
             .await
@@ -760,7 +748,7 @@ mod tests {
             agent_id: "agent".into(),
             project_id: "project".into(),
         };
-        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let port = PgCompositionPort::new(pool.clone(), None);
         let recipe = port
             .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
             .await
@@ -844,7 +832,7 @@ mod tests {
             agent_id: "caller-agent".into(),
             project_id: "caller-project".into(),
         };
-        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let port = PgCompositionPort::new(pool.clone(), None);
         let recipe = port
             .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
             .await
@@ -943,7 +931,7 @@ mod tests {
             agent_id: "caller-agent".into(),
             project_id: "caller-project".into(),
         };
-        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let port = PgCompositionPort::new(pool.clone(), None);
         let recipe = port
             .resolve_component_by_name(&caller, "host-assemble-prefix-bundle", 21)
             .await
@@ -1052,7 +1040,7 @@ mod tests {
             agent_id: "default".to_string(),
             project_id: "system".to_string(),
         };
-        let port = PgCompositionPort::new(pool.clone(), None, None);
+        let port = PgCompositionPort::new(pool.clone(), None);
         let component = port
             .resolve_component_by_name(&scope, "host-non-match-llm-answer", 21)
             .await

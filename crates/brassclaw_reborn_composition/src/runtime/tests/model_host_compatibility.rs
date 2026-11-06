@@ -465,6 +465,41 @@ async fn admitted_with_text(
     ThreadScope,
     Arc<PgInterceptorStore>,
 ) {
+    admitted_in_scope(
+        pool,
+        provider,
+        (
+            input,
+            ThreadScope {
+                tenant_id: TenantId::new("native-global-host").unwrap(),
+                agent_id: AgentId::new("global-agent").unwrap(),
+                project_id: Some(ProjectId::new("global-project").unwrap()),
+                owner_user_id: None,
+            },
+        ),
+        prefix,
+        history_count,
+        settings,
+        tool_root,
+    )
+    .await
+}
+
+async fn admitted_in_scope(
+    pool: Arc<PgPool>,
+    provider: Arc<RecordingProvider>,
+    (input, thread_scope): (AdmissionInput<'_>, ThreadScope),
+    prefix: Arc<SelectedPrefix>,
+    history_count: usize,
+    settings: LiveMontyTaskSettings,
+    tool_root: Option<&std::path::Path>,
+) -> (
+    TaskInput,
+    MontyTaskHandoff,
+    Arc<PgSessionThreadService>,
+    ThreadScope,
+    Arc<PgInterceptorStore>,
+) {
     // Every standalone caller must establish its own real host prerequisites;
     // do not rely on another test having initialized this process-local prompt.
     brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
@@ -473,17 +508,11 @@ async fn admitted_with_text(
     );
     let name = input.name;
     let user_input = input.text;
-    let tenant = TenantId::new("native-global-host").unwrap();
-    let agent = AgentId::new("global-agent").unwrap();
-    let project = ProjectId::new("global-project").unwrap();
+    let tenant = thread_scope.tenant_id.clone();
+    let agent = thread_scope.agent_id.clone();
+    let project = thread_scope.project_id.clone();
     let user = UserId::new("global-operator").unwrap();
     let thread = ThreadId::new(format!("opaque-conversation-{name}")).unwrap();
-    let thread_scope = ThreadScope {
-        tenant_id: tenant.clone(),
-        agent_id: agent.clone(),
-        project_id: Some(project.clone()),
-        owner_user_id: None,
-    };
     let service = Arc::new(PgSessionThreadService::new(pool.clone(), tenant.as_str()));
     service
         .ensure_thread(EnsureThreadRequest {
@@ -525,7 +554,18 @@ async fn admitted_with_text(
         })
         .await
         .unwrap();
-    let turn_scope = TurnScope::new(tenant.clone(), Some(agent), Some(project), thread.clone());
+    let turn_scope = if thread_scope.owner_user_id.is_some() {
+        TurnScope::new_with_owner(
+            tenant.clone(),
+            Some(agent),
+            project,
+            thread.clone(),
+            thread_scope.owner_user_id.clone(),
+        )
+    } else {
+        // Preserve the existing fixtures' actor-fallback ownership contract.
+        TurnScope::new(tenant.clone(), Some(agent), project, thread.clone())
+    };
     let state = Arc::new(PgTurnStateStore::new(pool.clone(), tenant.as_str()));
     let coordinator = DefaultTurnCoordinator::new(state.clone());
     let submitted = coordinator
@@ -1184,6 +1224,197 @@ fn assert_work_matches_provider(
 }
 
 #[tokio::test]
+async fn native_worker_without_monty_fails_original_run_without_model_fallback() {
+    use brassclaw_reborn::{
+        loop_exit_applier::{InMemoryLoopExitEvidencePort, LoopExitApplier},
+        turn_runner::{TurnRunnerWakeReceiver, TurnRunnerWorker, TurnRunnerWorkerConfig},
+    };
+    use brassclaw_turns::{
+        GetRunStateRequest, TurnStateStore, TurnStatus, runner::RelinquishRunRequest,
+    };
+
+    let database = native_pg::NativePostgres::start().await;
+    let provider = Arc::new(RecordingProvider::default());
+    let prefix = Arc::new(SelectedPrefix("original selected prefix".into()));
+    let settings = LiveMontyTaskSettings::new(MontyTaskSettingsRevision {
+        revision: 1,
+        limits: MontyTaskLimits {
+            max_compute_time: Duration::from_secs(600),
+            token_budgets_enabled: false,
+        },
+    })
+    .unwrap();
+    let (input, handoff, threads, scope, _) = admitted(
+        database.pool.clone(),
+        provider.clone(),
+        "worker-without-monty",
+        prefix.clone(),
+        0,
+        settings,
+        None,
+    )
+    .await;
+    let (_, attempt, host) = handoff.into_parts();
+    let context = host.run_context().clone();
+    drop(host);
+    assert!(uuid::Uuid::parse_str(&input.conversation_id).is_err());
+    let state = Arc::new(PgTurnStateStore::new(
+        database.pool.clone(),
+        scope.tenant_id.as_str(),
+    ));
+    let lookup = GetRunStateRequest {
+        scope: context.scope.clone(),
+        run_id: attempt.run_id,
+    };
+    let original = state.get_run_state(lookup.clone()).await.unwrap();
+    let before_history = threads
+        .list_thread_history(ThreadHistoryRequest {
+            scope: scope.clone(),
+            thread_id: context.thread_id.clone(),
+        })
+        .await
+        .unwrap();
+    // The fixture claimed only to create a genuine admitted host. Return that
+    // pre-execution claim through its owning port so the real Worker can claim it.
+    let ready = state
+        .relinquish_run(RelinquishRunRequest {
+            run_id: attempt.run_id,
+            runner_id: attempt.runner_id,
+            lease_token: attempt.lease_token,
+        })
+        .await
+        .unwrap();
+    assert_eq!(ready.status, TurnStatus::Queued);
+    let factory = Arc::new(
+        RebornLoopDriverHostFactory::new(
+            threads.clone(),
+            scope.clone(),
+            provider.clone(),
+            Arc::new(InMemoryCheckpointStateStore::default()),
+            state.clone(),
+            Arc::new(InMemoryLoopCheckpointStore::default()),
+            Arc::new(InMemoryLoopHostMilestoneSink::default()),
+            TextOnlyLoopHostConfig {
+                max_messages: 8,
+                require_model_route_snapshot: false,
+            },
+            InstructionSafetyContext::local_development_noop(),
+        )
+        .with_system_bundle_source(prefix),
+    );
+    let transition: Arc<dyn TurnRunTransitionPort> = state.clone();
+    let applier = Arc::new(LoopExitApplier::new(
+        transition.clone(),
+        Arc::new(InMemoryLoopExitEvidencePort::new()),
+    ));
+    let (_wake, receiver) = TurnRunnerWakeReceiver::new();
+    let worker = TurnRunnerWorker::new(
+        TurnRunnerWorkerConfig {
+            scope_filter: Some(context.scope.clone()),
+            poll_interval: Duration::from_millis(10),
+            ..Default::default()
+        },
+        transition,
+        applier,
+        factory,
+        receiver,
+    );
+    // Deliberately no with_monty_driver. The actual worker must record failure,
+    // rather than invoking the legacy planned driver or interpreting No-Match.
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let worker_cancel = cancel.clone();
+    let running = tokio::spawn(async move { worker.run(worker_cancel).await });
+    let observed = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let current = state.get_run_state(lookup.clone()).await.unwrap();
+            if current.status == TurnStatus::Failed {
+                break current;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    cancel.cancel();
+    tokio::time::timeout(Duration::from_secs(10), running)
+        .await
+        .unwrap()
+        .unwrap();
+    let failed = observed.expect("native worker must terminate the original run");
+    assert_eq!(
+        failed.failure.as_ref().unwrap().category(),
+        "driver_unavailable"
+    );
+    assert_eq!(failed.scope, original.scope);
+    assert_eq!(failed.run_id, original.run_id);
+    assert_eq!(failed.turn_id, original.turn_id);
+    assert_eq!(failed.actor, original.actor);
+    assert_eq!(failed.accepted_message_ref, original.accepted_message_ref);
+    assert_eq!(failed.source_binding_ref, original.source_binding_ref);
+    assert_eq!(
+        failed.reply_target_binding_ref,
+        original.reply_target_binding_ref
+    );
+    assert_eq!(
+        failed.resolved_run_profile_id,
+        original.resolved_run_profile_id
+    );
+    assert_eq!(
+        failed.resolved_run_profile_version,
+        original.resolved_run_profile_version
+    );
+    assert!(provider.requests.lock().unwrap().is_empty());
+    assert!(provider.policy_work.lock().unwrap().is_empty());
+    assert_eq!(
+        threads
+            .list_thread_history(ThreadHistoryRequest {
+                scope,
+                thread_id: context.thread_id,
+            })
+            .await
+            .unwrap(),
+        before_history
+    );
+    let admissions: i64 = database
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+            &[&attempt.run_id.as_uuid()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(admissions, 0);
+    assert!(
+        state
+            .claim_next_run(ClaimRunRequest {
+                runner_id: TurnRunnerId::new(),
+                lease_token: TurnLeaseToken::new(),
+                scope_filter: Some(context.scope),
+            })
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(state.get_run_state(lookup).await.unwrap(), failed);
+}
+
+// Session records intentionally have no Engine timestamps or lifecycle fields.
+// Check their actual owning row instead of manufacturing defaults for them.
+async fn thread_identity_and_timestamps(
+    pool: &PgPool,
+    thread: &ThreadId,
+) -> (Value, chrono::DateTime<chrono::Utc>) {
+    let row = pool.get().await.unwrap().query_one(
+        "SELECT jsonb_build_object('id',id,'tenant_id',tenant_id,'user_id',user_id,'agent_id',agent_id,'project_id',project_id,'created_by',created_by_actor_id,'created_at',created_at,'deleted_at',deleted_at),updated_at FROM brassclaw_session_threads WHERE id=$1",
+        &[&thread.as_str()],
+    ).await.unwrap();
+    (row.get(0), row.get(1))
+}
+
+#[tokio::test]
 async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     brassclaw_reborn::loop_driver_host::init_compaction_summarizer(
         include_str!("../../../../brassclaw_loop_support/prompts/compaction_summarizer_fresh.md")
@@ -1469,21 +1700,76 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         database.pool.clone(),
         "native-global-host",
     ));
-    let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
-            .unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+    )
+    .unwrap();
     let mut observed_root = None;
-    for name in ["driver-first", "driver-second"] {
-        let (input, handoff, threads, scope, _) = admitted(
+    for (name, project, metadata) in [
+        (
+            "driver-first",
+            Some("opaque:project-Ü"),
+            "{\"custom\": [1, null, \"{{literal}}\"]}",
+        ),
+        (
+            "driver-second",
+            None,
+            "unparsed opaque metadata {{literal}}",
+        ),
+    ] {
+        let scope = ThreadScope {
+            tenant_id: TenantId::new("native-global-host").unwrap(),
+            agent_id: AgentId::new("opaque:agent-Ü").unwrap(),
+            project_id: project.map(|value| ProjectId::new(value).unwrap()),
+            owner_user_id: Some(UserId::new("opaque:owner-Ü").unwrap()),
+        };
+        let thread = ThreadId::new(format!("opaque-conversation-{name}")).unwrap();
+        let mut original = threads
+            .ensure_thread(EnsureThreadRequest {
+                scope: scope.clone(),
+                thread_id: Some(thread.clone()),
+                created_by_actor_id: "original:creator/Ü".into(),
+                title: Some("original title {{literal}}".into()),
+                metadata_json: Some(metadata.into()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(original.scope, scope);
+        let goal = brassclaw_threads::ThreadGoal {
+            statement: brassclaw_threads::GoalStatement::new("retain original goal Ü").unwrap(),
+            refined_at_sequence: 0,
+            refinement_count: 3,
+        };
+        original.goal = Some(
+            threads
+                .update_thread_goal(brassclaw_threads::UpdateThreadGoalRequest {
+                    thread_id: thread.clone(),
+                    goal,
+                })
+                .await
+                .unwrap(),
+        );
+        assert_eq!(original.metadata_json.as_deref(), Some(metadata));
+        let (input, handoff, threads, scope, _) = admitted_in_scope(
             database.pool.clone(),
             provider.clone(),
-            name,
+            (
+                AdmissionInput {
+                    name,
+                    text: "'quoted' Ü {{vars.literal}}",
+                },
+                scope.clone(),
+            ),
             prefix.clone(),
             5,
             owner.client().live_task_settings(),
             None,
         )
         .await;
+        assert!(uuid::Uuid::parse_str(&input.conversation_id).is_err());
+        let stored_before = thread_identity_and_timestamps(&database.pool, &thread).await;
         let exit = tokio::time::timeout(Duration::from_secs(10), driver.drive_turn(handoff))
             .await
             .unwrap()
@@ -1497,6 +1783,22 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         );
         assert_eq!(exit.reply_message_refs.len(), 1);
         let actual_host = factory.last_host.lock().unwrap().clone().unwrap();
+        let actual_context = actual_host.run_context().unwrap();
+        assert_eq!(actual_context.thread_id, thread);
+        assert_eq!(actual_context.scope.tenant_id, scope.tenant_id);
+        assert_eq!(
+            actual_context.scope.agent_id.as_ref(),
+            Some(&scope.agent_id)
+        );
+        assert_eq!(actual_context.scope.project_id, scope.project_id);
+        assert_eq!(
+            actual_context.scope.explicit_owner_user_id(),
+            scope.owner_user_id.as_ref()
+        );
+        assert_eq!(
+            actual_context.actor.as_ref().unwrap().user_id.as_str(),
+            "global-operator"
+        );
         let attempt = actual_host.attempt();
         driver.stop_attempt(attempt).await.unwrap();
         assert!(driver.take_settlement(attempt).unwrap().is_none());
@@ -1560,6 +1862,25 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         assert!(
             matches!(pg_monty_admission::PgMontyAdmission::reserve(database.pool.clone(), actual_host.run_context().expect("actual native chat fixture"), stale).await,
             Err(brassclaw_turns::run_profile::AgentLoopDriverError::Failed { reason_kind }) if reason_kind == "monty_admission_fenced")
+        );
+        // Fresh service reads the persisted originals after actual execution.
+        let reopened = PgSessionThreadService::new(database.pool.clone(), scope.tenant_id.as_str());
+        assert_eq!(
+            reopened
+                .read_thread(ThreadHistoryRequest {
+                    scope: scope.clone(),
+                    thread_id: thread.clone(),
+                })
+                .await
+                .unwrap(),
+            original
+        );
+        let stored_after = thread_identity_and_timestamps(&database.pool, &thread).await;
+        assert_eq!(stored_after.0, stored_before.0);
+        assert!(stored_after.1 >= stored_before.1);
+        assert_eq!(
+            thread_identity_and_timestamps(&database.pool, &thread).await,
+            stored_after
         );
         let history = threads
             .list_thread_history(ThreadHistoryRequest {
@@ -1915,9 +2236,12 @@ async fn unsubmitted_cancellation_retains_exact_proof_until_database_acknowledge
     .await;
     let (request, attempt, raw_host) = handoff.into_parts();
     let handoff = MontyTaskHandoff::new(request, attempt, raw_host).unwrap();
-    let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
-            .unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+    )
+    .unwrap();
     let mut drive = Box::pin(driver.drive_turn(handoff));
     tokio::time::timeout(Duration::from_secs(10), async {
         loop {
@@ -2903,9 +3227,12 @@ async fn global_recipe_ports_retain_actual_ibs_and_effects_without_model_replay(
         database.pool.clone(),
         "native-global-host",
     ));
-    let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
-            .unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+    )
+    .unwrap();
     let data = json!({"text":"'quotes'\n Ü {{vars.data}} host.forbidden()"});
     let query = format!("parse {data}");
     let (_, handoff, _, _, _) = admitted_with_text(
@@ -3648,9 +3975,12 @@ async fn global_driver_repeated_rejections_release_attempt_capacity_without_canc
         database.pool.clone(),
         "native-global-host",
     ));
-    let driver =
-        global_monty_driver::GlobalMontyDriver::new(owner.client(), threads, factory.clone())
-            .unwrap();
+    let driver = global_monty_driver::GlobalMontyDriver::new(
+        owner.client(),
+        threads.clone(),
+        factory.clone(),
+    )
+    .unwrap();
     let root = owner.client().root_identity();
     let text = "ü".repeat(owner.client().vm_bounds().max_value_bytes);
     for index in 0..4 {

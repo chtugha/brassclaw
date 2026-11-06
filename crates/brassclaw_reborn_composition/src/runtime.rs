@@ -105,11 +105,6 @@ mod auth_interaction_tests;
 mod default_system_prompt_tests;
 mod local_dev;
 mod run_state_read_source;
-// v3 Phase H.12.5: re-export the per-run Tier-0 EffectExecutor builder so the
-// `orchestrator_lookup_impl` bridge (crate-root module) can hold/call it
-// without widening the whole `local_dev` module's visibility.
-#[cfg(feature = "skills-db")]
-pub(crate) use local_dev::TierZeroEffectExecutorBuilder;
 #[cfg(test)]
 #[path = "runtime/test_pg.rs"]
 pub(crate) mod test_pg;
@@ -3175,13 +3170,6 @@ pub async fn build_reborn_runtime(
                 .with_skill_activation_observer(Arc::clone(&skill_activation_observer_arc)),
             ) as Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>
         });
-    // v3 Phase H.12.5: clone the per-run Tier-0 EffectExecutor builder out of
-    // the capability wiring before any of its sibling fields are moved, so the
-    // OrchestratorLookup bridge (built below near `retrieval_lookup`) can hand
-    // it to `PgOrchestratorLookup`. Skills-db-gated: the builder (and the whole
-    // Tier-0 deterministic path) only exists under that feature.
-    #[cfg(feature = "skills-db")]
-    let tier_zero_executor_builder = local_dev_capabilities.tier_zero_executor_builder.clone();
     let capability_factory = {
         // Wrap the capability factory with the content-cache decorator when
         // content_cache_threshold is configured.
@@ -3311,50 +3299,6 @@ pub async fn build_reborn_runtime(
     // events via the same publisher as the milestone sink.
     #[cfg(not(feature = "skills-db"))]
     let retrieval_lookup: Option<Arc<dyn brassclaw_turns::run_profile::RetrievalLookup>> = None;
-
-    // v3 Phase H.12.5: wire the production OrchestratorLookup bridge
-    // (PgOrchestratorLookup) when the skills-db feature is active. The bridge
-    // holds the engine TierZeroOrchestrator facade (deterministic Tier-0
-    // channel; LlmBackend = the always-erroring TierZeroLlmGuard so a
-    // mis-compiled recipe surfaces loudly instead of silently calling a model),
-    // the PG-backed engine Store (PgThreadEngineStore — loads the live Thread
-    // via SessionThreadService::read_thread), and the per-run
-    // TierZeroEffectExecutorBuilder (cloned out of the capability wiring above).
-    // No Postgres pool needed — the thread store reads via the loop thread
-    // service, not a raw pool. When the feature is off the slot stays `None` →
-    // `NoOrchestrator` → Tier-2 degrade.
-    #[cfg(feature = "skills-db")]
-    let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> = {
-        use brassclaw_engine::{LlmBackend, TierZeroOrchestrator};
-        let thread_store: Arc<dyn brassclaw_engine::Store> =
-            Arc::new(crate::pg_thread_engine_store::PgThreadEngineStore::new(
-                Arc::clone(&thread_service) as Arc<dyn SessionThreadService>,
-                validated_identity.tenant_id.as_str(),
-            ));
-        let llm_guard =
-            Arc::new(crate::tier_zero_llm_guard::TierZeroLlmGuard::new()) as Arc<dyn LlmBackend>;
-        let runtime = TierZeroOrchestrator::builder()
-            .llm(llm_guard)
-            .build()
-            .map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: error.to_string(),
-            })?;
-        // Retain the legacy lookup adapter for its explicit consumers. Ordinary
-        // turns are dispatched through the global Monty service below.
-        let executor_builder_for_lookup = Arc::clone(&tier_zero_executor_builder);
-        Some(Arc::new(
-            crate::orchestrator_lookup_impl::PgOrchestratorLookup::new(
-                Arc::new(runtime),
-                thread_store,
-                executor_builder_for_lookup,
-            )
-            .with_retrieval_lookup(retrieval_lookup.clone()),
-        )
-            as Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>)
-    };
-    #[cfg(not(feature = "skills-db"))]
-    let orchestrator_lookup: Option<Arc<dyn brassclaw_turns::run_profile::OrchestratorLookup>> =
-        None;
 
     // v3 Phase E.0 / plan §H3: wire SkillActivationMessageTextResolver so the
     // production host can resolve the raw accepted-message body via the
@@ -3541,7 +3485,8 @@ pub async fn build_reborn_runtime(
         hook_dispatcher_builder_factory,
         recipe_lookup,
         retrieval_lookup,
-        orchestrator_lookup,
+        // Ordinary work uses the global Monty driver, never the legacy Engine bridge.
+        orchestrator_lookup: None,
         message_text_resolver,
         interceptor_store,
         #[cfg(feature = "root-llm-provider")]
@@ -8380,6 +8325,26 @@ mod tests {
             uuid::Uuid::parse_str(conversation.0.as_str()).is_err(),
             "production conversation ID must stay opaque"
         );
+        let original_thread = runtime
+            .thread_service
+            .read_thread(ThreadHistoryRequest {
+                scope: runtime.thread_scope.clone(),
+                thread_id: conversation.0.clone(),
+            })
+            .await
+            .unwrap();
+        let original_created_at: chrono::DateTime<chrono::Utc> = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT created_at FROM brassclaw_session_threads WHERE id=$1",
+                &[&conversation.0.as_str()],
+            )
+            .await
+            .unwrap()
+            .get(0);
         let literal = "quoted ' Unicode ü and {{not_source}}";
         let mut outcomes = Vec::new();
         let captured_catalogue = runtime.installed_catalogue.active.read().await.clone();
@@ -8408,10 +8373,39 @@ mod tests {
                 "failure category: {:?}",
                 state.failure.as_ref().map(|failure| failure.category())
             );
+            assert_eq!(state.scope, runtime.turn_scope_for(&conversation.0));
+            assert_eq!(state.run_id, reply.run_id);
+            assert_eq!(
+                runtime
+                    .thread_service
+                    .read_thread(ThreadHistoryRequest {
+                        scope: runtime.thread_scope.clone(),
+                        thread_id: conversation.0.clone(),
+                    })
+                    .await
+                    .unwrap(),
+                original_thread
+            );
             if text.starts_with("reply ") {
                 assert_eq!(reply.text.as_deref(), Some(literal));
             }
             let client = rig.pool.get().await.unwrap();
+            let original_row = client
+                .query_one(
+                    "SELECT created_at,deleted_at FROM brassclaw_session_threads WHERE id=$1",
+                    &[&conversation.0.as_str()],
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                original_row.get::<_, chrono::DateTime<chrono::Utc>>(0),
+                original_created_at
+            );
+            assert!(
+                original_row
+                    .get::<_, Option<chrono::DateTime<chrono::Utc>>>(1)
+                    .is_none()
+            );
             let row=client.query_one("SELECT outcome,catalogue_reference_version,catalogue_id,catalogue_checksum FROM brassclaw_monty_task_admissions WHERE run_id=$1 AND phase='settled'",&[&reply.run_id.as_uuid()]).await.unwrap();
             assert_eq!(row.get::<_, i16>(1), 1);
             assert_eq!(

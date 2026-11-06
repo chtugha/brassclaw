@@ -4,8 +4,7 @@
 //! `execute_tier_zero_channel` needs (`LeaseManager`, `PolicyEngine`,
 //! `GateController`, `LlmBackend`, the event broadcast, and the
 //! `RetrievalSource`) behind two async entry points. The per-run
-//! `EffectExecutor` is intentionally NOT held here — it is built per turn by
-//! the composition `TierZeroEffectExecutorBuilder` (Q-H12-2-BUILD = A) and
+//! `EffectExecutor` is supplied by each compatibility caller and
 //! passed into [`TierZeroOrchestrator::run_tier_zero`] so tenant/agent/grants
 //! resolve at run time rather than once at wiring time:
 //! - [`TierZeroOrchestrator::run_tier_zero`] — deserialize a stashed
@@ -14,9 +13,8 @@
 //! - [`TierZeroOrchestrator::assemble_prior_knowledge`] — wrap
 //!   [`assemble_prior_knowledge_with_hint`] for Tier-1 prompt injection.
 //!
-//! Composition (H.12.4 wiring) constructs this via
-//! [`TierZeroOrchestrator::builder`]; H.12.5 (`OrchestratorLookup::run_tier_zero`)
-//! calls the methods per turn.
+//! Ordinary Composition work uses the global Monty service; it does not
+//! construct this legacy facade.
 
 use std::sync::Arc;
 
@@ -67,8 +65,7 @@ impl TierZeroOrchestrator {
     /// result); it is deserialized and assembled into orchestrator-channel
     /// prose via [`assemble_pkr_from_items`] (no re-fetch). `recipe_rust_context`
     /// is forwarded verbatim as the channel's rust context. `effects` is the
-    /// per-run [`EffectExecutor`] built by the composition
-    /// `TierZeroEffectExecutorBuilder` (Q-H12-2-BUILD = A); it is passed in
+    /// per-run [`EffectExecutor`] supplied by the compatibility caller; it is passed in
     /// per call rather than held on the orchestrator so tenant/agent/grants
     /// resolve per turn.
     pub async fn run_tier_zero(

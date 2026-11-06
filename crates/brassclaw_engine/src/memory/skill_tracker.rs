@@ -1,8 +1,8 @@
 //! Skill telemetry stub.
 //!
-//! The v2 MemoryDoc-backed `SkillTracker` has been retired: `PgThreadEngineStore`
-//! (the sole production `Store` implementation) stubs out `load_memory_doc` and
-//! `save_memory_doc`, so the old tracker was always a silent no-op in production.
+//! The v2 MemoryDoc-backed `SkillTracker` has been retired. The former private
+//! Composition Store bridge supplied no writable MemoryDocs and has also been
+//! retired.
 //! Skill usage telemetry is now owned by the `reborn_skills` DB columns
 //! (`usage_count`, `success_count`, `failure_count`) and updated by the
 //! Validator/reward path in `brassclaw_reborn_composition`.
