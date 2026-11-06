@@ -43,8 +43,16 @@ scopes, not a successful combined Composition run.
 B03a's reviewed source through `83efab192` is integrated as `576372fe2`, with
 atomic original/Work/preparation/Ready publication for supported private
 source-only Prefix jobs and strict historical readback. Its three added native
-cases are unexecuted. E-01 implements the reviewed own-checker qualification
-boundary. Validator original-to-Work discovery, post-native domain ACK, complete
+cases are unexecuted. E-01 source `8ff7abc478` is fully reviewed and independently
+hash-verified, integrated as `0e2b53c30`. Its actual own-checker fixture execution,
+independent receipt prerequisite and original startup readback await native
+acceptance; the [source handoff](2026-11-06-e01-structural-checker-source.md)
+records the exact scope and intentional early-boot test replacement. A-03 and
+D-01 supplied the diagnosed configuration and Memory corrections, fully reviewed
+and integrated as `bea5efa8a` and `18183a653`. They await one coherent native
+worker/Composition/Memory build and actual selected acceptance; source review
+does not establish their runtime behavior.
+Validator original-to-Work discovery, post-native domain ACK, complete
 class rules, general Pure approval, successor publication/readers and all three
 full Bob plans remain open. The supervisor continues after integration commits.
 

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Shipped structural-checker qualification (E-01, validation pending)**:
+  Replace manufactured early checker approvals with actual contained Monty
+  fixtures for the eight shipped checking exports and their independently
+  qualified receipt helper. Pin canonical package bytes, retain original native
+  observations and settlement, and require exact startup readback before
+  readiness. Preserve authored heads and incomplete originals without replay.
+  Source review is complete; native acceptance, complete class-Q1 rules and
+  general Pure publication remain open.
+
+- **Original generation executor and Memory scopes (validation pending)**:
+  Generation qualification uses the actual configured worker slots, frame,
+  heap and task settings, preserving its original fixture and executor across
+  later profile/settings edits. Readback no longer requires global historical
+  scans or blocks unrelated evidence writers. Memory preserves opaque Host IDs
+  with a strict separate address grammar for newly supported values, retaining
+  legacy addresses, attribution and short-path compatibility. Both source
+  packages are reviewed and integrated; native acceptance remains pending.
+
 - **Private Monty Work and original captures (B-02, validation pending)**:
   Integrate message-free structural review and quarantined source-only Prefix
   work into the existing PostgreSQL Work owner, Worker and single global Monty
