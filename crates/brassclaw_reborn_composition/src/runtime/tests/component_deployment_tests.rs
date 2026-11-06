@@ -188,6 +188,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         catalogue.kernel.clone(),
         &catalogue._generation_candidates,
         &catalogue.worker,
+        catalogue.startup_executor.clone(),
     ))
     .await
     .unwrap();
@@ -2554,4 +2555,237 @@ async fn exercise_prefix_revision_boundaries(
     println!(
         "native-prefix-revision-http-pg: passed; measurement rejected/no-job, not successful measurement"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_generation_qualification_preserves_configured_slots_and_original_executor() {
+    use brassclaw_product_workflow::MontyVmSettingsStore;
+    let rig = super::super::super::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+        rig.pool.clone(),
+        "default",
+        "default",
+    );
+    let initial =
+        brassclaw_product_workflow::MontyVmSettingsStore::get(&settings, "default", "default")
+            .await
+            .unwrap();
+    let mut limits = initial.execution_limits;
+    limits.max_source_bytes = 16 * 1024 * 1024;
+    limits.max_compiled_source_bytes = limits
+        .max_compiled_source_bytes
+        .max(limits.max_source_bytes);
+    limits.max_stdout_bytes = 16 * 1024 * 1024;
+    limits.max_ipc_frame_bytes = 64 * 1024 * 1024;
+    limits.max_workers = 2;
+    brassclaw_product_workflow::MontyVmSettingsStore::upsert(
+        &settings,
+        "default",
+        "default",
+        &serde_json::from_value(json!({
+            "expected_revision":initial.revision,"execution_limits":limits,
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        limits.utility_worker_memory_bytes,
+        initial.execution_limits.utility_worker_memory_bytes
+    );
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
+        rig.build_input("generation-executor-owner", directory.path())
+            .with_runtime_policy(local_dev_runtime_policy()),
+    )))
+    .await
+    .unwrap();
+    let catalogue = &runtime.installed_catalogue;
+    assert_eq!(catalogue.startup_executor.bounds().workers, 2);
+    assert_eq!(
+        catalogue.startup_executor.process().max_frame_bytes,
+        64 * 1024 * 1024
+    );
+    // Also exercise the direct analogue without a fixture-sized frame/heap.
+    crate::prefix_generation_behavior_tests::assert_native_generation_usages(catalogue).await;
+    let client = rig.pool.get().await.unwrap();
+    let changed_profile: i64 = client.query_one("UPDATE reborn_prefix_profiles SET label='Later operator profile',revision=revision+1 WHERE name='base-prompt' RETURNING revision", &[]).await.unwrap().get(0);
+    assert!(changed_profile > 1);
+    drop(client);
+    let live = runtime.monty_settings_owner.store();
+    let current = live.get("default", "default").await.unwrap();
+    let mut reduced = current.execution_limits;
+    reduced.max_source_bytes /= 2;
+    reduced.max_stdout_bytes /= 2;
+    live.upsert("default", "default", &serde_json::from_value(json!({
+        "expected_revision":current.revision,"max_duration_secs":current.max_duration_secs+1,"execution_limits":reduced,
+    })).unwrap()).await.unwrap();
+    let acknowledged = live
+        .effective_view()
+        .get("default", "default")
+        .await
+        .unwrap();
+    let smaller =
+        crate::global_monty_startup::ControlledExecutorConfiguration::new(&acknowledged).unwrap();
+    assert_ne!(
+        smaller.exact_bytes(),
+        catalogue.startup_executor.exact_bytes()
+    );
+    async fn counts(pool: &brassclaw_pg::PgPool) -> (i64, i64, i64) {
+        let client = pool.get().await.unwrap();
+        let row = client.query_one("SELECT (SELECT count(*) FROM brassclaw_monty_tool_invocations), (SELECT count(*) FROM brassclaw_monty_task_admissions), (SELECT count(*) FROM reborn_component_review_evidence)", &[]).await.unwrap();
+        (row.get(0), row.get(1), row.get(2))
+    }
+    let before = counts(&rig.pool).await;
+    // Hold the table's normal writer lock through a no-op INSERT of a genuine
+    // other owner's exact immutable original. No fake evidence or row change.
+    // The rejected global SHARE ROW EXCLUSIVE NOWAIT lock would fail here.
+    let brassclaw_engine::executor::retained_recipe::RetainedProgram::Tools(reply) =
+        catalogue.reply.program()
+    else {
+        panic!("actual qualified reply context required")
+    };
+    let reply_approval: Uuid = serde_json::from_value(
+        reply
+            .inputs()
+            .instruction()
+            .association_approvals()
+            .values()
+            .next()
+            .unwrap()["approval_id"]
+            .clone(),
+    )
+    .unwrap();
+    let mut writer = rig.pool.get().await.unwrap();
+    let approval_bytes: String = writer
+        .query_one(
+            "SELECT approval_bytes FROM reborn_skill_association_approvals WHERE approval_id=$1",
+            &[&reply_approval],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let approval: Value = serde_json::from_str(&approval_bytes).unwrap();
+    let original_id: Uuid = serde_json::from_value(approval["q1_ref"].clone()).unwrap();
+    let original_bytes: String = writer
+        .query_one(
+            "SELECT evidence_bytes FROM reborn_component_review_evidence WHERE evidence_id=$1",
+            &[&original_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    let writer_tx = writer.transaction().await.unwrap();
+    assert!(
+        !crate::bootstrap_evidence::retain_intent(&writer_tx, original_id, &original_bytes)
+            .await
+            .unwrap()
+    );
+    let reused = crate::bootstrap_generation_approval::forbid_fresh_fixture(
+        crate::bootstrap_generation_approval::qualify(
+            rig.pool.clone(),
+            catalogue.kernel.clone(),
+            &catalogue._generation_candidates,
+            &catalogue.worker,
+            smaller.clone(),
+        ),
+    )
+    .await
+    .unwrap();
+    writer_tx.rollback().await.unwrap();
+    drop(writer);
+    assert_eq!(reused.len(), catalogue.generation_approvals.len());
+    for (old, read) in catalogue.generation_approvals.iter().zip(&reused) {
+        assert_eq!(read.approval_id(), old.approval_id());
+    }
+    crate::bootstrap_generation_approval::assert_original_executor_custody(
+        rig.pool.clone(),
+        &reused,
+        smaller.clone(),
+    )
+    .await;
+    assert_eq!(
+        counts(&rig.pool).await,
+        before,
+        "readback, malformed metadata and incomplete original guards must not replay effects or rewrite evidence"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_generation_unfinished_original_retains_fixture_after_profile_and_settings_edits() {
+    use brassclaw_product_workflow::MontyVmSettingsStore;
+    let rig = super::super::super::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let directory = tempfile::tempdir().unwrap();
+    let input = || {
+        RebornRuntimeInput::from_services(
+            rig.build_input("generation-intent-owner", directory.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+    };
+    let interrupted = crate::bootstrap_generation_approval::interrupt_after_original_intents(
+        Box::pin(build_reborn_runtime(input())),
+    )
+    .await;
+    let error = match interrupted {
+        Err(error) => error,
+        Ok(_) => panic!("real original-intent boundary must interrupt startup"),
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("generation test interrupted after original intents")
+    );
+    async fn originals(pool: &brassclaw_pg::PgPool) -> Value {
+        let client = pool.get().await.unwrap();
+        client.query_one("SELECT coalesce(jsonb_agg(jsonb_build_object('id',evidence_id,'checksum',checksum,'fixture',evidence_bytes::jsonb #> '{report,fixture}') ORDER BY evidence_id),'[]'::jsonb) FROM reborn_component_review_evidence WHERE evidence_bytes::jsonb #>> '{kind}'='q1' AND evidence_bytes::jsonb #>> '{report,header,producer}'='brassclaw-prefix-generation-bootstrap/2'", &[]).await.unwrap().get(0)
+    }
+    async fn effects(pool: &brassclaw_pg::PgPool) -> (i64, i64) {
+        let client = pool.get().await.unwrap();
+        let row = client.query_one("SELECT (SELECT count(*) FROM brassclaw_monty_task_admissions WHERE scope->>'agent_id'='bootstrap-prefix-generation'),(SELECT count(*) FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_task_admissions a USING(run_id) WHERE a.scope->>'agent_id'='bootstrap-prefix-generation')", &[]).await.unwrap();
+        (row.get(0), row.get(1))
+    }
+    let original = originals(&rig.pool).await;
+    assert_eq!(original.as_array().unwrap().len(), 2);
+    assert_eq!(effects(&rig.pool).await, (0, 0));
+    let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+        rig.pool.clone(),
+        "default",
+        "default",
+    );
+    let current = settings.get("default", "default").await.unwrap();
+    let mut changed = current.execution_limits;
+    changed.max_source_bytes /= 2;
+    changed.max_stdout_bytes /= 2;
+    settings.upsert("default","default",&serde_json::from_value(json!({
+        "expected_revision":current.revision,"max_duration_secs":current.max_duration_secs+1,"execution_limits":changed,
+    })).unwrap()).await.unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let revision: i64 = client.query_one("UPDATE reborn_prefix_profiles SET label='Later interrupted profile',revision=revision+1 WHERE name='base-prompt' RETURNING revision", &[]).await.unwrap().get(0);
+    drop(client);
+    assert!(revision as u64 > original[0]["fixture"]["profile_revision"].as_u64().unwrap());
+    let resumed = crate::bootstrap_generation_approval::forbid_fresh_fixture(Box::pin(
+        build_reborn_runtime(input()),
+    ))
+    .await;
+    let error = match resumed {
+        Err(error) => error,
+        Ok(_) => panic!("an unresolved original is not a fresh fixture request"),
+    };
+    assert!(
+        error
+            .to_string()
+            .contains("generation qualification intent is incomplete")
+    );
+    assert_eq!(
+        originals(&rig.pool).await,
+        original,
+        "same immutable subject keeps its original fixture and IDs despite mutable edits"
+    );
+    assert_eq!(effects(&rig.pool).await, (0, 0));
 }

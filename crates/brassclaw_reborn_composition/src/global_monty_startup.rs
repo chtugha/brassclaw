@@ -198,6 +198,26 @@ impl ControlledExecutorConfiguration {
             max_recipe_contexts: self.max_recipe_contexts,
         }
     }
+    /// Same captured creation policy, with only the fixed contained hold
+    /// protocol substituted. Parser UtilityLimits never supply its heap.
+    pub(crate) fn contained_hold_boot(&self) -> RootBoot {
+        use sha2::Digest;
+        let source = crate::bootstrap_validation::CONFIGURED_HOLD_ROOT;
+        RootBoot {
+            source: source.to_owned(),
+            checksum: sha2::Sha256::digest(source.as_bytes()).into(),
+            aliases: ["await_next_task", "enter_task", "validation_hold"]
+                .into_iter()
+                .map(str::to_owned)
+                .collect(),
+            bounds: self.bounds,
+            heap_settings: Some(self.heap),
+            adapter_reserve_bytes: self.adapter,
+            startup_timeout: self.startup_timeout,
+            task_settings: self.task,
+            max_recipe_contexts: self.max_recipe_contexts,
+        }
+    }
 }
 fn invalid(reason: impl Into<String>) -> RebornRuntimeError {
     RebornRuntimeError::InvalidArgument {

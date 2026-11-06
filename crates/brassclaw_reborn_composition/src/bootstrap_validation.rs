@@ -32,6 +32,11 @@ mod host;
 
 pub(super) const NAMESPACE: &str = "bootstrap-validation";
 
+// Fixed transport-only root: register every configured native slot, then hold
+// the admitted task while the existing closed qualifier drives its pinned steps.
+// This is not the ordinary global orchestrator or a task workflow.
+pub(super) const CONFIGURED_HOLD_ROOT: &str = "import asyncio\nasync def hold(worker_id):\n    task = await host.await_next_task(worker_id)\n    host.enter_task(task['task_token'])\n    await host.validation_hold(task['task_token'])\nasync def main():\n    await asyncio.gather(*[hold(worker_id) for worker_id in range(worker_count)])\nasyncio.run(main())\n";
+
 pub(super) async fn start(
     worker: &Path,
     boot: RootBoot,

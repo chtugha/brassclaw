@@ -639,6 +639,7 @@ impl InstalledMontyCatalogue {
             kernel.clone(),
             &generation_candidates,
             worker,
+            startup_executor.clone(),
         ))
         .await?;
         let compiler_approval = Box::pin(crate::bootstrap_compiler_approval::qualify(

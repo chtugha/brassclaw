@@ -14,10 +14,8 @@ use brassclaw_engine::executor::{
 };
 use brassclaw_monty_host::{
     VmFailure,
-    global::{GlobalBounds, Lifecycle},
-    heap::HeapSettings,
-    process::{PortAnswer, ProcessFailure, RecipeCommand, RootBoot, TaskSettings, WorkerCommand},
-    transport_actor::ActorLimits,
+    global::Lifecycle,
+    process::{PortAnswer, ProcessFailure, RecipeCommand, WorkerCommand},
 };
 use brassclaw_pg::PgPool;
 use serde_json::{Value, json};
@@ -26,7 +24,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
     sync::Arc,
-    time::Duration,
 };
 use tokio_postgres::Transaction;
 use uuid::Uuid;
@@ -148,38 +145,11 @@ pub(super) async fn execute(
     worker: &Path,
     fixture: &Fixture,
     retain: bool,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
 ) -> Result<Value, RebornBuildError> {
     let RetainedProgram::Tools(program) = inspected.program() else {
         return Err(invalid("generation Tool program missing"));
     };
-    let limits = inspected.preparation_limits();
-    let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
-    let frame = serde_json::to_vec(&json!(fixture.package))
-        .map_err(invalid)?
-        .len()
-        .checked_add(1024 * 1024)
-        .ok_or_else(|| invalid("baseline frame overflow"))?;
-    check(
-        frame <= limits.process.max_frame_bytes,
-        "baseline exceeds qualified transport",
-    )?;
-    let mut process = limits.process;
-    process.max_frame_bytes = frame;
-    let reserve = frame
-        .checked_mul(2)
-        .and_then(|n| n.checked_add(adapter))
-        .ok_or_else(|| invalid("baseline reserve overflow"))?;
-    let heap = process
-        .hard_memory_bytes
-        .checked_sub(reserve)
-        .filter(|n| *n > frame)
-        .ok_or_else(|| invalid("baseline exceeds physical validation capacity"))?;
-    let mut bounds = limits.bounds;
-    bounds.max_value_bytes = frame;
-    check(
-        bounds.max_source_bytes <= frame && bounds.max_stdout_bytes <= frame,
-        "validation bounds exceed frame",
-    )?;
     let mut client = pool.get().await.map_err(invalid)?;
     let tx = client.transaction().await.map_err(invalid)?;
     let before = serving(&tx).await?;
@@ -217,40 +187,20 @@ pub(super) async fn execute(
             program.clone(),
             case["name"] == "denied",
         )?;
-        let boot = RootBoot {
-            source: crate::bootstrap_reply_validation::ROOT.into(),
-            checksum: Sha256::digest(crate::bootstrap_reply_validation::ROOT.as_bytes()).into(),
-            aliases: ["await_next_task", "enter_task", "validation_hold"]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            bounds: GlobalBounds {
-                values: bounds,
-                workers: 1,
-                max_pending_calls: 8,
-            },
-            heap_settings: Some(HeapSettings {
-                revision: 1,
-                max_vm_bytes: heap,
-            }),
-            adapter_reserve_bytes: adapter,
-            startup_timeout: Duration::from_secs(10),
-            task_settings: TaskSettings {
-                revision: 1,
-                max_compute_time: Duration::from_secs(30),
-                token_budgets_enabled: false,
-            },
-            max_recipe_contexts: 8,
-        };
-        let actor = ActorLimits {
-            max_unclaimed: 8,
-            max_reserved_frame_bytes: frame * 2,
-            max_control_unclaimed: 8,
-            max_control_reserved_frame_bytes: frame * 2,
-        };
-        let (mut owner, transport, root, task) =
-            bootstrap_validation::start(worker, boot, process, actor, admitted.input.clone())
-                .await?;
+        let boot = executor.contained_hold_boot();
+        let (mut owner, transport, root, task) = bootstrap_validation::start(
+            worker,
+            boot,
+            executor.process(),
+            executor.actor(),
+            admitted.input.clone(),
+        )
+        .await?;
+        let creation = creation(&root)?;
+        check(
+            creation == expected_creation(&executor),
+            "generation native executor acknowledgement differs",
+        )?;
         let mut execution =
             RetainedRecipeExecution::new_for_behavioral_validation(task, inspected.clone())
                 .map_err(invalid)?;
@@ -388,7 +338,7 @@ pub(super) async fn execute(
         let rejected_generation = malformed_absent(&tx).await?;
         tx.commit().await.map_err(invalid)?;
         let record = json!({"rejection":rejection,"rejected_generation":rejected_generation,"case":case,"run_id":admitted.attempt.run_id.as_uuid(),"thread_id":admitted.host.run_context().ok_or_else(|| invalid("contained chat origin missing"))?.thread_id,
-            "worker_root":root.root,"task_inputs":hash(&task_inputs)?,"order":execution.observation_order(),"steps":steps});
+            "worker_root":root.root,"creation":creation,"task_inputs":hash(&task_inputs)?,"order":execution.observation_order(),"steps":steps});
         bootstrap_validation::close(&mut owner, &admitted).await?;
         observed.push(record);
     }
@@ -401,9 +351,37 @@ pub(super) async fn execute(
         before == after,
         "generation qualification changed serving selection",
     )?;
-    Ok(json!({"cases":observed,"before":before,"after":after}))
+    Ok(
+        json!({"format":BEHAVIOR_FORMAT,"executor_bytes":executor.exact_bytes(),"executor_checksum":executor.checksum(),"cases":observed,"before":before,"after":after}),
+    )
 }
 
+pub(super) const BEHAVIOR_FORMAT: &str = "prefix-generation-behavior/2";
+
+fn creation(
+    root: &brassclaw_monty_host::process::ProcessSnapshot,
+) -> Result<Value, RebornBuildError> {
+    let identity = root
+        .root
+        .ok_or_else(|| invalid("generation native root missing"))?;
+    Ok(
+        json!({"bounds":root.vm_bounds,"frame":root.frame,"task":root.effective_task_settings,
+        "heap":root.heap,"adapter":root.allocator.adapter_reserve_bytes,"workers":identity.workers(),
+        "source_checksum":hex::encode(identity.source_checksum()),"waiting_slots":root.work_waits.iter().map(|(id,_)|*id).collect::<Vec<_>>()}),
+    )
+}
+fn expected_creation(
+    executor: &crate::global_monty_startup::ControlledExecutorConfiguration,
+) -> Value {
+    let boot = executor.contained_hold_boot();
+    let frame = executor.process().max_frame_bytes;
+    json!({"bounds":boot.bounds.values,"frame":{"configured_frame_bytes":frame,"required_capacity_bytes":frame,"effective_capacity_bytes":frame},
+        "task":boot.task_settings,"heap":{"desired":boot.heap_settings,"effective":boot.heap_settings,"pending_reduction":false},
+        "adapter":boot.adapter_reserve_bytes,"workers":boot.bounds.workers,"source_checksum":hex::encode(boot.checksum),"waiting_slots":(1..boot.bounds.workers).collect::<Vec<_>>()})
+}
+
+/// Only the new, explicitly versioned projection can assert original executor
+/// custody. No missing-format or legacy fallback supplies those facts.
 pub(super) async fn verify(
     tx: &Transaction<'_>,
     inspected: &InspectedRetainedProgram,
@@ -412,8 +390,42 @@ pub(super) async fn verify(
     observed: &Value,
 ) -> Result<(), RebornBuildError> {
     check(
-        observed.as_object().is_some_and(|o| o.len() == 3)
-            && observed["before"] == observed["after"],
+        observed.as_object().is_some_and(|o| {
+            o.len() == 6
+                && [
+                    "format",
+                    "executor_bytes",
+                    "executor_checksum",
+                    "cases",
+                    "before",
+                    "after",
+                ]
+                .iter()
+                .all(|field| o.contains_key(*field))
+        }) && observed["format"] == BEHAVIOR_FORMAT,
+        "generation behavior profile differs",
+    )?;
+    let bytes = observed["executor_bytes"]
+        .as_str()
+        .ok_or_else(|| invalid("generation original executor missing"))?;
+    let executor =
+        crate::global_monty_startup::ControlledExecutorConfiguration::restore_original(bytes)?;
+    check(
+        observed["executor_checksum"] == executor.checksum(),
+        "generation original executor checksum differs",
+    )?;
+    verify_cases(tx, inspected, fixture, retain, observed, &executor).await
+}
+async fn verify_cases(
+    tx: &Transaction<'_>,
+    inspected: &InspectedRetainedProgram,
+    fixture: &Fixture,
+    retain: bool,
+    observed: &Value,
+    executor: &crate::global_monty_startup::ControlledExecutorConfiguration,
+) -> Result<(), RebornBuildError> {
+    check(
+        observed["before"] == observed["after"],
         "generation serving evidence differs",
     )?;
     let RetainedProgram::Tools(program) = inspected.program() else {
@@ -443,7 +455,7 @@ pub(super) async fn verify(
             .as_str()
             .ok_or_else(|| invalid("generation thread missing"))?;
         check(
-            record.as_object().is_some_and(|o| o.len() == 9)
+            record.as_object().is_some_and(|o| o.len() == 10)
                 && record["rejected_generation"] == rejected_generation
                 && record["case"] == *case
                 && !run.is_nil()
@@ -453,6 +465,10 @@ pub(super) async fn verify(
                 && !record["worker_root"].is_null()
                 && roots.insert(record["worker_root"].to_string()),
             "generation case identity differs",
+        )?;
+        check(
+            record["creation"] == expected_creation(executor),
+            "generation native creation differs from original executor",
         )?;
         check(
             record["rejection"]

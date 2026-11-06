@@ -2,12 +2,7 @@
 //! producer receipt and does not approve, activate or advertise these usages.
 use crate::{bootstrap_validation, installed_monty_catalogue::InstalledMontyCatalogue};
 use brassclaw_engine::executor::retained_recipe::{RetainedProgram, RetainedRecipeExecution};
-use brassclaw_monty_host::{
-    global::GlobalBounds,
-    heap::HeapSettings,
-    process::{PortAnswer, RootBoot, TaskSettings},
-    transport_actor::ActorLimits,
-};
+use brassclaw_monty_host::process::PortAnswer;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Duration};
@@ -37,30 +32,7 @@ async fn assert_native_package(
     package: String,
     positive_only: bool,
 ) {
-    let limits = catalogue._generation_candidates[1].preparation_limits();
     let generation = hex::encode(Sha256::digest(package.as_bytes()));
-    // Utility workers have a separate physical ceiling from the instance's
-    // shared VM. Derive the bounded case frame from its complete encoded data;
-    // retain transport/adapter headroom before assigning any VM heap ceiling.
-    let adapter = brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize;
-    let frame = serde_json::to_vec(&json!(package))
-        .unwrap()
-        .len()
-        .checked_add(1024 * 1024)
-        .unwrap();
-    assert!(frame <= limits.process.max_frame_bytes);
-    let mut process = limits.process;
-    process.max_frame_bytes = frame;
-    let mut case_bounds = limits.bounds;
-    case_bounds.max_value_bytes = frame;
-    assert!(case_bounds.max_source_bytes <= frame && case_bounds.max_stdout_bytes <= frame);
-    let reserve = frame.checked_mul(2).unwrap().checked_add(adapter).unwrap();
-    let heap = process.hard_memory_bytes.checked_sub(reserve).unwrap();
-    assert!(
-        heap > frame,
-        "the complete baseline must fit the configured physical validation ceiling"
-    );
-
     let client = catalogue.pool.get().await.unwrap();
     let revision: i64 = client
         .query_one(
@@ -185,42 +157,11 @@ async fn assert_native_package(
             denied,
         )
         .unwrap();
-        let boot = RootBoot {
-            source: crate::bootstrap_reply_validation::ROOT.into(),
-            checksum: Sha256::digest(crate::bootstrap_reply_validation::ROOT.as_bytes()).into(),
-            aliases: ["await_next_task", "enter_task", "validation_hold"]
-                .into_iter()
-                .map(str::to_owned)
-                .collect(),
-            bounds: GlobalBounds {
-                values: case_bounds,
-                workers: 1,
-                max_pending_calls: 8,
-            },
-            heap_settings: Some(HeapSettings {
-                revision: 1,
-                max_vm_bytes: heap,
-            }),
-            adapter_reserve_bytes: brassclaw_host_api::DEFAULT_MONTY_ADAPTER_RESERVE_BYTES as usize,
-            startup_timeout: Duration::from_secs(10),
-            task_settings: TaskSettings {
-                revision: 1,
-                max_compute_time: Duration::from_secs(30),
-                token_budgets_enabled: false,
-            },
-            max_recipe_contexts: 8,
-        };
-        let actor = ActorLimits {
-            max_unclaimed: 8,
-            max_reserved_frame_bytes: frame * 2,
-            max_control_unclaimed: 8,
-            max_control_reserved_frame_bytes: frame * 2,
-        };
         let (mut owner, transport, _, task) = bootstrap_validation::start(
             &catalogue.worker,
-            boot,
-            process,
-            actor,
+            catalogue.startup_executor.contained_hold_boot(),
+            catalogue.startup_executor.process(),
+            catalogue.startup_executor.actor(),
             admitted.input.clone(),
         )
         .await
