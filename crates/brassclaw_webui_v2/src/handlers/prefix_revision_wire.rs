@@ -2,8 +2,8 @@
 //! or retained records; their shared DTO/Skill contracts remain numeric.
 use super::WebUiV2HttpError;
 use brassclaw_product_workflow::{
-    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixJobMetadata,
-    PrefixJobTarget, PrefixListResponse, PrefixModelDesignCatalogue, PrefixModelSpecification,
+    PrefixGenerationDetail, PrefixGenerationSummary, PrefixJobDetail, PrefixJobTarget,
+    PrefixListResponse, PrefixModelDesignCatalogue, PrefixModelSpecification,
 };
 use serde::Serialize;
 use serde_json::Value;
@@ -113,7 +113,7 @@ pub(super) fn llm_snapshot(value: &brassclaw_product_workflow::LlmConfigSnapshot
 #[cfg(test)]
 mod tests {
     use super::*;
-    use brassclaw_product_workflow::{PrefixEntry, PrefixModelTarget};
+    use brassclaw_product_workflow::{PrefixEntry, PrefixJobMetadata, PrefixModelTarget};
     use serde_json::json;
 
     #[test]
