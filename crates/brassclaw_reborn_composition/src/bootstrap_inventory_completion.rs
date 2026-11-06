@@ -18,6 +18,7 @@ pub(super) struct Subject {
     pub(super) completion: Uuid,
     components: Vec<Value>,
     association: String,
+    root_reference: ComponentRevisionRef,
 }
 impl Subject {
     pub(super) fn new(
@@ -38,7 +39,7 @@ impl Subject {
             "completion_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),
             "executor_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("global_monty_startup.rs")),
             "close_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_validation.rs")),
-            "root_checksum":hex::encode(root.source_checksum()),"root_reference":root.reference()});
+            "root_checksum":hex::encode(root.source_checksum()),"root_reference":revision_reference_value(root.reference())});
         let intent = Uuid::new_v5(&qualification_id, b"inventory-qualification-intent/1");
         let association = crate::bootstrap_evidence::checksum(binding.association().exact_bytes());
         if program.inputs().instruction().recipe().uuid
@@ -59,6 +60,7 @@ impl Subject {
             completion: Uuid::new_v5(&intent, b"completed-original"),
             components,
             association,
+            root_reference: root.reference(),
         }))
     }
     pub(super) fn record(&self, id: Uuid, report: Value, complete: bool) -> String {
@@ -151,11 +153,9 @@ impl Subject {
         {
             return Err(invalid("qualification original subject or intent differs"));
         }
-        let root_reference =
-            serde_json::from_value(self.manifest["root_reference"].clone()).map_err(invalid)?;
         brassclaw_skills::revision_store::PgComponentRevisionStore::read_revision_in_transaction(
             &tx,
-            root_reference,
+            self.root_reference,
         )
         .await
         .map_err(invalid)?;
@@ -909,7 +909,7 @@ async fn required(tx: &Transaction<'_>, id: Uuid) -> Result<String, RebornBuildE
         .ok_or_else(|| invalid("original qualification incomplete; reconcile without replay"))
 }
 
-pub(super) struct InventoryQualification {
+pub(in crate::validator_inventory_review) struct InventoryQualification {
     subject: Arc<Subject>,
     intent_bytes: String,
     behavior_bytes: String,

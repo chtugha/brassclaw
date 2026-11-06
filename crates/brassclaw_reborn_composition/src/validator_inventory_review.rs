@@ -38,6 +38,13 @@ use crate::{
     pg_monty_admission::PgMontyAdmission,
 };
 
+/// Factual wire form shared by the contained observations. This serializes an
+/// already selected revision; it neither parses nor qualifies a revision.
+fn revision_reference_value(reference: ComponentRevisionRef) -> Value {
+    json!({"uuid":reference.uuid,"class_code":reference.class_code,
+        "version":reference.version,"checksum":hex::encode(reference.checksum)})
+}
+
 #[path = "installation_inventory_observation.rs"]
 mod installation;
 #[cfg(test)]

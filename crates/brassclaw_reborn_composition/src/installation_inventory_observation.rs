@@ -13,7 +13,9 @@ use brassclaw_skills::{
     component_revision::REVISION_LIMITS, global_bootstrap_components::packaged_component_id,
     review_submission_store::installation as store,
 };
-use brassclaw_turns::{TurnRunId, TurnRunRecord, TurnScope, TurnSpawnTreeStateStore, TurnStatus};
+#[cfg(test)]
+use brassclaw_turns::{TurnRunId, TurnSpawnTreeStateStore};
+use brassclaw_turns::{TurnRunRecord, TurnScope, TurnStatus};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;
@@ -37,7 +39,9 @@ struct Operation {
     input_bytes: String,
     input_checksum: String,
     worker_checksum: String,
-    root_reference: ComponentRevisionRef,
+    // Data only: verify_operation requires the entire canonical selected-root
+    // object before the reader looks up that original immutable revision.
+    root_reference: Value,
     root_source_checksum: String,
     q1_qualification: bool,
     semantic_approval: bool,
@@ -282,10 +286,16 @@ async fn observe_installation_inner(
             .ok_or_else(|| invalid("source inspection policy missing"))
     })
     .await?;
-    let identity=json!({"components":binding.combination(),"association":binding.association().exact_bytes(),
+    let components = binding
+        .combination()
+        .iter()
+        .copied()
+        .map(revision_reference_value)
+        .collect::<Vec<_>>();
+    let identity=json!({"components":components,"association":binding.association().exact_bytes(),
         "worker_checksum":hex::encode(worker.checksum()),"qualifier":evidence::checksum(include_str!("bootstrap_inventory_qualification.rs")),
         "completion":evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),"primitives":evidence::checksum(include_str!("bootstrap_inventory_primitives.rs")),
-        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":root.reference()}).to_string();
+        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":revision_reference_value(root.reference())}).to_string();
     let qualification_id = Uuid::new_v5(&binding.skill().uuid, identity.as_bytes());
     let cached = qualification::qualify_packaged(
         pool.clone(),
@@ -584,7 +594,7 @@ impl Context {
         self.verify_operation(&operation)?;
         brassclaw_skills::revision_store::PgComponentRevisionStore::read_revision_in_transaction(
             tx,
-            operation.root_reference,
+            self.root.reference(),
         )
         .await
         .map_err(invalid)?;
@@ -700,7 +710,7 @@ impl Context {
             || serde_json::to_string(&expected).map_err(invalid)? != op.input_bytes
             || inputs != expected
             || op.worker_checksum != hex::encode(self.worker.checksum())
-            || op.root_reference != self.root.reference()
+            || op.root_reference != revision_reference_value(self.root.reference())
             || op.root_source_checksum != hex::encode(self.root.source_checksum())
             || op.q1_qualification
             || op.semantic_approval
@@ -926,7 +936,7 @@ impl Context {
             input_checksum: evidence::checksum(&input_bytes),
             input_bytes,
             worker_checksum: hex::encode(self.worker.checksum()),
-            root_reference: self.root.reference(),
+            root_reference: revision_reference_value(self.root.reference()),
             root_source_checksum: hex::encode(self.root.source_checksum()),
             q1_qualification: false,
             semantic_approval: false,
@@ -1467,6 +1477,45 @@ pub(crate) async fn assert_original_installation_readback(
             .await
             .unwrap()
             .unwrap();
+        let (_, operation) = profile
+            .context
+            .read::<Operation>(&tx, profile.context.operation)
+            .await
+            .unwrap()
+            .unwrap();
+        profile.context.verify_operation(&operation).unwrap();
+        // Exercise rejection against the actual original operation in both
+        // native profiles. These altered values never replace stored evidence.
+        for (field, value) in [
+            ("uuid", json!(Uuid::nil())),
+            ("uuid", json!(Uuid::new_v4())),
+            ("class_code", json!(22)),
+            ("version", json!(0)),
+            ("version", json!(u64::MAX)),
+            ("checksum", json!("00")),
+            ("checksum", json!("A".repeat(64))),
+            ("checksum", Value::Null),
+            ("unknown", json!(true)),
+        ] {
+            let mut changed = operation.clone();
+            changed.root_reference[field] = value;
+            assert!(profile.context.verify_operation(&changed).is_err());
+        }
+        for field in ["uuid", "class_code", "version", "checksum"] {
+            let mut changed = operation.clone();
+            changed
+                .root_reference
+                .as_object_mut()
+                .unwrap()
+                .remove(field);
+            assert!(profile.context.verify_operation(&changed).is_err());
+        }
+        let duplicate_root = format!(
+            "{{\"root_reference\":{{\"uuid\":\"{}\",\"uuid\":\"{}\"}}}}",
+            Uuid::nil(),
+            Uuid::nil()
+        );
+        assert!(strict_json(&duplicate_root, REVISION_LIMITS).is_err());
         let (_, preterminal) = profile
             .context
             .read::<Preterminal>(&tx, profile.context.id("preterminal"))
