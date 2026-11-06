@@ -268,10 +268,7 @@ pub(crate) async fn assert_original_capture(
         checksum(selection.validator_bytes())
     );
     assert_eq!(capture.preparation().revision(), original.revision());
-    assert!(matches!(
-        capture.preparation().origin(),
-        crate::installed_monty_catalogue::PreparationOrigin::AcknowledgedLive
-    ));
+    assert_eq!(capture.preparation().bytes(), original.bytes());
     assert_eq!(
         capture.wire.worker_checksum,
         hex::encode(catalogue.worker_image.checksum())

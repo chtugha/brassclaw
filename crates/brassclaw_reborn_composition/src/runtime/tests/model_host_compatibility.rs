@@ -3403,10 +3403,7 @@ async fn dropped_turn_waiter_requires_worker_and_durable_cancellation_acknowledg
     )
     .await;
     let (request, attempt, host) = handoff.into_parts();
-    let context = host
-        .run_context()
-        .expect("actual native chat fixture")
-        .clone();
+    let context = host.run_context().clone();
     let handoff = MontyTaskHandoff::new(request, attempt, host).unwrap();
     let driver = global_monty_driver::GlobalMontyDriver::new(
         owner.client(),

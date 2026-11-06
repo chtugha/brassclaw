@@ -203,7 +203,7 @@ struct Settlement {
 pub(crate) struct GlobalMontyDriver {
     service: ServiceClient,
     threads: Arc<dyn SessionThreadService>,
-    /// When set, `drive_admitted` uses this pool to build a per-tenant
+    /// When set, `drive_host` uses this pool to build a per-tenant
     /// `PgSessionThreadService` for `trusted_internal_turn` tasks whose
     /// scope tenant differs from `self.threads` (e.g. "bootstrap-validation").
     admission_pool: Option<Arc<PgPool>>,
@@ -352,10 +352,10 @@ impl GlobalMontyDriver {
         })
     }
 
-    /// Attach a pool so that `drive_admitted` can resolve trusted-internal
+    /// Attach a pool so that the common driver can resolve trusted-internal
     /// turn threads (e.g. the "bootstrap-validation" namespace) independently
     /// of the primary `threads` service tenant. This configures the owner before
-    /// either entry starts driving work; it does not create another VM.
+    /// Chat or private Work starts driving; it does not create another VM.
     pub(crate) fn with_admission_pool(mut self, pool: Arc<PgPool>) -> Self {
         self.admission_pool = Some(pool);
         self
@@ -676,25 +676,7 @@ impl Drop for DriveGuard {
 }
 
 impl GlobalMontyDriver {
-    /// Drive an already-constructed `MontyTaskHost` through the global service.
-    ///
-    /// This is identical to `drive_turn` but skips the `MontyTaskHost::new(handoff)`
-    /// step because the caller already holds a constructed host (e.g. from
-    /// `bootstrap_validation::prepare_admission` via `ValidatorTaskDriver`).
-    /// The factory's `settle` / `settle_unsubmitted` path owns the full
-    /// admission lifecycle; `bootstrap_validation::settle_closed` must NOT be
-    /// called after this returns.
-    pub(crate) async fn drive_admitted(
-        &self,
-        host: Arc<MontyTaskHost>,
-    ) -> Result<DrivenMontyTask, AgentLoopDriverError> {
-        if !host.is_result_only_completion() {
-            return Err(failed("monty_internal_completion_contract_invalid"));
-        }
-        self.drive_host(host).await
-    }
-
-    /// One lifecycle for ordinary and already admitted hosts. Admission chooses
+    /// One lifecycle for Chat and private Work hosts. Admission chooses
     /// the original namespace and completion contract; neither entry replays
     /// work, starts a VM or substitutes a different host after a failure.
     async fn drive_host(

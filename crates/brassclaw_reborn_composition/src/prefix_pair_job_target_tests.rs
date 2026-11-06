@@ -316,21 +316,23 @@ async fn pair_job_target_retains_complete_source_owned_input_and_original_identi
     let race_id = Uuid::new_v4();
     let mut race_scope = scope.clone();
     race_scope.thread_id = ThreadId::new(format!("prefix-job-{race_id}")).unwrap();
+    let left_origin = Origin::Chat {
+        scope: race_scope.clone(),
+        thread_scope: thread.clone(),
+    };
+    let right_origin = Origin::Chat {
+        scope: race_scope.clone(),
+        thread_scope: thread.clone(),
+    };
     let (left, right) = tokio::join!(
         store.reserve(Reservation {
             id: race_id,
-            origin: &Origin::Chat {
-                scope: race_scope.clone(),
-                thread_scope: thread.clone()
-            },
+            origin: &left_origin,
             ..reservation
         }),
         store.reserve(Reservation {
             id: race_id,
-            origin: &Origin::Chat {
-                scope: race_scope.clone(),
-                thread_scope: thread.clone()
-            },
+            origin: &right_origin,
             target: &other_target,
             request: &other_request,
             input: &other_input,

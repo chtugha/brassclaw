@@ -13,14 +13,16 @@ async fn native_original_preparation_capture_survives_acknowledged_changes() {
     );
     let runtime = crate::build_reborn_runtime(input).await.unwrap();
     let startup = runtime.installed_catalogue.initial_preparation.clone();
-    assert!(startup.origin() == PreparationOrigin::AcknowledgedStartup);
+    let startup_wire: Wire = serde_json::from_str(startup.bytes()).unwrap();
+    assert!(startup_wire.origin == PreparationOrigin::AcknowledgedStartup);
     assert!(startup.revision() > 0);
     let first = runtime
         .installed_catalogue
         .capture_task_preparation()
         .await
         .unwrap();
-    assert!(first.origin() == PreparationOrigin::AcknowledgedLive);
+    let first_wire: Wire = serde_json::from_str(first.bytes()).unwrap();
+    assert!(first_wire.origin == PreparationOrigin::AcknowledgedLive);
     let settings = runtime.webui_monty_settings_store();
     let before = settings.get("default", "default").await.unwrap();
     assert_eq!(first.revision(), before.revision);
@@ -72,7 +74,7 @@ async fn native_original_preparation_capture_survives_acknowledged_changes() {
     assert_eq!(restored.bytes(), first.bytes());
     assert_eq!(restored.revision(), first.revision());
     assert_eq!(restored.policy(), before.execution_limits);
-    assert!(restored.origin() == first.origin());
+
     assert!(PreparationCapture::restore_original(first.bytes(), second.checksum()).is_err());
 
     let encode = |wire: &Wire| serde_json::to_string(wire).unwrap();

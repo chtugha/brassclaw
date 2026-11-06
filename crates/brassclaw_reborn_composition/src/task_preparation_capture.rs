@@ -17,6 +17,7 @@ pub(crate) enum PreparationOrigin {
 #[serde(deny_unknown_fields)]
 struct Wire {
     format: String,
+    // Retained /1 provenance; neither a dispatch distinction nor authority.
     origin: PreparationOrigin,
     revision: u64,
     execution_limits_bytes: String,
@@ -27,7 +28,6 @@ struct Wire {
 /// from separate revision/limits claims; the catalogue owns fresh capture.
 #[derive(Clone)]
 pub(crate) struct PreparationCapture {
-    origin: PreparationOrigin,
     revision: u64,
     policy: MontyExecutionLimits,
     limits: UtilityLimits,
@@ -61,7 +61,6 @@ impl PreparationCapture {
         let bytes =
             serde_json::to_string(&wire).map_err(|_| "preparation capture encoding failed")?;
         Ok(Self {
-            origin,
             revision: settings.revision,
             policy,
             limits,
@@ -99,7 +98,6 @@ impl PreparationCapture {
         }
         let limits = UtilityLimits::from_execution(policy)?;
         Ok(Self {
-            origin: wire.origin,
             revision: wire.revision,
             policy,
             limits,
@@ -110,9 +108,6 @@ impl PreparationCapture {
 
     pub(crate) fn revision(&self) -> u64 {
         self.revision
-    }
-    pub(crate) fn origin(&self) -> PreparationOrigin {
-        self.origin
     }
     pub(crate) fn policy(&self) -> MontyExecutionLimits {
         self.policy
