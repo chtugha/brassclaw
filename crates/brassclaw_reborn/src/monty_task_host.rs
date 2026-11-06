@@ -261,7 +261,9 @@ impl MontyTaskHost {
         tokio::select! {
             _ = async {
                 match &self.origin {
-                    TaskOrigin::Chat { host, .. } => host.cancellation_requested().await,
+                    TaskOrigin::Chat { host, .. } => {
+                        let _ = host.cancellation_requested().await;
+                    }
                     TaskOrigin::Private { .. } => std::future::pending::<()>().await,
                 }
             } => {},
