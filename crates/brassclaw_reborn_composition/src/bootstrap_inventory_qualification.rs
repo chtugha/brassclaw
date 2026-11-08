@@ -877,7 +877,7 @@ fn evidence_record(
     components: &[Value],
     report: Value,
 ) -> String {
-    evidence::system_record(id, kind, succeeded, association, components, report)
+    crate::bootstrap_evidence::system_record(id, kind, succeeded, association, components, report)
 }
 struct InventoryProofContext {
     intent: Uuid,

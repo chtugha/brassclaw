@@ -2,6 +2,7 @@
 //! no source-only result is a behavioral qualification receipt.
 use super::*;
 use brassclaw_pg::test_support::{AckBoundary, AckCutRule, AckCutTransport};
+use brassclaw_skills::component_revision::ComponentRevisionDraft;
 use secrecy::ExposeSecret;
 
 tokio::task_local! { static FAULT: Fault; }

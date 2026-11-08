@@ -27,7 +27,7 @@ use brassclaw_monty_host::{
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    component_revision::{ComponentRevisionDraft, REVISION_LIMITS},
+    component_revision::REVISION_LIMITS,
     global_bootstrap_components::packaged_component_id,
     pure_component_contract::PureComponentApprovalDeclaration,
     revision_store::PgComponentRevisionStore,
@@ -281,7 +281,7 @@ impl Context {
         if executor.checksum() != self.operation.executor_checksum {
             return Err(invalid("checker original executor checksum differs"));
         }
-        Ok(Arc::new(executor))
+        Ok(executor)
     }
     fn preparation(
         &self,
