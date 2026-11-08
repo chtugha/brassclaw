@@ -286,7 +286,9 @@ pub(super) fn checker_suites(class: i16, root: Uuid) -> Vec<Suite> {
             "!",
             "json.JSONDecodeError: Expecting value: line 1 column 1 (char 0)",
         ),
-        ("stop_document", "{}", "KeyError: 'candidate'"),
+        // The pinned Monty key_error uses the raw string key as its message;
+        // MontyException::Display does not add CPython's repr quotes.
+        ("stop_document", "{}", "KeyError: candidate"),
     ] {
         suites.push(Suite {
             variant: name.into(),

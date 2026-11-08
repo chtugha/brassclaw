@@ -90,15 +90,23 @@ impl Context {
                 // ProcessError.diagnostic. Require its exact terminal exception
                 // line as well as VmFailure::Python and the actual Start frame;
                 // a NameError or unrelated Python failure is not this fixture.
-                if fact
+                let actual_final_exception = fact
                     .python_diagnostic
                     .as_deref()
-                    .and_then(|d| d.lines().last())
-                    != suite.expected_python_line.as_deref()
-                {
-                    return Err(invalid(
-                        "checker native Python exception differs from expected stop",
-                    ));
+                    .and_then(|d| d.lines().last());
+                if actual_final_exception != suite.expected_python_line.as_deref() {
+                    // These are closed shipped fixtures with fixed inputs, no
+                    // host calls or secrets. Expose only their final exception
+                    // line, never the native traceback or executable source.
+                    return Err(invalid(format!(
+                        "checker native Python exception differs from expected stop: {}",
+                        json!({
+                            "root": self.claim.root.uuid,
+                            "variant": suite.variant,
+                            "expected_final_exception": suite.expected_python_line,
+                            "actual_final_exception": actual_final_exception,
+                        })
+                    )));
                 }
                 let bytes = fact
                     .python_failure_command
