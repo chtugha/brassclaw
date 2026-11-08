@@ -20,6 +20,10 @@ pub(crate) struct NativePostgres {
 
 impl NativePostgres {
     pub(crate) async fn start() -> Self {
+        Self::start_schema(None).await
+    }
+
+    pub(crate) async fn start_schema(version: Option<u32>) -> Self {
         let permit = NATIVE_INSTANCES
             .acquire()
             .await
@@ -51,9 +55,18 @@ impl NativePostgres {
             directory,
             _permit: permit,
         };
-        brassclaw_pg::migrations::run_migrations(&rig.pool)
-            .await
-            .expect("native PostgreSQL schema migrations");
+        if let Some(version) = version {
+            let mut client = rig.pool.get().await.expect("previous-schema connection");
+            brassclaw_pg::migrations::migrations::runner()
+                .set_target(refinery::Target::Version(version))
+                .run_async(&mut **client)
+                .await
+                .expect("actual previous-schema migrations");
+        } else {
+            brassclaw_pg::migrations::run_migrations(&rig.pool)
+                .await
+                .expect("native PostgreSQL schema migrations");
+        }
         let verified = rig
             .pool
             .get()

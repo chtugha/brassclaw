@@ -22,6 +22,16 @@ pub(crate) struct PgRig {
 
 pub(crate) async fn pg_rig() -> Arc<PgRig> {
     let server = native_pg::NativePostgres::start().await;
+    rig_from_server(server)
+}
+
+/// Genuine previous-schema fixture; ordinary runtime startup performs upgrade.
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+pub(crate) async fn pg_rig_at_version(version: u32) -> Arc<PgRig> {
+    rig_from_server(native_pg::NativePostgres::start_schema(Some(version)).await)
+}
+
+fn rig_from_server(server: native_pg::NativePostgres) -> Arc<PgRig> {
     Arc::new(PgRig {
         pool: Arc::clone(&server.pool),
         url: server.url.clone(),
