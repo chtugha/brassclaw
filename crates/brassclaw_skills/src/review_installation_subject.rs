@@ -193,6 +193,26 @@ pub fn subject_record(
     context: InstallationPackageContext,
     limits: ContractLimits,
 ) -> Result<InstallationRecordDraft, Error> {
+    subject_record_scoped(graph, candidate, context, limits, false)
+}
+/// Private installation source-workflow fixture data. All qualification and
+/// activation flags remain false; Composition owns the exact fixture gallery.
+/// This format is disjoint from the historical structural-presence subject.
+pub fn pure_fixture_subject_record(
+    graph: &RetainedComponentSnapshot,
+    candidate: ComponentRevisionRef,
+    context: InstallationPackageContext,
+    limits: ContractLimits,
+) -> Result<InstallationRecordDraft, Error> {
+    subject_record_scoped(graph, candidate, context, limits, true)
+}
+fn subject_record_scoped(
+    graph: &RetainedComponentSnapshot,
+    candidate: ComponentRevisionRef,
+    context: InstallationPackageContext,
+    limits: ContractLimits,
+    pure_fixture: bool,
+) -> Result<InstallationRecordDraft, Error> {
     let root = graph
         .revisions()
         .get(&candidate.uuid)
@@ -206,12 +226,26 @@ pub fn subject_record(
         .values()
         .map(|r| Reference::from(r.reference()))
         .collect::<Vec<_>>();
-    let identity=json!({"format":"installation-validator-subject-identity/1","candidate":Reference::from(candidate),"components":refs,"package_context":context}).to_string();
+    let mut identity = json!({"format":"installation-validator-subject-identity/1","candidate":Reference::from(candidate),"components":refs,"package_context":context});
+    if pure_fixture {
+        identity["fixture_scope"] = json!("installation-pure-fixture-subject/1");
+    }
+    let identity = identity.to_string();
     let id = Uuid::new_v5(&candidate.uuid, identity.as_bytes());
     let report = SubjectRecord {
-        format: "installation-validator-subject-record/1".into(),
+        format: if pure_fixture {
+            "installation-pure-fixture-subject/1"
+        } else {
+            "installation-validator-subject-record/1"
+        }
+        .into(),
         subject_id: id,
-        package_selector: "validator:structural-presence".into(),
+        package_selector: if pure_fixture {
+            "validator:pure-qualification:workflow"
+        } else {
+            "validator:structural-presence"
+        }
+        .into(),
         candidate: revision_input(root, limits)?,
         dependencies: graph
             .revisions()
@@ -302,9 +336,12 @@ pub async fn read_subject_in_transaction(
     };
     let report: SubjectRecord =
         serde_json::from_value(envelope.report.clone()).map_err(|_| Error::Invalid)?;
-    if report.format != "installation-validator-subject-record/1"
-        || report.subject_id != id
-        || report.package_selector != "validator:structural-presence"
+    let pure_fixture = match (report.format.as_str(), report.package_selector.as_str()) {
+        ("installation-validator-subject-record/1", "validator:structural-presence") => false,
+        ("installation-pure-fixture-subject/1", "validator:pure-qualification:workflow") => true,
+        _ => return Err(Error::Invalid),
+    };
+    if report.subject_id != id
         || !report.base_comparison.is_null()
         || report.q1_qualification
         || report.semantic_approval
@@ -322,7 +359,13 @@ pub async fn read_subject_in_transaction(
         .collect::<Result<Vec<_>, _>>()?;
     let graph =
         PgComponentRevisionStore::read_exact_in_transaction(tx, &[candidate.uuid], &refs).await?;
-    let expected = subject_record(&graph, candidate, report.package_context.clone(), limits)?;
+    let expected = subject_record_scoped(
+        &graph,
+        candidate,
+        report.package_context.clone(),
+        limits,
+        pure_fixture,
+    )?;
     if expected.reference.id != id || expected.bytes != bytes {
         return Err(Error::Invalid);
     }

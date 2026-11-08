@@ -292,6 +292,16 @@ environment; an example string or parser pass is not behavioral evidence.
 
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
+**Scoped progress, 2026-11-08:** Run-20 confirms genuine common installation
+startup and five E-01 ACK/cancellation/worker-death cases on `377ad1bec`. The
+originals/settings case exposed an unsupported test request (depth 65 above the
+transport ceiling); its source correction `0039b365e` awaits rerun. The reviewed
+F-01 checker/support/29-case Source workflow package is integrated through
+`7b4c29596`, without compilation/native acceptance yet. It does not implement
+general candidate Pure approval or complete class-Q1. Preserve the exact remaining
+steps below and reuse these owners; do not recreate their custody infrastructure.
+
+
 1. Remove placeholder prose/bodies from the qualification input. Obtain the real
    packaged immutable draft/export/association references from the seeding owner.
    Do not infer identity by a matching name in mutable legacy rows.

@@ -929,6 +929,26 @@ impl InstalledMontyCatalogue {
             hex::encode(image.checksum()),
         )
         .await?;
+        let pure_checkers = crate::bootstrap_validator_approval::qualify_pure(
+            crate::bootstrap_validator_approval::SessionInput {
+                pool: pool.clone(),
+                worker: worker_image.clone(),
+                root: root_definition.clone(),
+                executor: startup_executor.clone(),
+                preparation: initial_preparation.clone(),
+                storage: resource_store_settings.clone(),
+                application_checksum: hex::encode(image.checksum()),
+            },
+            &structural_helpers,
+        )
+        .await?;
+        let pure_workflow = crate::validator_inventory_review::qualify_pure_workflow(
+            &inventory_observations,
+            &pure_checkers,
+            startup_executor.clone(),
+            initial_preparation.limits(),
+        )
+        .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -998,6 +1018,16 @@ impl InstalledMontyCatalogue {
         crate::bootstrap_evidence::io::bounded(
             resource_store_settings.as_ref(),
             structural_helpers.verify_in_transaction(&tx),
+        )
+        .await?;
+        crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            pure_checkers.verify_in_transaction(&tx),
+        )
+        .await?;
+        crate::bootstrap_evidence::io::bounded(
+            resource_store_settings.as_ref(),
+            pure_workflow.verify_in_transaction(&tx, &pure_checkers),
         )
         .await?;
         tracing::info!(

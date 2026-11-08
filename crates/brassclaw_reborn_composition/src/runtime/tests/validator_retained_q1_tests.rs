@@ -67,9 +67,15 @@ async fn private_validator_prepare_race_keeps_first_raw_original_across_ack_chan
     retained_validator_pass(DeliveryCase::PrepareRace).await;
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_validator_v207_to_v209_upgrade_preserves_original_and_native_q1() {
+    retained_validator_pass(DeliveryCase::Upgrade209).await;
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum DeliveryCase {
     Ordinary,
+    Upgrade209,
     PrepareRace,
     DelayedPublish,
     WorkerShutdown,
@@ -193,7 +199,24 @@ pub(super) async fn queued_structural_original(
 }
 
 async fn retained_validator_pass(case: DeliveryCase) {
-    let rig = crate::runtime::test_pg::pg_rig().await;
+    let rig = if case == DeliveryCase::Upgrade209 {
+        crate::runtime::test_pg::pg_rig_at_version(207).await
+    } else {
+        crate::runtime::test_pg::pg_rig().await
+    };
+    if case == DeliveryCase::Upgrade209 {
+        assert_eq!(
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .query_one("SELECT max(version) FROM refinery_schema_history", &[])
+                .await
+                .unwrap()
+                .get::<_, i32>(0),
+            207
+        );
+    }
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
@@ -271,7 +294,7 @@ async fn retained_validator_pass(case: DeliveryCase) {
     let run = brassclaw_turns::TurnRunId::from_uuid(submission_id);
     let driver = runtime.monty_test_controls.0.clone();
     let pause = match case {
-        DeliveryCase::Ordinary | DeliveryCase::PrepareRace => None,
+        DeliveryCase::Ordinary | DeliveryCase::PrepareRace | DeliveryCase::Upgrade209 => None,
         DeliveryCase::HeartbeatLoss => Some(driver.pause_private_start(run)),
         _ => Some(driver.pause_private_publish(run)),
     };
@@ -550,6 +573,32 @@ async fn retained_validator_pass(case: DeliveryCase) {
         matches!(outcome, Q1Outcome::StructuralObserved),
         "expected genuine structural observations for a valid class-22 component; got {outcome:?}"
     );
+
+    if case == DeliveryCase::Upgrade209 {
+        assert_eq!(
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .query_one(
+                    "SELECT count(*) FROM refinery_schema_history WHERE version IN (208,209)",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            2
+        );
+        super::private_work_admission_tests::assert_v209_rejects_extra_request_field(
+            &rig.pool,
+            submission_id,
+        )
+        .await;
+        let row = rig.pool.get().await.unwrap().query_one(
+            "SELECT terminal_bytes::jsonb->'completion'->'outcome'->>'status' FROM brassclaw_monty_private_terminals WHERE work_id=$1",
+            &[&submission_id]).await.unwrap();
+        assert_eq!(row.get::<_, &str>(0), "internal_completed");
+    }
 
     // Assert Q1 evidence rows were written by verify_receipt.
     let client = rig.pool.get().await.unwrap();

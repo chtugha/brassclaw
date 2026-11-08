@@ -444,6 +444,14 @@ pub(super) fn recipe(
         || "validator:structural:qualification:receipt-recipe".into(),
         |c| format!("validator:structural:qualification:class-{c}"),
     ));
+    recipe_at(id, root, suites)
+}
+
+pub(super) fn recipe_at(
+    id: Uuid,
+    root: Uuid,
+    suites: &[Suite],
+) -> Result<ComponentRevisionDraft, RebornBuildError> {
     let mut variants = Vec::new();
     let mut descriptions = Vec::new();
     let mut layouts = serde_json::Map::new();
@@ -479,6 +487,13 @@ pub(super) fn recipe(
                 for slot in case_slots() {
                     inputs
                         .entry(slot)
+                        .or_insert_with(|| json!({"kind":"consumer_default"}));
+                }
+            }
+            if fixture.component == super::pure::encoder_id() {
+                for slot in super::pure::ENCODER_SLOTS {
+                    inputs
+                        .entry(slot.to_owned())
                         .or_insert_with(|| json!({"kind":"consumer_default"}));
                 }
             }

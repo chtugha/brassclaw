@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Pure checker qualification (F-01, validation pending)**: Add actual contained
+  own-function qualification for ten shipped checking exports, separate private
+  reader-support evidence, finite typed result transport and the complete
+  29-case Source workflow gallery. Reuse existing original execution custody;
+  keep candidate execution/approval and catalogue activation separate. Source
+  reviewed and integrated, with native compilation/acceptance still pending.
+
+
 - **Held transaction acknowledgement acceptance (G-01, validation pending)**:
   Extend the existing PostgreSQL test transport with actual BEGIN/COMMIT
   Hold/Release and add producer cancellation, original readback, healthy

@@ -1,6 +1,8 @@
 //! Actual controlled installation consumer. No authored submission/queue,
 //! semantic approval, own Q1/Q2, active route or general recovery is created.
 use super::*;
+#[path = "bootstrap_pure_workflow.rs"]
+mod pure_workflow;
 use crate::{
     bootstrap_evidence as evidence, bootstrap_evidence::io,
     source_inspection_components::PackagedDefinitions,
@@ -16,6 +18,9 @@ use brassclaw_skills::{
 #[cfg(test)]
 use brassclaw_turns::{TurnRunId, TurnSpawnTreeStateStore};
 use brassclaw_turns::{TurnRunRecord, TurnScope, TurnStatus};
+#[cfg(test)]
+pub(crate) use pure_workflow::assert_original_pure_workflow_readback;
+pub(crate) use pure_workflow::qualify_pure_workflow;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::OnceLock;

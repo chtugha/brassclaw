@@ -49,7 +49,8 @@ fn revision_reference_value(reference: ComponentRevisionRef) -> Value {
 mod installation;
 #[cfg(test)]
 pub(crate) use installation::assert_original_installation_readback;
-pub(crate) use installation::observe_installation;
+#[cfg(test)]
+pub(crate) use installation::assert_original_pure_workflow_readback;
 #[cfg(test)]
 pub(crate) use installation::tests::before_cancel as installation_test_before_cancel;
 #[cfg(test)]
@@ -58,6 +59,7 @@ pub(crate) use installation::tests::before_close as installation_test_before_clo
 pub(crate) use installation::tests::before_reservation as installation_test_before_reservation;
 #[cfg(test)]
 pub(crate) use installation::tests::before_turn_close as installation_test_before_turn_close;
+pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;

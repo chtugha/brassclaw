@@ -14,7 +14,7 @@ impl Context {
         if suite.python_stop != suite.expected_python_line.is_some() {
             return Err(invalid("checker failure expectation is incomplete"));
         }
-        if observed.format != "structural-checker-observed/1"
+        if observed.format != self.format("observed")
             || observed.task.is_nil()
             || observed.steps.len() != suite.steps.len()
         {
@@ -56,6 +56,9 @@ impl Context {
                 .map_err(invalid)?
             }
         };
+        if let Some(profile) = &self.profile {
+            profile.verify_results(suite, &results)?;
+        }
         let mut fingerprints = BTreeMap::new();
         let limits = self.limits()?;
         for (fact, expected) in observed.steps.iter().zip(&suite.steps) {
@@ -211,7 +214,7 @@ impl Context {
             .pure_component(self.claim.root.uuid)
             .map_err(invalid)?;
         let source = SourceProof {
-            format: "structural-checker-source/1".into(),
+            format: self.format("source"),
             operation: self.op(),
             root: pure.component().into(),
             closure: pure
@@ -271,7 +274,7 @@ impl Context {
         )
         .await?;
         let binding = Admission {
-            format: "structural-checker-admission/1".into(),
+            format: self.format("admission"),
             operation: self.op(),
             variant: suite.variant.clone(),
             run_id: admitted.attempt.run_id.as_uuid(),
@@ -351,7 +354,7 @@ impl Context {
             };
             let observed_bytes = self.retain(stage("observed"), &observed).await?;
             let quiescence = Quiescence {
-                format: "structural-checker-quiescence/1".into(),
+                format: self.format("quiescence"),
                 operation: self.op(),
                 admission: source.admission.clone(),
                 observed: reference(stage("observed"), &observed_bytes),
@@ -411,7 +414,7 @@ impl Context {
             return Err(invalid("cancelled checker fixture cannot qualify"));
         }
         let completed = Completed {
-            format: "structural-checker-completed/1".into(),
+            format: self.format("completed"),
             operation: self.op(),
             admission: reference(stage("admission"), &binding_bytes),
             observed: reference(stage("observed"), &observed_bytes),
@@ -516,7 +519,7 @@ impl CheckerSource {
             });
         }
         let observed = Observed {
-            format: "structural-checker-observed/1".into(),
+            format: self.context.format("observed"),
             operation: self.context.op(),
             admission: self.admission.clone(),
             source: self.source.clone(),

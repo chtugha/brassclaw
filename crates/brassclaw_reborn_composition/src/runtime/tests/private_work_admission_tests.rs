@@ -213,6 +213,51 @@ impl Fixture {
         tx.commit().await.unwrap();
     }
 }
+pub(super) async fn assert_v209_rejects_extra_request_field(pool: &PgPool, id: Uuid) {
+    let mut client = pool.get().await.unwrap();
+    let original: String = client
+        .query_one(
+            "SELECT private_request_bytes FROM brassclaw_turns WHERE work_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    for actor_extra in [false, true] {
+        let mut changed: serde_json::Value = serde_json::from_str(&original).unwrap();
+        if actor_extra {
+            changed["context"]["actor"]
+                .as_object_mut()
+                .expect("genuine retained actor")
+                .insert("unrecognized_actor_field".into(), json!(true));
+        } else {
+            changed["context"]["unrecognized_context_field"] = json!(true);
+        }
+        let tx = client.transaction().await.unwrap();
+        let error = tx.execute(
+            "UPDATE brassclaw_turns SET private_request_bytes=$2,
+             private_request_checksum=sha256(convert_to($2,'UTF8')),version=version+1 WHERE work_id=$1",
+            &[&id, &changed.to_string()]).await.unwrap_err();
+        let error = error
+            .as_db_error()
+            .expect("actual PostgreSQL guard rejection");
+        assert_eq!(error.code().code(), "23514");
+        assert_eq!(error.message(), "private request identity is invalid");
+        tx.rollback().await.unwrap();
+    }
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT private_request_bytes FROM brassclaw_turns WHERE work_id=$1",
+                &[&id]
+            )
+            .await
+            .unwrap()
+            .get::<_, String>(0),
+        original
+    );
+}
+
 fn claim_request(runner_id: TurnRunnerId) -> ClaimRunRequest {
     ClaimRunRequest {
         runner_id,
@@ -513,12 +558,70 @@ async fn private_ready_and_claim_lost_commit_ack_keep_original_native_reservatio
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn private_cancel_before_submit_and_running_native_task_keep_exact_terminals() {
-    let rig = crate::runtime::test_pg::pg_rig().await;
+    private_native_terminals(false).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_v207_to_v209_upgrade_checks_real_originals_and_both_native_terminals() {
+    private_native_terminals(true).await;
+}
+
+async fn private_native_terminals(upgrade: bool) {
+    let rig = if upgrade {
+        crate::runtime::test_pg::pg_rig_at_version(207).await
+    } else {
+        crate::runtime::test_pg::pg_rig().await
+    };
+    if upgrade {
+        assert_eq!(
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .query_one("SELECT max(version) FROM refinery_schema_history", &[])
+                .await
+                .unwrap()
+                .get::<_, i32>(0),
+            207
+        );
+    }
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let fixture = Fixture::start(&rig, rig.pool.clone()).await;
     let driver = fixture.runtime.monty_test_controls.0.clone();
+    if upgrade {
+        // Runtime startup applies the real compiled successor via run_migrations.
+        assert_eq!(
+            rig.pool
+                .get()
+                .await
+                .unwrap()
+                .query_one(
+                    "SELECT count(*) FROM refinery_schema_history WHERE version IN (208,209)",
+                    &[]
+                )
+                .await
+                .unwrap()
+                .get::<_, i64>(0),
+            2
+        );
+        let completed = Uuid::new_v4();
+        fixture.original(completed).await;
+        fixture.ready(completed).await;
+        let claim = fixture.claim(TurnRunnerId::new()).await.unwrap();
+        fixture.drive(claim).await;
+        assert_eq!(fixture.counts(completed).await, ("settled".into(), 1, 1, 1));
+        let row = rig.pool.get().await.unwrap().query_one(
+            "SELECT terminal_bytes::jsonb->'completion'->>'completion_origin',terminal_bytes::jsonb->'completion'->'outcome'->>'status'
+             FROM brassclaw_monty_private_terminals WHERE work_id=$1", &[&completed]).await.unwrap();
+        assert_eq!(
+            (row.get::<_, &str>(0), row.get::<_, &str>(1)),
+            ("native_receipt", "internal_completed")
+        );
+        assert_v209_rejects_extra_request_field(&rig.pool, completed).await;
+    }
+
     let id = Uuid::new_v4();
     fixture.original(id).await;
     fixture.ready(id).await;
@@ -1303,11 +1406,19 @@ async fn private_prefix_producer_rolls_back_original_work_definition_and_ready_t
         .await;
     let fixture = Fixture::start(&rig, rig.pool.clone()).await;
     let (revision, source, caller) = atomic_prefix_request(&fixture).await;
-    rig.pool.get().await.unwrap().batch_execute(
-        "CREATE FUNCTION b03a_reject_prefix_write() RETURNS trigger LANGUAGE plpgsql AS $$
-         BEGIN RAISE EXCEPTION 'actual prefix transaction rejection' USING ERRCODE='23514'; END $$;",
-    ).await.unwrap();
-    for (table, trigger) in [
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute(
+            "CREATE SEQUENCE b03a_reject_reached;
+         CREATE FUNCTION b03a_reject_prefix_write() RETURNS trigger LANGUAGE plpgsql AS $$
+         BEGIN PERFORM nextval('b03a_reject_reached');
+         RAISE EXCEPTION 'actual prefix transaction rejection' USING ERRCODE='23514'; END $$;",
+        )
+        .await
+        .unwrap();
+    for (index, (table, trigger)) in [
         (
             "brassclaw_turns",
             "CREATE TRIGGER b03a_reject BEFORE INSERT ON brassclaw_turns FOR EACH ROW WHEN (NEW.record_kind='private_work') EXECUTE FUNCTION b03a_reject_prefix_write()",
@@ -1324,7 +1435,7 @@ async fn private_prefix_producer_rolls_back_original_work_definition_and_ready_t
             "brassclaw_monty_private_preparations",
             "CREATE CONSTRAINT TRIGGER b03a_reject AFTER INSERT ON brassclaw_monty_private_preparations DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION b03a_reject_prefix_write()",
         ),
-    ] {
+    ].into_iter().enumerate() {
         let id = Uuid::new_v4();
         rig.pool
             .get()
@@ -1346,6 +1457,11 @@ async fn private_prefix_producer_rolls_back_original_work_definition_and_ready_t
                 .await
                 .is_err()
         );
+        let reached = rig.pool.get().await.unwrap().query_one(
+            "SELECT last_value,is_called FROM b03a_reject_reached", &[]).await.unwrap();
+        assert!(reached.get::<_,bool>(1), "selected PostgreSQL fault boundary was not reached");
+        assert_eq!(reached.get::<_,i64>(0), i64::try_from(index+1).unwrap(),
+            "exactly one real reject-trigger invocation is required at each selected boundary");
         let row = rig
             .pool
             .get()
@@ -1381,7 +1497,9 @@ async fn private_prefix_producer_rolls_back_original_work_definition_and_ready_t
         .get()
         .await
         .unwrap()
-        .batch_execute("DROP FUNCTION b03a_reject_prefix_write()")
+        .batch_execute(
+            "DROP FUNCTION b03a_reject_prefix_write(); DROP SEQUENCE b03a_reject_reached",
+        )
         .await
         .unwrap();
     fixture.finish().await;
