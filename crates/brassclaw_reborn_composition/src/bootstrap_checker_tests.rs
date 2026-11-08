@@ -240,7 +240,7 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
     larger_depth.max_value_depth =
         u32::try_from(REVISION_LIMITS.max_depth.checked_add(1).unwrap()).unwrap();
     larger_depth.validate().unwrap();
-    settings
+    let rejected = settings
         .upsert(
             "default",
             "default",
@@ -249,13 +249,22 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
             )
             .unwrap(),
         )
-        .await
-        .unwrap();
+        .await;
+    assert!(
+        matches!(&rejected, Err(brassclaw_product_workflow::MontyVmSettingsError::Invalid(reason))
+            if reason == "execution limits cannot accommodate the retained global root or current transport and response settings"),
+        "depth above the pinned transport ceiling must be rejected, not published: {rejected:?}"
+    );
+    let unchanged = settings.get("default", "default").await.unwrap();
+    assert_eq!(unchanged.revision, current.revision);
+    assert_eq!(unchanged.execution_limits, current.execution_limits);
     let acknowledged = runtime
         .installed_catalogue
         .capture_task_preparation()
         .await
         .unwrap();
+    assert_eq!(acknowledged.revision(), current.revision);
+    assert_eq!(acknowledged.policy(), current.execution_limits);
     let program = proof.contexts[1].program("selected").unwrap();
     let actual = InspectedRetainedProgram::inspect_with_limits(
         RetainedProgram::Tools(program.clone()),
@@ -271,7 +280,7 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
             .components()
             .len(),
         1,
-        "immutable schema metadata keeps its own profile when actual task depth is larger"
+        "immutable schema metadata is inspectable under the actual supported acknowledged profile"
     );
     assert_eq!(
         proof.contexts.len(),
@@ -395,9 +404,26 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
     let retained_claim_bytes = u64::try_from(serde_json::to_vec(&candidate.claim).unwrap().len())
         .expect("retained claim byte length must fit the settings byte-limit type");
     smaller.max_value_bytes = smaller.max_value_bytes.min(retained_claim_bytes / 2);
+    assert!(smaller.max_value_bytes > 0);
+    assert!(smaller.max_value_bytes < current.execution_limits.max_value_bytes);
     assert!(smaller.max_value_bytes < retained_claim_bytes);
     smaller.validate().unwrap();
-    settings
+    // Only the positive value-byte ceiling decreases. The acknowledged source,
+    // depth, frame, actor and deadline bounds remain unchanged, so all other
+    // live transport/root compatibility predicates retain their valid inputs.
+    let current_values =
+        crate::live_monty_settings::execution_bounds(current.execution_limits).unwrap();
+    let smaller_values = crate::live_monty_settings::execution_bounds(smaller).unwrap();
+    assert_eq!(
+        smaller_values,
+        brassclaw_monty_host::VmBounds {
+            max_value_bytes: usize::try_from(smaller.max_value_bytes).unwrap(),
+            ..current_values
+        }
+    );
+    assert!(smaller_values.valid());
+    assert!(smaller.max_value_bytes <= smaller.max_ipc_frame_bytes);
+    let updated = settings
         .upsert(
             "default",
             "default",
@@ -407,7 +433,15 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
             .unwrap(),
         )
         .await
+        .expect("positive byte-only reduction must preserve live root/transport compatibility");
+    let acknowledged = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
         .unwrap();
+    assert_eq!(acknowledged.revision(), updated.revision);
+    assert_eq!(acknowledged.policy(), smaller);
+    assert_eq!(acknowledged.limits().bounds, smaller_values);
     let pool =
         Arc::new(brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap());
     let reread = read_proof(&runtime, pool.clone()).await;
@@ -419,6 +453,8 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
     );
     for (a, b) in proof.contexts.iter().zip(&reread.contexts) {
         assert_eq!(a.operation_bytes, b.operation_bytes);
+        assert!(a.limits().unwrap().max_bytes > acknowledged.limits().bounds.max_value_bytes);
+        assert_eq!(a.limits().unwrap().max_bytes, b.limits().unwrap().max_bytes);
         assert_eq!(a.approval_bytes().unwrap(), b.approval_bytes().unwrap());
     }
     assert_eq!(
