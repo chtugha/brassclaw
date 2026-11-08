@@ -967,6 +967,10 @@ pub(crate) fn validator_check_drafts() -> Vec<
     ]
 }
 
+pub(crate) const PURE_FIXTURE_ENCODER_SEED: &str =
+    include_str!("bootstrap_pure_fixture_encoder.py");
+pub(crate) const PURE_READER_WITNESS_SEED: &str = include_str!("bootstrap_pure_reader_witness.py");
+
 /// Installation-owned draft retention only. No class route, confidence,
 /// evidence, human review or active catalogue selection is created here.
 pub(crate) async fn retain_validator_check_drafts(

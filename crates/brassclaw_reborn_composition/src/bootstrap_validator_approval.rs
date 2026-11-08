@@ -50,6 +50,9 @@ mod fixtures;
 #[path = "bootstrap_checker_tests.rs"]
 mod tests;
 use fixtures::Suite;
+#[path = "bootstrap_pure_checker.rs"]
+mod pure;
+pub(crate) use pure::{CheckedPureCheckerClosure, pure_source_cases, qualify as qualify_pure};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -109,7 +112,7 @@ struct Claim {
 #[serde(deny_unknown_fields)]
 struct Reservation {
     format: String,
-    claim: Claim,
+    claim: Value,
     execution_request_id: Uuid,
 }
 #[derive(Clone, Serialize, Deserialize)]
@@ -217,6 +220,7 @@ struct Context {
     worker: Arc<PackagedExecutableImage>,
     root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
     claim: Claim,
+    profile: Option<Arc<pure::Profile>>,
     reservation: RecordRef,
     operation_id: Uuid,
     operation: Operation,
@@ -224,6 +228,32 @@ struct Context {
     programs: BTreeMap<String, Arc<RetainedToolProgram>>,
 }
 impl Context {
+    fn evidence_components(&self) -> Result<Vec<Value>, RebornBuildError> {
+        match &self.profile {
+            Some(profile) => profile
+                .components(&self.claim)?
+                .iter()
+                .map(|r| serde_json::to_value(r).map_err(invalid))
+                .collect(),
+            None => Ok(vec![
+                serde_json::to_value(&self.claim.root).map_err(invalid)?,
+            ]),
+        }
+    }
+    fn claim_bytes(&self) -> Result<String, RebornBuildError> {
+        match &self.profile {
+            Some(profile) => profile.claim_bytes(&self.claim),
+            None => serde_json::to_string(&self.claim).map_err(invalid),
+        }
+    }
+    fn format(&self, stage: &str) -> String {
+        let prefix = if self.profile.is_some() {
+            "pure-checker"
+        } else {
+            "structural-checker"
+        };
+        format!("{prefix}-{stage}/1")
+    }
     fn id(&self, stage: &str) -> Uuid {
         Uuid::new_v5(&self.operation_id, stage.as_bytes())
     }
@@ -241,8 +271,8 @@ impl Context {
             id,
             kind,
             success,
-            &evidence::checksum(&serde_json::to_string(&self.claim).map_err(invalid)?),
-            &[serde_json::to_value(&self.claim.root).map_err(invalid)?],
+            &evidence::checksum(&self.claim_bytes()?),
+            &self.evidence_components()?,
             serde_json::to_value(report).map_err(invalid)?,
         ))
     }
@@ -308,6 +338,9 @@ impl Context {
             .read::<SourceProof>(tx, self.id("source"), "behavior", false)
             .await?
             .ok_or_else(|| invalid("checker source original missing"))?;
+        if let Some(profile) = &self.profile {
+            return profile.verify_source(self, &source, &bytes);
+        }
         if source.format != "structural-checker-source/1"
             || source.operation != self.op()
             || source.root != self.claim.root
@@ -428,7 +461,7 @@ impl Context {
             .ok_or_else(|| invalid("checker original completion missing; do not replay"))?;
         let admission_ref = reference(stage("admission"), &admission_bytes);
         let observed_ref = reference(stage("observed"), &observed_bytes);
-        if admission.format != "structural-checker-admission/1"
+        if admission.format != self.format("admission")
             || admission.operation != self.op()
             || admission.variant != suite.variant
             || admission.run_id.is_nil()
@@ -437,11 +470,11 @@ impl Context {
             || observed.admission != admission_ref
             || observed.source != *source
             || observed.variant != suite.variant
-            || quiescence.format != "structural-checker-quiescence/1"
+            || quiescence.format != self.format("quiescence")
             || quiescence.operation != self.op()
             || quiescence.admission != admission_ref
             || quiescence.observed != observed_ref
-            || completed.format != "structural-checker-completed/1"
+            || completed.format != self.format("completed")
             || completed.operation != self.op()
             || completed.admission != admission_ref
             || completed.observed != observed_ref
@@ -503,6 +536,9 @@ impl Context {
         Ok(reference(stage("completed"), &completed_bytes))
     }
     async fn qualified(&self, tx: &Transaction<'_>) -> Result<Qualified, RebornBuildError> {
+        if let Some(profile) = &self.profile {
+            profile.verify_native_inputs(tx).await?;
+        }
         let reservation_bytes = evidence::read_evidence(tx, self.reservation.id)
             .await?
             .ok_or_else(|| invalid("checker original reservation missing"))?;
@@ -511,9 +547,10 @@ impl Context {
         )
         .map_err(invalid)?;
         let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
-        let claim_bytes = serde_json::to_string(&self.claim).map_err(invalid)?;
-        if reference(self.reservation.id, &reservation_bytes) != self.reservation
-            || serde_json::to_string(&reservation.claim).map_err(invalid)? != claim_bytes
+        let claim_bytes = self.claim_bytes()?;
+        if reservation.format != self.format("reservation")
+            || reference(self.reservation.id, &reservation_bytes) != self.reservation
+            || reservation.claim != strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?
             || reservation.execution_request_id.is_nil()
             || Uuid::new_v5(
                 &self.reservation.id,
@@ -535,7 +572,7 @@ impl Context {
             .await?
             .ok_or_else(|| invalid("checker original intent missing"))?;
         if operation_bytes != self.operation_bytes
-            || operation.format != "structural-checker-operation/1"
+            || operation.format != self.format("operation")
             || operation.reservation != self.reservation
         {
             return Err(invalid("checker original intent differs"));
@@ -563,24 +600,59 @@ impl Context {
         for suite in &self.claim.suites {
             completed.push(self.verify_completed(tx, suite, &source).await?);
         }
-        Ok(Qualified {
-            format: "structural-checker-qualified-own-function/1".into(),
+        let qualified = Qualified {
+            format: self.format("qualified-own-function"),
             scope: "installation-own-checker-only".into(),
             operation: self.op(),
             source,
             completed,
             root: self.claim.root.clone(),
             exports,
-        })
+        };
+        Ok(qualified)
+    }
+    fn qualification_value(&self, qualified: &Qualified) -> Result<Value, RebornBuildError> {
+        match &self.profile {
+            Some(profile) => profile.report(self, qualified),
+            None => serde_json::to_value(qualified).map_err(invalid),
+        }
+    }
+    async fn verify_final(&self, tx: &Transaction<'_>) -> Result<RecordRef, RebornBuildError> {
+        if self.profile.as_ref().is_none_or(|p| p.approves_function()) {
+            return self.verify_approval(tx).await;
+        }
+        let report = self.qualification_value(&self.qualified(tx).await?)?;
+        let mut behavior = None;
+        for kind in ["q1", "behavior"] {
+            let (bytes, actual) = self
+                .read::<Value>(tx, self.id(kind), kind, true)
+                .await?
+                .ok_or_else(|| invalid("private fixture original qualification missing"))?;
+            if actual != report || bytes != self.encode(self.id(kind), kind, true, &report)? {
+                return Err(invalid("private fixture original qualification differs"));
+            }
+            if kind == "behavior" {
+                behavior = Some(reference(self.id(kind), &bytes));
+            }
+        }
+        behavior.ok_or_else(|| invalid("private fixture behavior missing"))
     }
     fn approval_bytes(&self) -> Result<String, RebornBuildError> {
+        if let Some(profile) = &self.profile {
+            if !profile.approves_function() {
+                return Err(invalid("private support has no public Pure approval"));
+            }
+            return Ok(json!({"format":"pure-component-approval/1","approval_id":self.id("approval"),
+                "root":profile.subject(&self.claim)?,"components":profile.components(&self.claim)?,
+                "validation_mode":"system_seed","q1_ref":self.id("q1"),"q2_ref":null,"behavioral_refs":[self.id("behavior")]}).to_string());
+        }
         Ok(json!({"format":"pure-component-approval/1","approval_id":self.id("approval"),"root":self.claim.root,"components":[self.claim.root],"validation_mode":"system_seed","q1_ref":self.id("q1"),"q2_ref":null,"behavioral_refs":[self.id("behavior")]}).to_string())
     }
     async fn verify_approval(&self, tx: &Transaction<'_>) -> Result<RecordRef, RebornBuildError> {
-        let qualified = self.qualified(tx).await?;
+        let qualified = self.qualification_value(&self.qualified(tx).await?)?;
         for (kind, id) in [("q1", self.id("q1")), ("behavior", self.id("behavior"))] {
             let (bytes, _) = self
-                .read::<Qualified>(tx, id, kind, true)
+                .read::<Value>(tx, id, kind, true)
                 .await?
                 .ok_or_else(|| invalid("checker successful original evidence missing"))?;
             if bytes != self.encode(id, kind, true, &qualified)? {
@@ -601,6 +673,23 @@ impl Context {
             return Err(invalid("checker approval original differs"));
         }
         let rows=tx.query("SELECT component_id,component_version,component_checksum FROM reborn_pure_component_approval_closure WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?;
+        if let Some(profile) = &self.profile {
+            let expected = profile.components(&self.claim)?;
+            if rows.len() != expected.len()
+                || rows.iter().any(|row| {
+                    expected
+                        .iter()
+                        .find(|r| r.uuid == row.get::<_, Uuid>(0))
+                        .is_none_or(|r| {
+                            i64::try_from(r.version).ok() != Some(row.get::<_, i64>(1))
+                                || r.checksum != row.get::<_, String>(2)
+                        })
+                })
+            {
+                return Err(invalid("pure own approval subject closure differs"));
+            }
+            return Ok(reference(self.id("approval"), &bytes));
+        }
         if rows.len() != 1
             || rows[0].get::<_, Uuid>(0) != self.claim.root.uuid
             || rows[0].get::<_, i64>(1)
@@ -677,13 +766,106 @@ pub(crate) async fn qualify(
             .ok_or_else(|| invalid("canonical checker root missing"))?;
         specs.push((root, Some(class), fixtures::checker_suites(class, root_id)));
     }
+    let specs = specs
+        .into_iter()
+        .map(|(candidate, class, suites)| {
+            let recipe = fixtures::recipe(candidate.uuid(), class, &suites)?;
+            Ok(Spec {
+                candidate,
+                recipe,
+                suites,
+                dependencies: vec![receipt.clone()],
+                profile: None,
+            })
+        })
+        .collect::<Result<Vec<_>, RebornBuildError>>()?;
+    Ok(CheckedStructuralHelpers {
+        contexts: qualify_specs(
+            SessionInput {
+                pool,
+                worker,
+                root,
+                executor,
+                preparation,
+                storage,
+                application_checksum,
+            },
+            specs,
+        )
+        .await?,
+    })
+}
+
+struct Spec {
+    candidate: brassclaw_skills::component_revision::ComponentRevisionDraft,
+    recipe: brassclaw_skills::component_revision::ComponentRevisionDraft,
+    suites: Vec<Suite>,
+    dependencies: Vec<brassclaw_skills::component_revision::ComponentRevisionDraft>,
+    profile: Option<Arc<pure::Profile>>,
+}
+
+pub(crate) struct SessionInput {
+    pub(crate) pool: Arc<PgPool>,
+    pub(crate) worker: Arc<PackagedExecutableImage>,
+    pub(crate) root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
+    pub(crate) executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    pub(crate) preparation: crate::installed_monty_catalogue::PreparationCapture,
+    pub(crate) storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+    pub(crate) application_checksum: String,
+}
+
+async fn qualify_specs(
+    base: SessionInput,
+    specs: Vec<Spec>,
+) -> Result<Vec<Arc<Context>>, RebornBuildError> {
+    let SessionInput {
+        pool,
+        worker,
+        root,
+        executor,
+        preparation,
+        storage,
+        application_checksum,
+    } = base;
     let store = PgComponentRevisionStore::new(pool.clone());
-    let mut contexts = Vec::new();
+    let mut contexts: Vec<Arc<Context>> = Vec::new();
     let mut support = None;
-    for (candidate, class, suites) in specs {
-        let recipe = fixtures::recipe(candidate.uuid(), class, &suites)?;
+    for Spec {
+        candidate,
+        recipe,
+        suites,
+        dependencies,
+        mut profile,
+    } in specs
+    {
+        if let Some(selected) = &mut profile {
+            let mut next = (**selected).clone();
+            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            for previous in &contexts {
+                let prerequisite = previous
+                    .profile
+                    .as_ref()
+                    .ok_or_else(|| invalid("pure prerequisite scope missing"))?;
+                if next.requires_subject(prerequisite.subject_id()) {
+                    next.prerequisites.push(previous.verify_final(&tx).await?);
+                }
+            }
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            *selected = Arc::new(next);
+        }
         let mut refs = Vec::new();
-        for draft in [&candidate, &receipt, &recipe] {
+        for draft in std::iter::once(&candidate)
+            .chain(dependencies.iter())
+            .chain(std::iter::once(&recipe))
+        {
             if refs
                 .iter()
                 .any(|r: &ComponentRevisionRef| r.uuid == draft.uuid())
@@ -717,6 +899,15 @@ pub(crate) async fn qualify(
                     .split_once(':')
                     .ok_or_else(|| invalid("fixture step identity invalid"))?;
                 step.id = format!("{desc}:{number}");
+                if step.component == pure::encoder_id() && !step.results.is_empty() {
+                    let original = step.constants["step_id"]
+                        .as_str()
+                        .ok_or_else(|| invalid("pure encoder original step absent"))?;
+                    let (_, ordinal) = original
+                        .split_once(':')
+                        .ok_or_else(|| invalid("pure encoder original step invalid"))?;
+                    step.constants["step_id"] = json!(format!("{desc}:{ordinal}"));
+                }
                 for producer in step.results.values_mut() {
                     let (_, number) = producer
                         .split_once(':')
@@ -753,8 +944,18 @@ pub(crate) async fn qualify(
             normalized.push(suite);
         }
         let claim = Claim {
-            format: "structural-checker-claim/1".into(),
-            scope: "installation-own-checker-only".into(),
+            format: if profile.is_some() {
+                "pure-checker-execution-context/1"
+            } else {
+                "structural-checker-claim/1"
+            }
+            .into(),
+            scope: if profile.is_some() {
+                "installation-closed-pure-fixture"
+            } else {
+                "installation-own-checker-only"
+            }
+            .into(),
             root: snapshot.revisions()[&candidate.uuid()].reference().into(),
             components: refs.iter().copied().map(Into::into).collect(),
             recipe: snapshot.revisions()[&recipe.uuid()].reference().into(),
@@ -778,18 +979,26 @@ pub(crate) async fn qualify(
             quiescence_checksum: evidence::checksum(include_str!("bootstrap_quiescence_wire.rs")),
             io_checksum: evidence::checksum(include_str!("bootstrap_evidence_io.rs")),
         };
-        let claim_bytes = serde_json::to_string(&claim).map_err(invalid)?;
+        let claim_bytes = match &profile {
+            Some(profile) => profile.claim_bytes(&claim)?,
+            None => serde_json::to_string(&claim).map_err(invalid)?,
+        };
+        let domain = if profile.is_some() {
+            "pure-checker"
+        } else {
+            "structural-checker"
+        };
         let claim_id = Uuid::new_v5(
             &candidate.uuid(),
             format!(
-                "structural-checker-reservation/1:{}",
+                "{domain}-reservation/1:{}",
                 evidence::checksum(&claim_bytes)
             )
             .as_bytes(),
         );
         let offered = Reservation {
-            format: "structural-checker-reservation/1".into(),
-            claim: claim.clone(),
+            format: format!("{domain}-reservation/1"),
+            claim: strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?,
             execution_request_id: Uuid::new_v4(),
         };
         let components = [serde_json::to_value(&claim.root).map_err(invalid)?];
@@ -818,9 +1027,9 @@ pub(crate) async fn qualify(
         )
         .map_err(invalid)?;
         let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
-        if reservation.format != "structural-checker-reservation/1"
+        if reservation.format != format!("{domain}-reservation/1")
             || reservation.execution_request_id.is_nil()
-            || serde_json::to_string(&reservation.claim).map_err(invalid)? != claim_bytes
+            || reservation.claim != strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?
             || evidence::system_record(
                 claim_id,
                 "behavior",
@@ -838,7 +1047,7 @@ pub(crate) async fn qualify(
         let operation_id = Uuid::new_v5(&claim_id, reservation.execution_request_id.as_bytes());
         let existing = io::read_record(&pool, storage.as_ref(), operation_id).await?;
         let offered_operation = Operation {
-            format: "structural-checker-operation/1".into(),
+            format: format!("{domain}-operation/1"),
             reservation: reservation_ref.clone(),
             executor_bytes: executor.exact_bytes().into(),
             executor_checksum: executor.checksum(),
@@ -860,6 +1069,7 @@ pub(crate) async fn qualify(
             worker: worker.clone(),
             root: root.clone(),
             claim,
+            profile,
             reservation: reservation_ref,
             operation_id,
             operation,
@@ -881,11 +1091,11 @@ pub(crate) async fn qualify(
                 let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
                     .read_only(true).start().await.map_err(invalid)?;
                 let present = tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id=$1)", &[&context.id("approval")]).await.map_err(invalid)?.get::<_,bool>(0);
-                let proof = if present { Some(context.verify_approval(&tx).await?) } else { None };
+                let proof = if present { Some(context.verify_final(&tx).await?) } else { None };
                 tx.commit().await.map_err(invalid)?;client.recycle_after_commit();Ok(proof)
             }).await?;
             if let Some(proof) = original {
-                if support.is_none() {
+                if context.profile.is_none() && support.is_none() {
                     support = Some(proof);
                 }
                 contexts.push(context);
@@ -921,6 +1131,7 @@ pub(crate) async fn qualify(
             Ok(qualified)
         })
         .await?;
+        let qualified = context.qualification_value(&qualified)?;
         for (kind, id) in [
             ("q1", context.id("q1")),
             ("behavior", context.id("behavior")),
@@ -932,6 +1143,25 @@ pub(crate) async fn qualify(
                 &context.encode(id, kind, true, &qualified)?,
             )
             .await?;
+        }
+        if context
+            .profile
+            .as_ref()
+            .is_some_and(|p| !p.approves_function())
+        {
+            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            context.verify_final(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            contexts.push(context);
+            continue;
         }
         let approval = context.approval_bytes()?;
         let declaration = PureComponentApprovalDeclaration::from_json(&approval, REVISION_LIMITS)
@@ -966,10 +1196,10 @@ pub(crate) async fn qualify(
                 });
             }
         };
-        if support.is_none() {
+        if context.profile.is_none() && support.is_none() {
             support = Some(proof);
         }
         contexts.push(context);
     }
-    Ok(CheckedStructuralHelpers { contexts })
+    Ok(contexts)
 }
