@@ -37,7 +37,29 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current integration checkpoint — 2026-11-06
+### Current integration checkpoint — 2026-11-08
+
+**Native follow-up, 2026-11-08:** Run-19 on `381706153` builds the current worker
+and Composition/Memory tests successfully in 0.569/588.585 seconds, without
+compiler or linker warnings. Actual source/profile/link/inventory checks pass:
+`__eh_frame` is 12,552,864 bytes; 1,364 test names have no unexplained losses.
+The exact 47 D-01 retirements and one E-01 early-boot replacement are recorded.
+The first actual startup prerequisite fails after 48.87 seconds at E-01's
+expected Python exception check. No further dependent cases are started.
+The source-proven pinned Monty KeyError-format correction `4b4ecb0ac` and
+G-01's held-ACK test transport `6ad115a0b` are integrated, with native acceptance
+pending. Earlier failed compile receipts remain preserved.
+
+Run-17's three retained Memory executables pass 67 actual cases: 52 unit,
+13 VFS and two new InMemory codec tests, with zero skips. Their separate
+post-run acceptance verifies source and executable hashes. This evidence applies
+to those exact executables and unchanged Memory code; freshly relinked Run-18
+images are not claimed executed. PostgreSQL codec/global-driver acceptance is
+still open. G-01 is idle for its own corrections. F-01 has supplied source-only
+commit `0dad53132` for connected review; its fixture-subject scope extension needs
+explicit source/store review. Integration waits for genuine E-01 prerequisite
+acceptance. No general Pure
+approval, authored Q2, successor selection or full Bob completion is claimed.
 
 Local `main` contains the source-reviewed A-03/B-02/D-01 chain, the bounded
 B03a atomic Prefix producer through `576372fe2`, E-01 through `0e2b53c30`,
@@ -110,6 +132,8 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | D-01 — retire the private legacy Engine/Store bridge | `01a1ad6e-f507-78b2-883f-c3078c5c3678`, host `local`; `/Users/ollama/.codex/worktrees/9920/brassclaw`, branch `codex/d01-private-engine-bridge-retirement` | Source `f30dbcf6a` is reviewed and integrated. Removes the unreachable private bridge and solely dependent adapters/builders/guard, unused Store argument and unregistered LibSQL adapter. Preserves public compatibility, ordinary Monty and actual migration/import readers. Exact 47 retirements verified. Run-15 passes the real no-Monty Worker case; startup is blocked by shared bootstrap and opaque scope fails the real memory attribution codec. The diagnosed Memory-owned codec/attribution correction `b16976c41` is source-reviewed and integrated as `18183a653`, with real backend test sources and legacy compatibility retained; native acceptance pending. Idle for own corrections. Broader B2-09, private composer/seed alignment and Engine codec/suppression migration stay open. |
 | E-01 — genuine shipped seed qualification | `01a1b0d3-5a16-7932-86b1-786b2906224f`, host `local`, title “Paket E-01 — Echte Seed-Qualifikation”; `/Users/ollama/.codex/worktrees/ac2c/brassclaw` | Complete 19-file source `8ff7abc478` reviewed, independently hash-verified and integrated as `0e2b53c30`: exact canonical eight checker roots plus independently qualified receipt support, real contained fixtures/settlement, strict original proof and mandatory startup readback. Native acceptance pending; idle for own corrections. No general class-Q1, remaining 24-root approval, successor publication or migration claim. |
 | B03a — atomic private Prefix original/Ready publication | `01a1b10a-5a89-7712-a37c-f77f5a66c70f`, host `local`, title “Paket B-03 — Atomare Review-Arbeit”; `/Users/ollama/.codex/worktrees/dddf/brassclaw`, branch `codex/b03a-prefix-original-ready` | Four-file source package and existing-client lifecycle correction through `83efab192` reviewed and integrated. No schema/Worker/validator change. Three new real native cases and updated existing fallback/claim/readback cases await execution. Genuine withheld-BEGIN cancellation requires the existing test transport's hold/release extension before full B3-11 closure; its current cut-connection cases do not prove that boundary. Idle for own corrections. |
+| F-01 — closed Pure-checker/support qualification | `01a1babb-0ccd-7ed2-8211-f5a6a9f29976`, host `local`, title “Paket F-01 — Vollständige Pure-Eigenprüfung”; `/Users/ollama/.codex/worktrees/1a9e/brassclaw` | Full architecture/source proposals reviewed. Authorized connected implementation of ten existing public checking functions, separate private reader support and their Source workflow, reusing existing original-execution custody. Two private fixture identities reserved. Integration requires actual E-01 prerequisite acceptance. No general candidate Pure approval, authored Q2, `/2` publication or migration authorized. |
+| G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

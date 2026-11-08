@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Held transaction acknowledgement acceptance (G-01, validation pending)**:
+  Extend the existing PostgreSQL test transport with actual BEGIN/COMMIT
+  Hold/Release and add producer cancellation, original readback, healthy
+  connection reuse and shutdown cases. Keep native completion separate from
+  SQL observations and preserve the existing Cut interface. Source reviewed;
+  compilation and runtime acceptance remain pending.
+
 - **Shipped structural-checker qualification (E-01, validation pending)**:
   Replace manufactured early checker approvals with actual contained Monty
   fixtures for the eight shipped checking exports and their independently

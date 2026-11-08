@@ -13,7 +13,19 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
-The newest combined native attempt is Run-15 on `b84285780`: worker and
+2026-11-08: Run-19 on `381706153` builds the current worker and joint
+Composition/Memory test graph successfully, without warnings (0.569/588.585 s).
+Source/profile/link/inventory checks pass, with 12,552,864-byte `__eh_frame`
+and 1,364 names, no unexplained missing tests. Its first actual startup case
+fails at E-01's strict expected-Python-stop check; dependent cases are not run.
+The pinned Monty KeyError-format correction and source-reviewed G-01 held-ACK
+transport/tests are integrated for the next coherent batch, without runtime
+acceptance. Run-17's exact Memory unit/VFS/InMemory artifacts separately pass
+67/67, zero skipped; their independent acceptance does not cover PostgreSQL,
+global Monty or the failed Composition prerequisite. Receipts remain under
+`target/validation/bob-native-repair-20261105/run-{17,19}-composition/`.
+
+Earlier combined native attempt Run-15 on `b84285780`: worker and
 Composition compile successfully without warnings (0.615 and 710.15 seconds),
 then **25 of 70 actual selected cases pass and 45 fail**. Both explicitly enabled
 real Ornith model cases pass; no ignored/zero case is accepted. The exact source,
