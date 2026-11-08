@@ -292,13 +292,6 @@ impl Context {
         )
         .map_err(invalid)
     }
-    fn suite(&self, variant: &str) -> Result<&Suite, RebornBuildError> {
-        self.claim
-            .suites
-            .iter()
-            .find(|s| s.variant == variant)
-            .ok_or_else(|| invalid("foreign checker fixture variant"))
-    }
     fn program(&self, variant: &str) -> Result<&Arc<RetainedToolProgram>, RebornBuildError> {
         self.programs
             .get(variant)
