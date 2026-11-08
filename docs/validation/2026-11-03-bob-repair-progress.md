@@ -13,6 +13,26 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+Latest integration `7b4c29596` includes reviewed E-01 supported-settings correction
+and F-01's closed shipped checking-helper/support/Source-workflow package plus
+real Store scope tests. F-01 remains uncompiled/unexecuted. Run-20's prior source
+`377ad1bec` builds worker/tests without warnings, preserves all 1,368 test names
+and passes actual common PG/Monty startup. Of 21 selected actual executions,
+14 return passing and seven fail: one unsupported-depth test expectation
+(corrected in source) and six private Prefix/G-01 SQL failures. The green rollback
+case has limited fault-point evidence and needs its assigned reachability repair.
+Five E-01 fault cases, both generation cases, both PG Memory cases and opaque
+handoff pass within their exact scope. Frozen source identity is verified.
+
+The real PostgreSQL error confirms nested JSON extraction/minus precedence in
+six V207 expressions. B-02 implements a separate V209 repair and connected native
+regression sources; H-01 implements V208 post-Factory delivery/original review
+confirmation and existing Worker discovery. No original migration/Terminal `/1`
+bytes are rewritten. Their source/compile/native acceptance and full qualified
+Q1/selection/producer gates remain open. Run-20 receipts are under
+`target/validation/bob-native-repair-20261105/run-20-composition/`.
+
+
 2026-11-08: Run-19 on `381706153` builds the current worker and joint
 Composition/Memory test graph successfully, without warnings (0.569/588.585 s).
 Source/profile/link/inventory checks pass, with 12,552,864-byte `__eh_frame`

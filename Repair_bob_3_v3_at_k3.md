@@ -625,6 +625,17 @@ source, runtime diagnostics, tests and receipts were not modified.
 
 - [ ] **B3-11 — Add tests through the real factory and native owners.**
 
+**Scoped follow-up, 2026-11-08:** Run-20 builds the current joint graph without
+warnings and passes real common startup, both A-03 generation cases, both D-01
+PG Memory cases and opaque global handoff. Six private Prefix/G-01 cases expose
+a genuine SQL precedence defect in three V207 functions. B-02 owns its new V209
+repair and connected upgrade/fault-point tests; preserve V207 bytes. A generic
+rollback error alone cannot prove the intended injected boundary was reached.
+H-01 owns V208 post-Factory delivery, structural domain confirmation and discovery
+in the existing Worker lifecycle. Source/compile/native acceptance is pending;
+full B3-06/07 still requires actual qualified B1/B2 selection and producer wiring.
+
+
 | Scenario | Required observation |
 | --- | --- |
 | Actual PostgreSQL production factory and injected-port branch | Native owner/transport attached once; no builder-only success claim |
