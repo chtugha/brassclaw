@@ -1484,3 +1484,677 @@ async fn private_prefix_producer_does_not_complete_historical_absent_or_unsealed
     }
     fixture.finish().await;
 }
+
+// G-01 uses the B03a producer, not the historical split-original fixture above.
+// The blocked turn Worker cannot claim it. EffectiveSettings::get reads the
+// acknowledged watch view (no SQL); the background settings source uses SELECT,
+// and post-turn delivery has neither a configured model nor an event here.
+// Ownership roundtrips use a permanently detached session. The rule additionally
+// requires the original Bind, this backend PID and this exact frontend START;
+// an unrelated/default/read-only transaction cannot trigger the BEGIN hold.
+fn producer_hold_rule(id: Uuid, boundary: AckBoundary) -> AckCutRule {
+    let required = if boundary == AckBoundary::Begin {
+        vec![id.as_bytes().to_vec()]
+    } else {
+        vec![
+            id.as_bytes().to_vec(),
+            b"private-work-definition/1".to_vec(),
+        ]
+    };
+    let rule = AckCutRule::after_bind(1, required, vec![], boundary).hold();
+    if boundary == AckBoundary::Begin {
+        rule.following_query(b"START TRANSACTION ISOLATION LEVEL REPEATABLE READ\0".to_vec())
+    } else {
+        rule
+    }
+}
+
+async fn one_connection_identity(pool: &PgPool) -> (String, i32) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        assert_eq!(pool.status().max_size, 1);
+        let client = pool.get().await.unwrap();
+        let status = pool.status();
+        assert_eq!((status.max_size, status.size, status.available), (1, 1, 0));
+        let pid = client
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get(0);
+        (brassclaw_pg::PgClient::id(&client).to_string(), pid)
+    })
+    .await
+    .expect("size-one pool must provide an actual usable connection")
+}
+
+async fn prefix_atomic_counts(pool: &PgPool, id: Uuid) -> [i64; 6] {
+    let row = pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT (SELECT count(*) FROM brassclaw_prefix_job_definitions WHERE job_id=$1),
+         (SELECT count(*) FROM brassclaw_turns WHERE work_id=$1),
+         (SELECT count(*) FROM brassclaw_monty_private_preparations WHERE work_id=$1),
+         (SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1),
+         (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1),
+         (SELECT count(*) FROM brassclaw_monty_private_terminals WHERE work_id=$1)",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    std::array::from_fn(|index| row.get(index))
+}
+
+async fn prefix_original_bytes(pool: &PgPool, id: Uuid) -> serde_json::Value {
+    // Keep complete originals privately in memory; assert only boolean equality
+    // so a failed assertion cannot dump source/input/answer bytes into a receipt.
+    pool.get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT jsonb_build_object('job',to_jsonb(d),'preparation',to_jsonb(p),
+          'request',w.private_request_bytes,
+          'request_checksum',encode(w.private_request_checksum,'hex'),
+          'definition_checksum',encode(w.private_definition_checksum,'hex'))
+         FROM brassclaw_prefix_job_definitions d
+         JOIN brassclaw_turns w ON w.work_id=d.job_id
+         JOIN brassclaw_monty_private_preparations p ON p.work_id=d.job_id
+         WHERE d.job_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0)
+}
+
+async fn assert_backend_state(
+    pool: &PgPool,
+    pid: i32,
+    in_transaction: bool,
+) -> chrono::DateTime<chrono::Utc> {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let row = pool
+                .get()
+                .await
+                .unwrap()
+                .query_one(
+                    "SELECT state,xact_start IS NOT NULL,backend_start
+                 FROM pg_stat_activity WHERE pid=$1",
+                    &[&pid],
+                )
+                .await
+                .unwrap();
+            let expected = if in_transaction {
+                "idle in transaction"
+            } else {
+                "idle"
+            };
+            if row.get::<_, &str>(0) == expected && row.get::<_, bool>(1) == in_transaction {
+                return row.get(2);
+            }
+        }
+    })
+    .await
+    .expect("actual held backend must remain connected in its real transaction state")
+}
+
+async fn assert_backend_ended(pool: &PgPool, pid: i32, started: chrono::DateTime<chrono::Utc>) {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        loop {
+            let exists: bool = pool.get().await.unwrap().query_one(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND backend_start=$2)",
+                &[&pid, &started],
+            ).await.unwrap().get(0);
+            if !exists {
+                break;
+            }
+        }
+    })
+    .await
+    .expect("the original backend must actually terminate, not become an orphaned transaction");
+}
+
+async fn assert_hold_server_limits(pool: &PgPool) {
+    // The isolated native fixture must not race the test's explicit cancellation
+    // with an issuer/database timer. These are observations, not config writes.
+    let row = pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT current_setting('statement_timeout'),
+         current_setting('idle_in_transaction_session_timeout'),
+         current_setting('transaction_timeout',true),version()",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(row.get::<_, &str>(0), "0");
+    assert_eq!(row.get::<_, &str>(1), "0");
+    assert!(
+        row.get::<_, Option<&str>>(2)
+            .is_none_or(|value| value == "0")
+    );
+    eprintln!(
+        "held ACK native backend: {}; statement/idle-transaction/transaction deadlines disabled",
+        row.get::<_, &str>(3)
+    );
+}
+
+type PrefixProducer = tokio_util::task::AbortOnDropHandle<Result<Uuid, crate::RebornRuntimeError>>;
+
+struct HeldProducer {
+    ticket: brassclaw_pg::test_support::AckHoldTicket,
+    producer: PrefixProducer,
+    identity: (String, i32),
+    observation: brassclaw_pg::test_support::AckHoldObservation,
+}
+
+async fn finish_prefix_producer(
+    mut producer: PrefixProducer,
+) -> Result<Uuid, crate::RebornRuntimeError> {
+    match tokio::time::timeout(Duration::from_secs(30), &mut producer).await {
+        Ok(result) => result.unwrap(),
+        Err(_) => {
+            producer.abort();
+            assert!(producer.await.unwrap_err().is_cancelled());
+            panic!("producer deadline elapsed; its task was aborted and joined");
+        }
+    }
+}
+
+async fn start_held_producer(
+    fixture: &Fixture,
+    wire: &AckCutTransport,
+    id: Uuid,
+    revision: u64,
+    source: String,
+    caller: brassclaw_product_workflow::WebUiAuthenticatedCaller,
+) -> HeldProducer {
+    fixture.pool.resize(1);
+    let identity = one_connection_identity(&fixture.pool).await;
+    assert!(wire.arm(1).is_err(), "a hold must never use the cut API");
+    let mut ticket = wire.arm_hold(1, identity.1).unwrap();
+    assert!(
+        wire.arm_hold(1, identity.1).is_err(),
+        "an active generation cannot be replaced"
+    );
+    let runtime = fixture.runtime.clone();
+    let task = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+        runtime
+            .submit_prefix_generation_snapshot(id, "base-prompt", revision, &source, caller)
+            .await
+    }));
+    let held = tokio::time::timeout(Duration::from_secs(30), ticket.wait_held())
+        .await
+        .expect("the selected actual producer ACK must be reached")
+        .unwrap();
+    assert_eq!(held.backend_pid, identity.1);
+    assert!(held.session > 0 && held.generation > 0);
+    assert_eq!(
+        held.following_query_observed,
+        held.boundary == AckBoundary::Begin
+    );
+    assert!(
+        !task.is_finished(),
+        "no producer completion before its real ACK"
+    );
+    assert_eq!(
+        wire.cut_count(),
+        0,
+        "holding must not first cut the connection"
+    );
+    eprintln!(
+        "held ACK generation={} session={} backend_pid={} boundary={:?}",
+        held.generation, held.session, held.backend_pid, held.boundary
+    );
+    HeldProducer {
+        ticket,
+        producer: task,
+        identity,
+        observation: held,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_held_begin_cancel_discards_unconfirmed_client() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let id = Uuid::new_v4();
+    let wire = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![producer_hold_rule(id, AckBoundary::Begin)],
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::start(&rig, wire.pool.clone()).await;
+    assert_hold_server_limits(&rig.pool).await;
+    let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+    let HeldProducer {
+        mut ticket,
+        producer,
+        identity: old,
+        observation: held,
+    } = start_held_producer(&fixture, &wire, id, revision, source, caller).await;
+    let started = assert_backend_state(
+        &rig.pool,
+        held.backend_pid,
+        held.boundary == AckBoundary::Begin,
+    )
+    .await;
+    assert_eq!(prefix_atomic_counts(&rig.pool, id).await, [0; 6]);
+    producer.abort();
+    assert!(
+        producer.await.unwrap_err().is_cancelled(),
+        "actual producer future must be dropped"
+    );
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(30), ticket.wait_closed())
+            .await
+            .unwrap()
+            .unwrap(),
+        brassclaw_pg::test_support::AckHoldEnd::PeerClosed
+    );
+    assert!(
+        ticket.release().await.is_err(),
+        "disconnect is not a released ACK"
+    );
+    // tokio-postgres 0.7.18 queues rollback on BEGIN cancellation. EvidenceClient
+    // additionally detaches the unconfirmed client; the rollback need not reach
+    // the wire before ClientWrapper aborts its connection task.
+    let new = tokio::time::timeout(
+        Duration::from_secs(30),
+        one_connection_identity(&fixture.pool),
+    )
+    .await
+    .unwrap();
+    assert_ne!(old.0, new.0);
+    assert_ne!(old.1, new.1);
+    assert!(
+        Store::new(fixture.pool.clone())
+            .get(id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(prefix_atomic_counts(&fixture.pool, id).await, [0; 6]);
+    assert_backend_ended(&rig.pool, old.1, started).await;
+    fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
+    fixture.finish().await;
+    wire.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_held_commit_cancel_reads_exact_original_without_replay() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let id = Uuid::new_v4();
+    let wire = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![producer_hold_rule(id, AckBoundary::Commit)],
+    )
+    .await
+    .unwrap();
+    let fixture = Fixture::start(&rig, wire.pool.clone()).await;
+    assert_hold_server_limits(&rig.pool).await;
+    let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+    let HeldProducer {
+        mut ticket,
+        producer,
+        identity: old,
+        observation: held,
+    } = start_held_producer(
+        &fixture,
+        &wire,
+        id,
+        revision,
+        source.clone(),
+        caller.clone(),
+    )
+    .await;
+    let started = assert_backend_state(
+        &rig.pool,
+        held.backend_pid,
+        held.boundary == AckBoundary::Begin,
+    )
+    .await;
+    assert_eq!(
+        prefix_atomic_counts(&rig.pool, id).await,
+        [1, 1, 1, 0, 0, 0]
+    );
+    let original = prefix_original_bytes(&rig.pool, id).await;
+    producer.abort();
+    assert!(producer.await.unwrap_err().is_cancelled());
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(30), ticket.wait_closed())
+            .await
+            .unwrap()
+            .unwrap(),
+        brassclaw_pg::test_support::AckHoldEnd::PeerClosed
+    );
+    assert!(ticket.release().await.is_err());
+    let new = tokio::time::timeout(
+        Duration::from_secs(30),
+        one_connection_identity(&fixture.pool),
+    )
+    .await
+    .unwrap();
+    assert_ne!(old.0, new.0);
+    assert_ne!(old.1, new.1);
+    assert_backend_ended(&rig.pool, old.1, started).await;
+    assert_eq!(
+        tokio::time::timeout(
+            Duration::from_secs(30),
+            fixture.runtime.submit_prefix_generation_snapshot(
+                id,
+                "base-prompt",
+                revision,
+                &source,
+                caller.clone()
+            )
+        )
+        .await
+        .unwrap()
+        .unwrap(),
+        id
+    );
+    fixture
+        .runtime
+        .installed_catalogue
+        .read_private_prefix_original(&fixture.definition(id).await)
+        .await
+        .unwrap();
+    assert_eq!(fixture.counts(id).await, ("ready".into(), 0, 0, 0));
+    assert_eq!(
+        prefix_atomic_counts(&fixture.pool, id).await,
+        [1, 1, 1, 0, 0, 0]
+    );
+    assert!(
+        original == prefix_original_bytes(&fixture.pool, id).await,
+        "readback must retain all original bytes"
+    );
+    for (profile, offered) in [
+        ("base-prompt", "changed source"),
+        ("prefix-maker", source.as_str()),
+    ] {
+        assert!(matches!(
+            fixture
+                .runtime
+                .submit_prefix_generation_snapshot(id, profile, revision, offered, caller.clone())
+                .await,
+            Err(crate::RebornRuntimeError::PrefixJob(
+                brassclaw_product_workflow::InterceptorConfigServiceError::Conflict
+            ))
+        ));
+    }
+    let mut other = caller.clone();
+    other.user_id = brassclaw_host_api::UserId::new("held-commit-other-owner").unwrap();
+    assert!(matches!(
+        fixture
+            .runtime
+            .submit_prefix_generation_snapshot(id, "base-prompt", revision, &source, other)
+            .await,
+        Err(crate::RebornRuntimeError::PrefixJob(
+            brassclaw_product_workflow::InterceptorConfigServiceError::Conflict
+        ))
+    ));
+
+    // End the max-one readback phase before exercising the real native owner.
+    // This is the first execution of proven-unbegun Ready work, never a replay.
+    fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
+    let root = fixture.runtime.global_monty_owner.client().root_identity();
+    fixture
+        .drive(fixture.claim(TurnRunnerId::new()).await.unwrap())
+        .await;
+    assert_eq!(fixture.counts(id).await, ("settled".into(), 1, 1, 1));
+    let observed = prefix_atomic_counts(&fixture.pool, id).await;
+    assert_eq!(
+        [
+            observed[0],
+            observed[1],
+            observed[2],
+            observed[3],
+            observed[5]
+        ],
+        [1; 5]
+    );
+    assert!(
+        observed[4] > 0,
+        "native completion must include actual retained invocations"
+    );
+    let answered: i64 = fixture
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT count(*) FROM brassclaw_monty_tool_invocations
+         WHERE run_id=$1 AND phase='answered' AND attempt_count=1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        answered, observed[4],
+        "each original native invocation must have its actual single-attempt answer"
+    );
+    let invocations = fixture.pool.get().await.unwrap().query_one(
+        "SELECT jsonb_agg(to_jsonb(i) ORDER BY invocation_id) FROM brassclaw_monty_tool_invocations i WHERE run_id=$1", &[&id],
+    ).await.unwrap().get::<_, serde_json::Value>(0);
+    assert_eq!(
+        fixture
+            .runtime
+            .submit_prefix_generation_snapshot(id, "base-prompt", revision, &source, caller)
+            .await
+            .unwrap(),
+        id
+    );
+    assert!(fixture.claim(TurnRunnerId::new()).await.is_none());
+    assert_eq!(prefix_atomic_counts(&fixture.pool, id).await, observed);
+    let after = fixture.pool.get().await.unwrap().query_one(
+        "SELECT jsonb_agg(to_jsonb(i) ORDER BY invocation_id) FROM brassclaw_monty_tool_invocations i WHERE run_id=$1", &[&id],
+    ).await.unwrap().get::<_, serde_json::Value>(0);
+    assert!(
+        invocations == after,
+        "all native invocation IDs/arguments/answers must remain original"
+    );
+    assert!(original == prefix_original_bytes(&fixture.pool, id).await);
+    assert_eq!(
+        fixture.runtime.global_monty_owner.client().root_identity(),
+        root
+    );
+    fixture.finish().await;
+    wire.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_held_ack_release_reuses_confirmed_connection() {
+    for boundary in [AckBoundary::Begin, AckBoundary::Commit] {
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let _db = rig.lock_db().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let id = Uuid::new_v4();
+        let wire = AckCutTransport::start(
+            rig.url.expose_secret(),
+            vec![producer_hold_rule(id, boundary)],
+        )
+        .await
+        .unwrap();
+        let fixture = Fixture::start(&rig, wire.pool.clone()).await;
+        assert_hold_server_limits(&rig.pool).await;
+        let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+        let HeldProducer {
+            mut ticket,
+            producer,
+            identity: old,
+            observation: held,
+        } = start_held_producer(
+            &fixture,
+            &wire,
+            id,
+            revision,
+            source.clone(),
+            caller.clone(),
+        )
+        .await;
+        assert_backend_state(
+            &rig.pool,
+            held.backend_pid,
+            held.boundary == AckBoundary::Begin,
+        )
+        .await;
+        assert_eq!(
+            prefix_atomic_counts(&rig.pool, id).await,
+            if boundary == AckBoundary::Begin {
+                [0; 6]
+            } else {
+                [1, 1, 1, 0, 0, 0]
+            }
+        );
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(30), ticket.release())
+                .await
+                .unwrap()
+                .unwrap(),
+            held
+        );
+        assert!(
+            ticket.release().await.is_err(),
+            "release capability is single use"
+        );
+        assert_eq!(finish_prefix_producer(producer).await.unwrap(), id);
+        assert_eq!(
+            one_connection_identity(&fixture.pool).await,
+            old,
+            "confirmed Commit must recycle its healthy client"
+        );
+        assert_backend_state(&rig.pool, old.1, false).await;
+        let original = prefix_original_bytes(&fixture.pool, id).await;
+        let second = Uuid::new_v4();
+        assert_eq!(
+            tokio::time::timeout(
+                Duration::from_secs(30),
+                fixture.runtime.submit_prefix_generation_snapshot(
+                    second,
+                    "base-prompt",
+                    revision,
+                    &source,
+                    caller
+                )
+            )
+            .await
+            .unwrap()
+            .unwrap(),
+            second
+        );
+        assert_eq!(one_connection_identity(&fixture.pool).await, old);
+        assert_eq!(
+            prefix_atomic_counts(&fixture.pool, id).await,
+            [1, 1, 1, 0, 0, 0]
+        );
+        assert_eq!(
+            prefix_atomic_counts(&fixture.pool, second).await,
+            [1, 1, 1, 0, 0, 0]
+        );
+        assert!(original == prefix_original_bytes(&fixture.pool, id).await);
+        // A new arm may reuse a rule ID; an old completed ticket cannot clear it.
+        let mut next = wire.arm_hold(1, old.1).unwrap();
+        assert!(ticket.release().await.is_err());
+        drop(ticket);
+        assert_eq!(
+            next.status(),
+            brassclaw_pg::test_support::AckHoldStatus::Armed
+        );
+        assert!(wire.arm_hold(1, old.1).is_err());
+        fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
+        fixture.finish().await;
+        wire.shutdown().await.unwrap();
+        assert_eq!(
+            next.wait_closed().await.unwrap(),
+            brassclaw_pg::test_support::AckHoldEnd::Shutdown
+        );
+        assert!(next.release().await.is_err());
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn private_prefix_producer_held_ack_shutdown_fails_without_fabricated_success() {
+    for boundary in [AckBoundary::Begin, AckBoundary::Commit] {
+        let rig = crate::runtime::test_pg::pg_rig().await;
+        let _db = rig.lock_db().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
+        let id = Uuid::new_v4();
+        let wire = AckCutTransport::start(
+            rig.url.expose_secret(),
+            vec![producer_hold_rule(id, boundary)],
+        )
+        .await
+        .unwrap();
+        let fixture = Fixture::start(&rig, wire.pool.clone()).await;
+        assert_hold_server_limits(&rig.pool).await;
+        let (revision, source, caller) = atomic_prefix_request(&fixture).await;
+        let HeldProducer {
+            mut ticket,
+            producer,
+            observation: held,
+            ..
+        } = start_held_producer(&fixture, &wire, id, revision, source, caller).await;
+        let started = assert_backend_state(
+            &rig.pool,
+            held.backend_pid,
+            held.boundary == AckBoundary::Begin,
+        )
+        .await;
+        let expected = if boundary == AckBoundary::Begin {
+            [0; 6]
+        } else {
+            [1, 1, 1, 0, 0, 0]
+        };
+        assert_eq!(prefix_atomic_counts(&rig.pool, id).await, expected);
+        let original = if boundary == AckBoundary::Commit {
+            Some(prefix_original_bytes(&rig.pool, id).await)
+        } else {
+            None
+        };
+        // Actual full transport shutdown joins every relay, including this hold.
+        // It deliberately also loses the runtime's detached ownership session.
+        tokio::time::timeout(Duration::from_secs(30), wire.shutdown())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            ticket.wait_closed().await.unwrap(),
+            brassclaw_pg::test_support::AckHoldEnd::Shutdown
+        );
+        assert!(ticket.release().await.is_err());
+        assert!(finish_prefix_producer(producer).await.is_err());
+        assert_backend_ended(&rig.pool, held.backend_pid, started).await;
+        assert_eq!(prefix_atomic_counts(&rig.pool, id).await, expected);
+        if let Some(original) = original {
+            assert!(
+                original == prefix_original_bytes(&rig.pool, id).await,
+                "unacknowledged committed original must remain intact without replay"
+            );
+        }
+        // Loss of the instance owner is reported, not laundered into healthy
+        // runtime shutdown. This still invokes/join-cleans its real owners.
+        let result = tokio::time::timeout(
+            Duration::from_secs(60),
+            shutdown_shared_runtime(fixture.runtime),
+        )
+        .await
+        .unwrap();
+        assert!(
+            matches!(result, Err(crate::RebornRuntimeError::InvalidArgument { reason })
+            if reason == "global Monty shutdown requires reconciliation")
+        );
+    }
+}
