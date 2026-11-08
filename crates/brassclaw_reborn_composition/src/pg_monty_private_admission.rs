@@ -127,6 +127,10 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimReservation for PgMonty
 #[path = "private_work_terminal.rs"]
 mod terminal;
 
+#[path = "pg_private_delivery.rs"]
+mod delivery;
+pub(crate) use delivery::DeliveredPrivateCompletion;
+
 impl PgMontyAdmission {
     async fn private_settlement_address(
         &self,

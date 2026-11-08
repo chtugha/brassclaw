@@ -207,7 +207,18 @@ impl MontyTaskHandoff {
 /// The production composition adapter delivers admitted attempts to the
 /// supervised global service; hosts and retained selections stay attempt-local.
 #[async_trait]
+pub trait PrivateWorkReconciliationPort: Send + Sync {
+    fn notify_originals(&self) -> Result<(), AgentLoopDriverError>;
+    /// Inspect original durable obligations and acknowledge already delivered
+    /// results. This neither admits replacement work nor grants Tool authority.
+    async fn reconcile_originals(&self) -> Result<(), AgentLoopDriverError>;
+}
+
+#[async_trait]
 pub trait MontyTurnDriverPort: Send + Sync {
+    /// One bounded pass on the existing worker's wake/fallback lifecycle.
+    /// Private-capable adapters must attach their actual original owner.
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError>;
     /// Transfer one claimed task and await its exit. The service may retain the
     /// host independently of this waiting future. Dropping the future is not a
     /// cancellation acknowledgement; use addressed `stop_attempt`.

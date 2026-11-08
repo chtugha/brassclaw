@@ -11,6 +11,7 @@ use brassclaw_turns::{
     },
 };
 
+#[cfg(test)]
 struct ValidatorOriginal {
     subject: Arc<brassclaw_skills::review_submission_store::RetainedValidatorSubject>,
     selection:
@@ -93,6 +94,7 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for Install
 }
 
 impl InstalledMontyCatalogue {
+    #[cfg(test)]
     pub(crate) async fn prepare_private_validator(
         &self,
         submission_id: Uuid,
@@ -169,6 +171,7 @@ impl InstalledMontyCatalogue {
         }
     }
 
+    #[cfg(test)]
     async fn prepare_fresh_private_validator(
         &self,
         original: &ValidatorOriginal,
@@ -279,6 +282,7 @@ impl InstalledMontyCatalogue {
             .ok_or_else(|| invalid("private validator published original missing"))
     }
 
+    #[cfg(test)]
     async fn read_private_validator_original(
         &self,
         original: &ValidatorOriginal,

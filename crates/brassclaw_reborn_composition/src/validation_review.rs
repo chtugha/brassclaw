@@ -43,9 +43,11 @@ impl Q1Candidate {
             }
         })
     }
+    #[cfg(test)]
     pub(crate) fn class_code(&self) -> i16 {
         self.class_code
     }
+    #[cfg(test)]
     pub(crate) fn reviewed(&self) -> &Value {
         &self.reviewed
     }
@@ -57,16 +59,24 @@ pub(super) async fn component_bytes(
     component_id: Uuid,
     class_code: i16,
 ) -> Result<String, ValidationQueueError> {
+    component_bytes_on(tx,scope,component_id,class_code,true).await
+}
+
+async fn component_bytes_on(
+    tx: &tokio_postgres::Transaction<'_>, scope: &ComponentScope,
+    component_id:Uuid, class_code:i16, retain_lock:bool,
+) -> Result<String,ValidationQueueError> {
     let table = resolve_component_table(i32::from(class_code)).ok_or(
         ValidationQueueError::UnknownClass {
             class_code: i32::from(class_code),
         },
     )?;
-    let sql = format!(
+    let mut sql = format!(
         "SELECT review_component_bytes(to_jsonb(c)) FROM {table} c
          WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
-         AND class_code=$6 FOR UPDATE"
+         AND class_code=$6"
     );
+    if retain_lock {sql.push_str(" FOR UPDATE");}
     tx.query_opt(
         &sql,
         &[
@@ -85,8 +95,32 @@ pub(super) async fn component_bytes(
 }
 
 impl ValidationQueueStore {
+    /// Read projection only. Historical acknowledged applications do not call
+    /// this: subsequent legitimate edits/deletions cannot rewrite their result.
+    pub(crate) async fn original_queue_is_current(
+        tx:&tokio_postgres::Transaction<'_>,submission_id:Uuid,
+    )->Result<bool,ValidationQueueError> {
+        let rows=tx.query("SELECT b.queue_id FROM reborn_component_review_queue_bindings b
+            WHERE b.submission_id=$1 ORDER BY b.queue_id",&[&submission_id]).await.map_err(map_pg)?;
+        for row in rows {
+            let queue_id:Uuid=row.get(0);
+            let original=brassclaw_skills::review_submission_store::queue::read_in_transaction(tx,queue_id)
+                .await.map_err(|error|map_original_store(error,Uuid::nil()))?.ok_or(ValidationQueueError::InvalidPayload{component_id:Uuid::nil()})?;
+            let Some(current)=tx.query_opt("SELECT tenant_id,user_id,agent_id,project_id,component_id,component_class,state,review_queue_bytes(q)
+                FROM reborn_validation_queue q WHERE id=$1",&[&queue_id]).await.map_err(map_pg)? else {return Ok(false);};
+            if current.get::<_,i16>(6)!=STATE_Q1_PENDING || current.get::<_,&str>(7)!=original.queue_bytes() {return Ok(false);}
+            let scope=ComponentScope {tenant_id:current.get(0),user_id:current.get(1),agent_id:current.get(2),project_id:current.get(3)};
+            match component_bytes_on(tx,&scope,current.get(4),current.get(5),false).await {
+                Ok(bytes) if bytes==original.component_bytes()=>{},
+                Ok(_) | Err(ValidationQueueError::ComponentMissing{..})=>return Ok(false),
+                Err(error)=>return Err(error),
+            }
+        }
+        Ok(true)
+    }
     /// Take one queue-before-component snapshot, then release all locks before
     /// parsing or executing validator code. Graduation compares it again.
+    #[cfg(test)]
     pub(crate) async fn capture_q1_candidate(
         &self,
         scope: &ComponentScope,
@@ -194,6 +228,7 @@ impl ValidationQueueStore {
 
     /// The sole production state-2 writer. An unchanged current row does not
     /// suffice: the candidate must equal the snapshot supplied to the validator.
+    #[cfg(test)]
     pub(crate) async fn gate1_pass_reviewed(
         &self,
         scope: &ComponentScope,
@@ -207,6 +242,7 @@ impl ValidationQueueStore {
         self.record_q1_review(scope, review, errors, true).await
     }
 
+    #[cfg(test)]
     pub(crate) async fn gate1_fail_reviewed(
         &self,
         scope: &ComponentScope,
@@ -221,6 +257,7 @@ impl ValidationQueueStore {
         self.record_q1_review(scope, review, errors, false).await
     }
 
+    #[cfg(test)]
     async fn record_q1_review(
         &self,
         scope: &ComponentScope,
@@ -228,7 +265,6 @@ impl ValidationQueueStore {
         errors: &[String],
         passed: bool,
     ) -> Result<(), ValidationQueueError> {
-        let component_id = review.component_id;
         let mut client = self.pool.get().await.map_err(map_pool)?;
         let tx = client
             .build_transaction()
@@ -236,6 +272,33 @@ impl ValidationQueueStore {
             .start()
             .await
             .map_err(map_pg)?;
+        Self::record_q1_review_in_transaction(&tx, scope, review, errors, passed).await?;
+        tx.commit().await.map_err(map_pg)?;
+        Ok(())
+    }
+
+    pub(crate) async fn record_structural_failure_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        review: &Q1Candidate,
+        errors: &[String],
+    ) -> Result<(), ValidationQueueError> {
+        if errors.is_empty() {
+            return Err(ValidationQueueError::InvalidGate1Result {
+                component_id: review.component_id,
+            });
+        }
+        Self::record_q1_review_in_transaction(tx, scope, review, errors, false).await
+    }
+
+    async fn record_q1_review_in_transaction(
+        tx: &tokio_postgres::Transaction<'_>,
+        scope: &ComponentScope,
+        review: &Q1Candidate,
+        errors: &[String],
+        passed: bool,
+    ) -> Result<(), ValidationQueueError> {
+        let component_id = review.component_id;
         let sql = String::from(
             "SELECT state, review_queue_bytes(q), id FROM reborn_validation_queue q
              WHERE tenant_id=$1 AND user_id=$2 AND agent_id=$3 AND project_id=$4
@@ -259,14 +322,14 @@ impl ValidationQueueStore {
             return Err(ValidationQueueError::NotFound { component_id });
         }
         if row.get::<_, String>(1) != review.queue_bytes
-            || component_bytes(&tx, scope, component_id, review.class_code).await?
+            || component_bytes(tx, scope, component_id, review.class_code).await?
                 != review.component_bytes
         {
             return Err(ValidationQueueError::ReviewChanged { component_id });
         }
         if matches!(review.class_code,0|1..=3|13|21..=23) {
             let original = review.original()?;
-            Self::verify_original_in_transaction(&tx, row.get(2), original).await?;
+            Self::verify_original_in_transaction(tx, row.get(2), original).await?;
         }
         let n = tx.execute(
             "UPDATE reborn_validation_queue SET state=$8, validation_errors=$9, updated_at=now(),
@@ -280,7 +343,6 @@ impl ValidationQueueStore {
         if n != 1 {
             return Err(ValidationQueueError::NotFound { component_id });
         }
-        tx.commit().await.map_err(map_pg)?;
         Ok(())
     }
 

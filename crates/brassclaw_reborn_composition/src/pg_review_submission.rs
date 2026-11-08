@@ -350,6 +350,16 @@ pub(crate) async fn get(
         retained_receipt.queue_binding_status =
             brassclaw_product_workflow::ReviewQueueBindingStatus::Bound;
     }
+    #[cfg(feature = "skills-db")]
+    let work = Some(
+        crate::review_work_reconciliation::inspect(&tx, id)
+            .await
+            .map_err(|_| {
+                RecipeStoreError::Unavailable("original review work requires reconciliation".into())
+            })?,
+    );
+    #[cfg(not(feature = "skills-db"))]
+    let work = None;
     tx.commit()
         .await
         .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;
@@ -363,6 +373,7 @@ pub(crate) async fn get(
             .map(|revision| revision.draft().exact_bytes().to_owned())
             .collect(),
         review_selection_bytes,
+        work,
     })
 }
 

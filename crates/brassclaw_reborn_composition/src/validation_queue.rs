@@ -242,9 +242,8 @@ pub struct ValidationQueueStore {
     /// next turn (§12 of prefix_V3.md).
     #[cfg(feature = "postgres")]
     basic_prompt_store: Option<Arc<PgBasicPromptStore>>,
-    /// Optional: when set, `submit()` kicks `run_q1_validation_retained` after
-    /// each new enqueue so the retained IBS/Recipe Q1 path runs per-component.
-    /// Fire-and-forget via `tokio::spawn`; Q1 outcome does not block submission.
+    /// Optional wake attachment. Original durable requests remain discoverable
+    /// without this notification; it never selects or executes a validator.
     #[cfg(feature = "skills-db")]
     validator_bridge: Option<Arc<ValidatorServiceBridge>>,
 }
@@ -284,9 +283,8 @@ impl ValidationQueueStore {
         self
     }
 
-    /// Attach a [`ValidatorServiceBridge`] so that `submit()` kicks
-    /// `run_q1_validation_retained` after each new enqueue (PKG-C wiring).
-    /// The Q1 call runs in a detached `tokio::spawn`; submission never blocks on it.
+    /// Attach the actual shared-worker notification owner. Submission does not
+    /// execute Q1, choose a validator draft or discard a validation result.
     #[cfg(feature = "skills-db")]
     pub(crate) fn with_validator_service(mut self, bridge: Arc<ValidatorServiceBridge>) -> Self {
         self.validator_bridge = Some(bridge);
@@ -297,41 +295,19 @@ impl ValidationQueueStore {
         self.reject_threshold
     }
 
-    /// Fire a detached Q1 kick for a component that was just committed to the
-    /// queue via `submit_in_transaction` (i.e. from `create_and_submit`). This
-    /// is identical to the kick inside `submit()` and must be called after the
-    /// enclosing transaction has committed. No-op when no bridge is wired.
+    /// Notify the already-running shared worker after original persistence.
+    /// Durable original requests, not this wake, determine pending work.
     #[cfg(feature = "skills-db")]
     pub(crate) fn fire_q1_kick_if_wired(
         &self,
-        scope: &ComponentScope,
+        _scope: &ComponentScope,
         component_id: Uuid,
-        component_class: i32,
+        _component_class: i32,
     ) {
-        if let Some(bridge) = &self.validator_bridge {
-            let pool = Arc::clone(&self.pool);
-            let scope = scope.clone();
-            let bridge = Arc::clone(bridge);
-            let queue_store =
-                Self::with_reject_threshold(Arc::clone(&self.pool), self.reject_threshold);
-            // Default execution limits are valid by construction; the static
-            // expect is infallible given the default MontyExecutionLimits.
-            let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(
-                brassclaw_host_api::MontyExecutionLimits::default(),
-            )
-            .expect("default MontyExecutionLimits are always valid");
-            tokio::spawn(async move {
-                let _ = crate::q1_orchestrator::run_q1_validation_retained(
-                    &pool,
-                    &scope,
-                    component_id,
-                    component_class,
-                    &queue_store,
-                    preparation,
-                    Some(bridge.as_ref()),
-                )
-                .await;
-            });
+        if let Some(bridge) = &self.validator_bridge
+            && let Err(error) = bridge.driver.notify_originals()
+        {
+            tracing::warn!(%component_id,%error,"original review wake unavailable; durable reconciliation required");
         }
     }
 
@@ -356,10 +332,8 @@ impl ValidationQueueStore {
         let tx = client.transaction().await.map_err(map_pg)?;
         Self::submit_on(&tx, scope, component_id, component_class, proposed_payload).await?;
         tx.commit().await.map_err(map_pg)?;
-        // PKG-C: fire-and-forget retained Q1 kick — delegate to the shared
-        // helper so both submit() and create_and_submit paths use the same code.
-        // The Q1 outcome does not block or change the submit result;
-        // deferral (None bridge / no Recipe seeded) is the correct fallback.
+        // A wake is only an optimization. The original durable request is the
+        // source of discovery; legacy queue-only inputs stay unresolved.
         #[cfg(feature = "skills-db")]
         self.fire_q1_kick_if_wired(scope, component_id, component_class);
         Ok(())

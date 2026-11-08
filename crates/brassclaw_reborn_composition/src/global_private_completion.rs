@@ -185,6 +185,7 @@ impl GlobalMontyDriver {
             pause.consumer_waiting.notify_one();
         }
     }
+    #[cfg(test)]
     pub(crate) async fn prepare_private_validator(
         &self,
         submission_id: uuid::Uuid,

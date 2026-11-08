@@ -1261,6 +1261,7 @@ impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
         self.capture_child_task(host, admission, input).await
     }
 
+    #[cfg(test)]
     async fn prepare_private_validator(
         &self,
         submission_id: Uuid,

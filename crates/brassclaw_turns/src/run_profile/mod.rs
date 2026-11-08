@@ -47,6 +47,7 @@ pub use compaction::{
 pub use driver::{
     AgentLoopDriver, AgentLoopDriverDescriptor, AgentLoopDriverError, AgentLoopDriverResumeRequest,
     AgentLoopDriverRunRequest, MontyTaskHandoff, MontyTurnDriverPort,
+    PrivateWorkReconciliationPort,
 };
 pub use host::{
     AgentLoopDriverHost, AgentLoopHost, AgentLoopHostError, AgentLoopHostErrorKind,

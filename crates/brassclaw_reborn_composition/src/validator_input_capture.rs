@@ -41,10 +41,63 @@ pub(crate) struct ValidatorInputCapture {
     wire: Wire,
     inputs: brassclaw_host_api::JsonValue,
     preparation: PreparationCapture,
+    #[cfg(test)]
     bytes: String,
+    #[cfg(test)]
     checksum: String,
 }
 impl ValidatorInputCapture {
+    /// Integrity of a historical captured preparation, without current worker
+    /// inspection, requalification or recomputation using today's settings.
+    pub(crate) fn verify_historical(
+        subject: &RetainedValidatorSubject,
+        selection: &RetainedValidatorSelection,
+        definition: &crate::private_work_definition::PrivateWorkDefinition,
+    ) -> Result<(), RebornBuildError> {
+        let crate::private_work_definition::DomainCapture::ValidatorStructural {
+            capture_bytes,
+            capture_checksum,
+        } = definition.domain()
+        else {
+            return Err(invalid("historical validator capture purpose differs"));
+        };
+        let wire: Wire = serde_json::from_str(capture_bytes).map_err(invalid)?;
+        if checksum(capture_bytes) != hex::encode(capture_checksum)
+            || serde_json::to_string(&wire).map_err(invalid)? != *capture_bytes
+            || wire.format != "validator-input-capture/1"
+            || wire.submission_id != subject.submission_id()
+            || wire.subject_checksum != subject.subject_checksum()
+            || wire.validator_selection_bytes != selection.bytes()
+            || wire.validator_selection_checksum != checksum(selection.bytes())
+            || wire.validator_bytes != selection.validator_bytes()
+            || wire.validator_checksum != checksum(selection.validator_bytes())
+            || wire.validator_checksum != hex::encode(definition.workflow_checksum())
+            || wire.input_checksum != checksum(&wire.input_bytes)
+            || wire.input_checksum != hex::encode(definition.input_checksum())
+            || wire.preparation_bytes != definition.preparation().bytes()
+            || wire.preparation_checksum != definition.preparation().checksum()
+            || wire.worker_checksum != hex::encode(definition.worker_checksum())
+        {
+            return Err(invalid(
+                "historical validator capture differs from original",
+            ));
+        }
+        let inputs =
+            strict_json(&wire.input_bytes, limits(definition.preparation())).map_err(invalid)?;
+        let program = RetainedValidatorCoverage::restore_preparation(selection).map_err(invalid)?;
+        let coverage = RetainedValidatorCoverage::from_inputs(program.inputs()).map_err(invalid)?;
+        coverage.require_subject(subject).map_err(invalid)?;
+        let bound = program
+            .inputs()
+            .bind_task_inputs_with_limits(&inputs, limits(definition.preparation()))
+            .map_err(invalid)?;
+        if inputs != bound {
+            return Err(invalid(
+                "historical validator inputs differ from captured binding",
+            ));
+        }
+        Ok(())
+    }
     pub(crate) fn inputs(&self) -> &brassclaw_host_api::JsonValue {
         &self.inputs
     }
@@ -57,9 +110,11 @@ impl ValidatorInputCapture {
     pub(crate) fn preparation(&self) -> &PreparationCapture {
         &self.preparation
     }
+    #[cfg(test)]
     pub(crate) fn bytes(&self) -> &str {
         &self.bytes
     }
+    #[cfg(test)]
     pub(crate) fn checksum(&self) -> &str {
         &self.checksum
     }
@@ -74,6 +129,7 @@ pub(crate) struct PreparedValidatorReview {
 impl PreparedValidatorReview {
     /// Fresh task preparation is captured by the catalogue exactly once before
     /// this call. No caller-provided inputs or separate revision claims exist.
+    #[cfg(test)]
     pub(crate) async fn prepare(
         subject: Arc<RetainedValidatorSubject>,
         selection: Arc<RetainedValidatorSelection>,
@@ -178,7 +234,9 @@ impl PreparedValidatorReview {
             wire,
             inputs: original.into(),
             preparation,
+            #[cfg(test)]
             bytes: capture_bytes.to_owned(),
+            #[cfg(test)]
             checksum: capture_checksum.to_owned(),
         };
         Ok(Arc::new(Self {

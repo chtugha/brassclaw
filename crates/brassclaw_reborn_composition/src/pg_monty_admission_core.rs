@@ -553,6 +553,7 @@ impl PgMontyAdmission {
 
 #[path = "pg_monty_private_admission.rs"]
 mod private_origin;
+pub(crate) use private_origin::DeliveredPrivateCompletion;
 
 /// Shape validation is not completion proof. The private task owner verifies
 /// native receipts before settlement; the evidence reader then checks that exact

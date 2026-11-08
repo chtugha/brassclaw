@@ -133,7 +133,47 @@ pub(super) struct Terminal {
     checksum: [u8; 32],
     execution_report_bytes: Option<String>,
 }
+/// Historical data only. It cannot be converted into a service receipt or an
+/// execution/settlement handle. Construction authenticates the original bytes.
+pub(super) struct HistoricalNative {
+    pub(super) address: Address,
+    pub(super) task: TaskHandle,
+    pub(super) root: serde_json::Value,
+    pub(super) accounting: serde_json::Value,
+    pub(super) receipt_checksum: [u8; 32],
+    pub(super) reconciliation_refs: Vec<InvocationRef>,
+}
 impl Terminal {
+    pub(super) fn read_success(
+        bytes: &str,
+        expected: [u8; 32],
+        report: &str,
+    ) -> Result<HistoricalNative, AgentLoopDriverError> {
+        Self::verify(bytes, expected, Some(report))?;
+        let wire: Wire = serde_json::from_str(bytes).map_err(|_| invalid())?;
+        let Completion::NativeReceipt {
+            root,
+            outcome: Outcome::InternalCompleted { receipt_checksum },
+            accounting: Some(accounting),
+            ..
+        } = wire.completion
+        else {
+            return Err(invalid());
+        };
+        let compute = accounting.compute_time.ok_or_else(invalid)?;
+        Ok(HistoricalNative {
+            address: wire.address,
+            task: accounting.task,
+            root: serde_json::json!({"format":"monty-root-execution/1", "vm_id":root.vm_id,
+                "source_checksum":hex::encode(root.source_checksum),
+                "aliases_checksum":hex::encode(root.aliases_checksum), "workers":root.workers}),
+            accounting: serde_json::json!({"effective_revision":accounting.effective_revision,
+                "compute_time":{"secs":compute.seconds,"nanos":compute.nanoseconds},
+                "failure":accounting.failure}),
+            receipt_checksum,
+            reconciliation_refs: wire.reconciliation_refs,
+        })
+    }
     pub(super) fn native(
         address: Address,
         receipt: &TaskReceipt,

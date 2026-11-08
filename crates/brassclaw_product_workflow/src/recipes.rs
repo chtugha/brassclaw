@@ -365,6 +365,37 @@ pub struct ComponentReviewSubmissionView {
     /// Original preparation metadata only; not Q1, approval or task completion.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review_selection_bytes: Option<String>,
+    /// Original custody only. Structural completion does not qualify full Q1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<ReviewWorkView>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewWorkStatus {
+    OriginalQueueChanged,
+    OriginalPreparationMissing,
+    LegacyCustodyUnresolved,
+    JointSelectionUnsupported,
+    AwaitingPreparation,
+    Ready,
+    Running,
+    ReconciliationRequired,
+    Cancelled,
+    NativeTerminalUnacknowledged,
+    FullQ1QualificationMissing,
+    StructuralObservationsConfirmed,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ReviewWorkView {
+    pub status: ReviewWorkStatus,
+    pub work_id: Option<String>,
+    pub run_id: Option<String>,
+    pub delivery_checksum: Option<String>,
+    pub confirmation_checksum: Option<String>,
+    pub selection_preparation_present: bool,
+    pub q1_qualified: bool,
 }
 
 /// Bounded, cursor-paginated operator projection of internal Sempai attempts.

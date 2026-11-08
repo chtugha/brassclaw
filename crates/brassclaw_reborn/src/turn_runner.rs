@@ -338,7 +338,7 @@ impl TurnRunnerWorker {
                 tokio::select! {
                     () = cancel.cancelled() => break,
                     Some(()) = active.next(), if !active.is_empty() => {},
-                    claimed = self.claim_run() => match claimed {
+                    claimed = self.claim_run(&cancel) => match claimed {
                         Ok(Some(claimed)) => active.push(self.execute_claimed_run(claimed, &cancel)),
                         Ok(None) => queue_empty = true,
                         Err(error) => {
@@ -383,14 +383,27 @@ impl TurnRunnerWorker {
 
     /// Attempt one claim-and-run cycle.
     async fn try_claim_and_run(&self, cancel: &CancellationToken) -> Result<bool, TurnRunnerError> {
-        let Some(claimed) = self.claim_run().await? else {
+        let Some(claimed) = self.claim_run(cancel).await? else {
             return Ok(false);
         };
         self.execute_claimed_run(claimed, cancel).await;
         Ok(true)
     }
 
-    async fn claim_run(&self) -> Result<Option<ClaimedWork>, TurnRunnerError> {
+    async fn claim_run(&self, cancel:&CancellationToken) -> Result<Option<ClaimedWork>, TurnRunnerError> {
+        if let Some(driver) = &self.monty_driver {
+            let result=tokio::select! {
+                biased;
+                ()=cancel.cancelled()=>return Ok(None),
+                result=driver.reconcile_private_originals()=>result,
+            };
+            if let Err(error)=result {
+            // Failure to inspect an original is not permission to replay it or
+            // to hide independent ready work. The durable owner retains it.
+            warn!(%error, "private original reconciliation remains unresolved");
+            }
+        }
+        if cancel.is_cancelled() {return Ok(None);}
         let lease_token = TurnLeaseToken::new();
         let request = ClaimRunRequest {
             runner_id: self.runner_id,

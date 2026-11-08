@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("en", {
+  "componentSubmission.work.original_queue_changed": "The original queued candidate changed or was removed. These observations cannot be applied to another candidate.",
+  "componentSubmission.work.original_preparation_missing": "Original execution preparation is missing. No replacement validator will run.",
+  "componentSubmission.work.legacy_custody_unresolved": "Historical request ownership is unresolved. Automatic replay is blocked.",
+  "componentSubmission.work.joint_selection_unsupported": "This joint review still needs a qualified validator selection.",
+  "componentSubmission.work.awaiting_preparation": "The original work is waiting for complete preparation.",
+  "componentSubmission.work.ready": "The original work is ready for the shared worker.",
+  "componentSubmission.work.running": "The original work is running.",
+  "componentSubmission.work.reconciliation_required": "The original execution needs reconciliation; it will not be replayed.",
+  "componentSubmission.work.cancelled": "The original work was cancelled.",
+  "componentSubmission.work.native_terminal_unacknowledged": "A native terminal result exists; delivery acknowledgement is still missing.",
+  "componentSubmission.work.full_q1_qualification_missing": "Native delivery is acknowledged. Complete Q1 qualification is still missing.",
+  "componentSubmission.work.structural_observations_confirmed": "The original structural observations are confirmed. Complete Q1, human Q2 and activation remain separate.",
+
   "validationQueue.original.actionUnavailable": "The original remains visible. The manual review action for this component class is not connected yet.",
   "componentSubmission.queueTarget": "Review target",
   "componentSubmission.queueStandalone": "Retain original only — no queue binding",

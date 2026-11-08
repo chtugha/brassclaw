@@ -3127,7 +3127,19 @@ pub async fn build_reborn_runtime(
             .map_err(|error| RebornRuntimeError::InvalidArgument {
                 reason: error.to_string(),
             })?
-            .with_admission_pool(pool.clone()),
+            .with_admission_pool(pool.clone())
+            .with_private_reconciliation(Arc::new(
+                crate::review_work_reconciliation::ReviewWorkReconciler::new(
+                    pool.clone(),
+                    catalogue.clone(),
+                    brassclaw_turns::private_work::PrivateExecutionContext {
+                        tenant_id: thread_scope.tenant_id.clone(),
+                        agent_id: Some(thread_scope.agent_id.clone()),
+                        project_id: thread_scope.project_id.clone(),
+                        actor: Some(brassclaw_turns::TurnActor::new(actor_user_id.clone())),
+                    },
+                ),
+            )),
         );
         #[cfg(test)]
         {
@@ -3135,12 +3147,14 @@ pub async fn build_reborn_runtime(
         }
         #[cfg(not(test))]
         {
-            // Wire the retained Q1 path — deferred silently if already set.
+            // Required original-discovery notification attachment. A missing
+            // owner must not silently become an inactive validation bridge.
             let pool_for_validator = Arc::clone(&pool);
             let validator_driver = std::sync::Arc::new(
                 crate::validator_task_driver::ValidatorTaskDriver::new(driver.clone()),
             );
-            let _ = catalogue.bind_validator_service(validator_driver, pool_for_validator);
+            catalogue.bind_validator_service(validator_driver, pool_for_validator)
+                .map_err(|error|RebornRuntimeError::InvalidArgument {reason:error.to_string()})?;
         }
         (
             owner,
@@ -4536,6 +4550,9 @@ mod tests {
     mod resource_store_settings_tests;
     // Retained validator Q1 tests use private Work through the existing Worker
     // and the common global driver lifecycle.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "private_delivery_tests.rs"]
+    mod private_delivery_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_prefix_work_tests.rs"]
     mod private_prefix_work_tests;

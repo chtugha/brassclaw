@@ -386,6 +386,12 @@ impl MockMontyDriver {
 
 #[async_trait]
 impl MontyTurnDriverPort for MockMontyDriver {
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "this legacy test driver has no private original owner".into(),
+        })
+    }
+
     async fn drive_turn(
         &self,
         handoff: brassclaw_turns::run_profile::MontyTaskHandoff,
@@ -423,6 +429,12 @@ struct PanickingMontyDriver;
 
 #[async_trait]
 impl MontyTurnDriverPort for PanickingMontyDriver {
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "this legacy test driver has no private original owner".into(),
+        })
+    }
+
     async fn drive_turn(
         &self,
         handoff: brassclaw_turns::run_profile::MontyTaskHandoff,

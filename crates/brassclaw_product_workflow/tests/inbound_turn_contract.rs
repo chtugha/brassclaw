@@ -312,6 +312,12 @@ struct ReplyMontyDriver {
 
 #[async_trait]
 impl MontyTurnDriverPort for ReplyMontyDriver {
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "this legacy test driver has no private original owner".into(),
+        })
+    }
+
     async fn drive_turn(
         &self,
         handoff: brassclaw_turns::run_profile::MontyTaskHandoff,

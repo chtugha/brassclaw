@@ -1,6 +1,19 @@
 import { registerPack } from "../lib/i18n.js";
 
 registerPack("de", {
+  "componentSubmission.work.original_queue_changed": "Der ursprünglich eingereichte Kandidat wurde geändert oder entfernt. Die Beobachtungen können keinen anderen Kandidaten freigeben.",
+  "componentSubmission.work.original_preparation_missing": "Die ursprüngliche Ausführungspräparation fehlt. Es startet kein Ersatzvalidator.",
+  "componentSubmission.work.legacy_custody_unresolved": "Die Zuständigkeit des historischen Auftrags ist ungeklärt. Automatische Wiederholung ist gesperrt.",
+  "componentSubmission.work.joint_selection_unsupported": "Für diese gemeinsame Prüfung fehlt noch die qualifizierte Validatorauswahl.",
+  "componentSubmission.work.awaiting_preparation": "Die ursprüngliche Arbeit wartet auf vollständige Präparation.",
+  "componentSubmission.work.ready": "Die ursprüngliche Arbeit ist für den gemeinsamen Worker bereit.",
+  "componentSubmission.work.running": "Die ursprüngliche Arbeit läuft.",
+  "componentSubmission.work.reconciliation_required": "Die ursprüngliche Ausführung muss abgeglichen werden; sie wird nicht wiederholt.",
+  "componentSubmission.work.cancelled": "Die ursprüngliche Arbeit wurde abgebrochen.",
+  "componentSubmission.work.native_terminal_unacknowledged": "Ein natives Endergebnis liegt vor; die Zustellbestätigung fehlt noch.",
+  "componentSubmission.work.full_q1_qualification_missing": "Die native Zustellung ist bestätigt. Die vollständige Q1-Qualifikation fehlt noch.",
+  "componentSubmission.work.structural_observations_confirmed": "Die ursprünglichen Strukturbeobachtungen sind bestätigt. Vollständige Q1, menschliche Q2 und Aktivierung bleiben separat.",
+
   "validationQueue.original.actionUnavailable": "Das Original bleibt sichtbar. Die manuelle Reviewaktion für diese Komponentenklasse ist noch nicht verbunden.",
   "componentSubmission.queueTarget": "Prüfungsziel",
   "componentSubmission.queueStandalone": "Nur Original sichern — ohne Queue-Bindung",

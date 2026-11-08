@@ -66,6 +66,7 @@ pub(crate) struct PreparedGlobalTask {
 /// by the already-running Python orchestrator after admission.
 #[async_trait]
 pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
+    #[cfg(test)]
     async fn prepare_private_validator(
         &self,
         _submission_id: uuid::Uuid,
@@ -207,6 +208,8 @@ pub(crate) struct GlobalMontyDriver {
     /// `PgSessionThreadService` for `trusted_internal_turn` tasks whose
     /// scope tenant differs from `self.threads` (e.g. "bootstrap-validation").
     admission_pool: Option<Arc<PgPool>>,
+    private_reconciliation:
+        Option<Arc<dyn brassclaw_turns::run_profile::PrivateWorkReconciliationPort>>,
     ports: Arc<dyn GlobalTaskPortsFactory>,
     attempts: Mutex<HashMap<MontyTaskAttempt, Arc<Attempt>>>,
     private_deliveries: Arc<private_completion::PrivateDeliveries>,
@@ -343,6 +346,7 @@ impl GlobalMontyDriver {
             service,
             threads,
             admission_pool: None,
+            private_reconciliation: None,
             ports,
             attempts: Mutex::new(HashMap::new()),
             private_deliveries: Arc::new(Mutex::new(HashMap::new())),
@@ -359,6 +363,21 @@ impl GlobalMontyDriver {
     pub(crate) fn with_admission_pool(mut self, pool: Arc<PgPool>) -> Self {
         self.admission_pool = Some(pool);
         self
+    }
+
+    pub(crate) fn with_private_reconciliation(
+        mut self,
+        owner: Arc<dyn brassclaw_turns::run_profile::PrivateWorkReconciliationPort>,
+    ) -> Self {
+        self.private_reconciliation = Some(owner);
+        self
+    }
+
+    pub(crate) fn notify_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        self.private_reconciliation
+            .as_ref()
+            .ok_or_else(|| failed("private_reconciliation_owner_unavailable"))?
+            .notify_originals()
     }
 
     fn register(&self, host: Arc<MontyTaskHost>) -> Result<Arc<Attempt>, AgentLoopDriverError> {
@@ -545,6 +564,7 @@ impl GlobalMontyDriver {
         entry: &Arc<Attempt>,
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError> {
+        let delivered_receipt = receipt.clone();
         let acknowledgement = {
             let mut retained = entry
                 .settlement
@@ -579,7 +599,29 @@ impl GlobalMontyDriver {
                 .acknowledgement
                 .clone()
         };
-        acknowledgement.await
+        acknowledgement.await?;
+        if entry.host.private_claim().is_some()
+            && matches!(
+                delivered_receipt.outcome,
+                TaskOutcome::InternalCompleted { .. }
+            )
+        {
+            // Factory settlement includes actual cleanup/release. Only now can
+            // the native owner attest delivery; a terminal SQL row cannot.
+            let completion = SettledInternalCompletion {
+                attempt: entry.host.attempt(),
+                receipt: delivered_receipt,
+            };
+            let policy=self.ports.cancellation_acknowledgement()?.validate()?;
+            tokio::time::timeout(policy.timeout,crate::pg_monty_admission::PgMontyAdmission::record_private_delivery(
+                self.admission_pool
+                    .as_deref()
+                    .ok_or_else(|| failed("private_delivery_pool_unavailable"))?,
+                &completion,
+            ))
+            .await.map_err(|_|failed("private_delivery_acknowledgement_unresolved"))??;
+        }
+        Ok(())
     }
 
     /// Trusted supervisor receipt for a dropped turn waiter or failed attempt.
@@ -926,6 +968,13 @@ impl GlobalMontyDriver {
 
 #[async_trait]
 impl MontyTurnDriverPort for GlobalMontyDriver {
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        self.private_reconciliation
+            .as_ref()
+            .ok_or_else(|| failed("private_reconciliation_owner_unavailable"))?
+            .reconcile_originals()
+            .await
+    }
     async fn drive_turn(
         &self,
         handoff: MontyTaskHandoff,

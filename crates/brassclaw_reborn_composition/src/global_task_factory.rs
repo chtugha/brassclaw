@@ -87,6 +87,7 @@ pub(crate) trait CapturedMontyCatalogue: Send + Sync {
 
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    #[cfg(test)]
     async fn prepare_private_validator(
         &self,
         _submission_id: uuid::Uuid,
@@ -246,9 +247,34 @@ pub(crate) struct OwnedGlobalTaskFactory {
     retention: Arc<AttemptRetentionRegistry>,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
     mcp_provider_binding: Option<Arc<dyn TaskProviderBinding>>,
+    #[cfg(test)]
+    private_settlement_pauses: Mutex<HashMap<TurnRunId, Arc<PrivateSettlementPause>>>,
+}
+
+#[cfg(test)]
+pub(crate) struct PrivateSettlementPause {
+    pub(crate) reached: tokio::sync::Notify,
+    pub(crate) release: tokio::sync::Notify,
 }
 
 impl OwnedGlobalTaskFactory {
+    /// Hold the real settlement after its actual terminal COMMIT and before
+    /// Factory cleanup/return. This does not fabricate a receipt or an ACK.
+    #[cfg(test)]
+    pub(crate) fn pause_private_settlement(&self, run: TurnRunId) -> Arc<PrivateSettlementPause> {
+        let pause = Arc::new(PrivateSettlementPause {
+            reached: tokio::sync::Notify::new(),
+            release: tokio::sync::Notify::new(),
+        });
+        assert!(
+            self.private_settlement_pauses
+                .lock()
+                .unwrap()
+                .insert(run, pause.clone())
+                .is_none()
+        );
+        pause
+    }
     /// Read-only retained fixture facts after an observed terminal turn. Report
     /// construction reads the actual retained ports; it never acknowledges,
     /// retries or transfers a settlement and never exposes raw task payloads.
@@ -331,6 +357,8 @@ impl OwnedGlobalTaskFactory {
             retention: AttemptRetentionRegistry::new(service),
             tasks: Mutex::new(HashMap::new()),
             mcp_provider_binding,
+            #[cfg(test)]
+            private_settlement_pauses: Mutex::new(HashMap::new()),
         })
     }
 
@@ -501,6 +529,7 @@ impl OwnedGlobalTaskFactory {
 
 #[async_trait]
 impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
+    #[cfg(test)]
     async fn prepare_private_validator(
         &self,
         submission_id: uuid::Uuid,
@@ -1066,6 +1095,18 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 return Err(failed("monty_service_reconciliation_required"));
             }
             admission.settle_private_native(outcome, &receipt).await?;
+            #[cfg(test)]
+            {
+                let pause = self
+                    .private_settlement_pauses
+                    .lock()
+                    .unwrap()
+                    .remove(&host.attempt().run_id);
+                if let Some(pause) = pause {
+                    pause.reached.notify_one();
+                    pause.release.notified().await;
+                }
+            }
         } else {
             admission.settle(outcome).await?;
         }

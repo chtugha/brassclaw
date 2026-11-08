@@ -206,7 +206,7 @@ pub(crate) mod pg_tool_store;
 mod pg_transcript_admission;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_user_preference_store;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_validator_q1_admission;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_validator_q1_evidence;
@@ -1201,6 +1201,10 @@ pub(crate) mod validator_inventory_review;
 mod installed_monty_catalogue;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod private_work_definition;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod review_work_confirmation;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod review_work_reconciliation;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod task_tool_credentials;

@@ -67,6 +67,8 @@ fn db(error: tokio_postgres::Error) -> ValidatorQ1EvidenceError {
 
 #[path = "pg_validator_q1_verdict.rs"]
 mod verdict;
+pub(crate) use verdict::read_delivered_validator_q1;
+#[cfg(test)]
 pub(crate) use verdict::read_settled_validator_q1;
 
 /// Opaque reference to a persisted Q1 evidence record. The UUID identifies

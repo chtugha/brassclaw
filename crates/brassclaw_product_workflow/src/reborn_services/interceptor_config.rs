@@ -482,6 +482,11 @@ pub enum PrefixJobDetail {
     PrivateWork {
         work_id: String,
         work_status: Option<brassclaw_turns::private_work::PrivateWorkStatus>,
+        /// Native post-Factory acknowledgement, not artifact acceptance.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        delivery_checksum: Option<String>,
+        #[serde(default)]
+        delivery_pending: bool,
         #[serde(flatten)]
         metadata: PrefixJobMetadata,
     },

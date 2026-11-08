@@ -1,9 +1,8 @@
 //! Gate-1 (Q1) validation orchestrator — retained IBS/Recipe path.
 //!
-//! The active Q1 entry point is [`run_q1_validation_retained`], which schedules
-//! a trusted internal validator Review Recipe through the global Monty service.
-//! The queue kick is fired by [`ValidationQueueStore::fire_q1_kick_if_wired`]
-//! after a component is submitted for review.
+//! Production queue notifications wake original discovery only. The historical
+//! draft-head preparation path is restricted to controlled native tests until
+//! B1-07/B2-04 supplies an actually qualified coherent selection.
 //!
 //! # Column fix (V079 — FIND-P0-01)
 //!
@@ -13,8 +12,7 @@
 //! # State-2 write invariant (FIND-P9-01 / FIND-P9-08)
 //!
 //! `verify_receipt` records observations before terminal native settlement.
-//! `run_q1_validation_retained` authenticates that exact settled execution before
-//! its reviewed queue transition may write state 2.
+//! Structural observations never establish the remaining full Q1 qualification.
 //! The reviewed pass/failure methods are `pub(crate)` on [`ValidationQueueStore`],
 //! preventing any API layer from calling them directly.
 //!
@@ -26,15 +24,15 @@
 
 use thiserror::Error;
 
-#[cfg(feature = "skills-db")]
+#[cfg(all(test, feature = "skills-db"))]
 use brassclaw_engine::memory::retrieval_source::ComponentScope;
-#[cfg(feature = "skills-db")]
+#[cfg(all(test, feature = "skills-db"))]
 use brassclaw_pg::PgPool;
-#[cfg(feature = "skills-db")]
+#[cfg(all(test, feature = "skills-db"))]
 use uuid::Uuid;
 
 use crate::validation_queue::ValidationQueueError;
-#[cfg(feature = "skills-db")]
+#[cfg(all(test, feature = "skills-db"))]
 use crate::validation_queue::ValidationQueueStore;
 
 // ---------------------------------------------------------------------------
@@ -44,6 +42,9 @@ use crate::validation_queue::ValidationQueueStore;
 /// The outcome of a Gate 1 (Q1) validation attempt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Q1Outcome {
+    /// Actual structural observations were delivered and acknowledged, but
+    /// complete class-Q1 qualification is still missing. Queue remains state 1.
+    StructuralObserved,
     /// Gate 1 ran and the component passed all checks. `gate1_pass_reviewed` has been
     /// called — the queue row is now at state 2 (awaiting Q2).
     Passed,
@@ -101,6 +102,7 @@ pub enum Q1Error {
 }
 
 #[cfg(feature = "skills-db")]
+#[cfg(test)]
 fn q1_db(error: tokio_postgres::Error) -> Q1Error {
     Q1Error::Db {
         reason: error
@@ -129,6 +131,7 @@ fn q1_db(error: tokio_postgres::Error) -> Q1Error {
 /// verdict was authenticated. Cancellation and incomplete execution return an
 /// error without recording a negative candidate verdict.
 #[cfg(feature = "skills-db")]
+#[cfg(test)]
 pub(crate) async fn run_q1_validation_retained(
     pool: &PgPool,
     scope: &ComponentScope,
@@ -447,13 +450,26 @@ pub(crate) async fn run_q1_validation_retained(
     )
     .await
     .map_err(|error| Q1Error::Admission(error.to_string()))?;
+    let mut client = pool
+        .get()
+        .await
+        .map_err(|_| Q1Error::Admission("review confirmation unavailable".into()))?;
+    let tx = client.transaction().await.map_err(q1_db)?;
+    let original = crate::pg_monty_admission::PgMontyAdmission::verify_private_live_completion(
+        &tx,
+        &completion,
+    )
+    .await
+    .map_err(|error| Q1Error::Admission(error.to_string()))?
+    .ok_or_else(|| Q1Error::Admission("validator original missing".into()))?;
+    crate::review_work_confirmation::confirm(&tx, submission_id, original.request().context())
+        .await
+        .map_err(|error| Q1Error::Admission(error.to_string()))?
+        .ok_or_else(|| Q1Error::Admission("validator delivery missing".into()))?;
+    tx.commit().await.map_err(q1_db)?;
     if verdict.succeeded {
-        queue_store.gate1_pass_reviewed(scope, &review, &[]).await?;
-        Ok(Q1Outcome::Passed)
+        Ok(Q1Outcome::StructuralObserved)
     } else {
-        queue_store
-            .gate1_fail_reviewed(scope, &review, &verdict.errors)
-            .await?;
         Ok(Q1Outcome::Failed {
             errors: verdict.errors,
         })
@@ -463,6 +479,7 @@ pub(crate) async fn run_q1_validation_retained(
 /// Execution failures cannot become candidate diagnostics. Only the settled
 /// reader's authenticated negative verdict may reach the queue failure writer.
 #[cfg(feature = "skills-db")]
+#[cfg(test)]
 fn require_settled_validator_completion(
     driven: crate::global_monty_driver::DrivenMontyTask,
 ) -> Result<crate::global_monty_driver::SettledInternalCompletion, Q1Error> {

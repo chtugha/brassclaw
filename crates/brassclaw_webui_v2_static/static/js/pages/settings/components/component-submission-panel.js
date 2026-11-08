@@ -165,6 +165,7 @@ export function ComponentSubmissionPanel() {
             <span className="block">${t(receipt.queue_binding_status === "bound" ? "componentSubmission.queueBoundReceipt" : "componentSubmission.queueStandaloneReceipt")}</span>
           </p>`}
           ${view && html`
+            ${view.work && html`<p role="status" className="text-sm">${t(`componentSubmission.work.${view.work.status}`)}</p>`}
             <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">${view.subject_bytes}</pre>
             ${view.component_bytes.map((bytes, index) => html`
               <details key=${index} className="rounded border p-2">

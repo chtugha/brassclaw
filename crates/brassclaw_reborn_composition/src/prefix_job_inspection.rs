@@ -294,6 +294,8 @@ impl RebornRuntime {
         let mut receipt = None;
         let mut reference = None;
         let mut failure_kind = None;
+        let mut delivery_checksum = None;
+        let mut delivery_pending = false;
         if let Some(row) = row {
             let state = state.as_ref().ok_or_else(unavailable)?;
             if row.get::<_, String>(0) != "private_work"
@@ -316,18 +318,36 @@ impl RebornRuntime {
                     return Err(unavailable());
                 }
                 if outcome["status"] == "completed" {
-                    receipt = Some(
-                        outcome["internal_receipt"]
-                            .as_str()
-                            .ok_or_else(unavailable)?
-                            .to_owned(),
-                    );
-                    reference = Some(
-                        outcome["result_ref"]
-                            .as_str()
-                            .ok_or_else(unavailable)?
-                            .to_owned(),
-                    );
+                    let delivered =
+                        crate::pg_monty_admission::PgMontyAdmission::read_private_delivery(
+                            &tx, header.id, &context,
+                        )
+                        .await
+                        .map_err(|_| unavailable())?;
+                    if let Some(delivered) = delivered {
+                        if delivered.original().request().original() != &original
+                            || delivered.outcome() != &outcome
+                        {
+                            return Err(unavailable());
+                        }
+                        delivery_checksum = Some(hex::encode(delivered.checksum()));
+                        receipt = Some(
+                            outcome["internal_receipt"]
+                                .as_str()
+                                .ok_or_else(unavailable)?
+                                .to_owned(),
+                        );
+                        reference = Some(
+                            outcome["result_ref"]
+                                .as_str()
+                                .ok_or_else(unavailable)?
+                                .to_owned(),
+                        );
+                    } else {
+                        // A stored terminal precedes actual Factory return.
+                        // Missing acknowledgement is visible, never completion.
+                        delivery_pending = true;
+                    }
                 } else {
                     failure_kind = Some(
                         outcome["reason_kind"]
@@ -354,6 +374,8 @@ impl RebornRuntime {
         let detail = PrefixJobDetail::PrivateWork {
             work_id: header.id.to_string(),
             work_status: state.map(|state| state.status),
+            delivery_checksum,
+            delivery_pending,
             metadata: PrefixJobMetadata {
                 job_id: header.id.to_string(),
                 target,

@@ -6,7 +6,7 @@
 //! 3. `retain_validator_selection` seals the selection (done inside `run_q1_validation_retained`).
 //! 4. `ValidationQueueStore::submit` enqueues the component.
 //! 5. `run_q1_validation_retained` is called with the bridge wired to the live test driver.
-//! 6. `Q1Outcome::Passed` is returned.
+//! 6. `Q1Outcome::StructuralObserved` is returned.
 //! 7. DB evidence rows in `reborn_component_review_evidence` and `reborn_validator_q1_runs`
 //!    confirm `verify_receipt` ran and persisted real Q1 evidence.
 //!
@@ -41,7 +41,7 @@ fn q1_retained_scope() -> ComponentScope {
 
 /// Full end-to-end Q1 retained pass: seeds drafts, creates a class-22 component,
 /// submits to review, submits to queue, calls `run_q1_validation_retained` and
-/// asserts `Q1Outcome::Passed` plus real evidence rows in the DB.
+/// asserts `Q1Outcome::StructuralObserved` plus real evidence rows in the DB.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn run_q1_validation_retained_passes_and_persists_evidence() {
     retained_validator_pass(DeliveryCase::Ordinary).await;
@@ -76,38 +76,10 @@ enum DeliveryCase {
     HeartbeatLoss,
 }
 
-async fn retained_validator_pass(case: DeliveryCase) {
-    let rig = crate::runtime::test_pg::pg_rig().await;
-    let _db = rig.lock_db().await;
-    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
-        .await;
-    let directory = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(build_reborn_runtime(
-        RebornRuntimeInput::from_services(
-            rig.build_input("q1-retained-pass-owner", directory.path())
-                .with_runtime_policy(local_dev_runtime_policy()),
-        )
-        .with_runner_settings(crate::runtime_input::TurnRunnerSettings {
-            heartbeat_interval: std::time::Duration::from_millis(50),
-            ..Default::default()
-        }),
-    ))
-    .await
-    .unwrap();
-
-    // Build bridge from the real test-path driver.
-    let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
-        pool: rig.pool.clone(),
-    };
-
-    // Seed validator drafts for all classes including class 22.
-    crate::builtin_bootstrap::retain_validator_check_drafts(&rig.pool)
-        .await
-        .expect("retain_validator_check_drafts must succeed");
-
+/// Existing actual authoring fixture shared with private custody acceptance.
+pub(super) async fn queued_structural_original(
+    rig: &crate::runtime::test_pg::PgRig,
+) -> (ComponentScope, ValidationQueueStore, Uuid, Uuid) {
     let scope = q1_retained_scope();
     let store = ValidationQueueStore::new(rig.pool.clone());
 
@@ -216,6 +188,43 @@ async fn retained_validator_pass(case: DeliveryCase) {
     .unwrap();
     tx.commit().await.unwrap();
     drop(client);
+
+    (scope, store, component_id, submission_id)
+}
+
+async fn retained_validator_pass(case: DeliveryCase) {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let directory = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(
+        RebornRuntimeInput::from_services(
+            rig.build_input("q1-retained-pass-owner", directory.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )
+        .with_runner_settings(crate::runtime_input::TurnRunnerSettings {
+            heartbeat_interval: std::time::Duration::from_millis(50),
+            ..Default::default()
+        }),
+    ))
+    .await
+    .unwrap();
+
+    // Build bridge from the real test-path driver.
+    let bridge = ValidatorServiceBridge {
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
+            runtime.monty_test_controls.0.clone(),
+        )),
+        pool: rig.pool.clone(),
+    };
+
+    // Seed validator drafts for all classes including class 22.
+    crate::builtin_bootstrap::retain_validator_check_drafts(&rig.pool)
+        .await
+        .expect("retain_validator_check_drafts must succeed");
+
+    let (scope, store, component_id, submission_id) = queued_structural_original(&rig).await;
 
     // An unrelated validator result for the same submission must not decide
     // this execution. Deliberately future-date this negative historical fixture
@@ -528,7 +537,7 @@ async fn retained_validator_pass(case: DeliveryCase) {
         );
         assert!(
             store
-                .list(&scope, Some(2))
+                .list(&scope, Some(1))
                 .await
                 .unwrap()
                 .iter()
@@ -538,8 +547,8 @@ async fn retained_validator_pass(case: DeliveryCase) {
     }
     let outcome = outcome.expect("run_q1_validation_retained must not return Err");
     assert!(
-        matches!(outcome, Q1Outcome::Passed),
-        "expected Q1Outcome::Passed for a valid class-22 component; got {outcome:?}"
+        matches!(outcome, Q1Outcome::StructuralObserved),
+        "expected genuine structural observations for a valid class-22 component; got {outcome:?}"
     );
 
     // Assert Q1 evidence rows were written by verify_receipt.
@@ -559,16 +568,19 @@ async fn retained_validator_pass(case: DeliveryCase) {
         "expected at least one Q1 evidence+run row for submission {submission_id} with succeeded=true; got {ev_count}"
     );
 
-    // Queue row must be at state 2 (gate1-passed) after Q1Outcome::Passed.
+    // Structural success has no full class-Q1 qualification and cannot graduate.
     let rows = store
-        .list(&scope, Some(2))
+        .list(&scope, Some(1))
         .await
         .expect("list must succeed");
     let row = rows
         .iter()
         .find(|r| r.component_id == component_id)
-        .expect("queue row must exist at state 2 after Q1Outcome::Passed");
-    assert_eq!(row.state, 2, "queue row must be at state 2 (gate1-passed)");
+        .expect("queue row remains state 1 after structural observations");
+    assert_eq!(
+        row.state, 1,
+        "structural-only observations cannot produce state 2"
+    );
 }
 
 /// T5: end-to-end fail — component with empty `content` produces `Q1Outcome::Failed`.

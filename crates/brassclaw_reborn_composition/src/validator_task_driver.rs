@@ -3,17 +3,22 @@
 //! can return a result to Q1; SQL terminal metadata cannot restore that proof.
 #![forbid(unsafe_code)]
 
+#[cfg(test)]
 use crate::bootstrap_reply_validation::invalid;
+#[cfg(test)]
 use brassclaw_pg::PgPool;
+use brassclaw_turns::run_profile::AgentLoopDriverError;
+#[cfg(test)]
 use brassclaw_turns::{
     TurnRunId,
     private_work::{PrivateOriginalRef, PrivateWorkStatus},
-    run_profile::AgentLoopDriverError,
 };
 use std::sync::Arc;
+#[cfg(test)]
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
+#[cfg(test)]
 pub(crate) enum ValidatorDriverError {
     #[error("validator task admission failed: {0}")]
     Admission(crate::RebornBuildError),
@@ -29,6 +34,11 @@ impl ValidatorTaskDriver {
         Self { driver }
     }
 
+    pub(crate) fn notify_originals(&self) -> Result<(), AgentLoopDriverError> {
+        self.driver.notify_private_originals()
+    }
+
+    #[cfg(test)]
     pub(crate) async fn submit(
         &self,
         pool: Arc<PgPool>,
