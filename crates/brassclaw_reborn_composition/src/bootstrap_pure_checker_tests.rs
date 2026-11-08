@@ -39,6 +39,204 @@ async fn counts(pool: &PgPool) -> (i64, i64, i64, i64) {
     let row=client.query_one("SELECT (SELECT count(*) FROM brassclaw_monty_task_admissions),(SELECT count(*) FROM brassclaw_monty_tool_invocations),(SELECT count(*) FROM reborn_component_review_submissions),(SELECT count(*) FROM reborn_component_review_requests)",&[]).await.unwrap();
     (row.get(0), row.get(1), row.get(2), row.get(3))
 }
+
+// The historical codec is deliberately fixed here independently of the scoped
+// builder. Struct order preserves its original outer bytes, not just JSON meaning.
+#[derive(Serialize)]
+struct OriginalStructuralSubject {
+    format: &'static str,
+    subject_id: Uuid,
+    package_selector: &'static str,
+    candidate: Value,
+    dependencies: Value,
+    base_comparison: Value,
+    package_context: Value,
+    q1_qualification: bool,
+    semantic_approval: bool,
+    catalogue_activation: bool,
+}
+#[derive(Serialize)]
+struct OriginalStructuralEnvelope {
+    format: &'static str,
+    evidence_id: Uuid,
+    kind: &'static str,
+    validation_mode: &'static str,
+    association_checksum: String,
+    components: Vec<OriginalStructuralReference>,
+    succeeded: bool,
+    reviewed_evidence: Vec<Value>,
+    report: Value,
+}
+#[derive(Serialize, Deserialize)]
+struct OriginalStructuralReference {
+    uuid: Uuid,
+    class_code: i32,
+    version: u64,
+    checksum: String,
+}
+
+async fn assert_installation_subject_store_boundary(pool: &PgPool) {
+    use brassclaw_skills::review_submission_store::installation as store;
+    let mut client = pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
+    let mut originals = Vec::new();
+    let mut negative_ids = Vec::new();
+    for (format, selector) in [
+        (
+            "installation-validator-subject-record/1",
+            "validator:structural-presence",
+        ),
+        (
+            "installation-pure-fixture-subject/1",
+            "validator:pure-qualification:workflow",
+        ),
+    ] {
+        let row = tx
+            .query_one(
+                "SELECT evidence_id,evidence_bytes,checksum FROM reborn_component_review_evidence
+             WHERE evidence_bytes::jsonb #>> '{report,format}'=$1
+             AND evidence_bytes::jsonb #>> '{report,package_selector}'=$2
+             ORDER BY evidence_id LIMIT 1",
+                &[&format, &selector],
+            )
+            .await
+            .unwrap();
+        let id: Uuid = row.get(0);
+        let bytes: String = row.get(1);
+        let checksum: String = row.get(2);
+        let original = strict_json(&bytes, REVISION_LIMITS).unwrap();
+        let read = store::read_subject_in_transaction(&tx, id, REVISION_LIMITS)
+            .await
+            .unwrap()
+            .expect("each actual allowed original pair must read back");
+        assert_eq!(read.reference().id, id);
+        assert_eq!(read.reference().checksum, checksum);
+        assert_eq!(read.value()["subject_bytes"], bytes);
+        assert_eq!(evidence::checksum(&bytes), checksum);
+        if format == "installation-validator-subject-record/1" {
+            let subject = &original["report"];
+            let candidate_id =
+                Uuid::parse_str(subject["candidate"]["reference"]["uuid"].as_str().unwrap())
+                    .unwrap();
+            let identity = json!({"format":"installation-validator-subject-identity/1",
+                "candidate":subject["candidate"]["reference"],"components":original["components"],
+                "package_context":subject["package_context"]})
+            .to_string();
+            let historical_id = Uuid::new_v5(&candidate_id, identity.as_bytes());
+            assert_eq!(
+                id, historical_id,
+                "the old identity contains no fixture scope"
+            );
+            let report = OriginalStructuralSubject {
+                format: "installation-validator-subject-record/1",
+                subject_id: historical_id,
+                package_selector: "validator:structural-presence",
+                candidate: subject["candidate"].clone(),
+                dependencies: subject["dependencies"].clone(),
+                base_comparison: Value::Null,
+                package_context: subject["package_context"].clone(),
+                q1_qualification: false,
+                semantic_approval: false,
+                catalogue_activation: false,
+            };
+            let historical = OriginalStructuralEnvelope {
+                format: "component-review-evidence/1",
+                evidence_id: historical_id,
+                kind: "behavior",
+                validation_mode: "system_seed",
+                association_checksum: subject["package_context"]["association_checksum"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned(),
+                components: serde_json::from_value(original["components"].clone()).unwrap(),
+                succeeded: false,
+                reviewed_evidence: vec![],
+                report: serde_json::to_value(report).unwrap(),
+            };
+            assert_eq!(
+                serde_json::to_string(&historical).unwrap(),
+                bytes,
+                "the existing structural codec's full bytes remain unchanged"
+            );
+        }
+        let other_format = if format == "installation-validator-subject-record/1" {
+            "installation-pure-fixture-subject/1"
+        } else {
+            "installation-validator-subject-record/1"
+        };
+        let other_selector = if selector == "validator:structural-presence" {
+            "validator:pure-qualification:workflow"
+        } else {
+            "validator:structural-presence"
+        };
+        for (case, field, value) in [
+            ("crossed_format", "format", json!(other_format)),
+            (
+                "crossed_selector",
+                "package_selector",
+                json!(other_selector),
+            ),
+            ("positive_q1", "q1_qualification", json!(true)),
+            ("positive_semantics", "semantic_approval", json!(true)),
+            ("positive_activation", "catalogue_activation", json!(true)),
+            ("positive_envelope", "succeeded", json!(true)),
+        ] {
+            let negative_id = Uuid::new_v5(&id, format!("f01-store-boundary:{case}").as_bytes());
+            let mut negative = original.clone();
+            negative["evidence_id"] = json!(negative_id);
+            negative["report"]["subject_id"] = json!(negative_id);
+            if field == "succeeded" {
+                negative[field] = value;
+            } else {
+                negative["report"][field] = value;
+            }
+            let negative_bytes = negative.to_string();
+            assert_eq!(tx.execute(
+                "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3)",
+                &[&negative_id, &negative_bytes, &evidence::checksum(&negative_bytes)],
+            ).await.unwrap(), 1);
+            assert!(
+                matches!(
+                    store::read_subject_in_transaction(&tx, negative_id, REVISION_LIMITS).await,
+                    Err(brassclaw_skills::review_submission_store::SubmissionStoreError::Invalid)
+                ),
+                "actual Store reader must reject {format}/{case} as invalid data"
+            );
+            negative_ids.push(negative_id);
+        }
+        originals.push((id, bytes, checksum));
+    }
+    assert_ne!(originals[0].0, originals[1].0);
+    // Negative fixtures have new IDs and exist only inside this test transaction.
+    // Never update, delete or commit a change to an immutable original.
+    tx.rollback().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    for (id, bytes, checksum) in originals {
+        let row = tx.query_one("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1", &[&id]).await.unwrap();
+        assert_eq!(row.get::<_, String>(0), bytes);
+        assert_eq!(row.get::<_, String>(1), checksum);
+        assert!(
+            store::read_subject_in_transaction(&tx, id, REVISION_LIMITS)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    assert_eq!(tx.query_one("SELECT count(*) FROM reborn_component_review_evidence WHERE evidence_id=ANY($1::uuid[])", &[&negative_ids]).await.unwrap().get::<_,i64>(0),0);
+    tx.commit().await.unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_pure_checker_subjects_keep_private_tuple_returns_and_original_typed_fingerprints() {
     let rig = crate::runtime::test_pg::pg_rig().await;
@@ -56,6 +254,7 @@ async fn native_pure_checker_subjects_keep_private_tuple_returns_and_original_ty
     .unwrap();
     let before = counts(&rig.pool).await;
     let proof = read_proof(&runtime, rig.pool.clone()).await;
+    assert_installation_subject_store_boundary(&rig.pool).await;
     let mut client = rig.pool.get().await.unwrap();
     let tx = client
         .build_transaction()
