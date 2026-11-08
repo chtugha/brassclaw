@@ -392,7 +392,8 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
     let mut smaller = current.execution_limits;
     // Derive the reduction from the actual retained claim. It remains immutable
     // metadata even when it is larger than today's executing-task byte budget.
-    let retained_claim_bytes = serde_json::to_vec(&candidate.claim).unwrap().len();
+    let retained_claim_bytes = u64::try_from(serde_json::to_vec(&candidate.claim).unwrap().len())
+        .expect("retained claim byte length must fit the settings byte-limit type");
     smaller.max_value_bytes = smaller.max_value_bytes.min(retained_claim_bytes / 2);
     assert!(smaller.max_value_bytes < retained_claim_bytes);
     smaller.validate().unwrap();
