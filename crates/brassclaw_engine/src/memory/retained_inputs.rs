@@ -21,8 +21,8 @@ use super::{
     },
     retained_instruction::RetainedRecipeInstruction,
     typed_bindings::{
-        BindingSource, InputBinding, InputPreparationError, PreparedInputLayout, StepContracts,
-        prepare_input_layout,
+        BindingSource, InputBinding, InputPreparationError, PreparedInputLayout, PreparedReference,
+        StepContracts, prepare_input_layout,
     },
 };
 
