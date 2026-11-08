@@ -612,14 +612,18 @@ impl GlobalMontyDriver {
                 attempt: entry.host.attempt(),
                 receipt: delivered_receipt,
             };
-            let policy=self.ports.cancellation_acknowledgement()?.validate()?;
-            tokio::time::timeout(policy.timeout,crate::pg_monty_admission::PgMontyAdmission::record_private_delivery(
-                self.admission_pool
-                    .as_deref()
-                    .ok_or_else(|| failed("private_delivery_pool_unavailable"))?,
-                &completion,
-            ))
-            .await.map_err(|_|failed("private_delivery_acknowledgement_unresolved"))??;
+            let policy = self.ports.cancellation_acknowledgement()?.validate()?;
+            tokio::time::timeout(
+                policy.timeout,
+                crate::pg_monty_admission::PgMontyAdmission::record_private_delivery(
+                    self.admission_pool
+                        .as_deref()
+                        .ok_or_else(|| failed("private_delivery_pool_unavailable"))?,
+                    &completion,
+                ),
+            )
+            .await
+            .map_err(|_| failed("private_delivery_acknowledgement_unresolved"))??;
         }
         Ok(())
     }

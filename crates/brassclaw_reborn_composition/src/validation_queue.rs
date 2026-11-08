@@ -14,9 +14,9 @@
 //!
 //! # State-2 write invariant (FIND-P9-08)
 //!
-//! Only [`ValidationQueueStore::gate1_pass_reviewed`] (`pub(crate)`) writes state 2 —
-//! the sole write path, enforced by Rust visibility. Any other writer of
-//! state 2 is a security bug. The Q2 reviewer approves from state 2 →
+//! The legacy `gate1_pass_reviewed` writer is restricted to controlled tests.
+//! Structural observation delivery cannot qualify full Q1 or write state 2.
+//! The Q2 reviewer approves from state 2 →
 //! [`ValidationQueueStore::approve`] deletes the row (graduation) in ONE
 //! transaction with the component-table UPDATE (FIND-P9-05).
 //!

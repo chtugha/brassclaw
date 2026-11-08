@@ -3153,8 +3153,11 @@ pub async fn build_reborn_runtime(
             let validator_driver = std::sync::Arc::new(
                 crate::validator_task_driver::ValidatorTaskDriver::new(driver.clone()),
             );
-            catalogue.bind_validator_service(validator_driver, pool_for_validator)
-                .map_err(|error|RebornRuntimeError::InvalidArgument {reason:error.to_string()})?;
+            catalogue
+                .bind_validator_service(validator_driver, pool_for_validator)
+                .map_err(|error| RebornRuntimeError::InvalidArgument {
+                    reason: error.to_string(),
+                })?;
         }
         (
             owner,

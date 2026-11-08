@@ -59,13 +59,16 @@ pub(super) async fn component_bytes(
     component_id: Uuid,
     class_code: i16,
 ) -> Result<String, ValidationQueueError> {
-    component_bytes_on(tx,scope,component_id,class_code,true).await
+    component_bytes_on(tx, scope, component_id, class_code, true).await
 }
 
 async fn component_bytes_on(
-    tx: &tokio_postgres::Transaction<'_>, scope: &ComponentScope,
-    component_id:Uuid, class_code:i16, retain_lock:bool,
-) -> Result<String,ValidationQueueError> {
+    tx: &tokio_postgres::Transaction<'_>,
+    scope: &ComponentScope,
+    component_id: Uuid,
+    class_code: i16,
+    retain_lock: bool,
+) -> Result<String, ValidationQueueError> {
     let table = resolve_component_table(i32::from(class_code)).ok_or(
         ValidationQueueError::UnknownClass {
             class_code: i32::from(class_code),
@@ -76,7 +79,9 @@ async fn component_bytes_on(
          WHERE id=$1 AND tenant_id=$2 AND user_id=$3 AND agent_id=$4 AND project_id=$5
          AND class_code=$6"
     );
-    if retain_lock {sql.push_str(" FOR UPDATE");}
+    if retain_lock {
+        sql.push_str(" FOR UPDATE");
+    }
     tx.query_opt(
         &sql,
         &[
@@ -98,22 +103,43 @@ impl ValidationQueueStore {
     /// Read projection only. Historical acknowledged applications do not call
     /// this: subsequent legitimate edits/deletions cannot rewrite their result.
     pub(crate) async fn original_queue_is_current(
-        tx:&tokio_postgres::Transaction<'_>,submission_id:Uuid,
-    )->Result<bool,ValidationQueueError> {
-        let rows=tx.query("SELECT b.queue_id FROM reborn_component_review_queue_bindings b
-            WHERE b.submission_id=$1 ORDER BY b.queue_id",&[&submission_id]).await.map_err(map_pg)?;
+        tx: &tokio_postgres::Transaction<'_>,
+        submission_id: Uuid,
+    ) -> Result<bool, ValidationQueueError> {
+        let rows = tx
+            .query(
+                "SELECT b.queue_id FROM reborn_component_review_queue_bindings b
+            WHERE b.submission_id=$1 ORDER BY b.queue_id",
+                &[&submission_id],
+            )
+            .await
+            .map_err(map_pg)?;
         for row in rows {
-            let queue_id:Uuid=row.get(0);
-            let original=brassclaw_skills::review_submission_store::queue::read_in_transaction(tx,queue_id)
-                .await.map_err(|error|map_original_store(error,Uuid::nil()))?.ok_or(ValidationQueueError::InvalidPayload{component_id:Uuid::nil()})?;
+            let queue_id: Uuid = row.get(0);
+            let original =
+                brassclaw_skills::review_submission_store::queue::read_in_transaction(tx, queue_id)
+                    .await
+                    .map_err(|error| map_original_store(error, Uuid::nil()))?
+                    .ok_or(ValidationQueueError::InvalidPayload {
+                        component_id: Uuid::nil(),
+                    })?;
             let Some(current)=tx.query_opt("SELECT tenant_id,user_id,agent_id,project_id,component_id,component_class,state,review_queue_bytes(q)
                 FROM reborn_validation_queue q WHERE id=$1",&[&queue_id]).await.map_err(map_pg)? else {return Ok(false);};
-            if current.get::<_,i16>(6)!=STATE_Q1_PENDING || current.get::<_,&str>(7)!=original.queue_bytes() {return Ok(false);}
-            let scope=ComponentScope {tenant_id:current.get(0),user_id:current.get(1),agent_id:current.get(2),project_id:current.get(3)};
-            match component_bytes_on(tx,&scope,current.get(4),current.get(5),false).await {
-                Ok(bytes) if bytes==original.component_bytes()=>{},
-                Ok(_) | Err(ValidationQueueError::ComponentMissing{..})=>return Ok(false),
-                Err(error)=>return Err(error),
+            if current.get::<_, i16>(6) != STATE_Q1_PENDING
+                || current.get::<_, &str>(7) != original.queue_bytes()
+            {
+                return Ok(false);
+            }
+            let scope = ComponentScope {
+                tenant_id: current.get(0),
+                user_id: current.get(1),
+                agent_id: current.get(2),
+                project_id: current.get(3),
+            };
+            match component_bytes_on(tx, &scope, current.get(4), current.get(5), false).await {
+                Ok(bytes) if bytes == original.component_bytes() => {}
+                Ok(_) | Err(ValidationQueueError::ComponentMissing { .. }) => return Ok(false),
+                Err(error) => return Err(error),
             }
         }
         Ok(true)
@@ -226,7 +252,7 @@ impl ValidationQueueStore {
         })
     }
 
-    /// The sole production state-2 writer. An unchanged current row does not
+    /// Legacy controlled-test state-2 writer. An unchanged current row does not
     /// suffice: the candidate must equal the snapshot supplied to the validator.
     #[cfg(test)]
     pub(crate) async fn gate1_pass_reviewed(

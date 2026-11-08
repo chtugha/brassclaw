@@ -390,20 +390,25 @@ impl TurnRunnerWorker {
         Ok(true)
     }
 
-    async fn claim_run(&self, cancel:&CancellationToken) -> Result<Option<ClaimedWork>, TurnRunnerError> {
+    async fn claim_run(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<Option<ClaimedWork>, TurnRunnerError> {
         if let Some(driver) = &self.monty_driver {
-            let result=tokio::select! {
+            let result = tokio::select! {
                 biased;
                 ()=cancel.cancelled()=>return Ok(None),
                 result=driver.reconcile_private_originals()=>result,
             };
-            if let Err(error)=result {
-            // Failure to inspect an original is not permission to replay it or
-            // to hide independent ready work. The durable owner retains it.
-            warn!(%error, "private original reconciliation remains unresolved");
+            if let Err(error) = result {
+                // Failure to inspect an original is not permission to replay it or
+                // to hide independent ready work. The durable owner retains it.
+                warn!(%error, "private original reconciliation remains unresolved");
             }
         }
-        if cancel.is_cancelled() {return Ok(None);}
+        if cancel.is_cancelled() {
+            return Ok(None);
+        }
         let lease_token = TurnLeaseToken::new();
         let request = ClaimRunRequest {
             runner_id: self.runner_id,

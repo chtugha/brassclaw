@@ -13,7 +13,7 @@
 //!
 //! `verify_receipt` records observations before terminal native settlement.
 //! Structural observations never establish the remaining full Q1 qualification.
-//! The reviewed pass/failure methods are `pub(crate)` on [`ValidationQueueStore`],
+//! The reviewed pass/failure methods are `pub(crate)` on `ValidationQueueStore`,
 //! preventing any API layer from calling them directly.
 //!
 //! # Feature gate
@@ -88,7 +88,7 @@ impl Q1Outcome {
 // Error
 // ---------------------------------------------------------------------------
 
-/// Errors raised by [`run_q1_validation_retained`].
+/// Errors raised by the controlled retained-validation fixture.
 #[derive(Debug, Error)]
 pub enum Q1Error {
     #[error("validation queue error: {0}")]
@@ -126,7 +126,7 @@ fn q1_db(error: tokio_postgres::Error) -> Q1Error {
 /// - No active submission exists in the review-submission store for `component_id`
 /// - The installed worker binary is unavailable
 ///
-/// Returns `Q1Outcome::Passed` / `Q1Outcome::Failed` only when the complete
+/// Returns `Q1Outcome::StructuralObserved` / `Q1Outcome::Failed` only when the complete
 /// IBS path executed, native settlement was acknowledged and the exact stored
 /// verdict was authenticated. Cancellation and incomplete execution return an
 /// error without recording a negative candidate verdict.
@@ -450,8 +450,7 @@ pub(crate) async fn run_q1_validation_retained(
     )
     .await
     .map_err(|error| Q1Error::Admission(error.to_string()))?;
-    let mut client = pool
-        .get()
+    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
         .await
         .map_err(|_| Q1Error::Admission("review confirmation unavailable".into()))?;
     let tx = client.transaction().await.map_err(q1_db)?;
@@ -467,6 +466,7 @@ pub(crate) async fn run_q1_validation_retained(
         .map_err(|error| Q1Error::Admission(error.to_string()))?
         .ok_or_else(|| Q1Error::Admission("validator delivery missing".into()))?;
     tx.commit().await.map_err(q1_db)?;
+    client.recycle_after_commit();
     if verdict.succeeded {
         Ok(Q1Outcome::StructuralObserved)
     } else {

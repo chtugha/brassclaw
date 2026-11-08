@@ -544,6 +544,13 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     {
         let mut client = rig.pool.get().await.unwrap();
         let tx = client.transaction().await.unwrap();
+        assert!(matches!(
+            crate::review_work_reconciliation::inspect(&tx, id)
+                .await
+                .unwrap()
+                .status,
+            ReviewWorkStatus::OriginalQueueChanged
+        ));
         assert!(
             crate::review_work_confirmation::confirm(&tx, id, request.context())
                 .await
@@ -577,7 +584,9 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     .await
     .unwrap();
     transport.arm(1).unwrap();
-    let mut client = transport.pool.get().await.unwrap();
+    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&transport.pool)
+        .await
+        .unwrap();
     let tx = client.transaction().await.unwrap();
     let expected = crate::review_work_confirmation::confirm(&tx, id, request.context())
         .await
@@ -589,6 +598,21 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     );
     drop(client);
     assert_eq!(transport.cut_count(), 1);
+    // A later authored edit cannot rewrite an already committed acknowledgement.
+    // This does not simulate Q2 or claim support for full-Q1 queue removal.
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .execute(
+            "UPDATE reborn_python_code SET description=$2 WHERE id=$1",
+            &[
+                &component_id,
+                &"later authored description after original confirmation",
+            ],
+        )
+        .await
+        .unwrap();
     let pool = brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap();
     let mut client = pool.get().await.unwrap();
     let tx = client.transaction().await.unwrap();

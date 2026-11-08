@@ -163,7 +163,7 @@ pub(super) async fn queued_structural_original(
     .expect("ReviewSubmissionDraft::new must succeed");
 
     // Submit to the validation queue (required for capture_q1_candidate).
-    // Fire-and-forget kick from submit() is a no-op here (bridge not wired on the store).
+    // Discovery notification is a no-op here (bridge not wired on the store).
     store
         .submit(&scope, component_id, 22, None)
         .await
@@ -560,12 +560,18 @@ async fn retained_validator_pass(case: DeliveryCase) {
         );
         assert!(
             store
-                .list(&scope, Some(1))
+                .list(&scope, Some(2))
                 .await
                 .unwrap()
                 .iter()
                 .all(|row| row.component_id != component_id)
         );
+        if case == DeliveryCase::HeartbeatLoss {
+            assert!(!rig.pool.get().await.unwrap().query_one(
+                "SELECT EXISTS(SELECT 1 FROM brassclaw_monty_private_deliveries WHERE work_id=$1)",
+                &[&submission_id]).await.unwrap().get::<_,bool>(0),
+                "pre-submission interruption cannot create post-Factory delivery");
+        }
         return;
     }
     let outcome = outcome.expect("run_q1_validation_retained must not return Err");

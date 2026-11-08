@@ -59,9 +59,13 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
     async fn reconcile_originals(&self) -> Result<(), AgentLoopDriverError> {
         // This is the acknowledged outstanding DB-ownership work capacity,
         // not a quota on reviews or a newly invented polling/backoff setting.
-        let policy=self.catalogue.preparation_policy().await.map_err(|_|unavailable())?;
-        let capacity=i64::from(policy.max_pending_ownership_checks);
-        let deadline=std::time::Duration::from_millis(policy.resource_store_timeout_millis);
+        let policy = self
+            .catalogue
+            .preparation_policy()
+            .await
+            .map_err(|_| unavailable())?;
+        let capacity = i64::from(policy.max_pending_ownership_checks);
+        let deadline = std::time::Duration::from_millis(policy.resource_store_timeout_millis);
         let mut cursor = self.cursor.lock().await;
         let (after_time, after_id) = cursor
             .as_ref()
@@ -157,8 +161,11 @@ pub(crate) async fn inspect(
         } else {
             ReviewWorkStatus::OriginalPreparationMissing
         };
-        if !crate::validation_queue::ValidationQueueStore::original_queue_is_current(tx,id).await.map_err(|_|invalid())? {
-            view.status=ReviewWorkStatus::OriginalQueueChanged;
+        if !crate::validation_queue::ValidationQueueStore::original_queue_is_current(tx, id)
+            .await
+            .map_err(|_| invalid())?
+        {
+            view.status = ReviewWorkStatus::OriginalQueueChanged;
         }
         return Ok(view);
     };
@@ -206,8 +213,11 @@ pub(crate) async fn inspect(
             .ok_or_else(invalid)?;
         view.confirmation_checksum = Some(hex::encode(checksum));
         view.status = ReviewWorkStatus::StructuralObservationsConfirmed;
-    } else if !crate::validation_queue::ValidationQueueStore::original_queue_is_current(tx,id).await.map_err(|_|invalid())? {
-        view.status=ReviewWorkStatus::OriginalQueueChanged;
+    } else if !crate::validation_queue::ValidationQueueStore::original_queue_is_current(tx, id)
+        .await
+        .map_err(|_| invalid())?
+    {
+        view.status = ReviewWorkStatus::OriginalQueueChanged;
     }
     Ok(view)
 }
