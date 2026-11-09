@@ -65,14 +65,33 @@ Exact evidence/disposition remains under `run-25-composition/`; source identity
 is unchanged through completion and the freeze is released. No full Bob gate
 is closed.
 
-K-01's `94946166d` is a source-only handoff under connected supervisor review,
-not integrated or compiled; explicit-host and exact-byte acceptance sources are
-being checked. J-01's `dddb4a36a` is an intermediate private source snapshot;
-its existing-owner production linkage remains in progress. I-01 now corrects
-only its Source-test completion/settlement diagnostics, preserving actual fault
-assertions and deadlines. J-01 and I-01 occupy the two implementation slots;
-K-01 and F-01 are read-only for review/own findings. V211 and V212 ownership
-remains J-01 and K-01 respectively.
+K-01's complete 107-file source and exact-host/byte-boundary follow-up are
+reviewed; all 106 manifest entries match its final commit. They are integrated
+as `f5d18f486`/`d7b4a42b9`, still uncompiled/unrun. I-01's three-file diagnostic
+follow-up is reviewed/hash-verified and integrated as `1a764b95b`/`354c05baa`:
+register the original completion before submit, preserve its actual Result and
+last WorkView, use bounded metadata-only diagnosis and discard an unacknowledged
+read transaction. Existing fault assertions/deadlines remain. No productive
+Source repair or acceptance follows from this fixture change.
+
+J-01's `dddb4a36a` is an intermediate private source snapshot; its production
+facade/HTTP connection and review corrections remain in progress. Concrete
+findings cover aggregate receipt encoding capacity, error classification,
+optional-agent SQL comparison, technical-failure projection and safely scoped
+optional readiness. V211 remains private. **Do not apply V212 to a database
+before the connected V211/V212 sequence is integrated and validated.** L-01,
+fresh chat `01a1c269-3da9-7723-92cd-55218fe0cb0f`, worktree `9bbf`, reads the
+mandatory architecture and prepares the per-revision parser/storage/original
+policy proposal under B2-06. It has no implementation/migration authorization
+yet. J-01/L-01 are the two current packages; I-01, K-01 and F-01 are idle for
+their own concrete findings. Root owns review, native validation and integration.
+
+Before the next necessary build, 26 further closed copies matching preserved
+supervisor test executables (7.315 GiB) are audited and removed. The actual cached
+Composition executable and worker are preserved/hash-verified before a targeted
+Composition-only clean (1,575 files, 6.6 GiB); no whole target or database is
+removed. The actual disk guard then passes: 23.117 GiB free, 89.873% used. These
+maintenance checks perform no compilation or additional test execution.
 
 **Run-24 — 2026-11-09:** exact Main `b9620a1f5` compiles the current worker
 and complete six-library/four-integration graph without warnings (7.136/644.104 s).

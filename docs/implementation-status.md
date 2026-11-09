@@ -4,8 +4,10 @@ Run-25 compiles the actual worker and joint graph without warnings and passes
 common global startup. Its connected 37-case batch has nine passes and 28
 failures; Source confirmation/lifecycle, one terminated pool-one case and later
 storage-blocked cases remain unaccepted. Two exact test-fixture corrections are
-integrated but unrun. J-01 production linkage and K-01 resource-policy handoff
-are not yet accepted or integrated. Use the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09)
+integrated but unrun. K-01's resource-policy package and I-01 fixture diagnostics
+are source-reviewed and integrated, without compilation/native acceptance.
+J-01 production linkage/review corrections remain private; L-01 studies the
+remaining per-revision policy boundary. Use the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09)
 and [scoped progress record](validation/2026-11-03-bob-repair-progress.md#latest-scoped-acceptance-and-active-packages)
 for source identities, failures, reused evidence and active ownership. None of
 the three complete Bob plans is closed by this build.

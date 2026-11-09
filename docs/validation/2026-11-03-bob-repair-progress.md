@@ -40,11 +40,23 @@ real persisted settings revision before the held-intent test, and declare the
 required input `checks:[]`. The non-JSON native utility loop and integer-result
 assertions had already executed before the latter input-constructor failure;
 no result-validator defect is inferred. Both corrected tests remain unrun.
-J-01 continues its original single-case production connection; K-01's source
-handoff `94946166d` remains under complete review, not integrated/compiled.
-I-01 owns the minimal original-completion/settlement test-diagnostic correction.
-J-01/I-01 are the two implementers; F-01/K-01 are read-only. All three Bob plans
-remain open.
+K-01's complete source plus exact-host/graph-byte acceptance sources are
+reviewed/hash-verified and integrated as `f5d18f486`/`d7b4a42b9`; no compilation
+or native acceptance yet. I-01's minimal original-completion/settlement fixture
+diagnostics and guarded timeout-read correction are reviewed/hash-verified and
+integrated as `1a764b95b`/`354c05baa`. These do not repair a proved productive
+Source failure. J-01 continues its original single-case production connection
+and concrete review corrections. L-01 reads/designs the remaining per-revision
+policy boundary; no new migration is authorized. J-01/L-01 are current packages;
+F-01/I-01/K-01 are idle. V212 must not reach a database before J-01's V211 joins
+the coordinated source. All three full Bob plans remain open.
+
+Further audited cleanup removes 26 closed copies of preserved supervisor test
+executables (7.315 GiB). Before a necessary targeted Composition-only clean,
+the actual current executable/worker are preserved and hashed; 1,575 cache files
+(6.6 GiB) are removed, with no whole-target, source or DB cleanup. The real disk
+guard then passes at 23.117 GiB free and 89.873% used. No further build/test runs
+have started; the next coherent J/K/fixture batch remains pending.
 
 **Run-24 — 2026-11-09:** exact Main `b9620a1f5` builds the current worker
 and complete six-library/four-integration graph without compiler/link warnings

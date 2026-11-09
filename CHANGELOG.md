@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original graph preparation (validation pending)**: Carry one acknowledged
+  preparation through new immutable review subjects/catalogues, complete streamed
+  graph reads and authenticated HTTP admission. Preserve historical profiles and
+  original retries after later settings reductions; retain explicit smaller host
+  limits. Add V212 and native boundary/ACK regression sources, with English/German
+  settings help. Source reviewed; the connected V211/V212 migration sequence,
+  compilation and native acceptance remain pending.
+
 - **Bootstrap original-proof work (validation pending)**: Reuse invariant claim
   digests and return checked references from one complete snapshot walk, while
   freshly checking every original and preserving separate publication/readback.
