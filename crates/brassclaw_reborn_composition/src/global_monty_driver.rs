@@ -85,6 +85,7 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         input: TaskInput,
     ) -> Result<PreparedGlobalTask, AgentLoopDriverError>;
 
+    #[cfg(test)]
     fn private_attempt_retained(
         &self,
         _run: brassclaw_turns::TurnRunId,
@@ -154,12 +155,14 @@ impl SettledInternalCompletion {
 #[derive(Clone)]
 pub(crate) struct DrivenMontyTask {
     pub(crate) exit: LoopExit,
+    #[cfg(test)]
     pub(crate) internal_completion: Option<SettledInternalCompletion>,
 }
 impl From<LoopExit> for DrivenMontyTask {
     fn from(exit: LoopExit) -> Self {
         Self {
             exit,
+            #[cfg(test)]
             internal_completion: None,
         }
     }
@@ -901,6 +904,7 @@ impl GlobalMontyDriver {
                     exit_id: LoopExitId::new(format!("exit:{}-completed", run_id))
                         .map_err(|_| failed("monty_exit_reference_invalid"))?,
                 });
+                #[cfg(test)]
                 let internal_completion = SettledInternalCompletion {
                     attempt: host.attempt(),
                     receipt,
@@ -909,6 +913,7 @@ impl GlobalMontyDriver {
                 self.remove(host.attempt())?;
                 Ok(DrivenMontyTask {
                     exit,
+                    #[cfg(test)]
                     internal_completion: Some(internal_completion),
                 })
             }

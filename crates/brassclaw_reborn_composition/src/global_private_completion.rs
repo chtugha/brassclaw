@@ -2,6 +2,7 @@
 //! neither admit nor claim work, own no timer, and cannot restore proof from SQL.
 use super::*;
 use brassclaw_turns::TurnRunId;
+#[cfg(test)]
 use std::sync::Weak;
 use tokio::sync::watch;
 
@@ -15,6 +16,7 @@ pub(super) struct DeliverySlot {
 }
 pub(super) type PrivateDeliveries = Mutex<HashMap<TurnRunId, DeliverySlot>>;
 
+#[cfg(test)]
 pub(crate) struct PrivateCompletionWait {
     run: TurnRunId,
     deliveries: Weak<PrivateDeliveries>,
@@ -22,6 +24,7 @@ pub(crate) struct PrivateCompletionWait {
     result: watch::Receiver<Option<ResultValue>>,
     service: ServiceClient,
 }
+#[cfg(test)]
 impl PrivateCompletionWait {
     pub(crate) fn has_result(&self) -> bool {
         self.result.borrow().is_some()
@@ -41,6 +44,7 @@ impl PrivateCompletionWait {
         }
     }
 }
+#[cfg(test)]
 impl Drop for PrivateCompletionWait {
     fn drop(&mut self) {
         if let Some(deliveries) = self.deliveries.upgrade()
@@ -195,6 +199,7 @@ impl GlobalMontyDriver {
     /// Hold the same slot lock used to register the actual producer. Once it
     /// starts, its delivery lifetime covers the interval after factory release
     /// and before publish; retained-host absence cannot reject that live wait.
+    #[cfg(test)]
     pub(crate) fn private_completion_live(
         &self,
         run: TurnRunId,
@@ -213,6 +218,7 @@ impl GlobalMontyDriver {
         // slots excludes producer registration until this retention read ends.
         self.ports.private_attempt_retained(run)
     }
+    #[cfg(test)]
     pub(crate) fn private_completion_waiter(
         &self,
         run: TurnRunId,
