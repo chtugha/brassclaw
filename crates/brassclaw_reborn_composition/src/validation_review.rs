@@ -1,7 +1,9 @@
 //! Exact legacy Q1 candidate retention. This is not v3 combination approval.
+#[cfg(test)]
+use super::map_pool;
 use super::{
     ComponentScope, STATE_Q1_PENDING, ValidationQueueError, ValidationQueueStore,
-    map_original_store, map_pg, map_pool, resolve_component_table, resolve_content_column,
+    map_original_store, map_pg, resolve_component_table, resolve_content_column,
     validate_upgrade_payload,
 };
 use serde_json::Value;
