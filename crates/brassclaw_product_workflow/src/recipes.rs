@@ -339,6 +339,8 @@ pub enum ReviewQueueBindingStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentReviewSubmissionReceipt {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preparation_revision: Option<u64>,
     /// Original immutable queue selectors, also readable after Q2 removes rows.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queue_ids: Vec<String>,
@@ -624,6 +626,7 @@ pub trait RecipeStore: Send + Sync {
     async fn prepare_component_deployment(
         &self,
         _request: PrepareComponentDeploymentRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "component deployment unavailable".into(),
@@ -656,10 +659,22 @@ pub trait RecipeStore: Send + Sync {
         ))
     }
 
+    /// Host ingress preparation only: returns the existing owner's acknowledged
+    /// capture, never caller JSON, desired settings, admission or Tool authority.
+    async fn capture_component_preparation(
+        &self,
+    ) -> Result<Option<brassclaw_host_api::task_preparation::RetainedPreparation>, RecipeStoreError>
+    {
+        Err(RecipeStoreError::Unavailable(
+            "acknowledged component preparation unavailable".into(),
+        ))
+    }
+
     async fn activate_catalogue(
         &self,
         _actor: &str,
         _request: ActivateCatalogueRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "authored catalogue activation unavailable".into(),
@@ -707,6 +722,7 @@ pub trait RecipeStore: Send + Sync {
         &self,
         _actor: &str,
         _request: SubmitComponentReviewRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "immutable review submissions are unavailable".into(),

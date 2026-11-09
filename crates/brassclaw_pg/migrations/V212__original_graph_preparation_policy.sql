@@ -1,0 +1,204 @@
+-- K-01: new original graph/preparation carriage, no approval or Tool grant.
+-- Preserve /1-/3 subjects, old catalogues and all immutable bytes/checksums.
+CREATE FUNCTION brassclaw_checked_preparation_policy_v1(bytes text, expected_checksum text)
+RETURNS jsonb LANGUAGE plpgsql IMMUTABLE STRICT AS $$
+DECLARE capture jsonb; policy jsonb; key text; value numeric;
+BEGIN
+    IF expected_checksum !~ '^[0-9a-f]{64}$'
+       OR encode(sha256(convert_to(bytes,'UTF8')),'hex') <> expected_checksum THEN RETURN NULL; END IF;
+    capture := bytes::jsonb;
+    IF (jsonb_typeof(capture)='object'
+        AND capture->>'format'='task-preparation-capture/1'
+        AND capture->>'origin' IN ('acknowledged_startup','acknowledged_live')
+        AND jsonb_typeof(capture->'revision')='number'
+        AND capture->>'revision' ~ '^[1-9][0-9]*$'
+        AND (capture->>'revision')::numeric <= 18446744073709551615
+        AND jsonb_typeof(capture->'execution_limits_bytes')='string'
+        AND capture->>'execution_limits_checksum' ~ '^[0-9a-f]{64}$'
+        AND encode(sha256(convert_to(capture->>'execution_limits_bytes','UTF8')),'hex')=capture->>'execution_limits_checksum') IS NOT TRUE THEN RETURN NULL; END IF;
+    IF (SELECT count(*) FROM jsonb_object_keys(capture)) <> 5 THEN RETURN NULL; END IF;
+    policy := (capture->>'execution_limits_bytes')::jsonb;
+    IF jsonb_typeof(policy) <> 'object' THEN RETURN NULL; END IF;
+    FOREACH key IN ARRAY ARRAY['max_catalogue_components_per_recipe','max_catalogue_bytes','max_value_bytes','max_value_nodes','max_value_depth'] LOOP
+        IF (jsonb_typeof(policy->key)='number' AND policy->>key ~ '^[1-9][0-9]*$') IS NOT TRUE THEN RETURN NULL; END IF;
+        value := (policy->>key)::numeric;
+        IF value > 18446744073709551614 THEN RETURN NULL; END IF;
+        IF key IN ('max_catalogue_components_per_recipe','max_value_depth') AND value > 4294967295 THEN RETURN NULL; END IF;
+    END LOOP;
+    -- The full strict Rust /1 codec validates complete fields/native feasibility.
+    -- This predicate protects DB carriage/hash/length; it creates no ACK evidence.
+    RETURN policy;
+EXCEPTION WHEN invalid_text_representation OR numeric_value_out_of_range THEN
+    RETURN NULL;
+END $$;
+
+DO $$ DECLARE c record; removed integer := 0;
+BEGIN
+    FOR c IN SELECT conname FROM pg_constraint
+        WHERE conrelid='reborn_component_review_submissions'::regclass AND contype='c'
+          AND pg_get_constraintdef(oid) LIKE '%octet_length(subject_bytes)%'
+    LOOP
+        EXECUTE format('ALTER TABLE reborn_component_review_submissions DROP CONSTRAINT %I',c.conname);
+        removed := removed + 1;
+    END LOOP;
+    IF removed <> 1 THEN RAISE EXCEPTION 'unexpected original subject length constraints' USING ERRCODE='23514'; END IF;
+END $$;
+ALTER TABLE reborn_component_review_submissions ADD CONSTRAINT review_original_preparation CHECK ((
+    CASE WHEN subject_bytes::jsonb->>'format'='component-review-submission/4' THEN
+        jsonb_typeof(subject_bytes::jsonb->'preparation_bytes')='string'
+        AND jsonb_typeof(subject_bytes::jsonb->'preparation_checksum')='string'
+        AND brassclaw_checked_preparation_policy_v1(subject_bytes::jsonb->>'preparation_bytes', subject_bytes::jsonb->>'preparation_checksum') IS NOT NULL
+        AND octet_length(subject_bytes)::numeric BETWEEN 1 AND
+            (brassclaw_checked_preparation_policy_v1(subject_bytes::jsonb->>'preparation_bytes', subject_bytes::jsonb->>'preparation_checksum')->>'max_value_bytes')::numeric
+        AND jsonb_array_length(subject_bytes::jsonb->'dependencies')::numeric + 1 + CASE WHEN subject_bytes::jsonb ? 'function_partner' THEN 1 ELSE 0 END <=
+            (brassclaw_checked_preparation_policy_v1(subject_bytes::jsonb->>'preparation_bytes', subject_bytes::jsonb->>'preparation_checksum')->>'max_catalogue_components_per_recipe')::numeric
+    ELSE octet_length(subject_bytes) BETWEEN 1 AND 16777216
+        AND NOT (subject_bytes::jsonb ?| ARRAY['preparation_bytes','preparation_checksum']) END
+) IS TRUE);
+
+ALTER TABLE reborn_component_review_submissions
+    DROP CONSTRAINT review_subject_allocation,
+    ADD CONSTRAINT review_subject_allocation CHECK (
+        CASE subject_bytes::jsonb->>'format'
+        WHEN 'component-review-submission/1' THEN
+            NOT (subject_bytes::jsonb ? 'expected_previous_version')
+            AND NOT (subject_bytes::jsonb ? 'function_partner')
+            AND candidate_version::numeric=COALESCE(base_version::numeric,0)+1
+        WHEN 'component-review-submission/2' THEN
+            NOT (subject_bytes::jsonb ? 'function_partner')
+            AND CASE WHEN jsonb_typeof(subject_bytes::jsonb->'expected_previous_version')='number'
+                AND subject_bytes::jsonb->>'expected_previous_version' ~ '^(0|[1-9][0-9]*)$'
+            THEN (subject_bytes::jsonb->>'expected_previous_version')::numeric<9223372036854775807
+                AND candidate_version::numeric=(subject_bytes::jsonb->>'expected_previous_version')::numeric+1
+                AND COALESCE(base_version::numeric,0)<=(subject_bytes::jsonb->>'expected_previous_version')::numeric
+            ELSE false END
+        WHEN 'component-review-submission/3' THEN
+            jsonb_typeof(subject_bytes::jsonb->'function_partner')='object'
+            AND CASE WHEN jsonb_typeof(subject_bytes::jsonb->'expected_previous_version')='number'
+                AND subject_bytes::jsonb->>'expected_previous_version' ~ '^(0|[1-9][0-9]*)$'
+            THEN (subject_bytes::jsonb->>'expected_previous_version')::numeric<9223372036854775807
+                AND candidate_version::numeric=(subject_bytes::jsonb->>'expected_previous_version')::numeric+1
+                AND COALESCE(base_version::numeric,0)<=(subject_bytes::jsonb->>'expected_previous_version')::numeric
+            ELSE false END
+        WHEN 'component-review-submission/4' THEN
+            (NOT (subject_bytes::jsonb ? 'function_partner') OR jsonb_typeof(subject_bytes::jsonb->'function_partner')='object')
+            AND CASE WHEN jsonb_typeof(subject_bytes::jsonb->'expected_previous_version')='number'
+                AND subject_bytes::jsonb->>'expected_previous_version' ~ '^(0|[1-9][0-9]*)$'
+            THEN (subject_bytes::jsonb->>'expected_previous_version')::numeric<9223372036854775807
+                AND candidate_version::numeric=(subject_bytes::jsonb->>'expected_previous_version')::numeric+1
+                AND COALESCE(base_version::numeric,0)<=(subject_bytes::jsonb->>'expected_previous_version')::numeric
+            ELSE false END
+        ELSE false END IS TRUE);
+
+CREATE OR REPLACE FUNCTION verify_function_review_partner() RETURNS trigger
+LANGUAGE plpgsql AS $$
+DECLARE
+    subject jsonb := NEW.subject_bytes::jsonb;
+    partner jsonb;
+    selected jsonb;
+    previous jsonb;
+    counterpart reborn_component_revisions%ROWTYPE;
+    primary_revision reborn_component_revisions%ROWTYPE;
+    skill_bytes text;
+    code_id uuid;
+    head numeric;
+BEGIN
+    IF subject->>'format' <> 'component-review-submission/3'
+       AND NOT (subject->>'format'='component-review-submission/4' AND subject ? 'function_partner') THEN RETURN NEW; END IF;
+    partner := subject->'function_partner';
+    IF partner->>'role' = 'changed' THEN
+        selected := partner->'candidate';
+    ELSIF partner->>'role' = 'context' THEN
+        selected := partner->'reference';
+    ELSE
+        RAISE EXCEPTION 'invalid function partner role' USING ERRCODE='23514';
+    END IF;
+    IF (jsonb_typeof(selected)='object'
+        AND jsonb_typeof(selected->'version')='number'
+        AND selected->>'version' ~ '^[1-9][0-9]*$'
+        AND selected->>'checksum' ~ '^[0-9a-f]{64}$') IS NOT TRUE THEN
+        RAISE EXCEPTION 'invalid function partner reference' USING ERRCODE='23514';
+    END IF;
+    SELECT * INTO counterpart FROM reborn_component_revisions
+        WHERE component_id=(selected->>'uuid')::uuid
+            AND version=(selected->>'version')::bigint
+            AND class_code=(selected->>'class_code')::smallint
+            AND checksum=selected->>'checksum';
+    IF NOT FOUND OR counterpart.component_id=NEW.component_id THEN
+        RAISE EXCEPTION 'function partner revision mismatch' USING ERRCODE='23514';
+    END IF;
+    SELECT * INTO STRICT primary_revision FROM reborn_component_revisions
+        WHERE component_id=NEW.component_id AND version=NEW.candidate_version;
+    IF primary_revision.class_code BETWEEN 1 AND 3 AND counterpart.class_code=22 THEN
+        skill_bytes := primary_revision.revision_bytes;
+        code_id := counterpart.component_id;
+    ELSIF primary_revision.class_code=22 AND counterpart.class_code BETWEEN 1 AND 3 THEN
+        skill_bytes := counterpart.revision_bytes;
+        code_id := primary_revision.component_id;
+    ELSE
+        RAISE EXCEPTION 'function subject requires one Skill and its code' USING ERRCODE='23514';
+    END IF;
+    IF (((skill_bytes::jsonb->>'association')::jsonb->>'python_code_uuid')::uuid=code_id) IS NOT TRUE THEN
+        RAISE EXCEPTION 'function partner differs from Skill association' USING ERRCODE='23514';
+    END IF;
+    IF partner->>'role'='changed' THEN
+        IF (jsonb_typeof(partner->'candidate_bytes')='string'
+            AND partner->>'candidate_bytes'=counterpart.revision_bytes
+            AND jsonb_typeof(partner->'expected_previous_version')='number'
+            AND partner->>'expected_previous_version' ~ '^(0|[1-9][0-9]*)$') IS NOT TRUE THEN
+            RAISE EXCEPTION 'function partner candidate or allocation mismatch' USING ERRCODE='23514';
+        END IF;
+        head := (partner->>'expected_previous_version')::numeric;
+        IF head>=9223372036854775807 OR counterpart.version::numeric<>head+1 THEN
+            RAISE EXCEPTION 'function partner allocation mismatch' USING ERRCODE='23514';
+        END IF;
+        previous := partner->'base';
+        IF previous='null'::jsonb THEN
+            IF head<>0 THEN
+                RAISE EXCEPTION 'new function partner requires first allocation' USING ERRCODE='23514';
+            END IF;
+        ELSIF jsonb_typeof(previous)='object' THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM reborn_component_revisions r
+                WHERE r.component_id=counterpart.component_id
+                    AND r.component_id=(previous->>'uuid')::uuid
+                    AND r.class_code=counterpart.class_code
+                    AND r.class_code=(previous->>'class_code')::smallint
+                    AND r.version=(previous->>'version')::bigint AND r.version<=head
+                    AND r.checksum=previous->>'checksum'
+            ) THEN
+                RAISE EXCEPTION 'function partner lineage mismatch' USING ERRCODE='23514';
+            END IF;
+        ELSE
+            RAISE EXCEPTION 'function partner lineage required' USING ERRCODE='23514';
+        END IF;
+    END IF;
+    RETURN NEW;
+END $$;
+
+-- V108's independent catalogue text cap must also follow the new original.
+DO $$ DECLARE c record; removed integer := 0;
+BEGIN
+    FOR c IN SELECT conname FROM pg_constraint
+        WHERE conrelid='brassclaw_monty_boot_catalogues'::regclass AND contype='c'
+          AND pg_get_constraintdef(oid) LIKE '%octet_length(catalogue_bytes)%'
+    LOOP
+        EXECUTE format('ALTER TABLE brassclaw_monty_boot_catalogues DROP CONSTRAINT %I',c.conname);
+        removed := removed + 1;
+    END LOOP;
+    IF removed <> 1 THEN RAISE EXCEPTION 'unexpected original catalogue length constraints' USING ERRCODE='23514'; END IF;
+END $$;
+ALTER TABLE brassclaw_monty_boot_catalogues ADD CONSTRAINT catalogue_original_preparation CHECK ((
+    CASE WHEN catalogue_bytes::jsonb->>'format'='authored-monty-catalogue/4' THEN
+        jsonb_typeof(catalogue_bytes::jsonb->'preparation_bytes')='string'
+        AND jsonb_typeof(catalogue_bytes::jsonb->'preparation_checksum')='string'
+        AND brassclaw_checked_preparation_policy_v1(catalogue_bytes::jsonb->>'preparation_bytes', catalogue_bytes::jsonb->>'preparation_checksum') IS NOT NULL
+        AND catalogue_bytes::jsonb->'preparation_policy' = brassclaw_checked_preparation_policy_v1(catalogue_bytes::jsonb->>'preparation_bytes', catalogue_bytes::jsonb->>'preparation_checksum')
+        AND octet_length(catalogue_bytes)::numeric BETWEEN 1 AND
+            (brassclaw_checked_preparation_policy_v1(catalogue_bytes::jsonb->>'preparation_bytes', catalogue_bytes::jsonb->>'preparation_checksum')->>'max_catalogue_bytes')::numeric
+        AND jsonb_typeof(catalogue_bytes::jsonb->'disabled_recipe_ids')='array'
+    ELSE octet_length(catalogue_bytes) <= 67108864
+        AND NOT (catalogue_bytes::jsonb ?| ARRAY['preparation_bytes','preparation_checksum']) END
+) IS TRUE);
+-- V177 still reads the checked preparation_policy projection. No public
+-- activation/approval is inferred, and no old receipt is backfilled.

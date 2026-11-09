@@ -511,6 +511,13 @@ impl InstalledMontyCatalogue {
                 tx,
                 &[instruction.recipe().uuid],
                 &refs,
+                if std::sync::Arc::ptr_eq(selected, &self.reply)
+                    || std::sync::Arc::ptr_eq(selected, &self.history)
+                {
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+                } else {
+                    view.graph_limits
+                },
             )
             .await
             .map_err(|_| failed())?;
@@ -790,7 +797,11 @@ impl InstalledMontyCatalogue {
             }
             let snapshot = Arc::new(
                 store
-                    .read_exact(&[ids.recipe], &refs)
+                    .read_exact(
+                        &[ids.recipe],
+                        &refs,
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                    )
                     .await
                     .map_err(|error| invalid(error.to_string()))?,
             );
@@ -1055,6 +1066,7 @@ impl InstalledMontyCatalogue {
                 &tx,
                 &[instruction.recipe().uuid],
                 &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
             )
             .await
             .map_err(|e| invalid(e.to_string()))?;
@@ -1111,6 +1123,7 @@ impl InstalledMontyCatalogue {
             programs: Vec::new(),
             recipes: Vec::new(),
             disabled_recipes: Default::default(),
+            graph_limits: brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         });
         let catalogue = Arc::new(Self {
             pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview::new(

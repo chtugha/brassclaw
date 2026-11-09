@@ -1,7 +1,11 @@
 //! Append-only instance revision retention. No legacy row is automatically
 //! approved, and this store exposes no activate/delete/replace operation.
 
-use std::{collections::BTreeSet, sync::Arc};
+use futures_util::{TryStreamExt, pin_mut};
+use std::sync::Arc;
+#[path = "snapshot_read_limits.rs"]
+mod snapshot_read_limits;
+pub use snapshot_read_limits::SnapshotReadLimits;
 
 use brassclaw_pg::{PgError, PgPool};
 use tokio_postgres::IsolationLevel;
@@ -13,9 +17,6 @@ use crate::{
         ComponentRevisionDraft, RetainedComponentRevision, RetainedComponentSnapshot, RevisionError,
     },
 };
-
-const MAX_SNAPSHOT_REVISIONS: usize = 4096;
-const MAX_SNAPSHOT_BYTES: i64 = 67_108_864;
 
 /// Source database diagnostics can contain authoring data. Display/Debug expose
 /// classification only; an authorized diagnostic owner may inspect the source.
@@ -29,7 +30,7 @@ pub enum RevisionStoreError {
     Integrity,
     #[error("component selection requires repeatable-read or serializable isolation")]
     SnapshotIsolation,
-    #[error("component snapshot exceeds technical transport capacity")]
+    #[error("component snapshot exceeds its original resource or transport policy")]
     Capacity,
     #[error(transparent)]
     Invalid(#[from] RevisionError),
@@ -82,61 +83,31 @@ impl PgComponentRevisionStore {
         id: Uuid,
         version: u64,
     ) -> Result<RetainedComponentRevision, RevisionStoreError> {
-        if id.is_nil() || version == 0 {
+        if id.is_nil() || version == 0 || i64::try_from(version).is_err() {
             return Err(RevisionStoreError::Integrity);
         }
-        let version = i64::try_from(version).map_err(|_| RevisionStoreError::Integrity)?;
-        let client = self.pool.get().await.map_err(database)?;
-        let row = client
-            .query_opt(
-                "SELECT class_code,version,revision_bytes,checksum FROM reborn_component_revisions
-                 WHERE component_id=$1 AND version=$2",
-                &[&id, &version],
-            )
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
             .await
-            .map_err(database)?
-            .ok_or(RevisionStoreError::Integrity)?;
-        let bytes: String = row.get(2);
-        let revision = ComponentRevisionDraft::from_json(&bytes)?.at_version(version as u64)?;
-        let actual = revision.reference();
-        if actual.uuid != id
-            || actual.class_code != i32::from(row.get::<_, i16>(0))
-            || actual.version != row.get::<_, i64>(1) as u64
-            || digest_hex(actual.checksum) != row.get::<_, String>(3)
-        {
-            return Err(RevisionStoreError::Integrity);
-        }
+            .map_err(database)?;
+        let revision = read_single(&tx, id, version, None).await?;
+        tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(revision)
     }
-
-    /// Read comparison bytes for an exact historical root in the caller's
-    /// snapshot. This does not reconstruct that root's old dependency selection
-    /// or establish that it was ever approved.
+    /// Exact root comparison; no reconstruction of its historical closure.
     pub async fn read_revision_in_transaction(
         tx: &tokio_postgres::Transaction<'_>,
         expected: ComponentRevisionRef,
     ) -> Result<RetainedComponentRevision, RevisionStoreError> {
-        let (ids, versions) = selection_arrays(&[expected])?;
         require_snapshot(tx).await?;
-        let row = tx
-            .query_opt(
-                "SELECT class_code,version,revision_bytes,checksum FROM reborn_component_revisions
-                 WHERE component_id=$1 AND version=$2 AND octet_length(revision_bytes)::bigint<=$3::bigint",
-                &[&ids[0], &versions[0], &MAX_SNAPSHOT_BYTES],
-            )
-            .await
-            .map_err(database)?
-            .ok_or(RevisionStoreError::Integrity)?;
-        let bytes: String = row.get(2);
-        let revision = ComponentRevisionDraft::from_json(&bytes)?.at_version(expected.version)?;
-        if revision.reference() != expected
-            || expected.class_code != i32::from(row.get::<_, i16>(0))
-            || versions[0] != row.get::<_, i64>(1)
-            || digest_hex(expected.checksum) != row.get::<_, String>(3)
-        {
-            return Err(RevisionStoreError::Integrity);
-        }
-        Ok(revision)
+        read_single(tx, expected.uuid, expected.version, Some(expected)).await
     }
 
     /// Version zero means a new identity. Existing edits supply the observed
@@ -147,10 +118,13 @@ impl PgComponentRevisionStore {
         draft: &ComponentRevisionDraft,
         expected_previous_version: u64,
     ) -> Result<ComponentRevisionRef, RevisionStoreError> {
-        let mut client = self.pool.get().await.map_err(database)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client.transaction().await.map_err(database)?;
         let reference = Self::stage_in_transaction(&tx, draft, expected_previous_version).await?;
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(reference)
     }
 
@@ -163,7 +137,9 @@ impl PgComponentRevisionStore {
         &self,
         draft: &ComponentRevisionDraft,
     ) -> Result<ComponentRevisionRef, RevisionStoreError> {
-        let mut client = self.pool.get().await.map_err(database)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client.transaction().await.map_err(database)?;
         let id = draft.uuid();
         let class = i16::try_from(draft.class_code()).map_err(|_| RevisionStoreError::Integrity)?;
@@ -220,6 +196,7 @@ impl PgComponentRevisionStore {
             Self::stage_in_transaction(&tx, draft, previous).await?
         };
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(reference)
     }
 
@@ -269,9 +246,12 @@ impl PgComponentRevisionStore {
         &self,
         roots: &[Uuid],
         references: &[ComponentRevisionRef],
+        limits: SnapshotReadLimits,
     ) -> Result<RetainedComponentSnapshot, RevisionStoreError> {
-        let (ids, versions) = selection_arrays(references)?;
-        let mut client = self.pool.get().await.map_err(database)?;
+        let (ids, versions, order) = selection_arrays(references, limits)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -279,8 +259,10 @@ impl PgComponentRevisionStore {
             .start()
             .await
             .map_err(database)?;
-        let snapshot = read_selected(&tx, roots, references, &ids, &versions).await?;
+        let snapshot =
+            read_selected(&tx, roots, references, &ids, &versions, &order, limits).await?;
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(snapshot)
     }
 
@@ -292,10 +274,11 @@ impl PgComponentRevisionStore {
         tx: &tokio_postgres::Transaction<'_>,
         roots: &[Uuid],
         references: &[ComponentRevisionRef],
+        limits: SnapshotReadLimits,
     ) -> Result<RetainedComponentSnapshot, RevisionStoreError> {
-        let (ids, versions) = selection_arrays(references)?;
+        let (ids, versions, order) = selection_arrays(references, limits)?;
         require_snapshot(tx).await?;
-        read_selected(tx, roots, references, &ids, &versions).await
+        read_selected(tx, roots, references, &ids, &versions, &order, limits).await
     }
 }
 
@@ -316,56 +299,207 @@ async fn require_snapshot(tx: &tokio_postgres::Transaction<'_>) -> Result<(), Re
 
 fn selection_arrays(
     references: &[ComponentRevisionRef],
-) -> Result<(Vec<Uuid>, Vec<i64>), RevisionStoreError> {
-    if references.is_empty() || references.len() > MAX_SNAPSHOT_REVISIONS {
+    limits: SnapshotReadLimits,
+) -> Result<(Vec<Uuid>, Vec<i64>, Vec<usize>), RevisionStoreError> {
+    if references.is_empty() || references.len() > limits.max_revisions() {
         return Err(RevisionStoreError::Capacity);
     }
-    let mut unique = BTreeSet::new();
-    let mut ids = Vec::with_capacity(references.len());
-    let mut versions = Vec::with_capacity(references.len());
+    // Reject an impossible transfer before allocating whole-graph indices.
+    limits.batch_capacity(META_QUERY)?;
+    limits.batch_capacity(CONTENT_QUERY)?;
+    let mut order = Vec::new();
+    order
+        .try_reserve_exact(references.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    order.extend(0..references.len());
+    order.sort_unstable_by_key(|i| references[*i].uuid);
+    if order
+        .windows(2)
+        .any(|pair| references[pair[0]].uuid == references[pair[1]].uuid)
+    {
+        return Err(RevisionStoreError::Integrity);
+    }
+    let mut ids = Vec::new();
+    ids.try_reserve_exact(references.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    let mut versions = Vec::new();
+    versions
+        .try_reserve_exact(references.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
     for reference in references {
-        if reference.uuid.is_nil() || reference.version == 0 || !unique.insert(reference.uuid) {
+        if reference.uuid.is_nil() || reference.version == 0 {
             return Err(RevisionStoreError::Integrity);
         }
         ids.push(reference.uuid);
         versions.push(i64::try_from(reference.version).map_err(|_| RevisionStoreError::Integrity)?);
     }
-    Ok((ids, versions))
+    Ok((ids, versions, order))
 }
 
+// Query text is fixed; values remain typed parameters. The actual pinned wire
+// encoder uses two arrays regardless of graph count (see snapshot_read_limits).
+const META_QUERY: &str = "SELECT r.component_id,r.class_code,r.version,octet_length(r.revision_bytes),r.checksum FROM unnest($1::uuid[],$2::bigint[]) wanted(id,version) JOIN reborn_component_revisions r ON r.component_id=wanted.id AND r.version=wanted.version ORDER BY r.component_id";
+const CONTENT_QUERY: &str = "SELECT r.component_id,r.class_code,r.version,r.revision_bytes,r.checksum FROM unnest($1::uuid[],$2::bigint[]) wanted(id,version) JOIN reborn_component_revisions r ON r.component_id=wanted.id AND r.version=wanted.version ORDER BY r.component_id";
 async fn read_selected(
     tx: &tokio_postgres::Transaction<'_>,
     roots: &[Uuid],
     references: &[ComponentRevisionRef],
     ids: &[Uuid],
     versions: &[i64],
+    order: &[usize],
+    limits: SnapshotReadLimits,
 ) -> Result<RetainedComponentSnapshot, RevisionStoreError> {
-    let totals = tx.query_one("SELECT count(*), COALESCE(sum(octet_length(r.revision_bytes)),0)::bigint FROM unnest($1::uuid[],$2::bigint[]) wanted(id,version) JOIN reborn_component_revisions r ON r.component_id=wanted.id AND r.version=wanted.version", &[&ids, &versions]).await.map_err(database)?;
-    if totals.get::<_, i64>(0) != references.len() as i64 {
-        return Err(RevisionStoreError::Integrity);
-    }
-    if totals.get::<_, i64>(1) > MAX_SNAPSHOT_BYTES {
-        return Err(RevisionStoreError::Capacity);
-    }
-    let rows = tx.query("SELECT r.component_id,r.class_code,r.version,r.revision_bytes,r.checksum FROM unnest($1::uuid[],$2::bigint[]) wanted(id,version) JOIN reborn_component_revisions r ON r.component_id=wanted.id AND r.version=wanted.version ORDER BY r.component_id", &[&ids, &versions]).await.map_err(database)?;
-    let expected: std::collections::BTreeMap<_, _> =
-        references.iter().map(|r| (r.uuid, r)).collect();
-    let mut retained = Vec::with_capacity(rows.len());
-    for row in rows {
-        let bytes: String = row.get(3);
-        let draft = ComponentRevisionDraft::from_json(&bytes)?;
-        let version: i64 = row.get(2);
-        let revision =
-            draft.at_version(u64::try_from(version).map_err(|_| RevisionStoreError::Integrity)?)?;
-        let actual = revision.reference();
-        if actual.uuid != row.get::<_, Uuid>(0)
-            || actual.class_code != i32::from(row.get::<_, i16>(1))
-            || digest_hex(actual.checksum) != row.get::<_, String>(4)
-            || expected.get(&actual.uuid).copied() != Some(&actual)
-        {
+    use tokio_postgres::types::{ToSql, Type};
+    let capacity = limits
+        .batch_capacity(META_QUERY)?
+        .min(limits.batch_capacity(CONTENT_QUERY)?);
+    let mut lengths = Vec::new();
+    lengths
+        .try_reserve_exact(references.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    let mut total = 0_u64;
+    // Finish metadata for the ENTIRE selected set before requesting any body.
+    for batch in order.chunks(capacity) {
+        let (batch_ids, batch_versions) = batch_arrays(batch, ids, versions)?;
+        let params: [(&(dyn ToSql + Sync), Type); 2] = [
+            (&batch_ids, Type::UUID_ARRAY),
+            (&batch_versions, Type::INT8_ARRAY),
+        ];
+        let rows = tx
+            .query_typed_raw(META_QUERY, params)
+            .await
+            .map_err(database)?;
+        pin_mut!(rows);
+        let mut seen = 0;
+        while let Some(row) = rows.try_next().await.map_err(database)? {
+            let index = *batch.get(seen).ok_or(RevisionStoreError::Integrity)?;
+            let expected = references[index];
+            if row.get::<_, Uuid>(0) != expected.uuid
+                || i32::from(row.get::<_, i16>(1)) != expected.class_code
+                || row.get::<_, i64>(2) != versions[index]
+                || row.get::<_, &str>(4) != digest_hex(expected.checksum)
+            {
+                return Err(RevisionStoreError::Integrity);
+            }
+            let length =
+                usize::try_from(row.get::<_, i32>(3)).map_err(|_| RevisionStoreError::Integrity)?;
+            limits.check_row(length)?;
+            total = total
+                .checked_add(u64::try_from(length).map_err(|_| RevisionStoreError::Capacity)?)
+                .ok_or(RevisionStoreError::Capacity)?;
+            if total > limits.max_revision_bytes() {
+                return Err(RevisionStoreError::Capacity);
+            }
+            lengths.push(length);
+            seen += 1;
+        }
+        if seen != batch.len() {
             return Err(RevisionStoreError::Integrity);
         }
-        retained.push(revision);
+        tracing::debug!(target: "brassclaw::snapshot_read", phase = "metadata", revisions = seen, "completed component snapshot query batch");
+    }
+    let mut retained = Vec::new();
+    retained
+        .try_reserve_exact(references.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    let mut consumed = 0;
+    for batch in order.chunks(capacity) {
+        let (batch_ids, batch_versions) = batch_arrays(batch, ids, versions)?;
+        let params: [(&(dyn ToSql + Sync), Type); 2] = [
+            (&batch_ids, Type::UUID_ARRAY),
+            (&batch_versions, Type::INT8_ARRAY),
+        ];
+        let rows = tx
+            .query_typed_raw(CONTENT_QUERY, params)
+            .await
+            .map_err(database)?;
+        pin_mut!(rows);
+        let mut seen = 0;
+        while let Some(row) = rows.try_next().await.map_err(database)? {
+            let index = *batch.get(seen).ok_or(RevisionStoreError::Integrity)?;
+            let expected = references[index];
+            let bytes: &str = row.get(3);
+            if bytes.len() != lengths[consumed]
+                || row.get::<_, Uuid>(0) != expected.uuid
+                || i32::from(row.get::<_, i16>(1)) != expected.class_code
+                || row.get::<_, i64>(2) != versions[index]
+                || row.get::<_, &str>(4) != digest_hex(expected.checksum)
+            {
+                return Err(RevisionStoreError::Integrity);
+            }
+            let revision =
+                ComponentRevisionDraft::from_json(bytes)?.at_version(expected.version)?;
+            if revision.reference() != expected {
+                return Err(RevisionStoreError::Integrity);
+            }
+            retained.push(revision);
+            consumed += 1;
+            seen += 1;
+        }
+        if seen != batch.len() {
+            return Err(RevisionStoreError::Integrity);
+        }
+        tracing::debug!(target: "brassclaw::snapshot_read", phase = "content", revisions = seen, "completed component snapshot query batch");
+    }
+    if consumed != references.len() {
+        return Err(RevisionStoreError::Integrity);
     }
     Ok(RetainedComponentSnapshot::new(roots, retained)?)
+}
+fn batch_arrays(
+    batch: &[usize],
+    ids: &[Uuid],
+    versions: &[i64],
+) -> Result<(Vec<Uuid>, Vec<i64>), RevisionStoreError> {
+    let mut selected_ids = Vec::new();
+    let mut selected_versions = Vec::new();
+    selected_ids
+        .try_reserve_exact(batch.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    selected_versions
+        .try_reserve_exact(batch.len())
+        .map_err(|_| RevisionStoreError::Capacity)?;
+    for index in batch {
+        selected_ids.push(ids[*index]);
+        selected_versions.push(versions[*index]);
+    }
+    Ok((selected_ids, selected_versions))
+}
+
+async fn read_single(
+    tx: &tokio_postgres::Transaction<'_>,
+    id: Uuid,
+    version: u64,
+    expected: Option<ComponentRevisionRef>,
+) -> Result<RetainedComponentRevision, RevisionStoreError> {
+    if id.is_nil() || version == 0 {
+        return Err(RevisionStoreError::Integrity);
+    }
+    let version = i64::try_from(version).map_err(|_| RevisionStoreError::Integrity)?;
+    let metadata = tx.query_opt("SELECT class_code,version,octet_length(revision_bytes),checksum FROM reborn_component_revisions WHERE component_id=$1 AND version=$2", &[&id,&version]).await.map_err(database)?.ok_or(RevisionStoreError::Integrity)?;
+    let length =
+        usize::try_from(metadata.get::<_, i32>(2)).map_err(|_| RevisionStoreError::Integrity)?;
+    SnapshotReadLimits::legacy_graph().check_row(length)?;
+    let class = i32::from(metadata.get::<_, i16>(0));
+    let checksum: &str = metadata.get(3);
+    if metadata.get::<_, i64>(1) != version
+        || expected.is_some_and(|r| r.class_code != class || digest_hex(r.checksum) != checksum)
+    {
+        return Err(RevisionStoreError::Integrity);
+    }
+    let row = tx.query_opt("SELECT revision_bytes FROM reborn_component_revisions WHERE component_id=$1 AND version=$2", &[&id,&version]).await.map_err(database)?.ok_or(RevisionStoreError::Integrity)?;
+    let bytes: &str = row.get(0);
+    if bytes.len() != length {
+        return Err(RevisionStoreError::Integrity);
+    }
+    let revision = ComponentRevisionDraft::from_json(bytes)?.at_version(version as u64)?;
+    let actual = revision.reference();
+    if actual.uuid != id
+        || actual.class_code != class
+        || digest_hex(actual.checksum) != checksum
+        || expected.is_some_and(|r| r != actual)
+    {
+        return Err(RevisionStoreError::Integrity);
+    }
+    Ok(revision)
 }

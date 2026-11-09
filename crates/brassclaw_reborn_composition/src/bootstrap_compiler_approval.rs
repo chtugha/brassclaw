@@ -313,7 +313,11 @@ impl Subject {
             .map(|revision| revision.reference())
             .collect();
         PgComponentRevisionStore::new(pool)
-            .read_exact(&[ids.recipe], &refs)
+            .read_exact(
+                &[ids.recipe],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .map_err(invalid)?;
         Ok(Arc::new(Self {
@@ -548,9 +552,14 @@ async fn read(
         .values()
         .map(|revision| revision.reference())
         .collect();
-    PgComponentRevisionStore::read_exact_in_transaction(tx, &[instruction.recipe().uuid], &refs)
-        .await
-        .map_err(invalid)?;
+    PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[instruction.recipe().uuid],
+        &refs,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await
+    .map_err(invalid)?;
     let behavior = evidence::read_evidence(tx, subject.behavior)
         .await?
         .ok_or_else(|| invalid("compiler behavior proof missing"))?;

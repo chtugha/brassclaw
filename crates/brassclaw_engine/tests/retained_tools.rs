@@ -111,6 +111,7 @@ async fn canonical_model_drafts_retain_typed_parse_model_reply_edges_and_reject_
                 reply.recipe,
             ],
             &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap();
@@ -454,7 +455,16 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
         .await
         .unwrap();
     let refs = [root_ref, tool_ref, descriptor_ref, code_ref, skill_ref];
-    let old = Arc::new(store.read_exact(&[recipe], &refs).await.unwrap());
+    let old = Arc::new(
+        store
+            .read_exact(
+                &[recipe],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let prepared = compile(old.clone(), recipe).unwrap();
     assert_eq!(prepared.program().steplist.len(), 1);
     assert!(
@@ -521,7 +531,8 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
                 store
                     .read_exact(
                         &[recipe],
-                        &[root_ref, newer, descriptor_ref, code_ref, skill_ref]
+                        &[root_ref, newer, descriptor_ref, code_ref, skill_ref],
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
                     )
                     .await
                     .unwrap()
@@ -618,7 +629,8 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
                 store
                     .read_exact(
                         &[recipe],
-                        &[root_ref, incompatible, descriptor_ref, code_ref, skill_ref]
+                        &[root_ref, incompatible, descriptor_ref, code_ref, skill_ref],
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
                     )
                     .await
                     .unwrap()
@@ -640,12 +652,21 @@ async fn prepared_binding_retains_exact_usage_and_checks_actual_arguments_withou
             .map(|r| if r.uuid == id { replacement } else { *r })
             .collect();
         assert!(
-            matches!(compile(Arc::new(store.read_exact(&[recipe],&refs).await.unwrap()),recipe),Err(RetainedToolError::Invalid(actual)) if actual == reason)
+            matches!(compile(Arc::new(store.read_exact(&[recipe],&refs, brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()).await.unwrap()),recipe),Err(RetainedToolError::Invalid(actual)) if actual == reason)
         );
     }
     assert!(
         compile(
-            Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+            Arc::new(
+                store
+                    .read_exact(
+                        &[recipe],
+                        &refs,
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+                    )
+                    .await
+                    .unwrap()
+            ),
             recipe
         )
         .is_ok()

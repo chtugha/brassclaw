@@ -1602,6 +1602,7 @@ async fn qualify_tool_calling_pair(
         &tx,
         &[ids.skill_ref.uuid, ids.pc_ref.uuid],
         &[ids.skill_ref, ids.pc_ref, ids.ts_ref, ids.tool_ref],
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await
     .map_err(invalid)?;

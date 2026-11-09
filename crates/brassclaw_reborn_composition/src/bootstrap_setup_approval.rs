@@ -139,7 +139,14 @@ pub(crate) async fn qualify(
     for draft in &drafts {
         refs.push(store.retain_packaged_draft(draft).await.map_err(invalid)?);
     }
-    let snapshot = store.read_exact(&[recipe], &refs).await.map_err(invalid)?;
+    let snapshot = store
+        .read_exact(
+            &[recipe],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .map_err(invalid)?;
     if snapshot.revisions().len() != drafts.len()
         || drafts.iter().any(|draft| {
             snapshot
@@ -637,9 +644,14 @@ async fn read(
         .values()
         .map(|r| r.reference())
         .collect();
-    PgComponentRevisionStore::read_exact_in_transaction(tx, &[ids().0], &refs)
-        .await
-        .map_err(invalid)?;
+    PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[ids().0],
+        &refs,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await
+    .map_err(invalid)?;
     let record = strict_json(&bytes, REVISION_LIMITS).map_err(invalid)?;
     let report = &record["report"];
     if report.as_object().is_none_or(|v| v.len() != 2)

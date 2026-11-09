@@ -1318,10 +1318,21 @@ pub trait RebornServicesApi: Send + Sync {
         Err(recipe_store_unavailable())
     }
 
+    /// Internal host ingress policy read; no public HTTP endpoint or grant.
+    async fn capture_component_preparation(
+        &self,
+    ) -> Result<
+        Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+        RebornServicesError,
+    > {
+        Err(recipe_store_unavailable())
+    }
+
     async fn submit_component_review(
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: crate::recipes::SubmitComponentReviewRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::ComponentReviewSubmissionReceipt, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
@@ -1346,6 +1357,7 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: crate::recipes::PrepareComponentDeploymentRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::ComponentDeploymentPlan, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
@@ -1375,6 +1387,7 @@ pub trait RebornServicesApi: Send + Sync {
         &self,
         _caller: WebUiAuthenticatedCaller,
         _request: crate::recipes::ActivateCatalogueRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
         Err(recipe_store_unavailable())
     }
@@ -4671,15 +4684,30 @@ impl RebornServicesApi for RebornServices {
             .map_err(map_recipe_store_error)
     }
 
+    async fn capture_component_preparation(
+        &self,
+    ) -> Result<
+        Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+        RebornServicesError,
+    > {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .capture_component_preparation()
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
     async fn submit_component_review(
         &self,
         caller: WebUiAuthenticatedCaller,
         request: crate::recipes::SubmitComponentReviewRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::ComponentReviewSubmissionReceipt, RebornServicesError> {
         self.recipe_store
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?
-            .submit_component_review(&caller.user_id.to_string(), request)
+            .submit_component_review(&caller.user_id.to_string(), request, preparation)
             .await
             .map_err(map_recipe_store_error)
     }
@@ -4714,11 +4742,12 @@ impl RebornServicesApi for RebornServices {
         &self,
         _caller: WebUiAuthenticatedCaller,
         request: crate::recipes::PrepareComponentDeploymentRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::ComponentDeploymentPlan, RebornServicesError> {
         self.recipe_store
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?
-            .prepare_component_deployment(request)
+            .prepare_component_deployment(request, preparation)
             .await
             .map_err(map_recipe_store_error)
     }
@@ -4763,11 +4792,12 @@ impl RebornServicesApi for RebornServices {
         &self,
         caller: WebUiAuthenticatedCaller,
         request: crate::recipes::ActivateCatalogueRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<crate::recipes::CatalogueActivationReceipt, RebornServicesError> {
         self.recipe_store
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?
-            .activate_catalogue(&caller.user_id.to_string(), request)
+            .activate_catalogue(&caller.user_id.to_string(), request, preparation)
             .await
             .map_err(map_recipe_store_error)
     }

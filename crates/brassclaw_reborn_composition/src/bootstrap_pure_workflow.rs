@@ -396,7 +396,11 @@ pub(crate) async fn qualify_pure_workflow(
             fixture.root.uuid(),
             async {
                 revisions
-                    .read_exact(&[fixture.root.uuid()], &refs)
+                    .read_exact(
+                        &[fixture.root.uuid()],
+                        &refs,
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                    )
                     .await
                     .map_err(invalid)
             },

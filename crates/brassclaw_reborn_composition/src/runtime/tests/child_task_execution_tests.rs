@@ -176,7 +176,16 @@ async fn child_usage_candidate(
         )
         .await
         .unwrap();
-    let snapshot = Arc::new(store.read_exact(&[recipe], &references).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[recipe],
+                &references,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     Arc::new(
         prepare_retained_tool_program(
             compile_retained_recipe(

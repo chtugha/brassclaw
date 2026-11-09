@@ -146,7 +146,11 @@ async fn native_model_response_parser_preserves_wire_data_and_stops_before_proje
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
     let all = store
-        .read_exact(&[root, parser.recipe, reply.recipe], &refs)
+        .read_exact(
+            &[root, parser.recipe, reply.recipe],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     let program = Arc::new(
@@ -401,7 +405,14 @@ async fn native_standalone_strict_json_usage_preserves_raw_arguments_and_canonic
     for draft in drafts {
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
-    let snapshot = store.read_exact(&[root], &refs).await.unwrap();
+    let snapshot = store
+        .read_exact(
+            &[root],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .unwrap();
     let program = Arc::new(
         prepare_retained_tool_program(
             compile_retained_recipe(

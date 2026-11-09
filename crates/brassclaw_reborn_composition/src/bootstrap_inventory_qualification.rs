@@ -238,7 +238,14 @@ async fn qualify_inner(
         .collect();
     let snapshot = Arc::new(
         primitives::bounded(storage.as_ref(), async {
-            store.read_exact(&[recipe_id], &refs).await.map_err(invalid)
+            store
+                .read_exact(
+                    &[recipe_id],
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .map_err(invalid)
         })
         .await?,
     );

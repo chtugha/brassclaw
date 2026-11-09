@@ -78,7 +78,11 @@ pub(super) async fn retain(
         references.push(store.retain_packaged_draft(draft).await.map_err(invalid)?);
     }
     let snapshot = store
-        .read_exact(&[ids.recipe], &references)
+        .read_exact(
+            &[ids.recipe],
+            &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .map_err(invalid)?;
     for draft in &drafts {

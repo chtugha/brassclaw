@@ -43,6 +43,7 @@
 mod descriptors;
 mod error;
 mod handlers;
+mod prepared_json;
 mod router;
 mod schema;
 mod sse_capacity;

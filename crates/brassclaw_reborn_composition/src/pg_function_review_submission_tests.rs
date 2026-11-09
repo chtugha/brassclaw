@@ -21,7 +21,13 @@ fn primitive(id: Uuid, class: i32, dependencies: &[Uuid]) -> ComponentRevisionDr
     )
     .unwrap()
 }
-fn skill(id: Uuid, code: Uuid, binding: Uuid, tool: Uuid, prose: &str) -> ComponentRevisionDraft {
+pub(crate) fn skill(
+    id: Uuid,
+    code: Uuid,
+    binding: Uuid,
+    tool: Uuid,
+    prose: &str,
+) -> ComponentRevisionDraft {
     let association = json!({"format":"skill-association/1", "skill_uuid":id,
         "python_code_uuid":code,"tool_skill_uuid":binding,"tool_uuid":tool,
         "callable":"host.read_file","inputs":{},"arguments":{},"code_arguments":{},
@@ -37,7 +43,7 @@ fn skill(id: Uuid, code: Uuid, binding: Uuid, tool: Uuid, prose: &str) -> Compon
     )
     .unwrap()
 }
-async fn prerequisites(
+pub(crate) async fn prerequisites(
     store: &PgComponentRevisionStore,
 ) -> (ComponentRevisionRef, ComponentRevisionRef) {
     let tool = store
@@ -633,7 +639,16 @@ async fn native_function_subject_rejects_partial_single_class_preparation_at_bot
     let recipe = super::model_selection_tests::recipe(root, rule, collection, aggregation);
     let recipe = ComponentRevisionDraft::from_json(&recipe.to_string()).unwrap();
     refs.push(store.stage(&recipe, 0).await.unwrap());
-    let snapshot = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[root],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let instruction =
         compile_retained_recipe(snapshot, root, "selected", WorkflowClass::RequiresModel).unwrap();
     let worker = brassclaw_monty_host::process::installed_worker().unwrap();

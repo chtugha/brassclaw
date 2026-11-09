@@ -93,6 +93,15 @@ pub struct DecodedAnalysis {
 /// retained bytes and conflicts transactionally. Protected roots and native Tool
 /// implementations require separate supported authoring machinery.
 pub fn decode(attempt: Uuid, bytes: &str) -> Result<DecodedAnalysis, AnalysisError> {
+    decode_with_graph_capacity(attempt, bytes, 4096)
+}
+/// New admission supplies its acknowledged graph count. Response/proposal and
+/// per-revision codecs keep their independent original policies.
+pub fn decode_with_graph_capacity(
+    attempt: Uuid,
+    bytes: &str,
+    max_graph_components: usize,
+) -> Result<DecodedAnalysis, AnalysisError> {
     if attempt.is_nil() {
         return Err(AnalysisError::Invalid);
     }
@@ -142,7 +151,10 @@ pub fn decode(attempt: Uuid, bytes: &str) -> Result<DecodedAnalysis, AnalysisErr
             .map(reference)
             .collect::<Result<Vec<_>, _>>()?;
         let mut distinct = BTreeSet::new();
-        if dependencies.len() > 4095
+        if dependencies
+            .len()
+            .checked_add(1)
+            .is_none_or(|count| count > max_graph_components)
             || dependencies
                 .iter()
                 .any(|r| r.uuid == candidate.uuid() || !distinct.insert(r.uuid))

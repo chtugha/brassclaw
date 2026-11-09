@@ -2,6 +2,8 @@ pub mod connection;
 pub mod error;
 pub mod migrations;
 pub mod pool;
+pub mod transaction_client;
+pub mod wire_capacity;
 
 /// Real loopback wire fault injection; absent from ordinary production builds.
 #[cfg(feature = "test-support")]

@@ -513,7 +513,7 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_CATALOGUE,
             mutation_policy(
-                body_limit_kib(14 * 1024),
+                BodyLimitPolicy::ComponentPreparation,
                 mutation_rate_limit(),
                 AuditTraceClass::UserAction,
                 AllowedEffectPath::ProductWorkflow,
@@ -524,7 +524,7 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
             NetworkMethod::Post,
             WEBUI_V2_PATTERN_COMPONENT_DEPLOYMENT,
             mutation_policy(
-                body_limit_kib(14 * 1024),
+                BodyLimitPolicy::ComponentPreparation,
                 mutation_rate_limit(),
                 AuditTraceClass::UserAction,
                 AllowedEffectPath::ProjectionOnly,
@@ -1017,7 +1017,7 @@ fn submit_component_review_descriptor() -> IngressRouteDescriptor {
         NetworkMethod::Post,
         WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW,
         mutation_policy(
-            body_limit_kib(14336),
+            BodyLimitPolicy::ComponentPreparation,
             mutation_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,

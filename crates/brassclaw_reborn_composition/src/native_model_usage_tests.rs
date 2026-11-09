@@ -627,7 +627,16 @@ pub(crate) async fn program_with_model_input(
         let draft=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":class,"document":doc,"dependencies":deps,"association":association}).to_string()).unwrap();
         references.push(store.stage(&draft, 0).await.unwrap());
     }
-    let retained = Arc::new(store.read_exact(&[root], &references).await.unwrap());
+    let retained = Arc::new(
+        store
+            .read_exact(
+                &[root],
+                &references,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     Arc::new(
         prepare_retained_tool_program(
             compile_retained_recipe(retained, root, "selected", WorkflowClass::RequiresModel)

@@ -133,6 +133,7 @@ pub async fn retain_authored_association_reviews(
         tx,
         &[association.skill_uuid()],
         selected,
+        crate::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await
     .map_err(AssociationReviewStoreError::Revisions)?;
@@ -391,9 +392,14 @@ pub async fn prepare_human_association_review(
         AssociationApprovalDeclaration::from_json(&temporary.to_string(), REVISION_LIMITS)
             .map_err(|_| AssociationReviewStoreError::Integrity)?;
     let selected: Vec<_> = declaration.components().values().copied().collect();
-    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(tx, &[skill], &selected)
-        .await
-        .map_err(AssociationReviewStoreError::Revisions)?;
+    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[skill],
+        &selected,
+        crate::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await
+    .map_err(AssociationReviewStoreError::Revisions)?;
     let association = snapshot
         .revisions()
         .get(&skill)

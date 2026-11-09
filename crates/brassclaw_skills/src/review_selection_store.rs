@@ -234,8 +234,13 @@ pub(super) async fn verify_program_selection(
         .iter()
         .map(Reference::parsed)
         .collect::<Result<Vec<_>, _>>()?;
-    let graph =
-        PgComponentRevisionStore::read_exact_in_transaction(tx, &[root.uuid], &refs).await?;
+    let graph = PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[root.uuid],
+        &refs,
+        crate::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await?;
     if root.class_code != 21 || graph.revisions()[&root.uuid].reference() != root {
         return Err(SubmissionStoreError::Invalid);
     }
@@ -329,6 +334,12 @@ pub async fn read_preparation_in_transaction(
     id: Uuid,
     limits: ContractLimits,
 ) -> Result<Option<RetainedValidatorSelection>, SubmissionStoreError> {
+    let limits = super::read_original_preparation(tx, id)
+        .await?
+        .as_ref()
+        .map(super::preparation_value_limits)
+        .transpose()?
+        .unwrap_or(limits);
     // Enforce coherent subject/request reads even when no selection exists yet.
     PgReviewSubmissionStore::read_review_request_in_transaction(tx, id)
         .await?

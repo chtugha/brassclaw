@@ -15,6 +15,7 @@
 use std::convert::Infallible;
 use std::time::Duration;
 
+use crate::prepared_json::PreparedJson;
 use axum::Json;
 use axum::extract::{Extension, Path, Query, State};
 use axum::http::HeaderMap;
@@ -1354,15 +1355,16 @@ pub async fn record_review_disposition(
 }
 
 /// Retain a candidate as data; this neither reviews nor activates it.
-pub async fn submit_component_review(
+pub(crate) async fn submit_component_review(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<brassclaw_product_workflow::SubmitComponentReviewRequest>,
+    preparation: Option<Extension<brassclaw_host_api::task_preparation::RetainedPreparation>>,
+    PreparedJson(request): PreparedJson<brassclaw_product_workflow::SubmitComponentReviewRequest>,
 ) -> Result<Json<brassclaw_product_workflow::ComponentReviewSubmissionReceipt>, WebUiV2HttpError> {
     Ok(Json(
         state
             .services()
-            .submit_component_review(caller, request)
+            .submit_component_review(caller, request, preparation.map(|Extension(p)| p))
             .await?,
     ))
 }
@@ -1393,15 +1395,18 @@ pub async fn get_component_review_submission(
     ))
 }
 
-pub async fn prepare_component_deployment(
+pub(crate) async fn prepare_component_deployment(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<brassclaw_product_workflow::PrepareComponentDeploymentRequest>,
+    preparation: Option<Extension<brassclaw_host_api::task_preparation::RetainedPreparation>>,
+    PreparedJson(request): PreparedJson<
+        brassclaw_product_workflow::PrepareComponentDeploymentRequest,
+    >,
 ) -> Result<Json<brassclaw_product_workflow::ComponentDeploymentPlan>, WebUiV2HttpError> {
     Ok(Json(
         state
             .services()
-            .prepare_component_deployment(caller, request)
+            .prepare_component_deployment(caller, request, preparation.map(|Extension(p)| p))
             .await?,
     ))
 }
@@ -1437,13 +1442,17 @@ pub async fn reconcile_catalogue(
             .await?,
     ))
 }
-pub async fn activate_catalogue(
+pub(crate) async fn activate_catalogue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
-    Json(request): Json<brassclaw_product_workflow::ActivateCatalogueRequest>,
+    preparation: Option<Extension<brassclaw_host_api::task_preparation::RetainedPreparation>>,
+    PreparedJson(request): PreparedJson<brassclaw_product_workflow::ActivateCatalogueRequest>,
 ) -> Result<Json<brassclaw_product_workflow::CatalogueActivationReceipt>, WebUiV2HttpError> {
     Ok(Json(
-        state.services().activate_catalogue(caller, request).await?,
+        state
+            .services()
+            .activate_catalogue(caller, request, preparation.map(|Extension(p)| p))
+            .await?,
     ))
 }
 

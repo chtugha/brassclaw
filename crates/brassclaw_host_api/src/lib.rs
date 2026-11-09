@@ -54,6 +54,7 @@ pub mod resource;
 pub mod runtime;
 pub mod runtime_policy;
 pub mod scope;
+pub mod task_preparation;
 pub mod trust;
 
 // Flat re-exports are intentional: downstream Reborn service crates consume

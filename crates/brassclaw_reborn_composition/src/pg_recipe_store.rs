@@ -1474,6 +1474,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     async fn prepare_component_deployment(
         &self,
         request: brassclaw_product_workflow::PrepareComponentDeploymentRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<
         brassclaw_product_workflow::ComponentDeploymentPlan,
         brassclaw_product_workflow::RecipeStoreError,
@@ -1483,7 +1484,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 "catalogue owner unavailable".into(),
             )
         })?;
-        crate::component_deployment::prepare(owner, request).await
+        crate::component_deployment::prepare_with_preparation(owner, request, preparation).await
     }
 
     #[cfg(feature = "skills-db")]
@@ -1539,10 +1540,37 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     }
 
     #[cfg(feature = "skills-db")]
+    async fn capture_component_preparation(
+        &self,
+    ) -> Result<
+        Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        tracing::debug!(target: "brassclaw::component_preparation", phase = "capture", "acknowledged component preparation requested");
+        let Some(owner) = self.catalogue.as_ref() else {
+            // Explicit non-global legacy store profile, not an ACK fallback.
+            return Ok(None);
+        };
+        Ok(Some(
+            owner
+                .capture_task_preparation()
+                .await
+                .map_err(|_| {
+                    brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                        "acknowledged preparation unavailable".into(),
+                    )
+                })?
+                .original()
+                .clone(),
+        ))
+    }
+
+    #[cfg(feature = "skills-db")]
     async fn activate_catalogue(
         &self,
         actor: &str,
         request: brassclaw_product_workflow::ActivateCatalogueRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<
         brassclaw_product_workflow::CatalogueActivationReceipt,
         brassclaw_product_workflow::RecipeStoreError,
@@ -1554,7 +1582,7 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                     "catalogue owner unavailable".into(),
                 )
             })?
-            .activate_authored(actor, request)
+            .activate_authored_prepared(actor, request, preparation)
             .await
     }
 
@@ -1563,19 +1591,21 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         &self,
         actor: &str,
         request: brassclaw_product_workflow::SubmitComponentReviewRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<
         brassclaw_product_workflow::ComponentReviewSubmissionReceipt,
         brassclaw_product_workflow::RecipeStoreError,
     > {
         #[cfg(feature = "skills-db")]
         if let Some(catalogue) = &self.catalogue {
-            return crate::pg_review_submission::submit_with_catalogue(
+            return crate::pg_review_submission::submit_with_catalogue_prepared(
                 &self.inner.pool,
                 actor,
                 &self.tenant_id,
                 &self.agent_id,
                 request,
                 catalogue,
+                preparation,
             )
             .await;
         }

@@ -119,6 +119,7 @@ async fn changed_selection(
             tx,
             &[instruction.recipe().uuid],
             &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap(),

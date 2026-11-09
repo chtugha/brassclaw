@@ -21,7 +21,16 @@ pub(super) async fn retain_before_upgrade(pool: &Arc<brassclaw_pg::PgPool>) -> (
     for draft in &drafts {
         references.push(store.retain_packaged_draft(draft).await.unwrap());
     }
-    let snapshot = Arc::new(store.read_exact(&[root], &references).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[root],
+                &references,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let instruction = compile_retained_recipe(
         snapshot,
         root,

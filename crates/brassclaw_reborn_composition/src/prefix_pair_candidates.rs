@@ -91,7 +91,11 @@ pub(super) async fn retain(
     let digest = brassclaw_skills::utf8_digest_components::usage_ids(json_tool, id);
     let encoding = brassclaw_skills::model_encoding_components::usage_ids(model_tool, false, id);
     let snapshot = store
-        .read_exact(&[ids.recipe, digest.recipe, encoding.recipe], &references)
+        .read_exact(
+            &[ids.recipe, digest.recipe, encoding.recipe],
+            &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .map_err(invalid)?;
     for draft in &drafts {

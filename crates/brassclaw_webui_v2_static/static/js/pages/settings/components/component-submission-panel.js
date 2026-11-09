@@ -162,6 +162,7 @@ export function ComponentSubmissionPanel() {
           </button>
           ${error && html`<p role="alert" className="text-sm text-[var(--v2-danger-text)]">${error}</p>`}
           ${receipt && html`<p role="status" className="break-all text-sm">${t("componentSubmission.retained", { id: receipt.submission_id })}
+            ${receipt.preparation_revision != null && html`<span className="block">${t("componentSubmission.preparationRevision", { revision: receipt.preparation_revision })}</span>`}
             <span className="block">${t(receipt.queue_binding_status === "bound" ? "componentSubmission.queueBoundReceipt" : "componentSubmission.queueStandaloneReceipt")}</span>
           </p>`}
           ${view && html`

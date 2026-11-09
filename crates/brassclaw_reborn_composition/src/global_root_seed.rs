@@ -55,7 +55,13 @@ pub(crate) async fn retain_packaged_global_root(
     let store = PgComponentRevisionStore::new(pool);
     let draft = global_root_draft(ROOT_ID, source, &ports())?;
     let reference = store.retain_packaged_draft(&draft).await?;
-    let snapshot = store.read_exact(&[ROOT_ID], &[reference]).await?;
+    let snapshot = store
+        .read_exact(
+            &[ROOT_ID],
+            &[reference],
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await?;
     Ok(GlobalRootDefinition::from_revision(
         &snapshot.revisions()[&ROOT_ID],
     )?)

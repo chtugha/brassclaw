@@ -60,7 +60,11 @@ pub(super) async fn retain(
         }
         let snapshot = Arc::new(
             store
-                .read_exact(&[ids.recipe], &references)
+                .read_exact(
+                    &[ids.recipe],
+                    &references,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
                 .await
                 .map_err(invalid)?,
         );

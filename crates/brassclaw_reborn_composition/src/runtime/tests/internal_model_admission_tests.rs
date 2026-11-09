@@ -623,7 +623,16 @@ async fn native_internal_model_admission_settles_result_only_without_determinist
         .collect();
     refs.push(successor);
     let root = original.inputs().instruction().recipe().uuid;
-    let snapshot = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[root],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let program = Arc::new(
         prepare_retained_tool_program(
             compile_retained_recipe(snapshot, root, "selected", WorkflowClass::RequiresModel)

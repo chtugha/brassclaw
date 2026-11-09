@@ -85,9 +85,14 @@ impl InstalledMontyCatalogue {
             .start()
             .await
             .map_err(|_| invalid())?;
-        let snapshot = PgComponentRevisionStore::read_exact_in_transaction(&tx, &roots, &refs)
-            .await
-            .map_err(|_| invalid())?;
+        let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+            &tx,
+            &roots,
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .map_err(|_| invalid())?;
         if snapshot.revisions().len() != packaged.revisions().len() {
             return Err(invalid());
         }

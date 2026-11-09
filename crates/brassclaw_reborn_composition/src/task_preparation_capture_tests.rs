@@ -1,5 +1,19 @@
 //! Real startup/ACK-live capture plus original-codec corruption cases.
 use super::*;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+#[derive(Serialize, Deserialize)]
+struct Wire {
+    format: String,
+    origin: PreparationOrigin,
+    revision: u64,
+    execution_limits_bytes: String,
+    execution_limits_checksum: String,
+}
+fn checksum(bytes: &str) -> String {
+    hex::encode(Sha256::digest(bytes.as_bytes()))
+}
+
 use brassclaw_product_workflow::MontyMemoryMode;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

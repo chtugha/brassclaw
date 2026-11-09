@@ -270,7 +270,12 @@ impl InstalledMontyCatalogue {
         if existing {
             return Ok(None);
         }
-        let preparation = self.capture_task_preparation().await?;
+        let preparation = match draft.preparation() {
+            Some(original) => {
+                PreparationCapture::from_original(original.clone()).map_err(invalid)?
+            }
+            None => self.capture_task_preparation().await?,
+        };
         let worker = verified_worker(
             &self.worker_image,
             preparation.limits().max_native_artifact_bytes,

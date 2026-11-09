@@ -254,6 +254,7 @@ async fn canonical_model_answer_cases(endpoint: String, model: String, explicit_
                 reply.recipe,
             ],
             &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap();

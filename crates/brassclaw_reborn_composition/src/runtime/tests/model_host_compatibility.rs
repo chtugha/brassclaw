@@ -1516,7 +1516,11 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
     .unwrap();
     let successor_ref = store.stage(&replacement, root_ref.version).await.unwrap();
     let successors = store
-        .read_exact(&[root_uuid], &[successor_ref])
+        .read_exact(
+            &[root_uuid],
+            &[successor_ref],
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     let successor = brassclaw_skills::orchestrator_contract::GlobalRootDefinition::from_revision(
@@ -1641,7 +1645,14 @@ async fn global_driver_hands_opaque_admitted_tasks_to_one_existing_service() {
         store.retain_packaged_draft(&wrong_class).await,
         Err(brassclaw_skills::revision_store::RevisionStoreError::Conflict)
     ));
-    let old = store.read_exact(&[root_uuid], &[root_ref]).await.unwrap();
+    let old = store
+        .read_exact(
+            &[root_uuid],
+            &[root_ref],
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .unwrap();
     assert_eq!(
         old.revisions()[&root_uuid].draft().exact_bytes(),
         root_draft.exact_bytes()
@@ -2802,7 +2813,16 @@ async fn native_invocation_journal_keeps_uncertainty_and_late_real_answer_withou
         .collect();
     let replacement_program = prepare_retained_tool_program(
         compile_retained_recipe(
-            Arc::new(store.read_exact(&[root], &references).await.unwrap()),
+            Arc::new(
+                store
+                    .read_exact(
+                        &[root],
+                        &references,
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                    )
+                    .await
+                    .unwrap(),
+            ),
             root,
             "selected",
             WorkflowClass::Deterministic,

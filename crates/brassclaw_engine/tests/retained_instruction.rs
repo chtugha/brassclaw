@@ -76,7 +76,16 @@ async fn paused_selection_keeps_recipe_variant_step_link_order_and_exact_depende
         .unwrap();
     let refs = [old_recipe, first_ref, second_ref];
     let before = compile_retained_recipe(
-        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        Arc::new(
+            store
+                .read_exact(
+                    &[recipe],
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .unwrap(),
+        ),
         recipe,
         "selected",
         WorkflowClass::Deterministic,
@@ -102,7 +111,16 @@ async fn paused_selection_keeps_recipe_variant_step_link_order_and_exact_depende
         .await
         .unwrap();
     let resumed = compile_retained_recipe(
-        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        Arc::new(
+            store
+                .read_exact(
+                    &[recipe],
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .unwrap(),
+        ),
         recipe,
         "selected",
         WorkflowClass::Deterministic,
@@ -128,7 +146,11 @@ async fn paused_selection_keeps_recipe_variant_step_link_order_and_exact_depende
     let next = compile_retained_recipe(
         Arc::new(
             store
-                .read_exact(&[recipe], &[newer, new_first, second_ref])
+                .read_exact(
+                    &[recipe],
+                    &[newer, new_first, second_ref],
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
                 .await
                 .unwrap(),
         ),
@@ -170,7 +192,11 @@ async fn retained_recipe_rejects_ambiguity_prose_execution_and_unsupported_workf
         .unwrap();
     let snapshot = Arc::new(
         store
-            .read_exact(&[recipe], &[valid_ref, code_ref, prose_ref])
+            .read_exact(
+                &[recipe],
+                &[valid_ref, code_ref, prose_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -214,7 +240,11 @@ async fn retained_recipe_rejects_ambiguity_prose_execution_and_unsupported_workf
             .unwrap();
         let snapshot = Arc::new(
             store
-                .read_exact(&[recipe], &[revision, code_ref, prose_ref])
+                .read_exact(
+                    &[recipe],
+                    &[revision, code_ref, prose_ref],
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
                 .await
                 .unwrap(),
         );
@@ -226,7 +256,11 @@ async fn retained_recipe_rejects_ambiguity_prose_execution_and_unsupported_workf
     // Invalid replacement drafts cannot alter the old workflow's compilation.
     let old = Arc::new(
         store
-            .read_exact(&[recipe], &[valid_ref, code_ref, prose_ref])
+            .read_exact(
+                &[recipe],
+                &[valid_ref, code_ref, prose_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -332,6 +366,7 @@ async fn actual_matching_and_ibs_share_one_view_and_reject_variant_identity_loss
             &tx,
             &[recipe],
             &[old, first_ref, second_ref],
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap(),
@@ -358,6 +393,7 @@ async fn actual_matching_and_ibs_share_one_view_and_reject_variant_identity_loss
             &tx,
             &[recipe],
             &[newer, first_ref, second_ref],
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap(),
@@ -394,7 +430,11 @@ async fn actual_matching_and_ibs_share_one_view_and_reject_variant_identity_loss
         .unwrap();
     let ambiguous_snapshot = Arc::new(
         store
-            .read_exact(&[recipe], &[ambiguous_ref, first_ref, second_ref])
+            .read_exact(
+                &[recipe],
+                &[ambiguous_ref, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -480,7 +520,11 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
     // This is routing-fixture membership, not fabricated component approval.
     let graph = Arc::new(
         store
-            .read_exact(&[recipe], &[chosen, first_ref, second_ref])
+            .read_exact(
+                &[recipe],
+                &[chosen, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -578,7 +622,11 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
         .unwrap();
     let graph = Arc::new(
         store
-            .read_exact(&[recipe], &[replacement, first_ref, second_ref])
+            .read_exact(
+                &[recipe],
+                &[replacement, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -606,7 +654,11 @@ async fn retained_eligibility_filters_non_catalogue_and_pending_rows_before_rank
     // Keep this truly staged second graph available without certifying approval.
     assert!(
         store
-            .read_exact(&[excluded], &[other, first_ref, second_ref])
+            .read_exact(
+                &[excluded],
+                &[other, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+            )
             .await
             .unwrap()
             .roots()
@@ -687,7 +739,11 @@ async fn retained_disambiguation_returns_all_eligible_workflows_without_alias_du
             .unwrap();
         let graph = Arc::new(
             store
-                .read_exact(&[id], &[selected, first_ref, second_ref])
+                .read_exact(
+                    &[id],
+                    &[selected, first_ref, second_ref],
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
                 .await
                 .unwrap(),
         );
@@ -791,7 +847,11 @@ async fn model_input_binding_is_pinned_with_exact_recipe_and_never_added_to_lega
         .unwrap();
     let legacy_snapshot = Arc::new(
         store
-            .read_exact(&[root], &[legacy_ref, first_ref, second_ref])
+            .read_exact(
+                &[root],
+                &[legacy_ref, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -819,7 +879,11 @@ async fn model_input_binding_is_pinned_with_exact_recipe_and_never_added_to_lega
         .unwrap();
     let selected_snapshot = Arc::new(
         store
-            .read_exact(&[root], &[selected_ref, first_ref, second_ref])
+            .read_exact(
+                &[root],
+                &[selected_ref, first_ref, second_ref],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap(),
     );
@@ -908,7 +972,16 @@ async fn bootstrap_prefill_uses_retained_budget_export_instead_of_parallel_arith
     for component in [&budget_draft, &answer_draft, &recipe_draft] {
         references.push(store.stage(component, 0).await.unwrap());
     }
-    let snapshot = Arc::new(store.read_exact(&[recipe], &references).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[recipe],
+                &references,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let instruction =
         compile_retained_recipe(snapshot, recipe, "selected", WorkflowClass::Deterministic)
             .unwrap();

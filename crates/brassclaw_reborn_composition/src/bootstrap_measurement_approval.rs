@@ -417,6 +417,7 @@ async fn read(
         tx,
         &[instruction.recipe().uuid],
         &references,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await
     .map_err(invalid)?;

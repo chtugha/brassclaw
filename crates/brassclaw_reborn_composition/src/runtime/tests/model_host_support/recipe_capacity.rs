@@ -103,9 +103,14 @@ impl global_task_factory::MontyCatalogueProvider for Provider {
         let mut roots = self.roots.clone();
         roots.push(self.history.inputs().instruction().recipe().uuid);
         let snapshot = Arc::new(
-            PgComponentRevisionStore::read_exact_in_transaction(&tx, &roots, &self.refs)
-                .await
-                .unwrap(),
+            PgComponentRevisionStore::read_exact_in_transaction(
+                &tx,
+                &roots,
+                &self.refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
         );
         tx.commit().await.unwrap();
         drop(client);

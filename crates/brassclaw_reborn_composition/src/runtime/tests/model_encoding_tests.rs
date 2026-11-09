@@ -462,7 +462,16 @@ async fn inspect_native_usage(
     for draft in &drafts {
         refs.push(store.retain_packaged_draft(draft).await.unwrap());
     }
-    let graph = Arc::new(store.read_exact(&[ids.recipe], &refs).await.unwrap());
+    let graph = Arc::new(
+        store
+            .read_exact(
+                &[ids.recipe],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let selected = brassclaw_engine::memory::retained_instruction::compile_retained_recipe(
         graph,
         ids.recipe,

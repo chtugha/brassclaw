@@ -357,8 +357,13 @@ pub async fn read_subject_in_transaction(
         .iter()
         .map(Reference::parsed)
         .collect::<Result<Vec<_>, _>>()?;
-    let graph =
-        PgComponentRevisionStore::read_exact_in_transaction(tx, &[candidate.uuid], &refs).await?;
+    let graph = PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[candidate.uuid],
+        &refs,
+        crate::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await?;
     let expected = subject_record_scoped(
         &graph,
         candidate,

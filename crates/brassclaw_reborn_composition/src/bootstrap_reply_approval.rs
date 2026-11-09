@@ -86,7 +86,11 @@ impl BootstrapReplyApproval {
             .map(|r| r.reference())
             .collect();
         let snapshot = PgComponentRevisionStore::new(pool)
-            .read_exact(&[instruction.recipe().uuid], &refs)
+            .read_exact(
+                &[instruction.recipe().uuid],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .map_err(invalid)?;
         let compiled = compile_retained_recipe(
@@ -431,6 +435,7 @@ async fn read(
         tx,
         &[instruction.recipe().uuid],
         &references,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await
     .map_err(invalid)?;
@@ -677,10 +682,14 @@ pub(crate) async fn assert_rejects_unapproved_recipe_successor(
             }
         })
         .collect();
-    let snapshot =
-        PgComponentRevisionStore::read_exact_in_transaction(&tx, &[successor.uuid], &refs)
-            .await
-            .unwrap();
+    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+        &tx,
+        &[successor.uuid],
+        &refs,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await
+    .unwrap();
     let compiled = compile_retained_recipe(
         Arc::new(snapshot),
         successor.uuid,

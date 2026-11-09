@@ -1982,7 +1982,14 @@ async fn native_retained_revision_selection_preserves_deep_graphs_and_old_revisi
     tx.commit().await.unwrap();
     drop(client);
     let store = PgComponentRevisionStore::new(rig.pool.clone());
-    let selected = store.read_exact(&[ids[0]], &refs).await.unwrap();
+    let selected = store
+        .read_exact(
+            &[ids[0]],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .unwrap();
     assert_eq!(selected.revisions().len(), ids.len());
     for reference in &refs {
         assert_eq!(
@@ -1995,14 +2002,25 @@ async fn native_retained_revision_selection_preserves_deep_graphs_and_old_revisi
     assert_ne!(successor.checksum, refs[0].checksum);
     assert_eq!(
         store
-            .read_exact(&[ids[0]], &[successor])
+            .read_exact(
+                &[ids[0]],
+                &[successor],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+            )
             .await
             .unwrap()
             .revisions()
             .len(),
         1
     );
-    let original = store.read_exact(&[ids[0]], &refs).await.unwrap();
+    let original = store
+        .read_exact(
+            &[ids[0]],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .unwrap();
     assert_eq!(original.revisions().len(), ids.len());
     assert_eq!(original.revisions()[&ids[0]].reference(), refs[0]);
     let mut cyclic = refs.clone();
@@ -2010,14 +2028,25 @@ async fn native_retained_revision_selection_preserves_deep_graphs_and_old_revisi
         .stage(&draft(*ids.last().unwrap(), &[ids[0]]), 1)
         .await
         .unwrap();
-    let error = match store.read_exact(&[ids[0]], &cyclic).await {
+    let error = match store
+        .read_exact(
+            &[ids[0]],
+            &cyclic,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+    {
         Err(error) => error,
         Ok(_) => panic!("cyclic exact selection must fail"),
     };
     assert!(error.to_string().contains("cyclic dependency graph"));
     assert_eq!(
         store
-            .read_exact(&[ids[0]], &refs)
+            .read_exact(
+                &[ids[0]],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+            )
             .await
             .unwrap()
             .revisions()

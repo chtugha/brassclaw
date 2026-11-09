@@ -571,7 +571,7 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
                 WEBUI_V2_PATTERN_CATALOGUE,
                 get(handlers::catalogue_status)
                     .post(handlers::activate_catalogue)
-                    .layer(axum::extract::DefaultBodyLimit::max(14 * 1024 * 1024)),
+                    .layer(axum::extract::DefaultBodyLimit::disable()),
             )
             .route(
                 WEBUI_V2_PATTERN_RECONCILE_CATALOGUE,
@@ -596,7 +596,7 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
             .route(
                 WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW,
                 post(handlers::submit_component_review)
-                    .layer(axum::extract::DefaultBodyLimit::max(14 * 1024 * 1024)),
+                    .layer(axum::extract::DefaultBodyLimit::disable()),
             )
             .route(
                 WEBUI_V2_PATTERN_GET_COMPONENT_REVISION_HEAD,

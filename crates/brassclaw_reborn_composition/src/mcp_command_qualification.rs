@@ -177,6 +177,7 @@ async fn qualify_catalogue_commands(
             &tx,
             &[instruction.recipe().uuid],
             &references,
+            command_graph_limits(&tx, generation, instruction.recipe().uuid).await?,
         )
         .await
         .map_err(unavailable)?;
@@ -544,6 +545,7 @@ async fn check_execution(
         tx,
         &[instruction.recipe().uuid],
         &refs,
+        command_graph_limits(tx, *generation, instruction.recipe().uuid).await?,
     )
     .await
     .map_err(unavailable)?;
@@ -848,6 +850,24 @@ fn check_settlement(
         return Err(McpDiscoveryError::Unqualified);
     }
     Ok(())
+}
+
+async fn command_graph_limits(
+    tx: &Transaction<'_>,
+    generation: Uuid,
+    root: Uuid,
+) -> Result<brassclaw_skills::revision_store::SnapshotReadLimits, McpDiscoveryError> {
+    if root == crate::installed_monty_catalogue::id("reply:recipe")
+        || root == crate::installed_monty_catalogue::id("history:recipe")
+    {
+        return Ok(brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph());
+    }
+    let row = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&generation]).await.map_err(unavailable)?;
+    let bytes: &str = row.get(0);
+    if digest(bytes) != row.get::<_, String>(1) {
+        return Err(McpDiscoveryError::Unqualified);
+    }
+    crate::authored_monty_catalogue::catalogue_graph_limits(bytes).map_err(unavailable)
 }
 
 #[cfg(test)]

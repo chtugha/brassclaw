@@ -157,7 +157,11 @@ pub(super) async fn negative_subject(
         .map_err(invalid)?;
     Ok(Arc::new(
         store
-            .read_exact(&[id], &[reference])
+            .read_exact(
+                &[id],
+                &[reference],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .map_err(invalid)?,
     ))

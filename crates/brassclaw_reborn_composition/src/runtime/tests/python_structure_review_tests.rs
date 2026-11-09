@@ -367,6 +367,7 @@ async fn check_private_structure_recipe(pure: bool) {
             .read_exact(
                 &[recipe.uuid()],
                 &references.values().copied().collect::<Vec<_>>(),
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
             )
             .await
             .unwrap(),

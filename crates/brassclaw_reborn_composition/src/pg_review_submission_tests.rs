@@ -1419,7 +1419,11 @@ async fn native_historical_class50_originals_pins_and_identical_retries_remain_e
         let exact = revision.draft().exact_bytes().to_owned();
         assert_eq!(original.subject_bytes, bytes);
         let graph = store
-            .read_exact(&[original.candidate.uuid], &[original.candidate])
+            .read_exact(
+                &[original.candidate.uuid],
+                &[original.candidate],
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap();
         assert_eq!(

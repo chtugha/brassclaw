@@ -2683,6 +2683,7 @@ dependencies = [
  "brassclaw_host_api",
  "brassclaw_pg",
  "chrono",
+ "futures-util",
  "regex",
  "serde",
  "serde_json",

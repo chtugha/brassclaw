@@ -67,7 +67,16 @@ pub(super) async fn program(
     for draft in std::iter::once(tool_draft).chain(drafts) {
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
-    let snapshot = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+    let snapshot = Arc::new(
+        store
+            .read_exact(
+                &[root],
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let integrity = verify_packaged_usage(ids, usage, &snapshot).unwrap();
     assert_eq!(integrity.tool().uuid, tool);
     assert_eq!(integrity.components().len(), refs.len());
@@ -132,14 +141,22 @@ async fn packaged_usage_integrity_rejects_changed_code_and_retains_the_original_
         })
         .collect();
     let changed_snapshot = store
-        .read_exact(&[ids.recipe], &changed_refs)
+        .read_exact(
+            &[ids.recipe],
+            &changed_refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     assert!(
         verify_packaged_usage(ids, GlobalBootstrapUsage::PostReply, &changed_snapshot).is_err()
     );
     let retained = store
-        .read_exact(&[ids.recipe], integrity.components())
+        .read_exact(
+            &[ids.recipe],
+            integrity.components(),
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     assert_eq!(

@@ -1174,6 +1174,24 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
     // Compatibility restoration must reproduce historical bytes, not upgrade
     // their identity by inserting the new empty routing field or current policy.
     let current = owner.active.read().await.clone();
+    // Fresh tasks keep this exact old catalogue's graph semantics even when
+    // today's acknowledged NEW graph admission count is smaller than it.
+    let settings = runtime.webui_monty_settings_store();
+    let before = settings.get("default", "default").await.unwrap();
+    let mut smaller = before.execution_limits;
+    smaller.max_catalogue_components_per_recipe = 1;
+    let update = serde_json::from_value(
+        json!({"expected_revision": before.revision, "execution_limits": smaller}),
+    )
+    .unwrap();
+    let changed = settings
+        .upsert("default", "default", &update)
+        .await
+        .unwrap();
+    assert_eq!(
+        owner.capture_task_preparation().await.unwrap().revision(),
+        changed.revision
+    );
     for (format, omit_later_settings) in [
         ("authored-monty-catalogue/3", true),
         ("authored-monty-catalogue/2", true),
@@ -1182,6 +1200,14 @@ async fn native_catalogue_routing_choices_survive_restart_and_reactivation() {
     ] {
         let mut document: Value = serde_json::from_str(&current.bytes).unwrap();
         document["format"] = json!(format);
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("preparation_bytes");
+        document
+            .as_object_mut()
+            .unwrap()
+            .remove("preparation_checksum");
         if !format.ends_with("/3") {
             document
                 .as_object_mut()

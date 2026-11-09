@@ -3558,6 +3558,7 @@ pub async fn build_reborn_runtime(
         thread_service.clone(),
         thread_scope.clone(),
         crate::completed_turn_review::ReviewSource {
+            catalogue: installed_catalogue.clone(),
             task_sources: review_task_configuration.and_then(|configuration| {
                 llm_reload
                     .as_ref()
@@ -4551,20 +4552,23 @@ mod tests {
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "resource_store_settings_tests.rs"]
     mod resource_store_settings_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "snapshot_policy_tests.rs"]
+    mod snapshot_policy_tests;
     // Retained validator Q1 tests use private Work through the existing Worker
     // and the common global driver lifecycle.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_delivery_tests.rs"]
     mod private_delivery_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    #[path = "qualified_source_review_tests.rs"]
-    mod qualified_source_review_tests;
-    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_prefix_work_tests.rs"]
     mod private_prefix_work_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_work_admission_tests.rs"]
     mod private_work_admission_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "qualified_source_review_tests.rs"]
+    mod qualified_source_review_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "source_inspection_tests.rs"]
     mod source_inspection_tests;
@@ -4972,6 +4976,7 @@ mod tests {
             runtime.thread_service.clone(),
             runtime.thread_scope.clone(),
             crate::completed_turn_review::ReviewSource {
+                catalogue: runtime.installed_catalogue.clone(),
                 task_sources: native.as_ref().map(|n| n.0.clone()),
                 max_output_tokens: None,
                 preparation: brassclaw_monty_host::utility::UtilityLimits::from_execution(

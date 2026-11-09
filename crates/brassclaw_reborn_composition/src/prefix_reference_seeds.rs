@@ -116,7 +116,11 @@ pub(crate) async fn retain(
         .collect::<Vec<_>>();
     let snapshot = Arc::new(
         store
-            .read_exact(&roots, &refs)
+            .read_exact(
+                &roots,
+                &refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .map_err(|_| invalid())?,
     );
@@ -355,7 +359,16 @@ pub(crate) async fn assert_database_sources(
         .copied()
         .collect::<Vec<_>>();
     let changed = Package {
-        snapshot: Arc::new(store.read_exact(&roots, &refs).await.unwrap()),
+        snapshot: Arc::new(
+            store
+                .read_exact(
+                    &roots,
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .unwrap(),
+        ),
     };
     assert!(
         changed.verify().is_err(),

@@ -136,7 +136,16 @@ async fn native_validator_preparation_pins_model_input_and_rejects_rewritten_bin
         previous_version = root_ref.version;
         let mut refs = references.clone();
         refs.push(root_ref);
-        let snapshot = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+        let snapshot = Arc::new(
+            store
+                .read_exact(
+                    &[root],
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .unwrap(),
+        );
         let instruction =
             compile_retained_recipe(snapshot, root, "selected", WorkflowClass::RequiresModel)
                 .unwrap();

@@ -79,7 +79,11 @@ pub(super) async fn execute(
         .map(|r| r.reference())
         .collect();
     store
-        .read_exact(&[ids.recipe], &refs)
+        .read_exact(
+            &[ids.recipe],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .map_err(invalid)?;
     // Record the serving selection hash before and after to confirm no side effect.
@@ -130,9 +134,14 @@ pub(super) async fn verify(
         .values()
         .map(|r| r.reference())
         .collect();
-    PgComponentRevisionStore::read_exact_in_transaction(tx, &[ids.recipe], &refs)
-        .await
-        .map_err(invalid)?;
+    PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &[ids.recipe],
+        &refs,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await
+    .map_err(invalid)?;
     // Verify oracle cases against the independent fixture constants.
     let oracle_observations = &observed["observations"];
     if oracle_observations["format"] != "free-workflow-pure-oracle/2" {

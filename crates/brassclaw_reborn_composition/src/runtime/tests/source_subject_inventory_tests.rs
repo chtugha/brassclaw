@@ -220,7 +220,11 @@ async fn native_sealed_subject_extracts_every_python_source_into_one_actual_inve
         );
     }
     let graph = store
-        .read_exact(&[recipe_id, reply_ids.recipe], &references)
+        .read_exact(
+            &[recipe_id, reply_ids.recipe],
+            &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     let graph = Arc::new(graph.select_roots(&[recipe_id]).unwrap());

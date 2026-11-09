@@ -299,6 +299,7 @@ impl Subject {
             tx,
             &[self.program.inputs().instruction().recipe().uuid],
             &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .map_err(invalid)?;

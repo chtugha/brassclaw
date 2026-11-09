@@ -485,7 +485,12 @@ pub enum IngressScopeSource {
 #[serde(rename_all = "snake_case", tag = "type", deny_unknown_fields)]
 pub enum BodyLimitPolicy {
     NoBody,
-    Limited { max_bytes: NonZeroU64 },
+    Limited {
+        max_bytes: NonZeroU64,
+    },
+    /// Host resolves one acknowledged original preparation before body decode.
+    /// This is a finite whole-value bound, never a client-selected number.
+    ComponentPreparation,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

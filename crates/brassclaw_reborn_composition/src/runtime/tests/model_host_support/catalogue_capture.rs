@@ -54,6 +54,7 @@ pub(super) async fn programs(
         tx,
         &roots,
         &refs.into_values().collect::<Vec<_>>(),
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await
     .unwrap();

@@ -37,6 +37,11 @@ pub(crate) struct CatalogueGeneration {
     pub(crate) programs: Vec<Arc<InspectedRetainedProgram>>,
     pub(crate) recipes: Vec<CatalogueRecipeSelection>,
     pub(crate) disabled_recipes: BTreeSet<Uuid>,
+    pub(crate) graph_limits: brassclaw_skills::revision_store::SnapshotReadLimits,
+}
+struct CataloguePreparation<'a> {
+    raw_policy: Option<&'a Value>,
+    original: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
 }
 impl CatalogueGeneration {
     pub(crate) fn routing_enabled(&self, program: &InspectedRetainedProgram) -> bool {
@@ -97,33 +102,179 @@ pub(crate) fn catalogue_document(bytes: &str) -> Result<Value, RecipeStoreError>
     #[derive(serde::Deserialize)]
     struct Envelope {
         format: String,
-        preparation_policy: Option<brassclaw_host_api::MontyExecutionLimits>,
+        preparation_policy: Option<Value>,
+        preparation_bytes: Option<String>,
+        preparation_checksum: Option<String>,
     }
     let envelope: Envelope = serde_json::from_str(bytes).map_err(invalid)?;
     let mut limits = brassclaw_skills::component_revision::REVISION_LIMITS;
     if matches!(
         envelope.format.as_str(),
-        "authored-monty-catalogue/2" | "authored-monty-catalogue/3"
+        "authored-monty-catalogue/2" | "authored-monty-catalogue/3" | "authored-monty-catalogue/4"
     ) {
-        let policy = envelope
+        let raw = envelope
             .preparation_policy
+            .as_ref()
             .ok_or_else(|| invalid("retained catalogue preparation policy missing"))?;
-        policy.validate().map_err(invalid)?;
+        let policy = decode_catalogue_policy(raw)?;
+        if envelope.format == "authored-monty-catalogue/4" {
+            let original =
+                brassclaw_host_api::task_preparation::RetainedPreparation::restore_original(
+                    envelope
+                        .preparation_bytes
+                        .as_deref()
+                        .ok_or_else(|| invalid("catalogue capture missing"))?,
+                    envelope
+                        .preparation_checksum
+                        .as_deref()
+                        .ok_or_else(|| invalid("catalogue capture checksum missing"))?,
+                )
+                .map_err(invalid)?;
+            original.require_canonical().map_err(invalid)?;
+            if original.policy() != policy {
+                return Err(invalid("catalogue capture policy differs"));
+            }
+        } else if envelope.preparation_bytes.is_some() || envelope.preparation_checksum.is_some() {
+            return Err(invalid("legacy catalogue has unexpected capture"));
+        }
         limits.max_bytes = usize::try_from(policy.max_catalogue_bytes).map_err(invalid)?;
         limits.max_nodes = usize::try_from(policy.max_value_nodes).map_err(invalid)?;
-    } else if envelope.preparation_policy.is_some() {
+        if envelope.format == "authored-monty-catalogue/4" {
+            limits.max_depth = usize::try_from(policy.max_value_depth).map_err(invalid)?;
+        }
+    } else if envelope.preparation_policy.is_some()
+        || envelope.preparation_bytes.is_some()
+        || envelope.preparation_checksum.is_some()
+    {
         return Err(invalid("unexpected catalogue preparation policy"));
     }
     brassclaw_skills::value_contract::strict_json(bytes, limits).map_err(invalid)
 }
 
+fn decode_catalogue_policy(
+    raw: &Value,
+) -> Result<brassclaw_host_api::MontyExecutionLimits, RecipeStoreError> {
+    // These graph/document bounds were emitted by every retained-policy writer.
+    // Missing old graph fields must not acquire today's serde defaults. Later
+    // optional coding/memory fields retain their existing compatibility contract.
+    for key in [
+        "max_catalogue_recipes",
+        "max_catalogue_components_per_recipe",
+        "max_catalogue_variants_per_recipe",
+        "max_catalogue_bytes",
+        "max_value_nodes",
+    ] {
+        if raw.get(key).is_none_or(Value::is_null) {
+            return Err(invalid("retained catalogue graph policy incomplete"));
+        }
+    }
+    let policy: brassclaw_host_api::MontyExecutionLimits =
+        serde_json::from_value(raw.clone()).map_err(invalid)?;
+    policy.validate().map_err(invalid)?;
+    Ok(policy)
+}
+
+/// Exact retained owner profile. Fresh task preparation is independent: an old
+/// catalogue does not acquire new PG framing semantics from a new task capture.
+pub(crate) fn catalogue_graph_limits(
+    bytes: &str,
+) -> Result<brassclaw_skills::revision_store::SnapshotReadLimits, RecipeStoreError> {
+    use brassclaw_skills::revision_store::SnapshotReadLimits;
+    #[derive(serde::Deserialize)]
+    struct Profile {
+        format: String,
+        preparation_policy: Option<Value>,
+        preparation_bytes: Option<String>,
+        preparation_checksum: Option<String>,
+    }
+    let profile: Profile = serde_json::from_str(bytes).map_err(invalid)?;
+    match profile.format.as_str() {
+        "installation-monty-catalogue/1" | "authored-monty-catalogue/1"
+            if profile.preparation_bytes.is_none()
+                && profile.preparation_checksum.is_none()
+                && profile.preparation_policy.is_none() =>
+        {
+            Ok(SnapshotReadLimits::legacy_graph())
+        }
+        "authored-monty-catalogue/2" | "authored-monty-catalogue/3"
+            if profile.preparation_bytes.is_none() && profile.preparation_checksum.is_none() =>
+        {
+            SnapshotReadLimits::legacy_catalogue(decode_catalogue_policy(
+                profile
+                    .preparation_policy
+                    .as_ref()
+                    .ok_or_else(|| invalid("legacy catalogue policy missing"))?,
+            )?)
+            .map_err(invalid)
+        }
+        "authored-monty-catalogue/4" => {
+            let original =
+                brassclaw_host_api::task_preparation::RetainedPreparation::restore_original(
+                    profile
+                        .preparation_bytes
+                        .as_deref()
+                        .ok_or_else(|| invalid("catalogue original missing"))?,
+                    profile
+                        .preparation_checksum
+                        .as_deref()
+                        .ok_or_else(|| invalid("catalogue original checksum missing"))?,
+                )
+                .map_err(invalid)?;
+            if profile
+                .preparation_policy
+                .as_ref()
+                .map(decode_catalogue_policy)
+                .transpose()?
+                != Some(original.policy())
+            {
+                return Err(invalid("catalogue original policy differs"));
+            }
+            original.require_canonical().map_err(invalid)?;
+            SnapshotReadLimits::captured(&original).map_err(invalid)
+        }
+        _ => Err(invalid("catalogue graph profile unsupported")),
+    }
+}
+
 impl InstalledMontyCatalogue {
     /// An operator activates a coherent set, rather than one component at a
     /// time. Unchanged usages retain their existing approval identifiers.
+    #[cfg(test)]
     pub(crate) async fn activate_authored(
         &self,
         actor: &str,
         request: ActivateCatalogueRequest,
+    ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
+        self.activate_authored_prepared(actor, request, None).await
+    }
+    pub(crate) async fn activate_authored_prepared(
+        &self,
+        actor: &str,
+        request: ActivateCatalogueRequest,
+        accepted: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
+        let io = self
+            .resource_store_settings
+            .snapshot()
+            .map_err(invalid)?
+            .validate()
+            .map_err(invalid)?;
+        tokio::time::timeout(
+            io.timeout,
+            self.activate_authored_original(actor, request, accepted),
+        )
+        .await
+        .map_err(|_| {
+            RecipeStoreError::Unavailable(
+                "original catalogue I/O deadline elapsed; outcome unresolved".into(),
+            )
+        })?
+    }
+    async fn activate_authored_original(
+        &self,
+        actor: &str,
+        request: ActivateCatalogueRequest,
+        accepted: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     ) -> Result<CatalogueActivationReceipt, RecipeStoreError> {
         if actor.trim().is_empty() {
             return Err(invalid("invalid catalogue activation actor"));
@@ -133,10 +284,9 @@ impl InstalledMontyCatalogue {
         let bytes = serde_json::to_string(&request).map_err(invalid)?;
         let _serial = self.activation.lock().await;
         self.reconcile_committed_runtime_locked().await?;
-        let policy = self.preparation_policy().await.map_err(|_| {
-            RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
-        })?;
-        let mut client = self.pool.get().await.map_err(storage)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(storage)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -153,9 +303,20 @@ impl InstalledMontyCatalogue {
                 return Err(RecipeStoreError::Conflict("activation identifier already belongs to different content".into()));
             }
             tx.commit().await.map_err(storage)?;
+            client.recycle_after_commit();
             drop(client);
             return self.finish_activation(actor, activation, &bytes, None).await;
         }
+        let original = match accepted {
+            Some(original) => {
+                crate::installed_monty_catalogue::PreparationCapture::from_original(original)
+                    .map_err(invalid)?
+            }
+            None => self.capture_task_preparation().await.map_err(|_| {
+                RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
+            })?,
+        };
+        let policy = original.policy();
         let current: Uuid = tx.query_one("SELECT catalogue_id FROM brassclaw_monty_active_catalogue WHERE singleton FOR UPDATE", &[]).await.map_err(storage)?.get(0);
         if current != expected {
             return Err(RecipeStoreError::Conflict(
@@ -205,9 +366,12 @@ impl InstalledMontyCatalogue {
                 &tx,
                 &request.recipes,
                 policy,
-                "authored-monty-catalogue/3",
+                "authored-monty-catalogue/4",
                 disabled,
-                None,
+                CataloguePreparation {
+                    raw_policy: None,
+                    original: Some(original.original().clone()),
+                },
             )
             .await?;
         let advertised: Vec<_> = std::iter::once(self.reply.as_ref())
@@ -303,6 +467,8 @@ impl InstalledMontyCatalogue {
         }
         if tx.commit().await.is_err() {
             tracing::warn!(%activation, "catalogue commit acknowledgement uncertain; reading original activation");
+        } else {
+            client.recycle_after_commit();
         }
         drop(advertised);
         drop(client);
@@ -310,20 +476,38 @@ impl InstalledMontyCatalogue {
             .await
     }
 
+    #[cfg(test)]
     pub(crate) async fn prepare_authored(
         &self,
         tx: &Transaction<'_>,
         recipes: &[CatalogueRecipeSelection],
         policy: brassclaw_host_api::MontyExecutionLimits,
     ) -> Result<CatalogueGeneration, RecipeStoreError> {
+        let original = self.capture_task_preparation().await.map_err(invalid)?;
+        if original.policy() != policy {
+            return Err(invalid("preview preparation changed before capture"));
+        }
+        self.prepare_authored_original(tx, recipes, original.original().clone())
+            .await
+    }
+    pub(crate) async fn prepare_authored_original(
+        &self,
+        tx: &Transaction<'_>,
+        recipes: &[CatalogueRecipeSelection],
+        original: brassclaw_host_api::task_preparation::RetainedPreparation,
+    ) -> Result<CatalogueGeneration, RecipeStoreError> {
+        let policy = original.policy();
         let disabled = self.active.read().await.disabled_recipes.clone();
         self.prepare_with_policy(
             tx,
             recipes,
             policy,
-            "authored-monty-catalogue/3",
+            "authored-monty-catalogue/4",
             disabled,
-            None,
+            CataloguePreparation {
+                raw_policy: None,
+                original: Some(original),
+            },
         )
         .await
     }
@@ -335,19 +519,37 @@ impl InstalledMontyCatalogue {
         policy: brassclaw_host_api::MontyExecutionLimits,
         format: &str,
         disabled_recipes: BTreeSet<Uuid>,
-        retained_policy: Option<&Value>,
+        retained: CataloguePreparation<'_>,
     ) -> Result<CatalogueGeneration, RecipeStoreError> {
+        let CataloguePreparation {
+            raw_policy: retained_policy,
+            original,
+        } = retained;
         policy.validate().map_err(invalid)?;
+        let graph_limits = match (format, original.as_ref()) {
+            ("authored-monty-catalogue/4", Some(original)) if original.policy() == policy => {
+                original.require_canonical().map_err(invalid)?;
+                brassclaw_skills::revision_store::SnapshotReadLimits::captured(original)
+                    .map_err(invalid)?
+            }
+            ("authored-monty-catalogue/1", None) => {
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph()
+            }
+            ("authored-monty-catalogue/2" | "authored-monty-catalogue/3", None) => {
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_catalogue(policy)
+                    .map_err(invalid)?
+            }
+            _ => return Err(invalid("catalogue preparation format differs")),
+        };
         if let Some(document) = retained_policy {
-            let recorded = serde_json::from_value::<brassclaw_host_api::MontyExecutionLimits>(
-                document.clone(),
-            )
-            .map_err(invalid)?;
+            let recorded = decode_catalogue_policy(document)?;
             if format == "authored-monty-catalogue/1" || recorded != policy {
                 return Err(invalid("retained catalogue preparation policy differs"));
             }
         }
-        if recipes.len() as u64 > u64::from(policy.max_catalogue_recipes) {
+        if format != "authored-monty-catalogue/1"
+            && recipes.len() as u64 > u64::from(policy.max_catalogue_recipes)
+        {
             return Err(invalid("catalogue recipe capacity exceeded"));
         }
         let preparation = brassclaw_monty_host::utility::UtilityLimits::from_execution(policy)
@@ -378,8 +580,7 @@ impl InstalledMontyCatalogue {
             if !roots.insert(root)
                 || root == id("reply:recipe")
                 || root == id("history:recipe")
-                || recipe.components.len() as u64
-                    > u64::from(policy.max_catalogue_components_per_recipe)
+                || recipe.components.len() > graph_limits.max_revisions()
             {
                 return Err(invalid("duplicate/reserved recipe or excessive graph"));
             }
@@ -389,9 +590,14 @@ impl InstalledMontyCatalogue {
                 .map(crate::pg_review_submission::reference)
                 .collect::<Result<_, _>>()?;
             let snapshot = Arc::new(
-                PgComponentRevisionStore::read_exact_in_transaction(tx, &[root], &refs)
-                    .await
-                    .map_err(invalid)?,
+                PgComponentRevisionStore::read_exact_in_transaction(
+                    tx,
+                    &[root],
+                    &refs,
+                    graph_limits,
+                )
+                .await
+                .map_err(invalid)?,
             );
             for revision in snapshot.revisions().values() {
                 let reference = revision.reference();
@@ -409,7 +615,9 @@ impl InstalledMontyCatalogue {
             if variants.is_empty() {
                 return Err(invalid("activated Recipe requires a selected variant"));
             }
-            if variants.len() as u64 > u64::from(policy.max_catalogue_variants_per_recipe) {
+            if format != "authored-monty-catalogue/1"
+                && variants.len() as u64 > u64::from(policy.max_catalogue_variants_per_recipe)
+            {
                 return Err(invalid("recipe variant capacity exceeded"));
             }
             let graph_bytes: usize = snapshot
@@ -422,7 +630,16 @@ impl InstalledMontyCatalogue {
             retained_bytes = graph_bytes
                 .checked_mul(variants.len())
                 .and_then(|bytes| retained_bytes.checked_add(bytes))
-                .filter(|bytes| *bytes as u64 <= policy.max_catalogue_bytes)
+                .filter(|bytes| {
+                    *bytes as u64
+                        <= if format == "authored-monty-catalogue/1" {
+                            // Known legacy graph-byte profile, not today's admission
+                            // quota or a fabricated historical settings revision.
+                            graph_limits.max_revision_bytes()
+                        } else {
+                            policy.max_catalogue_bytes
+                        }
+                })
                 .ok_or_else(|| invalid("retained catalogue exceeds technical memory capacity"))?;
             let mut used_approvals = BTreeSet::new();
             let mut covered = BTreeSet::new();
@@ -594,7 +811,17 @@ impl InstalledMontyCatalogue {
                 None => serde_json::to_value(policy).map_err(invalid)?,
             };
         }
-        if format == "authored-monty-catalogue/3" {
+        if format == "authored-monty-catalogue/4" {
+            let original = original
+                .as_ref()
+                .ok_or_else(|| invalid("catalogue original missing"))?;
+            document["preparation_bytes"] = json!(original.bytes());
+            document["preparation_checksum"] = json!(original.checksum());
+        }
+        if matches!(
+            format,
+            "authored-monty-catalogue/3" | "authored-monty-catalogue/4"
+        ) {
             document["disabled_recipe_ids"] = json!(disabled_recipes);
         } else if !disabled_recipes.is_empty() {
             return Err(invalid(
@@ -610,6 +837,7 @@ impl InstalledMontyCatalogue {
             programs,
             recipes: recipes.to_vec(),
             disabled_recipes,
+            graph_limits,
         })
     }
 
@@ -618,11 +846,10 @@ impl InstalledMontyCatalogue {
         self.restore_authored_locked().await
     }
     async fn restore_authored_locked(&self) -> Result<(), RecipeStoreError> {
-        let compatibility_policy = self.preparation_policy().await.map_err(|_| {
-            RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
-        })?;
         let publication = self.discovery_publication.lock().await;
-        let mut client = self.pool.get().await.map_err(storage)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(storage)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -644,12 +871,14 @@ impl InstalledMontyCatalogue {
                 ));
             }
             tx.commit().await.map_err(storage)?;
+            client.recycle_after_commit();
             return Ok(());
         }
         let document = catalogue_document(&bytes)?;
         if (document["format"] != "authored-monty-catalogue/1"
             && document["format"] != "authored-monty-catalogue/2"
-            && document["format"] != "authored-monty-catalogue/3")
+            && document["format"] != "authored-monty-catalogue/3"
+            && document["format"] != "authored-monty-catalogue/4")
             || document["base"] != json!(self.generation)
         {
             return Err(invalid(
@@ -661,7 +890,10 @@ impl InstalledMontyCatalogue {
         let format = document["format"]
             .as_str()
             .ok_or_else(|| invalid("catalogue format missing"))?;
-        let disabled = if format == "authored-monty-catalogue/3" {
+        let disabled = if matches!(
+            format,
+            "authored-monty-catalogue/3" | "authored-monty-catalogue/4"
+        ) {
             let ids: Vec<String> =
                 serde_json::from_value(document["disabled_recipe_ids"].clone()).map_err(invalid)?;
             let selected: BTreeSet<_> = ids
@@ -675,14 +907,31 @@ impl InstalledMontyCatalogue {
         } else {
             BTreeSet::new()
         };
+        let original = if format == "authored-monty-catalogue/4" {
+            Some(
+                brassclaw_host_api::task_preparation::RetainedPreparation::restore_original(
+                    document["preparation_bytes"]
+                        .as_str()
+                        .ok_or_else(|| invalid("catalogue original missing"))?,
+                    document["preparation_checksum"]
+                        .as_str()
+                        .ok_or_else(|| invalid("catalogue original checksum missing"))?,
+                )
+                .map_err(invalid)?,
+            )
+        } else {
+            None
+        };
         let retained = format != "authored-monty-catalogue/1";
         let policy = if retained {
-            serde_json::from_value(document["preparation_policy"].clone()).map_err(invalid)?
+            decode_catalogue_policy(&document["preparation_policy"])?
         } else {
             // Compatibility for historical manifests that did not record a
             // preparation policy. Do not claim these have the new retention
             // contract; preserve their exact existing format/identity.
-            compatibility_policy
+            // Fresh technical preparation against a valid old catalogue is
+            // supported; this is not a fabricated original task capture.
+            self.preparation_policy().await.map_err(invalid)?
         };
         let view = self
             .prepare_with_policy(
@@ -691,7 +940,10 @@ impl InstalledMontyCatalogue {
                 policy,
                 format,
                 disabled,
-                retained.then_some(&document["preparation_policy"]),
+                CataloguePreparation {
+                    raw_policy: retained.then_some(&document["preparation_policy"]),
+                    original: original,
+                },
             )
             .await?;
         if view.generation != generation || view.bytes != bytes {
@@ -700,6 +952,7 @@ impl InstalledMontyCatalogue {
         self.publish_committed_view_locked(view, &publication)
             .await?;
         tx.commit().await.map_err(storage)?;
+        client.recycle_after_commit();
         drop(client);
         drop(publication);
         self.refresh_active_discovery()

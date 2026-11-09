@@ -1,7 +1,7 @@
 //! Immutable authoring subjects. Retention supplies neither review evidence nor
 //! activation: a validator Recipe must inspect this exact graph separately.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
 use brassclaw_pg::{PgError, PgPool};
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,8 @@ use crate::{
 };
 
 const MAX_SUBJECT_BYTES: usize = 16_777_216;
-const MAX_DEPENDENCIES: usize = 4095;
+use crate::revision_store::SnapshotReadLimits;
+use brassclaw_host_api::task_preparation::RetainedPreparation;
 
 #[derive(thiserror::Error)]
 pub enum SubmissionStoreError {
@@ -124,6 +125,10 @@ struct Subject {
     expected_previous_version: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     function_partner: Option<FunctionPartner>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preparation_bytes: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    preparation_checksum: Option<String>,
 }
 
 /// Validated proposal, with all transitive dependency revisions selected by the
@@ -140,6 +145,19 @@ pub struct ReviewSubmissionDraft {
     checksum: String,
     expected_previous_version: u64,
     function_partner: Option<FunctionPartner>,
+    preparation: Option<RetainedPreparation>,
+}
+/// Complete accepted input for one new original subject. This data carries no
+/// acknowledgement authority; Composition supplies its verified owner capture.
+pub struct PreparedReviewContext {
+    pub expected_previous_version: u64,
+    pub partner: Option<FunctionReviewPartnerDraft>,
+    pub preparation: RetainedPreparation,
+}
+struct DraftContext {
+    observed_head: Option<u64>,
+    function_partner: Option<FunctionPartner>,
+    preparation: Option<RetainedPreparation>,
 }
 impl ReviewSubmissionDraft {
     /// Compare the complete immutable original after an uncertain commit. This
@@ -198,7 +216,18 @@ impl ReviewSubmissionDraft {
         base: Option<ComponentRevisionRef>,
         dependencies: Vec<ComponentRevisionRef>,
     ) -> Result<Self, SubmissionStoreError> {
-        Self::build(id, actor, candidate, base, dependencies, None, None)
+        Self::build(
+            id,
+            actor,
+            candidate,
+            base,
+            dependencies,
+            DraftContext {
+                observed_head: None,
+                function_partner: None,
+                preparation: None,
+            },
+        )
     }
 
     /// The review base is lineage, not the allocation counter. A package draft
@@ -218,8 +247,11 @@ impl ReviewSubmissionDraft {
             candidate,
             base,
             dependencies,
-            Some(expected_previous_version),
-            None,
+            DraftContext {
+                observed_head: Some(expected_previous_version),
+                function_partner: None,
+                preparation: None,
+            },
         )
     }
 
@@ -242,9 +274,52 @@ impl ReviewSubmissionDraft {
             candidate,
             base,
             dependencies,
-            Some(expected_previous_version),
-            Some(partner),
+            DraftContext {
+                observed_head: Some(expected_previous_version),
+                function_partner: Some(partner),
+                preparation: None,
+            },
         )
+    }
+
+    /// New original subject with one complete, owner-acknowledged preparation.
+    /// This encodes data only; the application owner supplies acknowledgement.
+    pub fn new_prepared(
+        id: Uuid,
+        actor: &str,
+        candidate: ComponentRevisionDraft,
+        base: Option<ComponentRevisionRef>,
+        dependencies: Vec<ComponentRevisionRef>,
+        context: PreparedReviewContext,
+    ) -> Result<Self, SubmissionStoreError> {
+        let PreparedReviewContext {
+            expected_previous_version,
+            partner,
+            preparation,
+        } = context;
+        Self::build(
+            id,
+            actor,
+            candidate,
+            base,
+            dependencies,
+            DraftContext {
+                observed_head: Some(expected_previous_version),
+                function_partner: partner.map(FunctionPartner::from_draft).transpose()?,
+                preparation: Some(preparation),
+            },
+        )
+    }
+    pub fn preparation(&self) -> Option<&RetainedPreparation> {
+        self.preparation.as_ref()
+    }
+    fn graph_limits(&self) -> Result<SnapshotReadLimits, SubmissionStoreError> {
+        self.preparation
+            .as_ref()
+            .map(SnapshotReadLimits::captured)
+            .transpose()
+            .map(|p| p.unwrap_or_else(SnapshotReadLimits::legacy_graph))
+            .map_err(Into::into)
     }
 
     fn build(
@@ -253,13 +328,31 @@ impl ReviewSubmissionDraft {
         candidate: ComponentRevisionDraft,
         base: Option<ComponentRevisionRef>,
         mut dependencies: Vec<ComponentRevisionRef>,
-        observed_head: Option<u64>,
-        function_partner: Option<FunctionPartner>,
+        context: DraftContext,
     ) -> Result<Self, SubmissionStoreError> {
+        let DraftContext {
+            observed_head,
+            function_partner,
+            preparation,
+        } = context;
         if id.is_nil() || actor.trim().is_empty() || actor.len() > 2048 {
             return Err(SubmissionStoreError::Invalid);
         }
-        if dependencies.len() > MAX_DEPENDENCIES - usize::from(function_partner.is_some()) {
+        if let Some(original) = &preparation {
+            original
+                .require_canonical()
+                .map_err(|_| SubmissionStoreError::Invalid)?;
+        }
+        let graph_limits = preparation
+            .as_ref()
+            .map(SnapshotReadLimits::captured)
+            .transpose()?
+            .unwrap_or_else(SnapshotReadLimits::legacy_graph);
+        if dependencies
+            .len()
+            .checked_add(1 + usize::from(function_partner.is_some()))
+            .is_none_or(|count| count > graph_limits.max_revisions())
+        {
             return Err(SubmissionStoreError::Capacity);
         }
         let expected_previous_version =
@@ -279,19 +372,26 @@ impl ReviewSubmissionDraft {
         {
             return Err(SubmissionStoreError::Invalid);
         }
-        let mut unique = BTreeSet::new();
+        dependencies.sort();
+        if dependencies
+            .windows(2)
+            .any(|pair| pair[0].uuid == pair[1].uuid)
+        {
+            return Err(SubmissionStoreError::Invalid);
+        }
         for dependency in &dependencies {
             Reference::from(*dependency).parsed()?;
             if dependency.uuid == reference.uuid
                 || partner_ref.is_some_and(|partner| partner.uuid == dependency.uuid)
-                || !unique.insert(dependency.uuid)
             {
                 return Err(SubmissionStoreError::Invalid);
             }
         }
         dependencies.sort();
         let subject = Subject {
-            format: if function_partner.is_some() {
+            format: if preparation.is_some() {
+                "component-review-submission/4"
+            } else if function_partner.is_some() {
                 "component-review-submission/3"
             } else if observed_head.is_some() {
                 "component-review-submission/2"
@@ -307,9 +407,14 @@ impl ReviewSubmissionDraft {
             dependencies: dependencies.iter().copied().map(Into::into).collect(),
             expected_previous_version: observed_head,
             function_partner: function_partner.clone(),
+            preparation_bytes: preparation.as_ref().map(|p| p.bytes().to_owned()),
+            preparation_checksum: preparation.as_ref().map(|p| p.checksum().to_owned()),
         };
         let bytes = serde_json::to_string(&subject).map_err(|_| SubmissionStoreError::Invalid)?;
-        if bytes.len() > MAX_SUBJECT_BYTES {
+        if let Some(original) = &preparation {
+            strict_json(&bytes, preparation_value_limits(original)?)
+                .map_err(|_| SubmissionStoreError::Capacity)?;
+        } else if bytes.len() > MAX_SUBJECT_BYTES {
             return Err(SubmissionStoreError::Capacity);
         }
         let checksum = hex(Sha256::digest(bytes.as_bytes()).into());
@@ -324,6 +429,7 @@ impl ReviewSubmissionDraft {
             checksum,
             expected_previous_version,
             function_partner,
+            preparation,
         })
     }
 }
@@ -374,6 +480,7 @@ pub struct RetainedReviewSubmission {
     pub subject_bytes: String,
     pub checksum: String,
     pub snapshot: RetainedComponentSnapshot,
+    pub preparation: Option<RetainedPreparation>,
 }
 
 /// Durable review intent read from the submission's exact immutable link. It
@@ -459,7 +566,9 @@ impl PgReviewSubmissionStore {
         &self,
         draft: &ReviewSubmissionDraft,
     ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
-        let mut client = self.pool.get().await.map_err(database)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -468,6 +577,7 @@ impl PgReviewSubmissionStore {
             .map_err(database)?;
         let retained = Self::submit_in_transaction(&tx, draft).await?;
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(retained)
     }
 
@@ -480,7 +590,9 @@ impl PgReviewSubmissionStore {
         &self,
         draft: &ReviewSubmissionDraft,
     ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
-        let mut client = self.pool.get().await.map_err(database)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -489,6 +601,7 @@ impl PgReviewSubmissionStore {
             .map_err(database)?;
         let retained = Self::retain_subject(&tx, draft, CandidateRetention::Existing).await?;
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(retained)
     }
 
@@ -578,8 +691,13 @@ impl PgReviewSubmissionStore {
         }
         let staged = draft.reference;
         let (roots, references) = subject_references(draft)?;
-        let snapshot =
-            PgComponentRevisionStore::read_exact_in_transaction(tx, &roots, &references).await?;
+        let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+            tx,
+            &roots,
+            &references,
+            draft.graph_limits()?,
+        )
+        .await?;
         let function_partner = retained_partner(draft, &snapshot)?;
         let version = staged.version as i64;
         let base_version = draft.base.map(|base| base.version as i64);
@@ -596,6 +714,7 @@ impl PgReviewSubmissionStore {
             subject_bytes: draft.bytes.clone(),
             checksum: draft.checksum.clone(),
             snapshot,
+            preparation: draft.preparation.clone(),
         })
     }
 
@@ -657,6 +776,12 @@ impl PgReviewSubmissionStore {
         let Some(subject) = Self::read_in_transaction(tx, id).await? else {
             return Ok(None);
         };
+        let limits = subject
+            .preparation
+            .as_ref()
+            .map(preparation_value_limits)
+            .transpose()?
+            .unwrap_or(limits);
         let candidate = subject
             .snapshot
             .revisions()
@@ -751,7 +876,9 @@ impl PgReviewSubmissionStore {
         if id.is_nil() {
             return Err(SubmissionStoreError::Invalid);
         }
-        let mut client = self.pool.get().await.map_err(database)?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(database)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -761,6 +888,7 @@ impl PgReviewSubmissionStore {
             .map_err(database)?;
         let retained = read(&tx, id).await?;
         tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
         Ok(retained)
     }
 }
@@ -783,17 +911,29 @@ async fn read(
     tx: &Transaction<'_>,
     id: Uuid,
 ) -> Result<Option<RetainedReviewSubmission>, SubmissionStoreError> {
-    let Some(row) = tx.query_opt("SELECT actor,component_id,candidate_version,base_version,subject_bytes,checksum FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)? else { return Ok(None); };
-    let bytes: String = row.get(4);
-    let value = strict_json(
-        &bytes,
-        ContractLimits {
+    let preparation = read_original_preparation(tx, id).await?;
+    let limits = preparation
+        .as_ref()
+        .map(preparation_value_limits)
+        .transpose()?
+        .unwrap_or(ContractLimits {
             max_depth: 64,
             max_nodes: 262144,
             max_bytes: MAX_SUBJECT_BYTES,
-        },
-    )
-    .map_err(|_| SubmissionStoreError::Invalid)?;
+        });
+    let metadata = tx.query_opt("SELECT octet_length(subject_bytes) FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)?;
+    if let Some(row) = metadata {
+        if usize::try_from(row.get::<_, i32>(0)).map_err(|_| SubmissionStoreError::Invalid)?
+            > limits.max_bytes
+        {
+            return Err(SubmissionStoreError::Capacity);
+        }
+    } else {
+        return Ok(None);
+    }
+    let Some(row) = tx.query_opt("SELECT actor,component_id,candidate_version,base_version,subject_bytes,checksum FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)? else { return Ok(None); };
+    let bytes: String = row.get(4);
+    let value = strict_json(&bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
     let subject: Subject =
         serde_json::from_value(value).map_err(|_| SubmissionStoreError::Invalid)?;
     if !matches!(
@@ -801,7 +941,14 @@ async fn read(
         "component-review-submission/1"
             | "component-review-submission/2"
             | "component-review-submission/3"
+            | "component-review-submission/4"
     ) || subject.submission_id != id
+    {
+        return Err(SubmissionStoreError::Invalid);
+    }
+    if (subject.format == "component-review-submission/4") != preparation.is_some()
+        || subject.preparation_bytes.as_deref() != preparation.as_ref().map(|p| p.bytes())
+        || subject.preparation_checksum.as_deref() != preparation.as_ref().map(|p| p.checksum())
     {
         return Err(SubmissionStoreError::Invalid);
     }
@@ -842,6 +989,23 @@ async fn read(
                 partner.to_draft()?,
             )?
         }
+        ("component-review-submission/4", Some(head), partner) => {
+            ReviewSubmissionDraft::new_prepared(
+                id,
+                &subject.actor,
+                candidate,
+                base,
+                dependencies,
+                crate::review_submission_store::PreparedReviewContext {
+                    expected_previous_version: head,
+                    partner: partner
+                        .as_ref()
+                        .map(FunctionPartner::to_draft)
+                        .transpose()?,
+                    preparation: preparation.clone().ok_or(SubmissionStoreError::Invalid)?,
+                },
+            )?
+        }
         _ => return Err(SubmissionStoreError::Invalid),
     };
     let actual = subject.candidate.parsed()?;
@@ -868,8 +1032,13 @@ async fn read(
         }
     }
     let (roots, references) = subject_references(&draft)?;
-    let snapshot =
-        PgComponentRevisionStore::read_exact_in_transaction(tx, &roots, &references).await?;
+    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+        tx,
+        &roots,
+        &references,
+        draft.graph_limits()?,
+    )
+    .await?;
     let function_partner = retained_partner(&draft, &snapshot)?;
     Ok(Some(RetainedReviewSubmission {
         id,
@@ -881,6 +1050,7 @@ async fn read(
         subject_bytes: bytes,
         checksum: draft.checksum,
         snapshot,
+        preparation,
     }))
 }
 
@@ -936,4 +1106,63 @@ async fn verify_request(
         return Err(SubmissionStoreError::Invalid);
     }
     Ok(())
+}
+
+/// Original whole-value policy for a newly captured subject; old callers keep
+/// their existing typed-envelope contract, independently of legacy SQL framing.
+pub fn preparation_value_limits(
+    original: &RetainedPreparation,
+) -> Result<ContractLimits, SubmissionStoreError> {
+    let p = original.policy();
+    Ok(ContractLimits {
+        max_depth: usize::try_from(p.max_value_depth)
+            .map_err(|_| SubmissionStoreError::Capacity)?,
+        max_nodes: usize::try_from(p.max_value_nodes)
+            .map_err(|_| SubmissionStoreError::Capacity)?,
+        max_bytes: usize::try_from(p.max_value_bytes)
+            .map_err(|_| SubmissionStoreError::Capacity)?,
+    })
+}
+/// Read only an original's small policy carrier in the SAME caller snapshot.
+/// The complete reader subsequently verifies strict bytes, hash and identity.
+pub async fn read_original_preparation(
+    tx: &Transaction<'_>,
+    id: Uuid,
+) -> Result<Option<RetainedPreparation>, SubmissionStoreError> {
+    let carrier = i32::try_from(
+        RetainedPreparation::maximum_canonical_bytes()
+            .map_err(|_| SubmissionStoreError::Invalid)?,
+    )
+    .map_err(|_| SubmissionStoreError::Capacity)?;
+    let row = tx.query_opt("SELECT subject_bytes::jsonb->>'format', CASE WHEN subject_bytes::jsonb->>'format'='component-review-submission/4' AND octet_length(subject_bytes::jsonb->>'preparation_bytes')<=$2 THEN subject_bytes::jsonb->>'preparation_bytes' END, CASE WHEN subject_bytes::jsonb->>'format'='component-review-submission/4' AND octet_length(subject_bytes::jsonb->>'preparation_checksum')=64 THEN subject_bytes::jsonb->>'preparation_checksum' END, subject_bytes::jsonb ?| ARRAY['preparation_bytes','preparation_checksum'] FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id,&carrier]).await.map_err(database)?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let format: &str = row.get(0);
+    let bytes: Option<&str> = row.get(1);
+    let checksum: Option<&str> = row.get(2);
+    if format == "component-review-submission/4" {
+        let original = RetainedPreparation::restore_original(
+            bytes.ok_or(SubmissionStoreError::Invalid)?,
+            checksum.ok_or(SubmissionStoreError::Invalid)?,
+        )
+        .map_err(|_| SubmissionStoreError::Invalid)?;
+        original
+            .require_canonical()
+            .map_err(|_| SubmissionStoreError::Invalid)?;
+        Ok(Some(original))
+    } else if !row.get::<_, bool>(3)
+        && matches!(
+            format,
+            "component-review-submission/1"
+                | "component-review-submission/2"
+                | "component-review-submission/3"
+        )
+        && bytes.is_none()
+        && checksum.is_none()
+    {
+        Ok(None)
+    } else {
+        Err(SubmissionStoreError::Invalid)
+    }
 }

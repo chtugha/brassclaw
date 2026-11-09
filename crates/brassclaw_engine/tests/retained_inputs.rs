@@ -338,7 +338,16 @@ async fn prepare(
     refs: &[ComponentRevisionRef],
 ) -> Result<RetainedUnboundProgram, brassclaw_engine::memory::retained_inputs::RetainedInputError> {
     let instruction = compile_retained_recipe(
-        Arc::new(store.read_exact(&[root], refs).await.unwrap()),
+        Arc::new(
+            store
+                .read_exact(
+                    &[root],
+                    refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
+                .await
+                .unwrap(),
+        ),
         root,
         "selected",
         WorkflowClass::Deterministic,

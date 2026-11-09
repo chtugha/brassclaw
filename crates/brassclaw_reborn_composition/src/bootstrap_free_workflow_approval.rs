@@ -517,7 +517,11 @@ async fn retain_candidate(
     .into_iter()
     .collect();
     let dependencies = store
-        .read_exact(&dependency_roots, &refs)
+        .read_exact(
+            &dependency_roots,
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .map_err(invalid)?;
     let dep_snapshot = dependencies
@@ -547,7 +551,11 @@ async fn retain_candidate(
     }
     let snapshot = Arc::new(
         store
-            .read_exact(&[ids.workflow.recipe], &workflow_refs)
+            .read_exact(
+                &[ids.workflow.recipe],
+                &workflow_refs,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .map_err(invalid)?,
     );

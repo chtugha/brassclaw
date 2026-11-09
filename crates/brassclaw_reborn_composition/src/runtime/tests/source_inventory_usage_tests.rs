@@ -236,7 +236,11 @@ async fn native_inventory_recipe_decodes_complete_pairs_and_journals_one_actual_
         references.push(original.reference());
     }
     let all = store
-        .read_exact(&[ids.recipe, reply_ids.recipe], &references)
+        .read_exact(
+            &[ids.recipe, reply_ids.recipe],
+            &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     let graph = Arc::new(all.select_roots(&[ids.recipe]).unwrap());

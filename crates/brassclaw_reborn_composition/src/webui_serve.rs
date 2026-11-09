@@ -52,12 +52,14 @@ use brassclaw_webui_v2::{
 };
 use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::cors::{AllowHeaders, CorsLayer};
-use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 
 use crate::product_auth_serve::{ProductAuthRouteState, product_auth_route_mount};
 use crate::webui::RebornWebuiBundle;
-use crate::webui_body_limit::{build_body_limit_state, enforce_body_limit};
+use crate::webui_body_limit::{
+    build_body_limit_state, enforce_before_auth_body_limit, enforce_body_limit,
+    enforce_outer_body_limit, enforce_prepared_body_limit,
+};
 use crate::webui_rate_limit::{build_rate_limit_state, enforce_rate_limit};
 use crate::webui_route_match::{network_method_to_axum, parse_pattern, segments_match};
 use crate::webui_ws_origin::{build_websocket_origin_state, enforce_websocket_origin};
@@ -138,9 +140,11 @@ pub struct WebuiServeConfig {
     /// fallback). v2 routes are additionally enforced against the
     /// per-route [`BodyLimitPolicy`](brassclaw_host_api::ingress::BodyLimitPolicy)
     /// declared in `brassclaw_webui_v2::webui_v2_routes()`; that
-    /// descriptor cap is always strictly tighter than this global
-    /// fallback. Defaults to [`DEFAULT_WEBUI_MAX_BODY_BYTES`].
+    /// descriptor cap is normally tighter than this fallback. Named preparation
+    /// routes use acknowledged finite limits; an explicit override still narrows
+    /// those routes. Defaults to [`DEFAULT_WEBUI_MAX_BODY_BYTES`].
     pub(crate) max_body_bytes: usize,
+    explicit_max_body_bytes: Option<usize>,
     /// CORS allow-origin list. Empty means "no cross-origin requests
     /// accepted at all" — explicitly fail-closed; pre-flight checks
     /// against an empty list never echo the attacker-supplied origin.
@@ -265,6 +269,7 @@ impl WebuiServeConfig {
             tenant_id,
             authenticator,
             max_body_bytes: DEFAULT_WEBUI_MAX_BODY_BYTES,
+            explicit_max_body_bytes: None,
             allowed_origins,
             csp_header: None,
             canonical_host: None,
@@ -358,6 +363,7 @@ impl WebuiServeConfig {
     /// Override [`Self::max_body_bytes`] in a builder-style.
     pub fn with_max_body_bytes(mut self, bytes: usize) -> Self {
         self.max_body_bytes = bytes;
+        self.explicit_max_body_bytes = Some(bytes);
         self
     }
 
@@ -507,7 +513,11 @@ pub fn webui_v2_app_with_lifecycle(
             })
             .collect(),
     );
-    let body_limit_state = build_body_limit_state(&descriptors);
+    let body_limit_state = build_body_limit_state(&descriptors).with_host(
+        bundle.api.clone(),
+        config.max_body_bytes,
+        config.explicit_max_body_bytes,
+    );
     let ws_origin_state = build_websocket_origin_state(
         &descriptors,
         &config.allowed_origins,
@@ -542,15 +552,20 @@ pub fn webui_v2_app_with_lifecycle(
     // Layer order matters. `route_layer` stacks inside-out from the
     // bottom of the chain up — the LAST `.route_layer(...)` call is
     // the outermost layer and runs FIRST on inbound. That gives:
-    //   ws-origin → per-route body limit → auth → rate-limit → handler
+    //   ws-origin → small/static body limit → auth → rate-limit
+    //             → acknowledged preparation body limit → handler
     //
     // WS-origin runs first so a forged-Origin WebSocket upgrade dies
-    // before the gateway spends an auth check on it. Body limit comes
-    // next so an oversized payload also short-circuits before bearer
-    // validation. Auth runs before rate-limit so the limiter has a
+    // before the gateway spends an auth check on it. Small/static body limits
+    // can reject before auth; dynamic preparation collection/capture is inside
+    // the actual auth and rate owners. Auth runs before rate-limit so it has a
     // real caller key and an unauthenticated request never burns a
     // rate-limit slot.
     let protected = protected_inner
+        .route_layer(middleware::from_fn_with_state(
+            body_limit_state.clone(),
+            enforce_prepared_body_limit,
+        ))
         .route_layer(middleware::from_fn_with_state(
             rate_limit_state.clone(),
             enforce_rate_limit,
@@ -561,7 +576,7 @@ pub fn webui_v2_app_with_lifecycle(
         ))
         .route_layer(middleware::from_fn_with_state(
             body_limit_state.clone(),
-            enforce_body_limit,
+            enforce_before_auth_body_limit,
         ))
         // WS upgrades skip CORS pre-flight, so origin enforcement runs
         // inline for descriptors declaring a non-NotApplicable
@@ -581,7 +596,7 @@ pub fn webui_v2_app_with_lifecycle(
                 enforce_rate_limit,
             ))
             .route_layer(middleware::from_fn_with_state(
-                body_limit_state,
+                body_limit_state.clone(),
                 enforce_body_limit,
             ));
         app = app.merge(public);
@@ -606,7 +621,10 @@ pub fn webui_v2_app_with_lifecycle(
         // Outer global cap: applies to unmatched paths (e.g. 404 fallback)
         // as defense in depth. v2 routes are tighter via the per-route
         // body-limit middleware above.
-        .layer(RequestBodyLimitLayer::new(config.max_body_bytes))
+        .layer(middleware::from_fn_with_state(
+            body_limit_state,
+            enforce_outer_body_limit,
+        ))
         .layer(CatchPanicLayer::custom(panic_handler))
         .layer(cors)
         .layer(SetResponseHeaderLayer::if_not_present(

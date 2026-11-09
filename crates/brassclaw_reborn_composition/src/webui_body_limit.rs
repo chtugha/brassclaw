@@ -7,20 +7,12 @@
 //! streaming routes). The v2 crate's CLAUDE.md designates enforcement
 //! as host-composition responsibility; this module is that enforcement.
 //!
-//! Wiring:
-//!
-//! - This middleware runs **before** auth so an oversized payload is
-//!   rejected without spending a bearer-validation step.
-//! - It runs **after** the outer `RequestBodyLimitLayer` global cap
-//!   that [`crate::webui_serve::webui_v2_app`] keeps as a defense in
-//!   depth for paths that don't match any v2 descriptor (e.g. axum's
-//!   404 fallback). Per-route enforcement is no larger than that by default;
-//!   an explicit smaller global cap still limits every route.
-//!
-//! `BodyLimitPolicy` has only two variants today (`NoBody` and
-//! `Limited { max_bytes }`); both are supported. The `match` is
-//! exhaustive on a host-api enum, so a new variant added upstream would
-//! fail to compile rather than silently disable enforcement.
+//! Small/static bodies retain early finite enforcement. Named preparation
+//! bodies are collected and their acknowledged policy is captured only AFTER
+//! the existing protected operator-auth and rate owners. The outer layer adds
+//! cheap, lazy framing protection; it never buffers or captures a policy for an
+//! unauthenticated preparation request. Explicit host bounds still narrow it.
+//! Public routes keep their own existing static/NoBody checks.
 
 use std::sync::Arc;
 
@@ -45,6 +37,7 @@ struct RouteBodyLimit {
 enum ResolvedBodyPolicy {
     NoBody,
     Limited { max_bytes: u64 },
+    ComponentPreparation,
 }
 
 /// Shared state for [`enforce_body_limit`]. Cheap to clone — the inner
@@ -52,6 +45,9 @@ enum ResolvedBodyPolicy {
 #[derive(Clone)]
 pub(crate) struct BodyLimitState {
     routes: Arc<Vec<RouteBodyLimit>>,
+    services: Option<Arc<dyn brassclaw_product_workflow::RebornServicesApi>>,
+    outer_default: usize,
+    outer_explicit: Option<usize>,
 }
 
 impl std::fmt::Debug for BodyLimitState {
@@ -73,6 +69,7 @@ pub(crate) fn build_body_limit_state(descriptors: &[IngressRouteDescriptor]) -> 
         .map(|descriptor| {
             let policy = match descriptor.policy().body_limit() {
                 BodyLimitPolicy::NoBody => ResolvedBodyPolicy::NoBody,
+                BodyLimitPolicy::ComponentPreparation => ResolvedBodyPolicy::ComponentPreparation,
                 BodyLimitPolicy::Limited { max_bytes } => ResolvedBodyPolicy::Limited {
                     max_bytes: max_bytes.get(),
                 },
@@ -87,7 +84,119 @@ pub(crate) fn build_body_limit_state(descriptors: &[IngressRouteDescriptor]) -> 
         .collect();
     BodyLimitState {
         routes: Arc::new(routes),
+        services: None,
+        outer_default: crate::webui_serve::DEFAULT_WEBUI_MAX_BODY_BYTES,
+        outer_explicit: None,
     }
+}
+
+// Existing non-global authoring transport contract; never selected on a failed
+// acknowledged lookup. Its actual store must explicitly report the legacy mode.
+#[derive(Clone, Copy)]
+struct LegacyComponentBody;
+const LEGACY_COMPONENT_BODY_BYTES: u64 = 14 * 1024 * 1024;
+
+impl BodyLimitState {
+    pub(crate) fn with_host(
+        mut self,
+        services: Arc<dyn brassclaw_product_workflow::RebornServicesApi>,
+        outer_default: usize,
+        outer_explicit: Option<usize>,
+    ) -> Self {
+        self.services = Some(services);
+        self.outer_default = outer_default;
+        self.outer_explicit = outer_explicit;
+        self
+    }
+    async fn accept_preparation(&self, request: &mut Request) -> Result<u64, Response> {
+        use brassclaw_host_api::task_preparation::RetainedPreparation;
+        if request.extensions().get::<LegacyComponentBody>().is_some() {
+            return Ok(self
+                .outer_explicit
+                .map_or(LEGACY_COMPONENT_BODY_BYTES, |n| {
+                    LEGACY_COMPONENT_BODY_BYTES.min(n as u64)
+                }));
+        }
+        if request.extensions().get::<RetainedPreparation>().is_none() {
+            let Some(services) = &self.services else {
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Acknowledged preparation unavailable.",
+                )
+                    .into_response());
+            };
+            let original = services
+                .capture_component_preparation()
+                .await
+                .map_err(|_| {
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        "Acknowledged preparation unavailable.",
+                    )
+                        .into_response()
+                })?;
+            match original {
+                Some(original) => {
+                    request.extensions_mut().insert(original);
+                }
+                None => {
+                    request.extensions_mut().insert(LegacyComponentBody);
+                    return Ok(self
+                        .outer_explicit
+                        .map_or(LEGACY_COMPONENT_BODY_BYTES, |n| {
+                            LEGACY_COMPONENT_BODY_BYTES.min(n as u64)
+                        }));
+                }
+            }
+        }
+        let policy = request
+            .extensions()
+            .get::<RetainedPreparation>()
+            .ok_or_else(|| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "Acknowledged preparation unavailable.",
+                )
+                    .into_response()
+            })?
+            .policy();
+        let limit = policy.max_value_bytes;
+        if limit == 0 || usize::try_from(limit).is_err() {
+            return Err(too_large_for(ResolvedBodyPolicy::ComponentPreparation));
+        }
+        Ok(match self.outer_explicit {
+            Some(max) => limit.min(max as u64),
+            None => limit,
+        })
+    }
+}
+/// Preserve finite unmatched/static protection while named preparation routes
+/// use their accepted effective policy. Explicit host overrides still narrow it.
+pub(crate) async fn enforce_outer_body_limit(
+    State(state): State<BodyLimitState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let prepared = match_route(&state.routes, request.method(), request.uri().path())
+        .is_some_and(|route| matches!(route.policy, ResolvedBodyPolicy::ComponentPreparation));
+    let max = if prepared {
+        // Cheap framing only before authentication. New preparation values are
+        // constrained by the existing u32 IPC carrier; no body is collected or
+        // policy captured here. Explicit host narrowing remains independent.
+        state
+            .outer_explicit
+            .map_or(u32::MAX as usize, |limit| limit.min(u32::MAX as usize))
+    } else {
+        state.outer_explicit.unwrap_or(state.outer_default)
+    };
+    if declared_content_length(&request).is_some_and(|n| n > max as u64) {
+        return too_large_for(ResolvedBodyPolicy::Limited {
+            max_bytes: max as u64,
+        });
+    }
+    let (parts, body) = request.into_parts();
+    let body = Body::new(http_body_util::Limited::new(body, max));
+    next.run(Request::from_parts(parts, body)).await
 }
 
 fn match_route<'a>(
@@ -109,20 +218,52 @@ fn declared_content_length(request: &Request) -> Option<u64> {
 }
 
 fn too_large_for(policy: ResolvedBodyPolicy) -> Response {
-    let detail: &'static str = match policy {
-        ResolvedBodyPolicy::NoBody => "Request body not allowed for this route.",
-        ResolvedBodyPolicy::Limited { .. } => "Request body exceeds the route's body limit.",
+    let detail = match policy {
+        ResolvedBodyPolicy::NoBody => "Request body not allowed for this route.".to_owned(),
+        ResolvedBodyPolicy::Limited { max_bytes } => format!(
+            "Request body exceeds the effective limit of {max_bytes} bytes. Component preparation also respects an explicit [webui].max_body_bytes_fallback host limit."
+        ),
+        ResolvedBodyPolicy::ComponentPreparation => {
+            "Request body exceeds the preparation body limit.".to_owned()
+        }
     };
     (StatusCode::PAYLOAD_TOO_LARGE, detail).into_response()
 }
 
-/// Axum middleware enforcing the descriptor's [`BodyLimitPolicy`] for
-/// every matched v2 route. Unmatched paths pass through — the outer
-/// global `RequestBodyLimitLayer` (set in `webui_serve`) still caps
-/// them as defense in depth.
-pub(crate) async fn enforce_body_limit(
+/// Keep existing small/static checks before auth. A dynamic preparation body
+/// passes untouched to the actual auth/rate layers; it is collected below them.
+pub(crate) async fn enforce_before_auth_body_limit(
     State(state): State<BodyLimitState>,
     request: Request,
+    next: Next,
+) -> Response {
+    if match_route(&state.routes, request.method(), request.uri().path())
+        .is_some_and(|route| matches!(route.policy, ResolvedBodyPolicy::ComponentPreparation))
+    {
+        return next.run(request).await;
+    }
+    enforce_body_limit(State(state), request, next).await
+}
+/// Mounted inside the existing authenticated/rate-limited protected stack only.
+pub(crate) async fn enforce_prepared_body_limit(
+    State(state): State<BodyLimitState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if match_route(&state.routes, request.method(), request.uri().path())
+        .is_some_and(|route| matches!(route.policy, ResolvedBodyPolicy::ComponentPreparation))
+    {
+        return enforce_body_limit(State(state), request, next).await;
+    }
+    next.run(request).await
+}
+
+/// Axum middleware enforcing the descriptor's [`BodyLimitPolicy`] for
+/// every matched v2 route. Unmatched paths pass through — the outer
+/// finite outer body middleware in `webui_serve` still caps them.
+pub(crate) async fn enforce_body_limit(
+    State(state): State<BodyLimitState>,
+    mut request: Request,
     next: Next,
 ) -> Response {
     let Some(route) = match_route(&state.routes, request.method(), request.uri().path()) else {
@@ -132,6 +273,23 @@ pub(crate) async fn enforce_body_limit(
     let max_bytes_u64: u64 = match route.policy {
         ResolvedBodyPolicy::NoBody => 0,
         ResolvedBodyPolicy::Limited { max_bytes } => max_bytes,
+        ResolvedBodyPolicy::ComponentPreparation => {
+            if request
+                .extensions()
+                .get::<brassclaw_product_workflow::WebUiAuthenticatedCaller>()
+                .is_none()
+            {
+                return (
+                    StatusCode::UNAUTHORIZED,
+                    "Operator authentication required.",
+                )
+                    .into_response();
+            }
+            match state.accept_preparation(&mut request).await {
+                Ok(bytes) => bytes,
+                Err(response) => return response,
+            }
+        }
     };
 
     // Reject upfront when the client advertised a Content-Length that
@@ -147,13 +305,12 @@ pub(crate) async fn enforce_body_limit(
             limit = max_bytes_u64,
             "rejecting oversized request by declared Content-Length",
         );
-        return too_large_for(route.policy);
+        return too_large_for(ResolvedBodyPolicy::Limited {
+            max_bytes: max_bytes_u64,
+        });
     }
 
-    // Cast is safe: the largest descriptor cap is 1 MiB and the
-    // workspace targets are 64-bit platforms. `usize::try_from` returns
-    // an error only on 32-bit platforms with a > 4 GiB cap, which the
-    // v2 descriptors do not declare.
+    // Acknowledged bounds still require native representation checks.
     let max_bytes_usize = match usize::try_from(max_bytes_u64) {
         Ok(value) => value,
         Err(_) => {
@@ -163,15 +320,14 @@ pub(crate) async fn enforce_body_limit(
                 limit = max_bytes_u64,
                 "body limit exceeds usize; rejecting as if oversized",
             );
-            return too_large_for(route.policy);
+            return too_large_for(ResolvedBodyPolicy::Limited {
+                max_bytes: max_bytes_u64,
+            });
         }
     };
 
-    // Buffer with the descriptor cap as the hard limit. `to_bytes`
-    // reads up to `limit` bytes and returns an error if the body
-    // produced more. Buffering is acceptable because every v2 route
-    // caps at ≤ 1 MiB and the v2 handlers already buffer via
-    // `Json<T>` downstream.
+    // Buffer only within the accepted finite whole-body policy. Capture stays
+    // in server request extensions; it is never decoded from caller JSON.
     let (parts, body) = request.into_parts();
     let buffered = match axum::body::to_bytes(body, max_bytes_usize).await {
         Ok(bytes) => bytes,
@@ -182,7 +338,9 @@ pub(crate) async fn enforce_body_limit(
                 limit = max_bytes_u64,
                 "rejecting body that exceeded the per-route cap during read",
             );
-            return too_large_for(route.policy);
+            return too_large_for(ResolvedBodyPolicy::Limited {
+                max_bytes: max_bytes_u64,
+            });
         }
     };
 
@@ -190,7 +348,9 @@ pub(crate) async fn enforce_body_limit(
     // a future axum release loosens that contract the explicit length
     // check still fails closed.
     if buffered.len() as u64 > max_bytes_u64 {
-        return too_large_for(route.policy);
+        return too_large_for(ResolvedBodyPolicy::Limited {
+            max_bytes: max_bytes_u64,
+        });
     }
 
     let request = Request::from_parts(parts, Body::from(buffered));

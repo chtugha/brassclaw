@@ -139,8 +139,13 @@ pub(crate) async fn record_pure_component_approval(
     }
 
     let selected: Vec<_> = components.values().copied().collect();
-    let snapshot =
-        PgComponentRevisionStore::read_exact_in_transaction(&tx, &[root.uuid], &selected).await?;
+    let snapshot = PgComponentRevisionStore::read_exact_in_transaction(
+        &tx,
+        &[root.uuid],
+        &selected,
+        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+    )
+    .await?;
     declaration
         .require_selected_snapshot(&snapshot)
         .map_err(|_| invalid("component closure differs from the complete immutable graph"))?;

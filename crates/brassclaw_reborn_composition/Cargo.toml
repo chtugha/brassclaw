@@ -47,6 +47,7 @@ postgres = [
     "brassclaw_resources/postgres",
 ]
 [dependencies]
+http-body-util = "0.1"
 brassclaw_model_encoding = { path = "../brassclaw_model_encoding" }
 brassclaw_pg = { path = "../brassclaw_pg" }
 aes-gcm = "0.10"
@@ -149,7 +150,6 @@ brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
 async-trait = "0.1"
 hmac = "0.12"
 http = "1"
-http-body-util = "0.1"
 brassclaw_common = { path = "../brassclaw_common" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_host_runtime = { path = "../brassclaw_host_runtime", features = ["test-support"] }

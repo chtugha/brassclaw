@@ -92,7 +92,11 @@ impl PackagedDefinitions {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Arc::new(
             PgComponentRevisionStore::new(pool)
-                .read_exact(&[root], &refs)
+                .read_exact(
+                    &[root],
+                    &refs,
+                    brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                )
                 .await
                 .map_err(invalid)?,
         ))

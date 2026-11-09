@@ -64,6 +64,8 @@ pub(super) struct RetainedModelWork {
 }
 
 pub(super) struct Backend {
+    pub preparation: crate::installed_monty_catalogue::PreparationCapture,
+    pub resource_store: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     pub pool: Arc<PgPool>,
     pub source: Uuid,
     pub attempt: Uuid,
@@ -168,18 +170,33 @@ impl Backend {
                 self.previous("ask_sempai", bytes).await?;
                 let packet = parse(bytes)?;
                 let original = packet["response_bytes"].as_str().ok_or_else(error)?;
-                let decoded =
-                    completed_turn_analysis::decode(self.attempt, original).map_err(|_| error())?;
+                let decoded = completed_turn_analysis::decode_with_graph_capacity(
+                    self.attempt,
+                    original,
+                    self.preparation
+                        .policy()
+                        .max_catalogue_components_per_recipe as usize,
+                )
+                .map_err(|_| error())?;
                 Ok(json!({"attempt_ref":self.attempt,"response_bytes":decoded.original_response_bytes,
                     "response_checksum":hex::encode(decoded.response_checksum),
                     "candidate_count":decoded.candidates.len()}).to_string())
             }
             "submit_candidates" => {
+                let io = self
+                    .resource_store
+                    .snapshot()
+                    .and_then(|p| p.validate())
+                    .map_err(|_| error())?;
+                tokio::time::timeout(io.timeout, async {
                 self.previous("decode_proposals", bytes).await?;
                 let record = parse(bytes)?;
-                let decoded = completed_turn_analysis::decode(
+                let decoded = completed_turn_analysis::decode_with_graph_capacity(
                     self.attempt,
                     record["response_bytes"].as_str().ok_or_else(error)?,
+                    self.preparation
+                        .policy()
+                        .max_catalogue_components_per_recipe as usize,
                 )
                 .map_err(|_| error())?;
                 let mut receipts = Vec::new();
@@ -188,26 +205,53 @@ impl Backend {
                 // failure; no model redispatch or whole-Recipe retry is allowed.
                 for candidate in decoded.candidates {
                     self.check().await?;
-                    let draft = ReviewSubmissionDraft::new(
-                        candidate.submission_id,
-                        "completed-turn-sempai",
-                        candidate.candidate,
-                        candidate.base,
-                        candidate.dependencies,
-                    )
-                    .map_err(|_| error())?;
-                    // This producer already owns complete original bytes and a
-                    // host-derived operation ID. Retain the explicit standalone
-                    // queue-target choice with the same subject transaction.
-                    let mut client = self.pool.get().await.map_err(|_| error())?;
+                    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+                        self.pool.get().await.map_err(|_| error())?,
+                    );
                     let tx = client
                         .build_transaction()
                         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
                         .start()
                         .await
                         .map_err(|_| error())?;
+                    let existing = brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(&tx, candidate.submission_id).await.map_err(|_| error())?;
+                    let preparation = existing.as_ref().and_then(|s| s.preparation.clone());
+                    let draft = if existing.is_some() && preparation.is_none() {
+                        ReviewSubmissionDraft::new(
+                            candidate.submission_id,
+                            "completed-turn-sempai",
+                            candidate.candidate,
+                            candidate.base,
+                            candidate.dependencies,
+                        )
+                    } else {
+                        ReviewSubmissionDraft::new_prepared(candidate.submission_id,
+"completed-turn-sempai",
+candidate.candidate,
+candidate.base,
+candidate.dependencies,
+brassclaw_skills::review_submission_store::PreparedReviewContext { expected_previous_version: candidate.base.map_or(0, |b| b.version), partner: None, preparation: preparation.unwrap_or_else(|| self.preparation.original().clone()) },)
+                    }
+                    .map_err(|_| error())?;
+                    if let Some(original) = &existing {
+                        draft.require_original(original).map_err(|_| error())?;
+                    }
                     let stored=crate::validation_queue::ValidationQueueStore::submit_original_in_transaction(&tx,&draft,&[],&[],"standalone").await.map_err(|_|error())?;
-                    tx.commit().await.map_err(|_| error())?;
+                    let stored = if tx.commit().await.is_err() {
+                        drop(client);
+                        let mut readback = crate::pg_transaction_client::TransactionClient::from_client(self.pool.get().await.map_err(|_| error())?);
+                        let original = readback.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead).read_only(true).start().await.map_err(|_| error())?;
+                        let saved = brassclaw_skills::review_submission_store::PgReviewSubmissionStore::read_in_transaction(&original, candidate.submission_id).await.map_err(|_| error())?.ok_or_else(error)?;
+                        draft.require_original(&saved).map_err(|_| error())?;
+                        let request = original.query_one("SELECT queue_ids,request_kind FROM reborn_component_review_queue_requests WHERE submission_id=$1", &[&candidate.submission_id]).await.map_err(|_| error())?;
+                        if !request.get::<_, Vec<Uuid>>(0).is_empty() || request.get::<_, String>(1) != "standalone" { return Err(error()); }
+                        original.commit().await.map_err(|_| error())?;
+                        readback.recycle_after_commit();
+                        saved
+                    } else {
+                        client.recycle_after_commit();
+                        stored
+                    };
                     receipts.push(json!({"submission_id":stored.id,"subject_checksum":stored.checksum,
                         "candidate":{"uuid":stored.candidate.uuid,"version":stored.candidate.version,
                             "class_code":stored.candidate.class_code,"checksum":hex::encode(stored.candidate.checksum)},
@@ -216,6 +260,7 @@ impl Backend {
                 self.transition("model_returned", "submitted").await?;
                 Ok(json!({"attempt_ref":self.attempt,"response_checksum":record["response_checksum"],
                     "submissions":receipts,"catalogue_activated":false}).to_string())
+                }).await.map_err(|_| error())?
             }
             "acknowledge_review" => {
                 self.previous("submit_candidates", bytes).await?;

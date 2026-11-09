@@ -71,7 +71,8 @@ async fn previous(
         Some(
             "authored-monty-catalogue/1"
             | "authored-monty-catalogue/2"
-            | "authored-monty-catalogue/3",
+            | "authored-monty-catalogue/3"
+            | "authored-monty-catalogue/4",
         ) => serde_json::from_value(value["recipes"].clone())
             .map_err(|_| invalid("catalogue selection invalid")),
         _ => Err(invalid("unsupported catalogue format")),
@@ -160,17 +161,51 @@ pub(crate) async fn verify_publication(
     Ok(())
 }
 
+#[cfg(test)]
 pub(crate) async fn prepare(
     owner: &InstalledMontyCatalogue,
     request: PrepareComponentDeploymentRequest,
+) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
+    prepare_with_preparation(owner, request, None).await
+}
+pub(crate) async fn prepare_with_preparation(
+    owner: &InstalledMontyCatalogue,
+    request: PrepareComponentDeploymentRequest,
+    accepted: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
+    let io = owner
+        .resource_store_settings
+        .snapshot()
+        .map_err(storage)?
+        .validate()
+        .map_err(storage)?;
+    tokio::time::timeout(io.timeout, prepare_original(owner, request, accepted))
+        .await
+        .map_err(|_| {
+            RecipeStoreError::Unavailable(
+                "original deployment I/O deadline elapsed; outcome unresolved".into(),
+            )
+        })?
+}
+async fn prepare_original(
+    owner: &InstalledMontyCatalogue,
+    request: PrepareComponentDeploymentRequest,
+    accepted: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
 ) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
     id(&request.activation_id)?;
     let expected = id(&request.expected_generation)?;
     let _serial = owner.activation.lock().await;
     owner.reconcile_committed_runtime_locked().await?;
-    let policy = owner.preparation_policy().await.map_err(|_| {
-        RecipeStoreError::Unavailable("acknowledged catalogue settings unavailable".into())
-    })?;
+    let preparation = match accepted {
+        Some(p) => p,
+        None => owner
+            .capture_task_preparation()
+            .await
+            .map_err(storage)?
+            .original()
+            .clone(),
+    };
+    let policy = preparation.policy();
     if request.recipes.is_empty()
         || request.recipes.len() as u64 > u64::from(policy.max_catalogue_recipes)
         || serde_json::to_vec(&request)
@@ -180,7 +215,9 @@ pub(crate) async fn prepare(
     {
         return Err(invalid("deployment exceeds catalogue preparation capacity"));
     }
-    let mut client = owner.pool.get().await.map_err(storage)?;
+    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+        owner.pool.get().await.map_err(storage)?,
+    );
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -255,9 +292,10 @@ pub(crate) async fn prepare(
     // Mechanical assembly only: reuse trusted exact-combination approvals and
     // supported retained adapters/exports. Never execute or re-audit the usage.
     owner
-        .prepare_authored(&tx, &activation.recipes, policy)
+        .prepare_authored_original(&tx, &activation.recipes, preparation)
         .await?;
     tx.commit().await.map_err(storage)?;
+    client.recycle_after_commit();
     Ok(ComponentDeploymentPlan {
         activation,
         preserved_recipe_ids,

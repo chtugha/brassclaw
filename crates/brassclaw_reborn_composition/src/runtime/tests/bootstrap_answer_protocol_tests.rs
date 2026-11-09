@@ -226,6 +226,7 @@ async fn native_bootstrap_answer_candidate_inspects_original_graph_and_evaluates
                 answer_stage,
             ],
             &references,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         )
         .await
         .unwrap();

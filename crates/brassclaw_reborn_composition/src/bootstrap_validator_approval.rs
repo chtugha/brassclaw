@@ -601,9 +601,14 @@ impl Context {
             .values()
             .map(|r| r.reference())
             .collect::<Vec<_>>();
-        PgComponentRevisionStore::read_exact_in_transaction(tx, &[self.claim.recipe.uuid], &refs)
-            .await
-            .map_err(invalid)?;
+        PgComponentRevisionStore::read_exact_in_transaction(
+            tx,
+            &[self.claim.recipe.uuid],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
+        .await
+        .map_err(invalid)?;
         PgComponentRevisionStore::read_revision_in_transaction(tx, self.root.reference())
             .await
             .map_err(invalid)?;
@@ -908,7 +913,11 @@ async fn qualify_specs(
                 recipe.uuid(),
                 async {
                     store
-                        .read_exact(&[recipe.uuid()], &refs)
+                        .read_exact(
+                            &[recipe.uuid()],
+                            &refs,
+                            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                        )
                         .await
                         .map_err(invalid)
                 },

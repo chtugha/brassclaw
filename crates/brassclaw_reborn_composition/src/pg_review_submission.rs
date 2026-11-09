@@ -71,6 +71,7 @@ pub(crate) fn selection(value: ComponentRevisionRef) -> ComponentRevisionSelecti
 }
 fn receipt(value: &RetainedReviewSubmission) -> ComponentReviewSubmissionReceipt {
     ComponentReviewSubmissionReceipt {
+        preparation_revision: value.preparation.as_ref().map(|p| p.revision()),
         queue_ids: vec![],
         queue_binding_status: brassclaw_product_workflow::ReviewQueueBindingStatus::Standalone,
         submission_id: value.id.to_string(),
@@ -145,12 +146,13 @@ pub(crate) async fn submit(
         tenant,
         agent,
         request,
+        None,
         #[cfg(feature = "skills-db")]
         None,
     )
     .await
 }
-#[cfg(feature = "skills-db")]
+#[cfg(all(feature = "skills-db", test))]
 pub(crate) async fn submit_with_catalogue(
     pool: &Arc<PgPool>,
     actor: &str,
@@ -159,7 +161,38 @@ pub(crate) async fn submit_with_catalogue(
     request: SubmitComponentReviewRequest,
     catalogue: &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
-    submit_inner(pool, actor, tenant, agent, request, Some(catalogue)).await
+    submit_with_catalogue_prepared(pool, actor, tenant, agent, request, catalogue, None).await
+}
+#[cfg(feature = "skills-db")]
+pub(crate) async fn submit_with_catalogue_prepared(
+    pool: &Arc<PgPool>,
+    actor: &str,
+    tenant: &str,
+    agent: &str,
+    request: SubmitComponentReviewRequest,
+    catalogue: &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+    preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+    let io = catalogue
+        .resource_store_settings
+        .snapshot()
+        .map_err(storage_io)?
+        .validate()
+        .map_err(storage_io)?;
+    tokio::time::timeout(
+        io.timeout,
+        submit_inner(
+            pool,
+            actor,
+            tenant,
+            agent,
+            request,
+            preparation,
+            Some(catalogue),
+        ),
+    )
+    .await
+    .map_err(|_| storage_io("original submission I/O deadline elapsed; outcome unresolved"))?
 }
 async fn submit_inner(
     pool: &Arc<PgPool>,
@@ -167,21 +200,62 @@ async fn submit_inner(
     tenant: &str,
     agent: &str,
     request: SubmitComponentReviewRequest,
+    accepted_preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     #[cfg(feature = "skills-db")] catalogue: Option<
         &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
     >,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
-    if request.dependencies.len() > 4095 {
-        return Err(RecipeStoreError::Invalid(
-            "dependency selection exceeds capacity".into(),
-        ));
-    }
     let queue_ids = request
         .queue_ids
         .iter()
         .map(|id| identifier(id))
         .collect::<Result<Vec<_>, _>>()?;
     let id = identifier(&request.submission_id)?;
+    // Resolve the original identity BEFORE fresh settings or worker inspection.
+    // The connection is released before Source preparation (pool size one).
+    let existing = {
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            pool.get().await.map_err(storage_io)?,
+        );
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(storage_io)?;
+        let original = PgReviewSubmissionStore::read_in_transaction(&tx, id)
+            .await
+            .map_err(storage)?;
+        tx.commit().await.map_err(storage_io)?;
+        client.recycle_after_commit();
+        original
+    };
+    let preparation = if let Some(original) = &existing {
+        original.preparation.clone()
+    } else if let Some(accepted) = accepted_preparation {
+        Some(accepted)
+    } else {
+        #[cfg(feature = "skills-db")]
+        {
+            match catalogue {
+                Some(owner) => Some(
+                    owner
+                        .capture_task_preparation()
+                        .await
+                        .map_err(storage_io)?
+                        .original()
+                        .clone(),
+                ),
+                // Explicit legacy/non-global store profile; no invented ACK.
+                None => None,
+            }
+        }
+        #[cfg(not(feature = "skills-db"))]
+        {
+            None
+        }
+    };
     let candidate = ComponentRevisionDraft::from_json(&request.candidate_bytes)
         .map_err(|_| RecipeStoreError::Invalid("invalid immutable candidate revision".into()))?;
     let base = request.base.as_ref().map(reference).transpose()?;
@@ -190,9 +264,14 @@ async fn submit_inner(
         .iter()
         .map(reference)
         .collect::<Result<Vec<_>, _>>()?;
-    let draft = match (request.expected_previous_version, request.function_partner) {
-        (Some(head), Some(partner)) => {
-            let partner = match partner {
+    let partner = match request.function_partner {
+        Some(partner) => {
+            if request.expected_previous_version.is_none() {
+                return Err(RecipeStoreError::Invalid(
+                    "function review requires each changed allocation head".into(),
+                ));
+            }
+            Some(match partner {
                 ComponentFunctionReviewPartner::Changed {
                     candidate_bytes,
                     base,
@@ -211,8 +290,28 @@ async fn submit_inner(
                         reference: reference(&value)?,
                     }
                 }
-            };
-            ReviewSubmissionDraft::new_function(
+            })
+        }
+        None => None,
+    };
+    let draft = if let Some(preparation) = preparation {
+        ReviewSubmissionDraft::new_prepared(
+            id,
+            actor,
+            candidate,
+            base,
+            dependencies,
+            brassclaw_skills::review_submission_store::PreparedReviewContext {
+                expected_previous_version: request
+                    .expected_previous_version
+                    .unwrap_or_else(|| base.map_or(0, |b| b.version)),
+                partner: partner,
+                preparation: preparation,
+            },
+        )
+    } else {
+        match (request.expected_previous_version, partner) {
+            (Some(head), Some(partner)) => ReviewSubmissionDraft::new_function(
                 id,
                 actor,
                 candidate,
@@ -220,19 +319,27 @@ async fn submit_inner(
                 dependencies,
                 head,
                 partner,
-            )
+            ),
+            (Some(head), None) => ReviewSubmissionDraft::new_after_head(
+                id,
+                actor,
+                candidate,
+                base,
+                dependencies,
+                head,
+            ),
+            (None, None) => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
+            (None, Some(_)) => {
+                return Err(RecipeStoreError::Invalid(
+                    "function review requires allocation heads".into(),
+                ));
+            }
         }
-        (None, Some(_)) => {
-            return Err(RecipeStoreError::Invalid(
-                "function review requires each changed allocation head".into(),
-            ));
-        }
-        (Some(head), None) => {
-            ReviewSubmissionDraft::new_after_head(id, actor, candidate, base, dependencies, head)
-        }
-        (None, None) => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
     }
     .map_err(storage)?;
+    if let Some(original) = &existing {
+        draft.require_original(original).map_err(storage)?;
+    }
     #[cfg(feature = "skills-db")]
     let source_preparation = match catalogue {
         Some(owner) => owner
@@ -456,7 +563,18 @@ pub(crate) async fn get_with_catalogue(
     submission_id: &str,
     catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
-    get_inner(pool, submission_id, Some(&catalogue.pure_source_review)).await
+    let io = catalogue
+        .resource_store_settings
+        .snapshot()
+        .map_err(storage_io)?
+        .validate()
+        .map_err(storage_io)?;
+    tokio::time::timeout(
+        io.timeout,
+        get_inner(pool, submission_id, Some(&catalogue.pure_source_review)),
+    )
+    .await
+    .map_err(|_| storage_io("original inspection I/O deadline elapsed; outcome unresolved"))?
 }
 async fn get_inner(
     pool: &Arc<PgPool>,
@@ -466,10 +584,11 @@ async fn get_inner(
     >,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
     let id = identifier(submission_id)?;
-    let mut client = pool
-        .get()
-        .await
-        .map_err(|_| RecipeStoreError::Unavailable("review connection failed".into()))?;
+    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+        pool.get()
+            .await
+            .map_err(|_| RecipeStoreError::Unavailable("review connection failed".into()))?,
+    );
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -527,6 +646,7 @@ async fn get_inner(
     tx.commit()
         .await
         .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;
+    client.recycle_after_commit();
     Ok(ComponentReviewSubmissionView {
         receipt: retained_receipt,
         subject_bytes: retained.subject_bytes,
@@ -551,7 +671,7 @@ mod model_selection_tests;
 
 #[cfg(test)]
 #[path = "pg_function_review_submission_tests.rs"]
-mod function_tests;
+pub(crate) mod function_tests;
 
 #[cfg(test)]
 #[path = "original_queue_binding_tests.rs"]

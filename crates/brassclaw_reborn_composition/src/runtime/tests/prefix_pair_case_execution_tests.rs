@@ -204,7 +204,11 @@ async fn native_pair_case_recipe_checks_source_handoffs_and_actual_durable_nativ
         refs.push(revisions.retain_packaged_draft(draft).await.unwrap());
     }
     let all = revisions
-        .read_exact(&[ids.recipe, digest.recipe, encoding.recipe], &refs)
+        .read_exact(
+            &[ids.recipe, digest.recipe, encoding.recipe],
+            &refs,
+            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     let program = Arc::new(

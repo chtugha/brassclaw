@@ -23,6 +23,7 @@ use uuid::Uuid;
 /// Configuration transport only. The actual provider/model/prefix and isolated
 /// accounting owner are captured once before reserving an internal admission.
 pub(crate) struct ReviewSource {
+    pub catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
     pub preparation: brassclaw_monty_host::utility::UtilityLimits,
     pub provider: Option<Arc<SwappableLlmProvider>>,
     pub accountant: Option<Arc<dyn LoopModelBudgetAccountant>>,
@@ -315,7 +316,14 @@ async fn deliver(
             provider_id,
         )
     };
+    let preparation = source
+        .catalogue
+        .capture_task_preparation()
+        .await
+        .map_err(|_| "review_preparation_unavailable")?;
     let backend = Arc::new(Backend {
+        preparation,
+        resource_store: source.catalogue.resource_store_settings.clone(),
         pool: pool.clone(),
         source: source_id,
         attempt,

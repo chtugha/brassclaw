@@ -230,7 +230,16 @@ async fn native_python_contract_recipe_binds_complete_sealed_subject_and_rejects
     for draft in [&collector, &aggregate, &formatter, &recipe_draft] {
         references.push(store.stage(draft, 0).await.unwrap());
     }
-    let graph = Arc::new(store.read_exact(&[recipe], &references).await.unwrap());
+    let graph = Arc::new(
+        store
+            .read_exact(
+                &[recipe],
+                &references,
+                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            )
+            .await
+            .unwrap(),
+    );
     let program = prepare_retained_unbound_program(
         compile_retained_recipe(graph, recipe, "selected", WorkflowClass::Deterministic).unwrap(),
     )
