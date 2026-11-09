@@ -292,6 +292,17 @@ environment; an example string or parser pass is not behavioral evidence.
 
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
+**Latest bounded source/runtime checkpoint — 2026-11-09:** Run-23's corrected
+joint graph compiles without warnings and preserves all 1,376 tests, but actual
+common startup fails at receipt verification; no dependent execution acceptance
+is claimed. Source-reviewed `5922cba87` aligns F-01's actual variant producer and
+receipt-key normalization without changing oracles/readers. I-01's V210 qualified
+Source prerequisite is integrated through `7152f0e0a`, uncompiled/unrun; it is
+not complete own Q1/behavior/Q2 or general publication. J-01/V211 owns the next
+actual single-Pure-call/technical settled-Case primitive, with normal component
+steps and global hosting. Reuse these exact owners and retain the full remaining
+qualification/behavior/approval gates below.
+
 **Scoped progress, 2026-11-08:** Run-20 confirms genuine common installation
 startup and five E-01 ACK/cancellation/worker-death cases on `377ad1bec`. The
 originals/settings case exposed an unsupported test request (depth 65 above the

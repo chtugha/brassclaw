@@ -13,6 +13,43 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+**Run-23 and connected source checkpoint — 2026-11-09:** worker and complete
+six-library/four-integration test graph compile without warnings (0.823/623.518 s).
+Actual profiles/source/artifact/link checks pass: `__eh_frame` 12,842,716 bytes,
+`__unwind_info` 2,468,088 bytes; all 1,376 Composition names are accounted for.
+The first genuine common startup fails after 103.884 s with bootstrap
+`InvalidPortResult`; no dependent native cases run. Its correctly closed private
+PG rig leaves no claim available for later attribution. A deterministic F-01
+factory defect on this rejection path is source-proven: later variant result
+edges were renumbered while the associated receipt key was not, although the
+expected manifest renumbered both. Reviewed repair `5922cba87` shares their
+normalization and adds a real-consumer transport regression without relaxing
+oracles or the strict reader. Precise failed-run claim attribution and native
+success are not inferred from this source finding.
+
+I-01's complete Source slice and review corrections are source-reviewed,
+hash-verified and integrated through `7152f0e0a` (25 files). V210/outer selection
+`/2` carries the exact qualified W/checker/parser/worker/package pins. Authoring,
+original typed capture and Ready share one transaction; actual parser observations
+and H-01 structural confirmation are connected. Uncertain connection disposal,
+bounded one-write/fresh-readback with all run-index fields, same-snapshot proof
+reuse and genuine fault/smaller-limit/upgrade test sources are reviewed. This
+source remains uncompiled/unrun. A final common queued-authoring custody fix
+for classes 21/23 is with I-01. Cross-package historical qualification/image
+loading remains B2-06/07/09 work, not a schema-upgrade acceptance claim.
+
+J-01 now implements the reviewed registered single-Pure-invocation primitive
+and normal ToolSkill/Skill-code/independent encoder/private Harness Recipe under
+reserved V211. Same-global-worker/budget, native exception/context release and
+normal H-01 Harnesssuccess delivery lead only to a technical settled Case.
+No new non-UUID slot, Rust case loop, whole-task failure-delivery, general
+behavior/Q1/Q2/approval/publication is authorized by that package. Its source and
+acceptance remain pending; I-01's positive reader stays test-only until that
+real consumer is connected. All three full Bob plans remain open.
+
+Earlier scoped checkpoints follow; their dates and source/artifact scopes remain
+historical where superseded by this checkpoint.
+
 **Run-22 follow-up — 2026-11-09:** worker compilation passes in 0.881 s.
 The joint graph reaches production and test branches, then stops after 247.24 s:
 four E0425 sites share one missing H-01 test-runtime import; production reports

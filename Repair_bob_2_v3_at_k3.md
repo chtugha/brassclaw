@@ -357,6 +357,25 @@ valid, and no unsupported profile reaches matching before its readers exist.
 
 - [ ] **B2-06 — Update selection serialization/restoration and ordinary capture.**
 
+**Concrete remaining reader/cap inventory — 2026-11-09:** I-01's Source-only
+outer `/2` restores exact original capture under the current package's opaque
+F-01 handles. It does not load historical qualifications/native images across
+package replacement. Implement that missing historical owner/readback through
+B2-06/07/09 before claiming full retained support; never substitute today's
+handle or automatically rerun old work. Preserve old `/1` bytes.
+
+The existing `pg_review_submission` dependency gate (4,095) and
+`revision_store` snapshot limits (4,096 revisions, 67,108,864 bytes) remain actual
+fixed resource gates. In this existing shared reader/settings owner, replace
+arbitrary count/byte quotas with acknowledged whole-value/snapshot settings or
+existing applicable adjustable bounds, including DB/API/WebUI explanations and
+captured desired/effective revisions. Trace all submission/exact-read/restore/
+qualification callers and preserve original historical limits. Batch technical
+queries without truncating an otherwise eligible graph; source metadata or a
+new default constant is not completion. Intrinsic wire/type constraints remain
+explicitly distinct from adjustable resource quotas. Reuse the Simplified
+resource/settings owner, not a second catalogue or budget service.
+
 1. Update the actual engine selection constructor/parser, selected-program
    verifier, catalogue serializer/reloader, retained review preparation reader
    and DB format checks identified in B2-01. Keep parsing version-dispatched and

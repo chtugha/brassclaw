@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Qualified Pure Source review (validation pending)**: Connect exact shipped
+  checking-workflow qualification to authored class-22 submission, typed capture,
+  shared private Work and structural original confirmation. Add V210 with a
+  strict versioned preparation envelope; preserve prior bytes and scopes.
+  Share existing transaction connection custody, reconcile uncertain metadata
+  acknowledgement from exact originals and avoid duplicate proof reads within
+  one transaction. Source reviewed; native acceptance remains pending and no
+  general Pure approval is granted.
+- **Bootstrap fixture receipt identity (validation pending)**: Align later
+  variant producer IDs and their receipt-key inputs through one normalization.
+  Preserve strict result verification and add safe fixture failure context.
+  The preceding real startup failure remains recorded until rerun passes.
+
 - **Original proof transaction correction (validation pending)**: Share complete
   historical inventory-qualification checks with the caller's coherent snapshot,
   retaining genuine Turn settlement and pool-one-safe original reconciliation.
