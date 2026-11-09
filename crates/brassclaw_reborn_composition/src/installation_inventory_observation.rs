@@ -572,29 +572,34 @@ impl Context {
         Ok(Some((bytes, report)))
     }
     async fn read_original(&self) -> Result<Option<(String, bool)>, RebornBuildError> {
-        io::bounded(self.storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&self.pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(invalid)?;
-            let result = self.read_completed(&tx).await?;
-            if result.is_none()
-                && evidence::read_evidence(&tx, self.operation)
-                    .await?
-                    .is_some()
-            {
-                return Err(invalid(
-                    "installation original incomplete; reconcile without admission or replay",
-                ));
-            }
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(result)
-        })
+        io::bounded_for(
+            self.storage.as_ref(),
+            "installation_source_original",
+            self.operation,
+            async {
+                let mut client = io::EvidenceClient::acquire(&self.pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let result = self.read_completed(&tx).await?;
+                if result.is_none()
+                    && evidence::read_evidence(&tx, self.operation)
+                        .await?
+                        .is_some()
+                {
+                    return Err(invalid(
+                        "installation original incomplete; reconcile without admission or replay",
+                    ));
+                }
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(result)
+            },
+        )
         .await
     }
     async fn read_completed(
@@ -1165,22 +1170,27 @@ impl Context {
         };
         // Verify closed Admission/native facts before publishing the trusted
         // immutable past-Turn ACK. No caller JSON can reach this publisher.
-        io::bounded(self.storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&self.pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(invalid)?;
-            self.verify_closed_admission(&tx, &binding).await?;
-            self.verify_journal(&tx, &binding, &preterminal.native_journal)
-                .await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(())
-        })
+        io::bounded_for(
+            self.storage.as_ref(),
+            "installation_source_terminal_custody",
+            self.operation,
+            async {
+                let mut client = io::EvidenceClient::acquire(&self.pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                self.verify_closed_admission(&tx, &binding).await?;
+                self.verify_journal(&tx, &binding, &preterminal.native_journal)
+                    .await?;
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(())
+            },
+        )
         .await?;
         let completed_bytes = self.record(self.id("completed"), &completed)?;
         io::retain_record(
@@ -1248,8 +1258,10 @@ impl InternalRecipeSource for InstallationSource {
             .observe(receipt, selected, execution)
             .map_err(invalid)?;
             let (step, _) = self.context.parser.require_program(&self.context.program)?;
-            let native = io::bounded(
+            let native = io::bounded_for(
                 self.context.storage.as_ref(),
+                "installation_source_native_original",
+                self.context.operation,
                 NativeInventoryObservation {
                     pool: &self.context.pool,
                     host: &self.host,
@@ -1261,20 +1273,26 @@ impl InternalRecipeSource for InstallationSource {
                 .verify(execution, &results[step]),
             )
             .await?;
-            let journal = io::bounded(self.context.storage.as_ref(), async {
-                let mut client = io::EvidenceClient::acquire(&self.context.pool).await?;
-                let tx = client
-                    .build_transaction()
-                    .isolation_level(IsolationLevel::RepeatableRead)
-                    .read_only(true)
-                    .start()
-                    .await
-                    .map_err(invalid)?;
-                let record = read_journal(&tx, self.binding.run_id, &self.context.program).await?;
-                tx.commit().await.map_err(invalid)?;
-                client.recycle_after_commit();
-                Ok(record)
-            })
+            let journal = io::bounded_for(
+                self.context.storage.as_ref(),
+                "installation_source_journal",
+                self.context.operation,
+                async {
+                    let mut client = io::EvidenceClient::acquire(&self.context.pool).await?;
+                    let tx = client
+                        .build_transaction()
+                        .isolation_level(IsolationLevel::RepeatableRead)
+                        .read_only(true)
+                        .start()
+                        .await
+                        .map_err(invalid)?;
+                    let record =
+                        read_journal(&tx, self.binding.run_id, &self.context.program).await?;
+                    tx.commit().await.map_err(invalid)?;
+                    client.recycle_after_commit();
+                    Ok(record)
+                },
+            )
             .await?;
             let steps = execution
                 .observations()

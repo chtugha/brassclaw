@@ -263,8 +263,10 @@ impl Context {
             "structural-checker-fixture:{}:{}",
             self.operation_id, suite.variant
         );
-        let admitted = io::bounded(
+        let admitted = io::bounded_for(
             self.storage.as_ref(),
+            "checker_fixture_admission",
+            self.claim.root.uuid,
             crate::bootstrap_validation::admit(
                 self.pool.clone(),
                 "structural-checker-own-function",
@@ -384,16 +386,20 @@ impl Context {
         };
         let close = match proof.get() {
             Some(proof) => {
-                io::bounded(
+                io::bounded_for(
                     self.storage.as_ref(),
+                    "checker_fixture_quiescent_close",
+                    self.claim.root.uuid,
                     crate::bootstrap_validation::settle_quiescent_closed(
                         &self.pool, &admitted, proof,
                     ),
                 )
                 .await
             }
-            None => io::bounded(
+            None => io::bounded_for(
                 self.storage.as_ref(),
+                "checker_fixture_stop_close",
+                self.claim.root.uuid,
                 crate::bootstrap_validation::settle_closed(&admitted),
             )
             .await

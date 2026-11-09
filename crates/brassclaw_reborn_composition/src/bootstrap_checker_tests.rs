@@ -7,6 +7,22 @@ use secrecy::ExposeSecret;
 
 tokio::task_local! { static FAULT: Fault; }
 tokio::task_local! { static RACE: Arc<tokio::sync::Barrier>; }
+tokio::task_local! {
+    static ORIGINAL_WALKS: Arc<std::sync::Mutex<BTreeMap<Uuid, usize>>>;
+}
+pub(super) fn record_original_walk(operation: Uuid) {
+    let _ = ORIGINAL_WALKS.try_with(|counts| {
+        *counts.lock().unwrap().entry(operation).or_default() += 1;
+    });
+}
+pub(super) async fn audit_original_walks<T>(
+    operation: impl std::future::Future<Output = T>,
+) -> (T, BTreeMap<Uuid, usize>) {
+    let counts = Arc::new(std::sync::Mutex::new(BTreeMap::new()));
+    let result = ORIGINAL_WALKS.scope(counts.clone(), operation).await;
+    let observed = counts.lock().unwrap().clone();
+    (result, observed)
+}
 pub(super) async fn before_new_intent(context: &Context) {
     if context.claim.root.uuid == fixtures::receipt_id() {
         if let Ok(barrier) = RACE.try_with(Arc::clone) {

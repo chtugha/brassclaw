@@ -220,6 +220,10 @@ struct Context {
     worker: Arc<PackagedExecutableImage>,
     root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
     claim: Claim,
+    // Derived once from the finalized immutable claim/profile, never a cached
+    // validation result or a substitute for original database readback.
+    claim_checksum: String,
+    envelope_components: Vec<Value>,
     profile: Option<Arc<pure::Profile>>,
     reservation: RecordRef,
     operation_id: Uuid,
@@ -228,6 +232,12 @@ struct Context {
     programs: BTreeMap<String, Arc<RetainedToolProgram>>,
 }
 impl Context {
+    fn claim_bytes(&self) -> Result<String, RebornBuildError> {
+        match &self.profile {
+            Some(profile) => profile.claim_bytes(&self.claim),
+            None => serde_json::to_string(&self.claim).map_err(invalid),
+        }
+    }
     fn evidence_components(&self) -> Result<Vec<Value>, RebornBuildError> {
         match &self.profile {
             Some(profile) => profile
@@ -238,12 +248,6 @@ impl Context {
             None => Ok(vec![
                 serde_json::to_value(&self.claim.root).map_err(invalid)?,
             ]),
-        }
-    }
-    fn claim_bytes(&self) -> Result<String, RebornBuildError> {
-        match &self.profile {
-            Some(profile) => profile.claim_bytes(&self.claim),
-            None => serde_json::to_string(&self.claim).map_err(invalid),
         }
     }
     fn format(&self, stage: &str) -> String {
@@ -271,8 +275,8 @@ impl Context {
             id,
             kind,
             success,
-            &evidence::checksum(&self.claim_bytes()?),
-            &self.evidence_components()?,
+            &self.claim_checksum,
+            &self.envelope_components,
             serde_json::to_value(report).map_err(invalid)?,
         ))
     }
@@ -536,6 +540,8 @@ impl Context {
         Ok(reference(stage("completed"), &completed_bytes))
     }
     async fn qualified(&self, tx: &Transaction<'_>) -> Result<Qualified, RebornBuildError> {
+        #[cfg(test)]
+        tests::record_original_walk(self.operation_id);
         if let Some(profile) = &self.profile {
             profile.verify_native_inputs(tx).await?;
         }
@@ -548,6 +554,12 @@ impl Context {
         .map_err(invalid)?;
         let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
         let claim_bytes = self.claim_bytes()?;
+        let claim_checksum = evidence::checksum(&claim_bytes);
+        if claim_checksum != self.claim_checksum
+            || self.evidence_components()? != self.envelope_components
+        {
+            return Err(invalid("checker immutable claim/envelope identity differs"));
+        }
         if reservation.format != self.format("reservation")
             || reference(self.reservation.id, &reservation_bytes) != self.reservation
             || reservation.claim != strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?
@@ -560,7 +572,7 @@ impl Context {
                 self.reservation.id,
                 "behavior",
                 false,
-                &evidence::checksum(&claim_bytes),
+                &claim_checksum,
                 &[serde_json::to_value(&self.claim.root).map_err(invalid)?],
                 serde_json::to_value(&reservation).map_err(invalid)?,
             ) != reservation_bytes
@@ -710,6 +722,12 @@ impl CheckedStructuralHelpers {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<(), RebornBuildError> {
+        self.verify_with_receipt(tx).await.map(|_| ())
+    }
+    async fn verify_with_receipt(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<RecordRef, RebornBuildError> {
         let expected = std::iter::once(fixtures::receipt_id())
             .chain(
                 brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES
@@ -742,7 +760,7 @@ impl CheckedStructuralHelpers {
                 support = Some(proof);
             }
         }
-        Ok(())
+        support.ok_or_else(|| invalid("structural receipt prerequisite missing"))
     }
 }
 
@@ -873,20 +891,28 @@ async fn qualify_specs(
                 continue;
             }
             refs.push(
-                io::bounded(storage.as_ref(), async {
-                    store.retain_packaged_draft(draft).await.map_err(invalid)
-                })
+                io::bounded_for(
+                    storage.as_ref(),
+                    "checker_component_retain",
+                    draft.uuid(),
+                    async { store.retain_packaged_draft(draft).await.map_err(invalid) },
+                )
                 .await?,
             );
         }
         // A support-only graph must not retain an unrelated candidate identity.
         let snapshot = Arc::new(
-            io::bounded(storage.as_ref(), async {
-                store
-                    .read_exact(&[recipe.uuid()], &refs)
-                    .await
-                    .map_err(invalid)
-            })
+            io::bounded_for(
+                storage.as_ref(),
+                "checker_fixture_snapshot",
+                recipe.uuid(),
+                async {
+                    store
+                        .read_exact(&[recipe.uuid()], &refs)
+                        .await
+                        .map_err(invalid)
+                },
+            )
             .await?,
         );
         let mut programs = BTreeMap::new();
@@ -962,6 +988,15 @@ async fn qualify_specs(
             Some(profile) => profile.claim_bytes(&claim)?,
             None => serde_json::to_string(&claim).map_err(invalid)?,
         };
+        let claim_checksum = evidence::checksum(&claim_bytes);
+        let envelope_components = match &profile {
+            Some(profile) => profile
+                .components(&claim)?
+                .iter()
+                .map(|r| serde_json::to_value(r).map_err(invalid))
+                .collect::<Result<Vec<_>, _>>()?,
+            None => vec![serde_json::to_value(&claim.root).map_err(invalid)?],
+        };
         let domain = if profile.is_some() {
             "pure-checker"
         } else {
@@ -969,11 +1004,7 @@ async fn qualify_specs(
         };
         let claim_id = Uuid::new_v5(
             &candidate.uuid(),
-            format!(
-                "{domain}-reservation/1:{}",
-                evidence::checksum(&claim_bytes)
-            )
-            .as_bytes(),
+            format!("{domain}-reservation/1:{}", claim_checksum).as_bytes(),
         );
         let offered = Reservation {
             format: format!("{domain}-reservation/1"),
@@ -985,7 +1016,7 @@ async fn qualify_specs(
             claim_id,
             "behavior",
             false,
-            &evidence::checksum(&claim_bytes),
+            &claim_checksum,
             &components,
             serde_json::to_value(&offered).map_err(invalid)?,
         );
@@ -1013,7 +1044,7 @@ async fn qualify_specs(
                 claim_id,
                 "behavior",
                 false,
-                &evidence::checksum(&claim_bytes),
+                &claim_checksum,
                 &components,
                 serde_json::to_value(&reservation).map_err(invalid)?,
             ) != reservation_bytes
@@ -1042,12 +1073,15 @@ async fn qualify_specs(
             }
             None => offered_operation,
         };
+        drop(claim_bytes);
         let mut context = Context {
             pool: pool.clone(),
             storage: storage.clone(),
             worker: worker.clone(),
             root: root.clone(),
             claim,
+            claim_checksum,
+            envelope_components,
             profile,
             reservation: reservation_ref,
             operation_id,
@@ -1065,7 +1099,7 @@ async fn qualify_specs(
         }
         let context = Arc::new(context);
         if existing.is_some() {
-            let original = io::bounded(storage.as_ref(), async {
+            let original = io::bounded_for(storage.as_ref(), "checker_published_original", context.claim.root.uuid, async {
                 let mut client = io::EvidenceClient::acquire(&pool).await?;
                 let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
                     .read_only(true).start().await.map_err(invalid)?;
@@ -1095,20 +1129,25 @@ async fn qualify_specs(
         }
         // Existing complete native originals can finish publication without VM
         // execution; incomplete intent fails here and cannot restart fixtures.
-        let qualified = io::bounded(storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(invalid)?;
-            let qualified = context.qualified(&tx).await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(qualified)
-        })
+        let qualified = io::bounded_for(
+            storage.as_ref(),
+            "checker_complete_original",
+            context.claim.root.uuid,
+            async {
+                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let qualified = context.qualified(&tx).await?;
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(qualified)
+            },
+        )
         .await?;
         let qualified = context.qualification_value(&qualified)?;
         for (kind, id) in [
@@ -1145,26 +1184,39 @@ async fn qualify_specs(
         let approval = context.approval_bytes()?;
         let declaration = PureComponentApprovalDeclaration::from_json(&approval, REVISION_LIMITS)
             .map_err(invalid)?;
-        let write = io::bounded(storage.as_ref(), async {
-            crate::pg_pure_component_approval::record_pure_component_approval(&pool, &declaration)
+        let write = io::bounded_for(
+            storage.as_ref(),
+            "checker_approval_write",
+            context.claim.root.uuid,
+            async {
+                crate::pg_pure_component_approval::record_pure_component_approval(
+                    &pool,
+                    &declaration,
+                )
                 .await
                 .map_err(invalid)
-        })
+            },
+        )
         .await;
-        let readback = io::bounded(storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(invalid)?;
-            let proof = context.verify_approval(&tx).await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(proof)
-        })
+        let readback = io::bounded_for(
+            storage.as_ref(),
+            "checker_approval_readback",
+            context.claim.root.uuid,
+            async {
+                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let proof = context.verify_approval(&tx).await?;
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(proof)
+            },
+        )
         .await;
         let proof = match readback {
             Ok(proof) => proof,

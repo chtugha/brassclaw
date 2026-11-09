@@ -88,7 +88,13 @@ impl Subject {
         self: &Arc<Self>,
         pool: &Arc<PgPool>,
     ) -> Result<Option<InventoryQualification>, RebornBuildError> {
-        primitives::bounded(self.storage.as_ref(), self.read_original(pool)).await
+        primitives::bounded_for(
+            self.storage.as_ref(),
+            "inventory_original_readback",
+            self.completion,
+            self.read_original(pool),
+        )
+        .await
     }
     async fn read_original(
         self: &Arc<Self>,

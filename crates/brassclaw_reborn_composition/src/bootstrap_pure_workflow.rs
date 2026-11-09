@@ -348,22 +348,27 @@ pub(crate) async fn qualify_pure_workflow(
     checkers.require_program(&base.program)?;
     // Complete the owner's two-phase custody before acquiring W's RR client.
     base.parser.proof.verify(&base.pool).await?;
-    let prerequisites = io::bounded(base.storage.as_ref(), async {
-        let mut client = io::EvidenceClient::acquire(&base.pool).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(invalid)?;
-        observations.verify_in_transaction(&tx).await?;
-        let proofs = checkers.proof_references(&tx).await?;
-        base.parser.proof.verify_in_transaction(&tx).await?;
-        tx.commit().await.map_err(invalid)?;
-        client.recycle_after_commit();
-        Ok(proofs)
-    })
+    let prerequisites = io::bounded_for(
+        base.storage.as_ref(),
+        "pure_workflow_prerequisites",
+        base.program.inputs().instruction().recipe().uuid,
+        async {
+            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            observations.verify_in_transaction(&tx).await?;
+            let proofs = checkers.proof_references(&tx).await?;
+            base.parser.proof.verify_in_transaction(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(proofs)
+        },
+    )
     .await?;
     let revisions = PgComponentRevisionStore::new(base.pool.clone());
     let mut cases = Vec::new();
@@ -371,21 +376,31 @@ pub(crate) async fn qualify_pure_workflow(
         let mut refs = Vec::new();
         for draft in std::iter::once(&fixture.root).chain(&fixture.dependencies) {
             refs.push(
-                io::bounded(base.storage.as_ref(), async {
-                    revisions
-                        .retain_packaged_draft(draft)
-                        .await
-                        .map_err(invalid)
-                })
+                io::bounded_for(
+                    base.storage.as_ref(),
+                    "pure_workflow_fixture_retain",
+                    draft.uuid(),
+                    async {
+                        revisions
+                            .retain_packaged_draft(draft)
+                            .await
+                            .map_err(invalid)
+                    },
+                )
                 .await?,
             );
         }
-        let graph = io::bounded(base.storage.as_ref(), async {
-            revisions
-                .read_exact(&[fixture.root.uuid()], &refs)
-                .await
-                .map_err(invalid)
-        })
+        let graph = io::bounded_for(
+            base.storage.as_ref(),
+            "pure_workflow_fixture_snapshot",
+            fixture.root.uuid(),
+            async {
+                revisions
+                    .read_exact(&[fixture.root.uuid()], &refs)
+                    .await
+                    .map_err(invalid)
+            },
+        )
         .await?;
         let candidate = graph.revisions()[&fixture.root.uuid()].reference();
         let mut package = base.subject.package_context().clone();
@@ -395,57 +410,67 @@ pub(crate) async fn qualify_pure_workflow(
             store::pure_fixture_subject_record(&graph, candidate, package, REVISION_LIMITS)
                 .map_err(invalid)?;
         retain_draft(&base.pool, base.storage.as_ref(), &subject_draft).await?;
-        let (subject, selection) = io::bounded(base.storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
+        let (subject, selection) = io::bounded_for(
+            base.storage.as_ref(),
+            "pure_workflow_subject_read",
+            subject_draft.reference().id,
+            async {
+                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let subject = store::read_subject_in_transaction(
+                    &tx,
+                    subject_draft.reference().id,
+                    REVISION_LIMITS,
+                )
                 .await
+                .map_err(invalid)?
+                .ok_or_else(|| invalid("pure fixture original subject missing"))?;
+                let selection = store::selection_record(
+                    &subject,
+                    base.selection.validator_bytes(),
+                    store::InstallationProfile::Pure,
+                    REVISION_LIMITS,
+                )
                 .map_err(invalid)?;
-            let subject = store::read_subject_in_transaction(
-                &tx,
-                subject_draft.reference().id,
-                REVISION_LIMITS,
-            )
-            .await
-            .map_err(invalid)?
-            .ok_or_else(|| invalid("pure fixture original subject missing"))?;
-            let selection = store::selection_record(
-                &subject,
-                base.selection.validator_bytes(),
-                store::InstallationProfile::Pure,
-                REVISION_LIMITS,
-            )
-            .map_err(invalid)?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok((Arc::new(subject), selection))
-        })
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok((Arc::new(subject), selection))
+            },
+        )
         .await?;
         retain_draft(&base.pool, base.storage.as_ref(), &selection).await?;
-        let selection = io::bounded(base.storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
+        let selection = io::bounded_for(
+            base.storage.as_ref(),
+            "pure_workflow_selection_read",
+            selection.reference().id,
+            async {
+                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let saved = store::read_selection_in_transaction(
+                    &tx,
+                    selection.reference().id,
+                    REVISION_LIMITS,
+                )
                 .await
-                .map_err(invalid)?;
-            let saved = store::read_selection_in_transaction(
-                &tx,
-                selection.reference().id,
-                REVISION_LIMITS,
-            )
-            .await
-            .map_err(invalid)?
-            .ok_or_else(|| invalid("pure fixture original selection missing"))?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(Arc::new(saved))
-        })
+                .map_err(invalid)?
+                .ok_or_else(|| invalid("pure fixture original selection missing"))?;
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(Arc::new(saved))
+            },
+        )
         .await?;
         let operation = Uuid::new_v5(&selection.reference().id, b"pure-checker-workflow-original");
         let context = Arc::new(Context {
@@ -509,20 +534,25 @@ pub(crate) async fn qualify_pure_workflow(
                     .0
             }
         };
-        let report = io::bounded(base.storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
-            let tx = client
-                .build_transaction()
-                .isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(invalid)?;
-            let report = checked.report_value(&tx).await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(report)
-        })
+        let report = io::bounded_for(
+            base.storage.as_ref(),
+            "pure_workflow_case_report",
+            checked.context.subject.candidate().uuid,
+            async {
+                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let report = checked.report_value(&tx).await?;
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                Ok(report)
+            },
+        )
         .await?;
         checked.report = checked.encode(checked.report_id(), false, &report);
         io::retain_record(

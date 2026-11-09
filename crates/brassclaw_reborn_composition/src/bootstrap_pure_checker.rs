@@ -452,19 +452,22 @@ impl CheckedPureCheckerClosure {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<Vec<Value>, RebornBuildError> {
-        self.verify_in_transaction(tx).await?;
-        let mut proofs = Vec::new();
-        for context in &self.contexts {
-            proofs.push(serde_json::to_value(context.verify_final(tx).await?).map_err(invalid)?);
-        }
-        Ok(proofs)
+        self.verified_references(tx).await
     }
     pub(crate) async fn verify_in_transaction(
         &self,
         tx: &Transaction<'_>,
     ) -> Result<(), RebornBuildError> {
+        self.verified_references(tx).await.map(|_| ())
+    }
+    // References escape only after every predicate in this complete invocation
+    // has passed under the supplied snapshot. Nothing is cached between calls.
+    async fn verified_references(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<Vec<Value>, RebornBuildError> {
         evidence::require_coherent(tx).await?;
-        self.structural.verify_in_transaction(tx).await?;
+        let original = self.structural.verify_with_receipt(tx).await?;
         let expected = [
             encoder_id(),
             reader_id(),
@@ -482,13 +485,6 @@ impl CheckedPureCheckerClosure {
         if self.contexts.len() != expected.len() {
             return Err(invalid("complete own pure checker closure required"));
         }
-        let original = self
-            .structural
-            .contexts
-            .first()
-            .ok_or_else(|| invalid("structural receipt prerequisite missing"))?
-            .verify_final(tx)
-            .await?;
         let mut previous: Vec<(&Profile, RecordRef)> = Vec::new();
         for (context, subject) in self.contexts.iter().zip(expected) {
             let profile = context
@@ -525,7 +521,10 @@ impl CheckedPureCheckerClosure {
             }
             previous.push((profile, context.verify_final(tx).await?));
         }
-        Ok(())
+        previous
+            .into_iter()
+            .map(|(_, proof)| serde_json::to_value(proof).map_err(invalid))
+            .collect()
     }
 }
 
@@ -535,26 +534,25 @@ pub(crate) async fn qualify(
 ) -> Result<CheckedPureCheckerClosure, RebornBuildError> {
     // E01 remains an actual prerequisite. Source presence or a caller flag cannot
     // manufacture its checked completion.
-    let receipt = io::bounded(base.storage.as_ref(), async {
-        let mut client = io::EvidenceClient::acquire(&base.pool).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(invalid)?;
-        prerequisites.verify_in_transaction(&tx).await?;
-        let receipt = prerequisites
-            .contexts
-            .first()
-            .ok_or_else(|| invalid("structural receipt prerequisite missing"))?
-            .verify_final(&tx)
-            .await?;
-        tx.commit().await.map_err(invalid)?;
-        client.recycle_after_commit();
-        Ok(receipt)
-    })
+    let receipt = io::bounded_for(
+        base.storage.as_ref(),
+        "pure_checker_prerequisites",
+        fixtures::receipt_id(),
+        async {
+            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            let receipt = prerequisites.verify_with_receipt(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(receipt)
+        },
+    )
     .await?;
     let mut specs = cases::specs(&base).await?;
     for spec in &mut specs {

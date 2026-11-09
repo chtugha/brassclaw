@@ -3,7 +3,7 @@
 use super::*;
 use crate::bootstrap_evidence::io::require_record;
 pub(super) use crate::bootstrap_evidence::io::{
-    EvidenceClient, bounded, retain_new_intent, retain_record,
+    EvidenceClient, bounded, bounded_for, retain_new_intent, retain_record,
 };
 use brassclaw_authorization::{
     InstanceToolPolicyError, InstanceToolPolicySource, InstanceToolRule,

@@ -367,7 +367,66 @@ async fn native_pure_checker_subjects_keep_private_tuple_returns_and_original_ty
         .start()
         .await
         .unwrap();
-    proof.verify_in_transaction(&tx).await.unwrap();
+    let expected_walks = proof
+        .structural
+        .contexts
+        .iter()
+        .chain(&proof.contexts)
+        .map(|context| (context.operation_id, 1))
+        .collect::<BTreeMap<_, _>>();
+    let (references, walks) =
+        super::super::tests::audit_original_walks(proof.proof_references(&tx)).await;
+    let references = references.unwrap();
+    assert_eq!(
+        walks, expected_walks,
+        "each complete original is verified once in this invocation"
+    );
+    let (second, walks) =
+        super::super::tests::audit_original_walks(proof.verify_in_transaction(&tx)).await;
+    second.unwrap();
+    assert_eq!(
+        walks, expected_walks,
+        "a separate invocation must perform every check again"
+    );
+    let mut expected_references = Vec::new();
+    for context in &proof.contexts {
+        let id = if context.profile.as_ref().unwrap().approves_function() {
+            context.id("approval")
+        } else {
+            context.id("behavior")
+        };
+        let bytes = if context.profile.as_ref().unwrap().approves_function() {
+            let row = tx.query_one("SELECT approval_bytes,checksum FROM reborn_pure_component_approvals WHERE approval_id=$1", &[&id]).await.unwrap();
+            let bytes: String = row.get(0);
+            assert_eq!(evidence::checksum(&bytes), row.get::<_, String>(1));
+            bytes
+        } else {
+            evidence::read_evidence(&tx, id).await.unwrap().unwrap()
+        };
+        expected_references.push(json!(reference(id, &bytes)));
+    }
+    assert_eq!(references, expected_references);
+    for context in proof.structural.contexts.iter().chain(&proof.contexts) {
+        let fresh_claim = context.claim_bytes().unwrap();
+        let checksum = evidence::checksum(&fresh_claim);
+        let components = context.evidence_components().unwrap();
+        assert_eq!(context.claim_checksum, checksum);
+        assert!(context.envelope_components == components);
+        let id = context.id("source");
+        let (bytes, report) = context
+            .read::<Value>(&tx, id, "behavior", false)
+            .await
+            .unwrap()
+            .unwrap();
+        // The former per-record algorithm is the wire-compatibility oracle.
+        // Comparing actual stored originals avoids treating a cached digest as
+        // proof of either record integrity or a successful native execution.
+        let legacy = evidence::system_record(id, "behavior", false, &checksum, &components, report);
+        assert!(
+            bytes == legacy,
+            "immutable envelope caching changed original canonical bytes"
+        );
+    }
     assert_eq!(proof.contexts.len(), 12);
     for context in &proof.contexts {
         let profile = context.profile.as_ref().unwrap();
@@ -439,6 +498,23 @@ async fn native_pure_checker_subjects_keep_private_tuple_returns_and_original_ty
     assert_eq!(tx.query_one("SELECT count(*) FROM reborn_component_review_evidence WHERE evidence_bytes::jsonb #>> '{report,format}'='pure-checker-workflow-report/1'",&[]).await.unwrap().get::<_,i64>(0),1);
     tx.commit().await.unwrap();
     drop(client);
+    let foreign = crate::runtime::test_pg::pg_rig().await;
+    let mut foreign_client = foreign.pool.get().await.unwrap();
+    let foreign_tx = foreign_client
+        .build_transaction()
+        .isolation_level(IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    assert!(
+        matches!(proof.proof_references(&foreign_tx).await,
+        Err(RebornBuildError::InvalidConfig { reason }) if reason == "checker original reservation missing"),
+        "a real opaque proof cannot supply success in another empty migrated database snapshot"
+    );
+    foreign_tx.commit().await.unwrap();
+    drop(foreign_client);
+    drop(foreign);
     assert_eq!(
         before,
         counts(&rig.pool).await,
