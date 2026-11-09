@@ -56,10 +56,32 @@ impl PgMontyAdmission {
         pool: &PgPool,
         completion: &crate::global_monty_driver::SettledInternalCompletion,
     ) -> Result<(), AgentLoopDriverError> {
+        match Self::private_delivery_metadata(pool, completion, true).await {
+            Ok(()) => Ok(()),
+            Err(primary) => {
+                // One fresh coherent readback only. A concurrent same-original
+                // INSERT or lost COMMIT ACK never retries native settlement.
+                Self::private_delivery_metadata(pool, completion, false)
+                    .await
+                    .map_err(|_| primary)
+            }
+        }
+    }
+    async fn private_delivery_metadata(
+        pool: &PgPool,
+        completion: &crate::global_monty_driver::SettledInternalCompletion,
+        write: bool,
+    ) -> Result<(), AgentLoopDriverError> {
         let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
             .await
             .map_err(|_| failed("private_delivery_database_failed"))?;
-        let tx = client.transaction().await.map_err(database)?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(!write)
+            .start()
+            .await
+            .map_err(database)?;
         let Some(original) = Self::verify_private_live_completion(&tx, completion).await? else {
             return Err(invalid());
         };
@@ -78,10 +100,12 @@ impl PgMontyAdmission {
         };
         let bytes = serde_json::to_string(&record).map_err(|_| invalid())?;
         let checksum = digest(&bytes);
-        tx.execute("INSERT INTO brassclaw_monty_private_deliveries(work_id,run_id,terminal_checksum,delivery_bytes,checksum)
+        if write {
+            tx.execute("INSERT INTO brassclaw_monty_private_deliveries(work_id,run_id,terminal_checksum,delivery_bytes,checksum)
             VALUES($1,$2,$3,$4,$5) ON CONFLICT(work_id) DO NOTHING",
             &[&record.work_id,&record.run_id,&&terminal_checksum[..],&bytes,&&checksum[..]])
             .await.map_err(database)?;
+        }
         let row = tx
             .query_one(
                 "SELECT delivery_bytes,checksum FROM brassclaw_monty_private_deliveries

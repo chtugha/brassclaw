@@ -453,7 +453,13 @@ pub(crate) async fn run_q1_validation_retained(
     let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
         .await
         .map_err(|_| Q1Error::Admission("review confirmation unavailable".into()))?;
-    let tx = client.transaction().await.map_err(q1_db)?;
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .map_err(q1_db)?;
     let original = crate::pg_monty_admission::PgMontyAdmission::verify_private_live_completion(
         &tx,
         &completion,
@@ -461,12 +467,19 @@ pub(crate) async fn run_q1_validation_retained(
     .await
     .map_err(|error| Q1Error::Admission(error.to_string()))?
     .ok_or_else(|| Q1Error::Admission("validator original missing".into()))?;
-    crate::review_work_confirmation::confirm(&tx, submission_id, original.request().context())
-        .await
-        .map_err(|error| Q1Error::Admission(error.to_string()))?
-        .ok_or_else(|| Q1Error::Admission("validator delivery missing".into()))?;
+    let context = original.request().context().clone();
     tx.commit().await.map_err(q1_db)?;
     client.recycle_after_commit();
+    drop(client);
+    let policy = preparation.process.response_timeout;
+    tokio::time::timeout(
+        policy,
+        crate::review_work_confirmation::confirm_original(pool, submission_id, &context),
+    )
+    .await
+    .map_err(|_| Q1Error::Admission("review confirmation deadline elapsed".into()))?
+    .map_err(|error| Q1Error::Admission(error.to_string()))?
+    .ok_or_else(|| Q1Error::Admission("validator delivery missing".into()))?;
     if verdict.succeeded {
         Ok(Q1Outcome::StructuralObserved)
     } else {

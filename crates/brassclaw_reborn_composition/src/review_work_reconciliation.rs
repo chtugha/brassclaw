@@ -88,11 +88,11 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
             *cursor = Some((row.get(0), id));
             let result=tokio::time::timeout(deadline,async {
                 let mut client=crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool).await.map_err(|_|unavailable())?;
-                // Immutable original records plus locked queue CAS provide
-                // coherence; ReadCommitted can see an identical prior apply
-                // after waiting on its original-ID serialization lock.
-                let tx=client.transaction().await.map_err(|_|unavailable())?;
+                let tx=client.build_transaction()
+                    .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                    .read_only(true).start().await.map_err(|_|unavailable())?;
                 let view=inspect(&tx,id).await?;
+                let mut confirmation_context=None;
                 if view.delivery_checksum.is_some() && view.confirmation_checksum.is_none() {
                     let row=tx.query_one("SELECT private_request_bytes FROM brassclaw_turns WHERE validator_submission_id=$1 AND record_kind='private_work'",&[&id]).await.map_err(|_|unavailable())?;
                     let request:PrivateWorkRequest=serde_json::from_str(row.get(0)).map_err(|_|invalid())?;
@@ -100,12 +100,16 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
                     // visible but cannot be adopted by this worker.
                     let context=request.context();
                     if context.tenant_id==self.context.tenant_id && context.agent_id==self.context.agent_id && context.project_id==self.context.project_id {
-                        crate::review_work_confirmation::confirm(&tx,id,context).await?;
+                        confirmation_context=Some(context.clone());
                     }
                 }
                 tracing::debug!(submission_id=%id,status=?view.status,"original review work inspected");
                 tx.commit().await.map_err(|_|unavailable())?;
                 client.recycle_after_commit();
+                drop(client);
+                if let Some(context)=confirmation_context {
+                    crate::review_work_confirmation::confirm_original(&self.pool,id,&context).await?;
+                }
                 Ok(())
             }).await.unwrap_or_else(|_|Err(unavailable()));
             if let Err(error) = result {

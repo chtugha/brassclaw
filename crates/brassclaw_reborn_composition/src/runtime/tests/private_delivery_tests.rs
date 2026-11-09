@@ -333,8 +333,8 @@ async fn private_delivery_lost_commit_ack_does_not_reexecute_source_compiler() {
         tokio::time::timeout(timeout(&runtime).await, waiter.wait())
             .await
             .unwrap()
-            .is_err(),
-        "the live caller must observe the actual lost acknowledgement"
+            .is_ok(),
+        "fresh coherent readback must reconcile the actual lost COMMIT acknowledgement"
     );
     assert_eq!(transport.cut_count(), 1);
     let detail =
@@ -409,7 +409,12 @@ async fn original_review_discovery_never_fills_missing_pins_or_strands_later_ori
     );
     for id in ids {
         let mut client = rig.pool.get().await.unwrap();
-        let tx = client.transaction().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
         let state = crate::review_work_reconciliation::inspect(&tx, id)
             .await
             .unwrap();
@@ -511,6 +516,41 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
         .unwrap();
     let request: brassclaw_turns::private_work::PrivateWorkRequest =
         serde_json::from_str(original.get(0)).unwrap();
+    let subject_actor = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT actor FROM reborn_component_review_submissions WHERE submission_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get::<_, String>(0);
+    assert_ne!(
+        subject_actor, scope.user_id,
+        "operator actor and storage owner must actually differ"
+    );
+    assert_eq!(
+        request.context().actor.as_ref().unwrap().user_id.as_str(),
+        subject_actor
+    );
+    // Genuine owner-authored component plus independently authenticated original
+    // operator; changing only execution actor still fails closed.
+    let mut foreign = request.context().clone();
+    foreign.actor = Some(brassclaw_turns::TurnActor::new(
+        brassclaw_host_api::UserId::new("h01-foreign-review-operator").unwrap(),
+    ));
+    assert!(
+        tokio::time::timeout(
+            timeout(&runtime).await,
+            crate::review_work_confirmation::confirm_original(&rig.pool, id, &foreign)
+        )
+        .await
+        .unwrap()
+        .is_err()
+    );
     let before = counts(&rig.pool, id).await;
     assert_eq!(before[3], 1);
     rig.pool.get().await.unwrap().batch_execute("DROP TRIGGER h01_hold_confirmation ON reborn_component_review_work_confirmations; DROP FUNCTION h01_hold_confirmation();").await.unwrap();
@@ -543,7 +583,12 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
         .unwrap();
     {
         let mut client = rig.pool.get().await.unwrap();
-        let tx = client.transaction().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
         assert!(matches!(
             crate::review_work_reconciliation::inspect(&tx, id)
                 .await
@@ -587,15 +632,45 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&transport.pool)
         .await
         .unwrap();
-    let tx = client.transaction().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
     let expected = crate::review_work_confirmation::confirm(&tx, id, request.context())
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        tx.commit().await.is_err(),
-        "lose the actual confirmation COMMIT acknowledgement"
+    let leader_pid = tx
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get::<_, i32>(0);
+    // A genuine concurrent confirmer opens RR before waiting on the original's
+    // advisory lock. Its stale snapshot must fail, then reconcile in a fresh
+    // coherent read-only transaction after the leader commits.
+    let contender = tokio::time::timeout(
+        timeout(&runtime).await,
+        crate::review_work_confirmation::confirm_original(&rig.pool, id, request.context()),
     );
+    let release = async {
+        tokio::time::timeout(timeout(&runtime).await,async {
+            loop {
+                let blocked=rig.pool.get().await.unwrap().query_one(
+                    "SELECT EXISTS(SELECT 1 FROM pg_locks WHERE locktype='advisory' AND NOT granted AND $1::integer=ANY(pg_blocking_pids(pid)))",
+                    &[&leader_pid]).await.unwrap().get::<_,bool>(0);
+                if blocked {break;}
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }).await.expect("contender must actually wait on this original's advisory lock");
+        assert!(
+            tx.commit().await.is_err(),
+            "lose the actual confirmation COMMIT acknowledgement"
+        );
+    };
+    let (reconciled, ()) = tokio::join!(contender, release);
+    assert_eq!(reconciled.unwrap().unwrap(), Some(expected.clone()));
     drop(client);
     assert_eq!(transport.cut_count(), 1);
     // A later authored edit cannot rewrite an already committed acknowledgement.
@@ -615,7 +690,12 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
         .unwrap();
     let pool = brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap();
     let mut client = pool.get().await.unwrap();
-    let tx = client.transaction().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .start()
+        .await
+        .unwrap();
     assert_eq!(
         crate::review_work_confirmation::confirm(&tx, id, request.context())
             .await

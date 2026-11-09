@@ -26,7 +26,6 @@ struct Prepared {
     delivery: crate::pg_monty_admission::DeliveredPrivateCompletion,
     subject: brassclaw_skills::review_submission_store::RetainedValidatorSubject,
     queue_ids: Vec<Uuid>,
-    actor: String,
     record: Value,
     bytes: String,
     checksum: [u8; 32],
@@ -92,7 +91,6 @@ async fn prepare(
         delivery,
         subject,
         queue_ids,
-        actor,
         record,
         bytes,
         checksum,
@@ -128,6 +126,59 @@ pub(crate) async fn read(
         Ok(None)
     }
 }
+/// One original metadata write, then one fresh coherent readback on failure.
+/// A waiter can retain an older RR snapshot while another confirmer commits.
+/// Its conflict is not a negative verdict or permission to rerun native work.
+/// The caller's acknowledged storage deadline bounds both transactions.
+pub(crate) async fn confirm_original(
+    pool: &brassclaw_pg::PgPool,
+    id: Uuid,
+    context: &PrivateExecutionContext,
+) -> Result<Option<Value>, AgentLoopDriverError> {
+    let write = async {
+        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+            .await
+            .map_err(|_| database_unavailable())?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(database)?;
+        let result = confirm(&tx, id, context).await?;
+        tx.commit().await.map_err(database)?;
+        client.recycle_after_commit();
+        Ok(result)
+    }
+    .await;
+    match write {
+        Ok(result) => Ok(result),
+        Err(primary) => {
+            // The uncertain/failed transaction connection is already dropped.
+            // Fresh snapshot, no queue mutation, no repeat write or task replay.
+            let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+                .await
+                .map_err(|_| database_unavailable())?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(database)?;
+            let original = read(&tx, id, context).await?;
+            tx.commit().await.map_err(database)?;
+            client.recycle_after_commit();
+            original.map(Some).ok_or(primary)
+        }
+    }
+}
+fn database_unavailable() -> AgentLoopDriverError {
+    AgentLoopDriverError::Unavailable {
+        reason: "review work original readback unavailable".into(),
+    }
+}
+
 /// The caller commits this original acknowledgement and any permitted negative
 /// diagnostics together. Successful structural observations cannot write state 2.
 pub(crate) async fn confirm(
@@ -139,7 +190,6 @@ pub(crate) async fn confirm(
         delivery,
         subject,
         queue_ids,
-        actor,
         record,
         bytes,
         checksum,
@@ -167,12 +217,9 @@ pub(crate) async fn confirm(
             agent_id: row.get(2),
             project_id: row.get(3),
         };
-        // Component storage scope and private execution context are distinct.
-        // The exact original binding, not a new role/scope grant, supplies the
-        // candidate scope. The subject's original author must still agree.
-        if scope.user_id != actor {
-            return Err(invalid());
-        }
+        // Component storage ownership is independent of the original submitting
+        // operator. Exact immutable binding/CAS selects the candidate; private
+        // execution actor correlation was checked against the subject above.
         let candidate =
             crate::validation_queue::ValidationQueueStore::capture_candidate_in_transaction(
                 tx,
