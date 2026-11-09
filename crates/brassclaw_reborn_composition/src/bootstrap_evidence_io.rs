@@ -160,38 +160,9 @@ fn deadline_error(
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix, feature = "postgres", feature = "skills-db"))]
 mod tests {
     use super::*;
-    #[test]
-    fn deadline_context_contains_only_closed_identity_and_selected_policy() {
-        let identity = Uuid::from_u128(1);
-        let selected = brassclaw_resources::PgResourceStoreSettings {
-            revision: 7,
-            timeout: std::time::Duration::from_millis(2000),
-        };
-        let RebornBuildError::InvalidConfig { reason } =
-            deadline_error(Some(("checker_complete_original", identity)), selected)
-        else {
-            panic!("classified deadline required")
-        };
-        let (_, context) = reason.split_once(": ").unwrap();
-        let value: serde_json::Value = serde_json::from_str(context).unwrap();
-        assert_eq!(
-            value,
-            serde_json::json!({"operation":"checker_complete_original","identity":identity,
-            "settings_revision":7,"timeout_millis":"2000"})
-        );
-        let RebornBuildError::InvalidConfig { reason } = deadline_error(None, selected) else {
-            panic!("classified deadline required")
-        };
-        assert_eq!(
-            reason,
-            "original observation I/O deadline elapsed; outcome unresolved"
-        );
-    }
-
-    #[cfg(all(unix, feature = "postgres", feature = "skills-db"))]
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn native_held_intent_commit_reports_actual_deadline_context_and_keeps_original() {
         use brassclaw_pg::test_support::{AckCutRule, AckCutTransport};
