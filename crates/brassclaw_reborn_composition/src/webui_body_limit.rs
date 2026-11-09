@@ -59,7 +59,7 @@ impl std::fmt::Debug for BodyLimitState {
 }
 
 /// Resolve the v2 descriptor set into a fixed lookup table consumed by
-/// [`enforce_body_limit`]. Composition is infallible today because both
+/// [`enforce_body_limit`]. Composition is infallible today because all three
 /// [`BodyLimitPolicy`] variants are supported; if upstream adds a new
 /// variant this `match` fails to compile, which is the fail-closed
 /// contract the gateway needs.

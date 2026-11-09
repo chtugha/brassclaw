@@ -53,15 +53,23 @@ async fn start(rig: &crate::runtime::test_pg::PgRig, home: &std::path::Path) -> 
     )
 }
 async fn app(runtime: &Arc<RebornRuntime>) -> Router {
+    app_with_body_limit(runtime, None).await
+}
+async fn app_with_body_limit(runtime: &Arc<RebornRuntime>, explicit: Option<usize>) -> Router {
+    let config = crate::WebuiServeConfig::new(
+        runtime.thread_scope.tenant_id.clone(),
+        Arc::new(Operator(runtime.actor_user_id.clone())),
+        vec![],
+    );
+    let config = match explicit {
+        Some(limit) => config.with_max_body_bytes(limit),
+        None => config,
+    };
     crate::webui_v2_app(
         crate::build_webui_services(runtime.clone(), None)
             .await
             .unwrap(),
-        crate::WebuiServeConfig::new(
-            runtime.thread_scope.tenant_id.clone(),
-            Arc::new(Operator(runtime.actor_user_id.clone())),
-            vec![],
-        ),
+        config,
     )
     .unwrap()
 }
@@ -271,6 +279,75 @@ async fn native_k01_acknowledged_http_graphs_above_fixed_caps_preserve_originals
             "auth rejection must not reach preparation/store owner"
         );
     }
+    // Actual prepared ingress: ACK permits more than this explicit host N.
+    // Exact valid JSON succeeds; one additional valid whitespace byte fails.
+    // Both declared length and an actual two-chunk body exercise the same owner.
+    for declared in [true, false] {
+        let host_id = Uuid::new_v4();
+        let host_input = request(
+            host_id,
+            &revision(Uuid::new_v4(), &[], "host boundary"),
+            &[],
+        );
+        let exact_body = host_input.to_string();
+        let n = exact_body.len();
+        assert!(original.policy().max_value_bytes > u64::try_from(n).unwrap());
+        let capped = app_with_body_limit(&runtime, Some(n)).await;
+        for extra in [false, true] {
+            let text = format!("{exact_body}{}", if extra { " " } else { "" });
+            assert_eq!(text.len(), n + usize::from(extra));
+            // The +1 is legal JSON whitespace, not a parser rejection.
+            assert_eq!(serde_json::from_str::<Value>(&text).unwrap(), host_input);
+            let mut builder = Request::builder()
+                .method("POST")
+                .uri(URI)
+                .header("Authorization", "Bearer k01-test-operator")
+                .header("Content-Type", "application/json");
+            let body = if declared {
+                builder = builder.header("Content-Length", text.len());
+                Body::from(text)
+            } else {
+                let bytes = text.into_bytes();
+                let split = bytes.len() / 2;
+                Body::from_stream(futures::stream::iter([
+                    Ok::<_, std::io::Error>(bytes[..split].to_vec()),
+                    Ok(bytes[split..].to_vec()),
+                ]))
+            };
+            let response = capped
+                .clone()
+                .oneshot(builder.body(body).unwrap())
+                .await
+                .unwrap();
+            let status = response.status();
+            let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+            if extra {
+                assert_eq!(status, StatusCode::PAYLOAD_TOO_LARGE);
+                assert!(
+                    std::str::from_utf8(&bytes)
+                        .unwrap()
+                        .contains(&n.to_string()),
+                    "effective host limit must be visible"
+                );
+            } else {
+                assert_eq!(
+                    status,
+                    StatusCode::OK,
+                    "{}",
+                    String::from_utf8_lossy(&bytes)
+                );
+                let receipt: Value = serde_json::from_slice(&bytes).unwrap();
+                assert_eq!(receipt["preparation_revision"], original.revision());
+                assert!(
+                    PgReviewSubmissionStore::new(rig.pool.clone())
+                        .read(host_id)
+                        .await
+                        .unwrap()
+                        .is_some()
+                );
+            }
+        }
+    }
     let leaves = retain_leaves(&rig.pool, 5000, 1).await;
     let root = revision(
         Uuid::new_v4(),
@@ -321,6 +398,88 @@ async fn native_k01_acknowledged_http_graphs_above_fixed_caps_preserve_originals
     assert_eq!(
         send(&app, "POST", URI, Some(&changed)).await.0,
         StatusCode::CONFLICT
+    );
+    // Aggregate graph bytes use exact retained revision text, independently of
+    // the much larger HTTP/value cap. Reuse two real leaves from the first graph.
+    let byte_dependencies = &leaves[..2];
+    let byte_root = revision(
+        Uuid::new_v4(),
+        &byte_dependencies.iter().map(|r| r.uuid).collect::<Vec<_>>(),
+        &"boundary".repeat(512),
+    );
+    let sum = u64::try_from(byte_root.exact_bytes().len()).unwrap()
+        + byte_dependencies
+            .iter()
+            .map(|r| {
+                u64::try_from(
+                    first.snapshot.revisions()[&r.uuid]
+                        .draft()
+                        .exact_bytes()
+                        .len(),
+                )
+                .unwrap()
+            })
+            .sum::<u64>();
+    let byte_id = Uuid::new_v4();
+    let byte_input = request(byte_id, &byte_root, byte_dependencies);
+    acknowledge(&runtime, 3, sum - 1, 256 * 1024 * 1024).await;
+    assert_eq!(
+        send(&app, "POST", URI, Some(&byte_input)).await.0,
+        StatusCode::BAD_REQUEST
+    );
+    let root_id = byte_root.uuid();
+    let client = rig.pool.get().await.unwrap();
+    let partial = client.query_one(
+        "SELECT (SELECT count(*) FROM reborn_component_revision_heads WHERE component_id=$2),
+                (SELECT count(*) FROM reborn_component_revisions WHERE component_id=$2),
+                (SELECT count(*) FROM reborn_component_review_submissions WHERE submission_id=$1),
+                (SELECT count(*) FROM reborn_component_review_queue_requests WHERE submission_id=$1),
+                (SELECT count(*) FROM reborn_component_review_queue_bindings WHERE submission_id=$1)",
+        &[&byte_id, &root_id],
+    ).await.unwrap();
+    for column in 0..5 {
+        assert_eq!(
+            partial.get::<_, i64>(column),
+            0,
+            "no partial byte-boundary writes"
+        );
+    }
+    drop(client);
+    let byte_capture = acknowledge(&runtime, 3, sum, 256 * 1024 * 1024).await;
+    let (status, byte_receipt) = send(&app, "POST", URI, Some(&byte_input)).await;
+    assert_eq!(status, StatusCode::OK, "{byte_receipt}");
+    assert_eq!(
+        byte_receipt["preparation_revision"],
+        byte_capture.revision()
+    );
+    let byte_saved = PgReviewSubmissionStore::new(rig.pool.clone())
+        .read(byte_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        byte_saved
+            .snapshot
+            .revisions()
+            .values()
+            .map(|r| u64::try_from(r.draft().exact_bytes().len()).unwrap())
+            .sum::<u64>(),
+        sum
+    );
+    acknowledge(&runtime, 3, sum - 1, 256 * 1024 * 1024).await;
+    assert_eq!(
+        send(&app, "POST", URI, Some(&byte_input)).await,
+        (StatusCode::OK, byte_receipt)
+    );
+    let byte_again = PgReviewSubmissionStore::new(rig.pool.clone())
+        .read(byte_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(byte_again.subject_bytes, byte_saved.subject_bytes);
+    assert_eq!(
+        byte_again.preparation.as_ref().unwrap().bytes(),
+        byte_capture.bytes()
     );
     acknowledge(&runtime, 6200, 160 * 1024 * 1024, 256 * 1024 * 1024).await;
     let large = retain_leaves(&rig.pool, 65, 1024 * 1024).await;

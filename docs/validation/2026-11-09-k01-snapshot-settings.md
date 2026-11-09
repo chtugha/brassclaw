@@ -93,3 +93,36 @@ existing-owner follow-ons. Graph admission does not resize these contracts. Wire
 and graph bounds are finite technical gates, not a promise that arbitrary native
 heap allocation succeeds. This package makes no claim of general recovery,
 approval migration or public deployment acceptance.
+
+## Root review correction: exact HTTP and graph byte boundaries
+
+Follow-up to `94946166df1c178d4cdbad88944dcd8173b0c063`, authorized after the
+other implementation slot became idle. The existing
+`native_k01_acknowledged_http_graphs_above_fixed_caps_preserve_originals`
+selector now also contains both previously missing boundary cases. It reuses
+its actual factory/runtime, ACK settings owner, operator authenticator, mounted
+ComponentPreparation route and PostgreSQL; no second bootstrap or fake service
+is added.
+
+For each Content-Length and two-chunk transport, an explicit host cap N below the
+acknowledged value cap permits a valid JSON request of exactly N bytes and
+persists its submission with the accepted revision. Appending one legal JSON
+whitespace byte yields 413 with the effective byte limit visible in the response.
+The graph case computes S from the candidate's exact revision text and two
+already retained leaf texts. At S-1 it expects 400 and zero candidate head,
+revision, submission, queue request and queue binding rows. At S it expects
+success and a complete snapshot whose exact revision-text sum is S. A subsequent
+ACK decrease to S-1 must preserve the same-ID receipt, original subject bytes and
+original capture bytes.
+
+The descriptor resolver comment now says all three policy variants. The facade
+contract was inspected read-only: its whole override is skills-db gated; without
+that feature the trait default rejects. In the mounted legacy/non-global path,
+no catalogue means capture returns None and middleware selects the explicit
+legacy profile. No actual caller producing Some with no owner was found, so no
+speculative production guard or warning suppression is added.
+
+Follow-up checks are rustfmt on the two affected Rust files and git diff --check
+only. No compilation, tests, DB, migration or Modal job was run. The selector is
+unchanged; the supervisor must execute its expanded source. These additions do
+not supply a native PASS or broaden the package's independent boundaries.
