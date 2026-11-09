@@ -110,7 +110,9 @@ async fn read_positive(
                 runtime.actor_user_id.clone(),
             )),
         };
-        let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            runtime.installed_catalogue.pool.get().await.unwrap(),
+        );
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -160,6 +162,7 @@ async fn read_positive(
             );
         }
         tx.commit().await.unwrap();
+        client.recycle_after_commit();
         checked
         },
     )
