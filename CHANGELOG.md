@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original native delivery and SQL guard repair (validation pending)**:
+  Retain post-Factory private delivery and immutable original structural review
+  confirmation in V208, with shared Worker discovery and strict transaction/
+  unknown-acknowledgement readback. Keep positive structural results separate
+  from Q1 approval and retire the unqualified production producer. V209 fixes
+  six nested JSON operator-precedence expressions in the existing guards while
+  preserving V207 bytes. Connected source review is complete; native acceptance
+  is pending.
+
 - **Pure checker qualification (F-01, validation pending)**: Add actual contained
   own-function qualification for ten shipped checking exports, separate private
   reader-support evidence, finite typed result transport and the complete

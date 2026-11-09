@@ -25,12 +25,17 @@ Five E-01 fault cases, both generation cases, both PG Memory cases and opaque
 handoff pass within their exact scope. Frozen source identity is verified.
 
 The real PostgreSQL error confirms nested JSON extraction/minus precedence in
-six V207 expressions. B-02 implements a separate V209 repair and connected native
-regression sources; H-01 implements V208 post-Factory delivery/original review
-confirmation and existing Worker discovery. No original migration/Terminal `/1`
-bytes are rewritten. Their source/compile/native acceptance and full qualified
-Q1/selection/producer gates remain open. Run-20 receipts are under
-`target/validation/bob-native-repair-20261105/run-20-composition/`.
+six V207 expressions. B-02's exact V209 repair and real upgrade/fault-point test
+sources are reviewed and integrated as `e9f9e1e8c`. H-01's complete delivery,
+original confirmation and existing Worker discovery package is reviewed and
+integrated through `103b3a444`, including strict RR/unknown-commit readback and
+original actor/storage-operator corrections. Three changed JS modules parse.
+V208/V209 retain historical migration bytes and Terminal `/1` semantics.
+The old unqualified five-head producer is test-only across its graph. Structural
+positive remains State 1; general Pure/Q1/selection/producer gates remain open.
+The joint native build/acceptance for these sources and F-01 is pending; Run-20
+receipts remain under `target/validation/bob-native-repair-20261105/run-20-composition/`.
+I-01's read-only next-package proposal is delivered for supervisor review.
 
 
 2026-11-08: Run-19 on `381706153` builds the current worker and joint

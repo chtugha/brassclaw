@@ -62,13 +62,23 @@ establish all four intended fault points. Its real trigger reachability is being
 strengthened. All failed and limited receipts are preserved; no full package
 acceptance follows from those green results.
 
-B-02 owns the connected V209 SQL repair and rollback/upgrade regression sources.
-H-01 owns V208 post-Factory delivery, structural review confirmation and existing
-Worker discovery. These are the two implementing chats; E-01/F-01/G-01 are idle
-for their own corrections. V208/V209 preserve old migration bytes and existing
-native Terminal `/1` semantics. No new queue, VM, approval service or general
-Q1-ready producer is authorized. Full qualified producer/selection remains an
-explicit B1-07/B2-04/B3-06 follow-up. The next build bundles reviewed changes.
+B-02's exact six-expression V209 repair and genuine upgrade/trigger-reachability
+regression sources are reviewed and integrated as `e9f9e1e8c`. V207 bytes are
+unchanged. H-01's complete 39-file delivery/confirmation/discovery package is
+reviewed, hash-verified and integrated through `103b3a444`. V208 retains actual
+post-Factory delivery and structural original confirmation. Connected review
+corrected strict repeatable-read transactions, one-write/fresh-readback handling
+of unknown acknowledgement, and the distinction between an original actor and
+the storage operator identity. The old unqualified five-head Q1 producer is
+restricted across its connected graph to tests; positive structural observation
+stays State 1. No general Q1-ready producer or approval is asserted.
+
+The next joint native build covers F-01, E-01's supported-settings correction,
+H-01, V209 and affected Turn/Reborn/ProductWorkflow callers. All new native
+cases remain unexecuted. I-01 has supplied a read-only proposal for qualified
+Pure Source selection and the missing general Behavior/Q2 contract; supervisor
+review is pending. H-01/F-01/B-02 remain idle for concrete own corrections.
+V208/V209 preserve old migration bytes and native Terminal `/1` semantics.
 
 Earlier Run-19 checkpoint (retained historical receipt):
 
@@ -165,7 +175,8 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | B03a — atomic private Prefix original/Ready publication | `01a1b10a-5a89-7712-a37c-f77f5a66c70f`, host `local`, title “Paket B-03 — Atomare Review-Arbeit”; `/Users/ollama/.codex/worktrees/dddf/brassclaw`, branch `codex/b03a-prefix-original-ready` | Four-file source package and existing-client lifecycle correction through `83efab192` reviewed and integrated. No schema/Worker/validator change. Three new real native cases and updated existing fallback/claim/readback cases await execution. Genuine withheld-BEGIN cancellation requires the existing test transport's hold/release extension before full B3-11 closure; its current cut-connection cases do not prove that boundary. Idle for own corrections. |
 | F-01 — closed Pure-checker/support qualification | `01a1babb-0ccd-7ed2-8211-f5a6a9f29976`, host `local`, title “Paket F-01 — Vollständige Pure-Eigenprüfung”; `/Users/ollama/.codex/worktrees/1a9e/brassclaw` | Full architecture/source proposals reviewed. Authorized connected implementation of ten existing public checking functions, separate private reader support and their Source workflow, reusing existing original-execution custody. Two private fixture identities reserved. The genuine E-01 common prerequisite passed in Run-20; source `0dad53132`/`ce00c3dec` is integrated as `48eec00f6`/`7b4c29596`. Compilation/native/lint acceptance remains pending. No general candidate Pure approval, authored Q2, `/2` publication or migration authorized. |
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
-| H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Connected proposal and native/Store contracts reviewed. Implementing V208 linked immutable post-Factory delivery and structural domain confirmation, exact historical readers, real Prefix/validator consumers and existing Worker reconciliation. Full qualified new producer remains owned by the concrete B1/B2 prerequisites; no partial structural State-2 pass. Source/native acceptance pending. |
+| H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
+| I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Read-only connected proposal delivered for exact qualified F-01 W selection, atomic original admission and H-01 confirmation. No implementation/build authorized yet; no claim of general Pure behavior/Q2/approval. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

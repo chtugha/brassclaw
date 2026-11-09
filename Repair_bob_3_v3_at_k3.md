@@ -631,8 +631,9 @@ PG Memory cases and opaque global handoff. Six private Prefix/G-01 cases expose
 a genuine SQL precedence defect in three V207 functions. B-02 owns its new V209
 repair and connected upgrade/fault-point tests; preserve V207 bytes. A generic
 rollback error alone cannot prove the intended injected boundary was reached.
-H-01 owns V208 post-Factory delivery, structural domain confirmation and discovery
-in the existing Worker lifecycle. Source/compile/native acceptance is pending;
+H-01 V208 post-Factory delivery, structural domain confirmation and existing
+Worker discovery are source-reviewed and integrated through `103b3a444`. B-02
+V209 is source-reviewed and integrated as `e9f9e1e8c`; native acceptance is pending;
 full B3-06/07 still requires actual qualified B1/B2 selection and producer wiring.
 
 
