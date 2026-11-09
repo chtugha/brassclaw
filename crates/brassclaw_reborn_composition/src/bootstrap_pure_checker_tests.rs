@@ -2,6 +2,110 @@
 use super::*;
 use secrecy::ExposeSecret;
 
+#[test]
+fn pure_fixture_receipt_key_matches_variant_producer_and_manifest() {
+    use super::super::fixtures::{FixtureStep, Suite, checker_suites, normalize_suite, recipe_at};
+    use crate::pg_review_admission_source::{ValidatorReceiptProfile, recorded_receipt_results};
+    let root = brassclaw_skills::validator_components::structural_validator_pc_id(22);
+    // Reuse a real shipped positive producer fixture; only its transport is the
+    // subject of this test. No fabricated native observation or approval exists.
+    let producer = checker_suites(22, root)[0].steps[0].clone();
+    let suite = |name: &str| Suite {
+        variant: name.into(),
+        steps: vec![
+            producer.clone(),
+            FixtureStep {
+                id: "0:2".into(),
+                component: encoder_id(),
+                export: "encode_pure_fixture_result".into(),
+                constants: json!({"kind":"rule","step_id":"0:1"}),
+                results: BTreeMap::from([("rule".into(), "0:1".into())]),
+            },
+        ],
+        expected_receipt: None,
+        python_stop: false,
+        expected_python_line: None,
+    };
+    let suites = [suite("first"), suite("second")];
+    let recipe = recipe_at(
+        packaged_component_id("validator:pure-qualification:test-step-identity"),
+        root,
+        &suites,
+    )
+    .unwrap();
+    let document = recipe.document();
+    assert_eq!(document["variants"][1]["step_link"], "1:1-1:E");
+    let bindings = &document["input_layouts"]["second"]["steps"]["1:2"];
+    let producer_id = bindings["rule"]["step_id"].as_str().unwrap();
+    let receipt_key = bindings["step_id"]["value"].as_str().unwrap();
+    assert_eq!(producer_id, "1:1");
+    assert_eq!(
+        receipt_key, producer_id,
+        "actual encoder input must name its actual producer"
+    );
+    let manifest = normalize_suite(1, &suites[1]).unwrap();
+    assert_eq!(manifest.steps[0].id, producer_id);
+    assert_eq!(manifest.steps[1].results["rule"], producer_id);
+    assert_eq!(manifest.steps[1].constants["step_id"], receipt_key);
+    let rule = json!({"rule_id":"structural_presence","ok":true,"errors":[]});
+    let receipt =
+        json!({"format":"validator-step-results/1","results":{receipt_key:rule}}).to_string();
+    let actual = recorded_receipt_results(
+        ValidatorReceiptProfile::Inventory,
+        &receipt,
+        &[producer_id],
+        &manifest.steps[1].id,
+        REVISION_LIMITS,
+    )
+    .unwrap();
+    assert_eq!(actual[producer_id], rule);
+    let foreign = json!({"format":"validator-step-results/1","results":{"0:1":rule}}).to_string();
+    assert_eq!(
+        recorded_receipt_results(
+            ValidatorReceiptProfile::Inventory,
+            &foreign,
+            &[producer_id],
+            &manifest.steps[1].id,
+            REVISION_LIMITS
+        )
+        .unwrap_err(),
+        "validator_receipt_steps_invalid"
+    );
+
+    // A direct encoder test supplies a literal key rather than a result edge.
+    // Namespace conversion must leave that actual typed input untouched.
+    let direct = |name: &str| Suite {
+        variant: name.into(),
+        steps: vec![FixtureStep {
+            id: "0:1".into(),
+            component: encoder_id(),
+            export: "encode_pure_fixture_result".into(),
+            constants: json!({"kind":"text","step_id":"fixture:1","text":"data"}),
+            results: BTreeMap::new(),
+        }],
+        expected_receipt: Some(
+            json!({"format":"validator-step-results/1","results":{"fixture:1":"data"}}),
+        ),
+        python_stop: false,
+        expected_python_line: None,
+    };
+    let direct = [direct("first"), direct("second")];
+    let recipe = recipe_at(
+        packaged_component_id("validator:pure-qualification:test-literal-key"),
+        encoder_id(),
+        &direct,
+    )
+    .unwrap();
+    assert_eq!(
+        recipe.document()["input_layouts"]["second"]["steps"]["1:1"]["step_id"]["value"],
+        "fixture:1"
+    );
+    assert_eq!(
+        normalize_suite(1, &direct[1]).unwrap().steps[0].constants["step_id"],
+        "fixture:1"
+    );
+}
+
 async fn read_proof(
     runtime: &crate::RebornRuntime,
     pool: Arc<PgPool>,

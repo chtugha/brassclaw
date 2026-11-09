@@ -892,29 +892,8 @@ async fn qualify_specs(
         let mut programs = BTreeMap::new();
         let mut selections = BTreeMap::new();
         let mut normalized = Vec::new();
-        for (desc, mut suite) in suites.into_iter().enumerate() {
-            for step in &mut suite.steps {
-                let (_, number) = step
-                    .id
-                    .split_once(':')
-                    .ok_or_else(|| invalid("fixture step identity invalid"))?;
-                step.id = format!("{desc}:{number}");
-                if step.component == pure::encoder_id() && !step.results.is_empty() {
-                    let original = step.constants["step_id"]
-                        .as_str()
-                        .ok_or_else(|| invalid("pure encoder original step absent"))?;
-                    let (_, ordinal) = original
-                        .split_once(':')
-                        .ok_or_else(|| invalid("pure encoder original step invalid"))?;
-                    step.constants["step_id"] = json!(format!("{desc}:{ordinal}"));
-                }
-                for producer in step.results.values_mut() {
-                    let (_, number) = producer
-                        .split_once(':')
-                        .ok_or_else(|| invalid("fixture edge identity invalid"))?;
-                    *producer = format!("{desc}:{number}");
-                }
-            }
+        for (desc, suite) in suites.into_iter().enumerate() {
+            let suite = fixtures::normalize_suite(desc, &suite)?;
             let program = Arc::new(
                 prepare_retained_tool_program(
                     compile_retained_recipe(

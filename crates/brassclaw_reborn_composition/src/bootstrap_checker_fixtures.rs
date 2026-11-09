@@ -458,6 +458,7 @@ pub(super) fn recipe_at(
     let mut invocations = serde_json::Map::new();
     let mut dependencies = BTreeSet::from([root]);
     for (desc, suite) in suites.iter().enumerate() {
+        let suite = normalize_suite(desc, suite)?;
         variants.push(json!({"variant_key":suite.variant,"step_link":format!("{desc}:1-{desc}:E"),"intent_examples":[],"variable_patterns":[]}));
         let mut steps = Vec::new();
         let mut bindings = serde_json::Map::new();
@@ -475,12 +476,9 @@ pub(super) fn recipe_at(
                 inputs.insert(name.clone(), json!({"kind":"constant","value":value}));
             }
             for (name, producer) in &fixture.results {
-                let (_, number) = producer
-                    .split_once(':')
-                    .ok_or_else(|| invalid("fixture result step malformed"))?;
                 inputs.insert(
                     name.clone(),
-                    json!({"kind":"result","step_id":format!("{desc}:{number}"),"path":[]}),
+                    json!({"kind":"result","step_id":producer,"path":[]}),
                 );
             }
             if fixture.component == receipt_id() {
@@ -513,4 +511,34 @@ pub(super) fn recipe_at(
         json!({"name":"structural-checker-own-qualification","description":"Closed installation own-export fixtures only; not candidate-class Q1 or an active route.","variants":variants,"step_descriptions":descriptions,"input_layouts":layouts,"invocations":invocations}),
         dependencies.into_iter().collect(),
     )
+}
+
+/// One namespace conversion for both the persisted Recipe and its exact fixture
+/// manifest. An encoder's result-edge-backed key is a producer step identity;
+/// keys supplied to its direct transport tests remain literal input data.
+pub(super) fn normalize_suite(desc: usize, suite: &Suite) -> Result<Suite, RebornBuildError> {
+    let mut suite = suite.clone();
+    for step in &mut suite.steps {
+        let (_, number) = step
+            .id
+            .split_once(':')
+            .ok_or_else(|| invalid("fixture step identity invalid"))?;
+        step.id = format!("{desc}:{number}");
+        if step.component == super::pure::encoder_id() && !step.results.is_empty() {
+            let original = step.constants["step_id"]
+                .as_str()
+                .ok_or_else(|| invalid("pure encoder original step absent"))?;
+            let (_, ordinal) = original
+                .split_once(':')
+                .ok_or_else(|| invalid("pure encoder original step invalid"))?;
+            step.constants["step_id"] = json!(format!("{desc}:{ordinal}"));
+        }
+        for producer in step.results.values_mut() {
+            let (_, number) = producer
+                .split_once(':')
+                .ok_or_else(|| invalid("fixture edge identity invalid"))?;
+            *producer = format!("{desc}:{number}");
+        }
+    }
+    Ok(suite)
 }

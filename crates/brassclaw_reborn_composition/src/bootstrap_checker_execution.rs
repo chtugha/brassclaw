@@ -314,6 +314,7 @@ impl Context {
                 admission: reference(stage("admission"), &binding_bytes),
                 source: source_ref.clone(),
                 received: OnceLock::new(),
+                receipt_rejection: OnceLock::new(),
             });
             let request = crate::bootstrap_recipe_flow::Request::contained(
                 worker.path(),
@@ -327,7 +328,15 @@ impl Context {
             } else {
                 request
             };
-            let observation = crate::bootstrap_recipe_flow::execute(&admitted, request).await?;
+            let observation = crate::bootstrap_recipe_flow::execute(&admitted, request)
+                .await
+                .map_err(|error| {
+                    invalid(format!(
+                        "checker fixture {}: {error}",
+                        json!({"root":self.claim.root.uuid,"variant":suite.variant,
+                        "receipt_rejection":source.receipt_rejection.get().copied()})
+                    ))
+                })?;
             let observed = if suite.python_stop {
                 observation
                     .ports
@@ -433,6 +442,7 @@ struct CheckerSource {
     admission: RecordRef,
     source: RecordRef,
     received: OnceLock<Observed>,
+    receipt_rejection: OnceLock<&'static str>,
 }
 impl CheckerSource {
     fn capture(
@@ -588,7 +598,25 @@ impl InternalRecipeSource for CheckerSource {
             Ok::<_, RebornBuildError>(())
         }
         .await;
-        run.map_err(|_| {
+        run.map_err(|error| {
+            // PortFailure intentionally carries no private diagnostic. Preserve
+            // only a fixed classification for the closed bootstrap caller;
+            // never emit the receipt, inputs, native traceback or DB error.
+            let cause = match &error {
+                RebornBuildError::InvalidConfig { reason } => match reason.as_str() {
+                    "validator_receipt_parse_failed" => "receipt_parse",
+                    "validator_receipt_format_invalid" => "receipt_format",
+                    "validator_receipt_results_missing" => "receipt_results",
+                    "validator_receipt_steps_invalid" => "receipt_steps",
+                    "independent receipt-helper oracle differs" => "receipt_oracle",
+                    "checker actual result fingerprint differs" => "result_fingerprint",
+                    "checker receipt selection differs" => "receipt_selection",
+                    _ if reason.starts_with("pure fixture ") => "fixture_oracle",
+                    _ => "receipt_verification",
+                },
+                _ => "receipt_verification",
+            };
+            let _ = self.receipt_rejection.set(cause);
             PortFailure::new("checker_native_observation_invalid").expect("constant classification")
         })
     }
