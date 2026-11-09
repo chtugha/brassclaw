@@ -13,6 +13,26 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+**Run-24 — 2026-11-09:** exact Main `b9620a1f5` builds the current worker
+and complete six-library/four-integration graph without compiler/link warnings
+(7.136/644.104 s). Actual profiles, source, eleven retained executable hashes
+and link checks pass; `__eh_frame` is 12,956,976 bytes. The inventory contains
+1,388 Composition tests with no unexplained losses. Three exact executions pass,
+zero ignored: the F-01 real strict receipt-reader regression and I-01's two real
+operator HTTP/PG class-21/23 original-custody tests. Common global startup fails
+after 190.685 s with `original observation I/O deadline elapsed; outcome unresolved`.
+The generic error does not identify the bounded operation; F-01 owns diagnosis.
+No dependent Source/Behavior/runtime case is run, and none is claimed accepted.
+The final source/HEAD and all retained artifact hashes are unchanged. The native
+batch is disposed and its source freeze released. Exact records remain under
+`target/validation/bob-native-repair-20261105/run-24-composition/`, including
+`independent-transport-1/`, `prerequisite-1/` and `native-batch-disposition.json`.
+
+J-01 continues its registered single-case runtime package. New K-01 is read-only
+proposal work on B2-06's real snapshot/dependency quotas, existing preparation
+settings and historical read limits; it has no implementation/migration approval.
+All three complete Bob plans remain open.
+
 **Run-23 and connected source checkpoint — 2026-11-09:** worker and complete
 six-library/four-integration test graph compile without warnings (0.823/623.518 s).
 Actual profiles/source/artifact/link checks pass: `__eh_frame` 12,842,716 bytes,

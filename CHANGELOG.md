@@ -16,11 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   one transaction. Source reviewed; native acceptance remains pending and no
   general Pure approval is granted.
   Apply the same connection custody to queued Recipe/Catalogue authoring and
-  add real operator-HTTP lost-ACK/cancellation regression sources.
-- **Bootstrap fixture receipt identity (validation pending)**: Align later
+  add real operator-HTTP lost-ACK/cancellation regression sources. The joint
+  build is warning-free and both HTTP/PG custody cases pass; dependent Source
+  runtime acceptance is blocked by the common bootstrap I/O-deadline failure.
+- **Bootstrap fixture receipt identity (scoped validation)**: Align later
   variant producer IDs and their receipt-key inputs through one normalization.
   Preserve strict result verification and add safe fixture failure context.
-  The preceding real startup failure remains recorded until rerun passes.
+  The actual strict receipt-reader regression passes. Common startup now fails
+  at an original-observation I/O deadline; full bootstrap acceptance remains open.
 
 - **Original proof transaction correction (validation pending)**: Share complete
   historical inventory-qualification checks with the caller's coherent snapshot,

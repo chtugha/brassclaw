@@ -39,6 +39,27 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ### Current integration checkpoint — 2026-11-09
 
+**Run-24 — 2026-11-09:** exact Main `b9620a1f5` compiles the current worker
+and complete six-library/four-integration graph without warnings (7.136/644.104 s).
+Actual source, profiles, eleven retained artifacts and link checks pass;
+`__eh_frame` is 12,956,976 bytes and all 1,388 Composition names are accounted for.
+The F-01 strict receipt-consumer regression and both I-01 real operator HTTP/PG
+original-custody cases pass, zero ignored. Common global startup fails after
+190.685 s with `original observation I/O deadline elapsed; outcome unresolved`.
+No dependent Source/runtime cases start. The exact bounded operation is not
+established by this generic error; F-01 diagnoses the connected original-proof
+path before correction. No larger timeout or weakened verification is accepted.
+Source/HEAD and every retained executable are verified after the run; the freeze
+is released. See `run-24-composition/native-batch-disposition.json` in the existing
+validation evidence directory.
+
+J-01 continues its isolated V211 single-case runtime package. K-01, fresh chat
+`01a1c10c-3ba1-7a22-be23-4e8885c3f645`, worktree `24b2`, is **read-only proposal**
+for B2-06 snapshot/dependency quotas through existing acknowledged preparation
+settings and historical readers. No K-01 implementation or migration is reserved
+yet. I-01 remains available for its own findings; F-01 correction and J-01 are
+the two implementation slots when the concrete correction is authorized.
+
 **Run-23 and connected source checkpoint — 2026-11-09:** worker and complete
 six-library/four-integration test graph compile without warnings (0.823/623.518 s).
 Actual profiles/source/artifact/link checks pass: `__eh_frame` 12,842,716 bytes,
