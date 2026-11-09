@@ -172,6 +172,8 @@ mod tests {
         use std::{sync::Arc, time::Duration};
 
         let rig = crate::runtime::test_pg::pg_rig().await;
+        rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+            .await;
         let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
             rig.pool.clone(),
             "default",

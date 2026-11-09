@@ -606,11 +606,12 @@ async fn native_pure_fixture_transport_rejects_non_json_returns_before_encoding(
         assert!(error.containment_error.is_none() && error.reap_error.is_none());
     }
     let integer =
-        ValueContract::result_from_value(&json!({"type":"integer"}), REVISION_LIMITS).unwrap();
+        ValueContract::result_from_value(&json!({"type":"integer","checks":[]}), REVISION_LIMITS)
+            .unwrap();
     assert!(integer.validate(&json!(true)).is_err());
     assert!(integer.validate(&json!(1)).is_ok());
     let inputs = InputContract::from_value(
-        &json!({"value":{"type":"integer","required":false,"default":1}}),
+        &json!({"value":{"type":"integer","required":false,"default":1,"checks":[]}}),
         REVISION_LIMITS,
     )
     .unwrap();
