@@ -402,7 +402,9 @@ impl PgRecipeStore {
                     .into(),
             );
         }
-        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(map_pool)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -414,6 +416,7 @@ impl PgRecipeStore {
             ValidationQueueStore::read_original_create(&tx, draft, &scope).await?
         {
             tx.commit().await.map_err(map_pg)?;
+            client.recycle_after_commit();
             return Ok(original);
         }
         Self::insert_on(&*tx, row, false, false, id).await?;
@@ -429,7 +432,28 @@ impl PgRecipeStore {
             "create_queue",
         )
         .await?;
-        tx.commit().await.map_err(map_pg)?;
+        if let Err(error) = tx.commit().await {
+            // An unknown write acknowledgement cannot return this connection
+            // to the pool or authorize another create. Read the exact original.
+            drop(client);
+            let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
+                self.pool.get().await.map_err(map_pool)?,
+            );
+            let original = readback
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(map_pg)?;
+            ValidationQueueStore::read_original_create(&original, draft, &scope)
+                .await?
+                .ok_or_else(|| map_pg(error))?;
+            original.commit().await.map_err(map_pg)?;
+            readback.recycle_after_commit();
+        } else {
+            client.recycle_after_commit();
+        }
         #[cfg(feature = "skills-db")]
         queue_store.fire_q1_kick_if_wired(&scope, id, 21);
         Ok(subject)

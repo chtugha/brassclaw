@@ -33,6 +33,34 @@ fn scope() -> ComponentScope {
 }
 const URI: &str = "/api/webchat/v2/component-review-submissions";
 
+fn projection_document(class: i32) -> Value {
+    let mut doc = json!({"name":format!("queued-projection-{class}"),"description":"Complete original projection fixture",
+        "consumer_tags":["02:orchestrator"],"prior_knowledge_content":null,"override_prompt_creation":false,
+        "intent_examples":null,"dependency_registry":null,
+        "similarity_parent_id":null,"replaces_id":null,"parent_version":null});
+    if class == 21 {
+        doc["status"] = json!("active");
+        doc["trigger"] = Value::Null;
+        doc["steps"] = json!([]);
+        doc["step_descriptions"] = json!([]);
+        doc["variants"] = json!([]);
+        doc["validates_class_code"] = Value::Null;
+        doc["input_layouts"] = json!({});
+        doc["invocations"] = json!({});
+    } else {
+        assert_eq!(class, 23);
+        doc["version"] = json!("1.0.0");
+        doc["overview_doc"] = json!("Original exact overview");
+        doc["task_groups"] = json!([]);
+        doc["child_component_ids"] = json!([]);
+        doc["intent_index"] = Value::Null;
+    }
+    doc
+}
+
+#[path = "original_queue_custody_tests.rs"]
+mod custody_tests;
+
 #[tokio::test]
 async fn original_queue_operator_create_retry_and_q2_historical_readback() {
     let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
@@ -330,26 +358,7 @@ async fn original_queue_recipe_and_catalogue_create_preserve_complete_documents(
     for class in [21, 23] {
         let component = Uuid::new_v4();
         let operation = Uuid::new_v4();
-        let mut doc = json!({"name":format!("queued-projection-{class}"),"description":"Complete original projection fixture",
-            "consumer_tags":["02:orchestrator"],"prior_knowledge_content":null,"override_prompt_creation":false,
-            "intent_examples":null,"dependency_registry":null,
-            "similarity_parent_id":null,"replaces_id":null,"parent_version":null});
-        if class == 21 {
-            doc["status"] = json!("active");
-            doc["trigger"] = Value::Null;
-            doc["steps"] = json!([]);
-            doc["step_descriptions"] = json!([]);
-            doc["variants"] = json!([]);
-            doc["validates_class_code"] = Value::Null;
-            doc["input_layouts"] = json!({});
-            doc["invocations"] = json!({});
-        } else {
-            doc["version"] = json!("1.0.0");
-            doc["overview_doc"] = json!("Original exact overview");
-            doc["task_groups"] = json!([]);
-            doc["child_component_ids"] = json!([]);
-            doc["intent_index"] = Value::Null;
-        }
+        let doc = projection_document(class);
         // These are unreviewed drafts, deliberately not runnable/approved test
         // workflows. Capture must preserve even invalid drafts for real review.
         let candidate=json!({"format":"component-revision/1","uuid":component,"class_code":class,"document":doc,"dependencies":[],"association":null}).to_string();
