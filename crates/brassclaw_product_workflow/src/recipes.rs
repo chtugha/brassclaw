@@ -359,6 +359,42 @@ pub struct ComponentReviewSubmissionReceipt {
     pub catalogue_activated: bool,
 }
 
+/// One original Pure invocation request. Data only: no code, expected outcome,
+/// approval, Tool permission or live task/context selector.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitOriginalPureCaseRequest {
+    pub case_id: String,
+    pub submission_id: String,
+    pub export: String,
+    pub inputs: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OriginalPureCaseStatus {
+    AwaitingPreparation,
+    Ready,
+    Running,
+    ReconciliationRequired,
+    Cancelled,
+    ObservationPendingDelivery,
+    TechnicalFailure,
+    Settled,
+}
+/// Original custody metadata; observation data is exposed only after genuine
+/// private harness delivery and case-owner settlement, never as a pass verdict.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OriginalPureCaseView {
+    pub case_id: String,
+    pub submission_id: String,
+    pub case_checksum: String,
+    pub status: OriginalPureCaseStatus,
+    pub observation_bytes: Option<String>,
+    pub settlement_checksum: Option<String>,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub struct ComponentReviewSubmissionView {
     pub receipt: ComponentReviewSubmissionReceipt,
@@ -517,6 +553,10 @@ pub struct CataloguePublicationStatus {
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct CatalogueActivationStatus {
+    /// Optional private single-case support, not ordinary catalogue activation
+    /// or behavior/Q1/Q2 approval. Raw internal causes are never serialized.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_pure_case: Option<OriginalPureCaseReadiness>,
     pub publication: CataloguePublicationStatus,
     pub generation: String,
     pub recipes: Vec<String>,
@@ -526,6 +566,13 @@ pub struct CatalogueActivationStatus {
     pub disabled_recipe_ids: Vec<String>,
     /// Packaged ordinary matching Recipes; internal reply/history remain usable.
     pub packaged_recipe_ids: Vec<String>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OriginalPureCaseReadiness {
+    pub ready: bool,
+    pub evidence_pending: bool,
+    pub phase: Option<String>,
+    pub reason_kind: Option<String>,
 }
 /// Complete retained source projection for one active ordinary-workflow generation.
 /// Root retention and checked usage selections are distinct; this export is not
@@ -726,6 +773,25 @@ pub trait RecipeStore: Send + Sync {
     ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
         Err(RecipeStoreError::Unavailable(
             "immutable review submissions are unavailable".into(),
+        ))
+    }
+
+    async fn submit_original_pure_case(
+        &self,
+        _request: SubmitOriginalPureCaseRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<OriginalPureCaseView, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "original Pure case owner unavailable".into(),
+        ))
+    }
+
+    async fn get_original_pure_case(
+        &self,
+        _case_id: &str,
+    ) -> Result<OriginalPureCaseView, RecipeStoreError> {
+        Err(RecipeStoreError::Unavailable(
+            "original Pure case owner unavailable".into(),
         ))
     }
 

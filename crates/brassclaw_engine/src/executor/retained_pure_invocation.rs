@@ -197,11 +197,7 @@ impl BoundPureContext {
         {
             return Err(invalid("Pure invocation bounds differ from its HostCall"));
         }
-        let inputs_checksum = Sha256::digest(
-            serde_json::to_vec(&invocation.inputs)
-                .map_err(|_| invalid("Pure inputs cannot be encoded"))?,
-        )
-        .into();
+        let inputs_checksum = json_checksum(&invocation.inputs)?;
         let invocation_checksum = invocation.selected.checksum;
         let component = invocation.component;
         let export = invocation.export.clone();
@@ -413,25 +409,21 @@ impl BoundPureContext {
                 None
             };
             match receipt.outcome {
-                Ok(snapshot) => match snapshot.recipe.as_ref() {
+                Ok(snapshot) => match snapshot.recipe {
                     Some(RecipeEvent::Progress {
                         context: actual,
                         boundary: RecipeBoundary::Complete { value },
                         ..
-                    }) if *actual == context => {
+                    }) if actual == context => {
                         return Ok(
                             if invocation
                                 .result_contract
-                                .validate_with_limits(value, invocation.limits)
+                                .validate_with_limits(&value, invocation.limits)
                                 .is_ok()
                             {
-                                PureCandidateOutcome::Return {
-                                    value: value.clone(),
-                                }
+                                PureCandidateOutcome::Return { value }
                             } else {
-                                PureCandidateOutcome::ResultContractViolation {
-                                    value: value.clone(),
-                                }
+                                PureCandidateOutcome::ResultContractViolation { value }
                             },
                         );
                     }
@@ -439,8 +431,7 @@ impl BoundPureContext {
                         context: actual,
                         boundary: RecipeBoundary::ControlYield { key },
                         ..
-                    }) if *actual == context => {
-                        let key = *key;
+                    }) if actual == context => {
                         receipt = self
                             .exchange(state, RecipeCommand::ResumeControl { context, key })
                             .await?;
@@ -451,7 +442,7 @@ impl BoundPureContext {
                         ));
                     }
                 },
-                Err(error) => {
+                Err(mut error) => {
                     // Only an actual Python exception from this Start/control
                     // command and exact failed child is observed as candidate data.
                     // Resource, protocol, preload and root failures remain errors.
@@ -473,7 +464,8 @@ impl BoundPureContext {
                         if matches!(exception.class(), "MemoryError" | "TimeoutError" | "RecursionError") {
                             return Err(process_error(error));
                         }
-                        return Ok(PureCandidateOutcome::PythonException { exception: exception.clone() });
+                        let exception=error.python_exception.take().expect("checked typed native exception");
+                        return Ok(PureCandidateOutcome::PythonException { exception });
                     }
                     return Err(process_error(error));
                 }
@@ -531,13 +523,7 @@ impl BoundPureContext {
         });
         state.native_failure = None;
         let command = WorkerCommand::Recipe { command };
-        state.expected_command_checksum = Some(
-            Sha256::digest(
-                serde_json::to_vec(&command)
-                    .map_err(|_| invalid("Pure command encoding failed"))?,
-            )
-            .into(),
-        );
+        state.expected_command_checksum = Some(json_checksum(&command)?);
         state.pending = Some(
             self.inner
                 .transport
@@ -580,11 +566,7 @@ impl BoundPureContext {
                     request: receipt.id,
                     kind,
                 })?;
-        let actual: [u8; 32] = Sha256::digest(
-            serde_json::to_vec(&original)
-                .map_err(|_| invalid("original Pure command encoding failed"))?,
-        )
-        .into();
+        let actual = json_checksum(&original)?;
         if state.expected_command_checksum != Some(actual) {
             return Err(invalid("Pure receipt command differs"));
         }
@@ -717,6 +699,24 @@ fn process_error(error: brassclaw_monty_host::process::ProcessError) -> Retained
     RetainedExecutionError::Process(Arc::new(error))
 }
 
+struct HashWriter(Sha256);
+impl std::io::Write for HashWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.update(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn json_checksum<T: Serialize + ?Sized>(value: &T) -> Result<[u8; 32], RetainedExecutionError> {
+    let mut hash = HashWriter(Sha256::new());
+    brassclaw_common::json::write_json(&mut hash, value)
+        .map_err(|_| invalid("original Pure JSON digest encoding failed"))?;
+    Ok(hash.0.finalize().into())
+}
+
 fn encode_receipt(
     receipt: &TransportReceipt,
     command: &WorkerCommand,
@@ -786,16 +786,6 @@ fn encode_receipt(
         .map_err(|_| invalid("Pure receipt exceeds its actual IPC-frame accounting"))?;
     let count = usize::try_from(count)
         .map_err(|_| invalid("Pure receipt size exceeds host representation"))?;
-    struct HashWriter(Sha256);
-    impl std::io::Write for HashWriter {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.update(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
     let (bytes, checksum) = if retain {
         let mut encoded = Vec::new();
         encoded
@@ -943,5 +933,42 @@ pub mod testing {
         pause.reached.notify_one();
         pause.release.notified().await;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod digest_tests {
+    use super::*;
+    #[test]
+    fn streaming_inputs_and_commands_preserve_actual_compact_writer_bytes() {
+        let inputs = serde_json::json!({"text":"\\\"Ü\n".repeat(4096),"data":[null,true,7,1.5,{"quoted":"\""}]});
+        let encoded = serde_json::to_vec(&inputs).unwrap();
+        assert_eq!(
+            json_checksum(&inputs).unwrap(),
+            <[u8; 32]>::from(Sha256::digest(&encoded))
+        );
+        let source = "def original(inputs):\n    return inputs['text']\n".to_owned();
+        let selected = brassclaw_monty_host::process::SelectedPython {
+            checksum: Sha256::digest(source.as_bytes()).into(),
+            source,
+            aliases: Default::default(),
+        };
+        let command = WorkerCommand::Recipe {
+            command: RecipeCommand::Start {
+                context: serde_json::from_value(serde_json::json!(uuid::Uuid::new_v4())).unwrap(),
+                selected,
+                inputs,
+            },
+        };
+        let encoded = serde_json::to_vec(&command).unwrap();
+        assert_eq!(
+            json_checksum(&command).unwrap(),
+            <[u8; 32]>::from(Sha256::digest(&encoded))
+        );
+        let recovered: WorkerCommand = serde_json::from_slice(&encoded).unwrap();
+        assert_eq!(
+            json_checksum(&command).unwrap(),
+            json_checksum(&recovered).unwrap()
+        );
     }
 }

@@ -1369,6 +1369,34 @@ pub(crate) async fn submit_component_review(
     ))
 }
 
+/// One explicit original case, under the existing instance-operator middleware.
+/// The prepared extension is host-supplied provenance, never request JSON.
+pub(crate) async fn submit_original_pure_case(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    preparation: Option<Extension<brassclaw_host_api::task_preparation::RetainedPreparation>>,
+    PreparedJson(request): PreparedJson<brassclaw_product_workflow::SubmitOriginalPureCaseRequest>,
+) -> Result<Json<brassclaw_product_workflow::OriginalPureCaseView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .submit_original_pure_case(caller, request, preparation.map(|Extension(p)| p))
+            .await?,
+    ))
+}
+pub(crate) async fn get_original_pure_case(
+    State(state): State<WebUiV2State>,
+    Extension(caller): Extension<WebUiAuthenticatedCaller>,
+    Path(case_id): Path<String>,
+) -> Result<Json<brassclaw_product_workflow::OriginalPureCaseView>, WebUiV2HttpError> {
+    Ok(Json(
+        state
+            .services()
+            .get_original_pure_case(caller, &case_id)
+            .await?,
+    ))
+}
+
 pub async fn get_component_revision_head(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,

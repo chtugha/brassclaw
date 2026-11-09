@@ -474,3 +474,95 @@ impl PgMontyAdmission {
         }))
     }
 }
+
+pub(crate) use terminal::HistoricalOutcome as PrivateOriginalTerminalStatus;
+impl PgMontyAdmission {
+    /// Authenticate historical failed/successful terminal metadata without
+    /// minting a live claim, native completion, delivery or replay permission.
+    pub(crate) async fn read_private_terminal_status(
+        tx: &Transaction<'_>,
+        work_id: Uuid,
+        context: &brassclaw_turns::private_work::PrivateExecutionContext,
+    ) -> Result<Option<PrivateOriginalTerminalStatus>, AgentLoopDriverError> {
+        let invalid = || failed("private_terminal_original_invalid");
+        let Some(state) =
+            brassclaw_turns::PgTurnStateStore::read_private_work_state_in_transaction(
+                tx,
+                context.tenant_id.as_str(),
+                work_id,
+            )
+            .await
+            .map_err(|_| invalid())?
+        else {
+            return Ok(None);
+        };
+        if state.request.context() != context || state.request.work_id() != work_id {
+            return Err(invalid());
+        }
+        let Some(row)=tx.query_opt("SELECT p.definition_bytes,p.checksum,t.terminal_bytes,t.checksum,t.execution_report_bytes,
+            a.runner_id,a.claim_checksum,a.admission_key,a.private_claim_generation,a.private_request_checksum,
+            a.outcome,a.private_execution_context,a.native_actor,w.private_definition_checksum,w.private_claim_checksum,
+            w.private_claim_generation,w.private_runner_id,w.private_admission_run
+            FROM brassclaw_monty_private_terminals t
+            JOIN brassclaw_monty_private_preparations p USING(work_id)
+            JOIN brassclaw_monty_task_admissions a ON a.run_id=t.run_id AND a.private_work_id=t.work_id
+            JOIN brassclaw_turns w ON w.work_id=t.work_id AND w.execution_run_id=t.run_id
+            WHERE t.work_id=$1 AND t.run_id=$2 AND a.origin_kind='private_work' AND a.phase='settled'",
+            &[&work_id,&state.request.run_id().as_uuid()]).await.map_err(|_|failed("monty_admission_database_failed"))? else {
+                if state.status==brassclaw_turns::private_work::PrivateWorkStatus::Settled {return Err(invalid());}
+                return Ok(None);
+            };
+        if state.status != brassclaw_turns::private_work::PrivateWorkStatus::Settled {
+            return Err(invalid());
+        }
+        let definition_checksum: [u8; 32] =
+            row.get::<_, Vec<u8>>(1).try_into().map_err(|_| invalid())?;
+        let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+            &state.request,
+            state.request_checksum,
+            row.get(0),
+            definition_checksum,
+        )
+        .map_err(|_| invalid())?;
+        let terminal_checksum: [u8; 32] =
+            row.get::<_, Vec<u8>>(3).try_into().map_err(|_| invalid())?;
+        let outcome: Value = row.get::<_, Option<Value>>(10).ok_or_else(invalid)?;
+        let (address, status, refs) = terminal::Terminal::read_outcome(
+            row.get(2),
+            terminal_checksum,
+            row.get(4),
+            &outcome,
+            definition.root().source_checksum(),
+        )?;
+        if status == PrivateOriginalTerminalStatus::Successful {
+            Self::validate_private_result_reference(&outcome, state.request.run_id())?;
+        }
+        let expected = terminal::Address {
+            work_id,
+            run_id: state.request.run_id().as_uuid(),
+            claim_generation: 1,
+            claim_checksum: row.get::<_, Vec<u8>>(6).try_into().map_err(|_| invalid())?,
+            request_checksum: state.request_checksum,
+            definition_checksum,
+            admission_ref: Sha256::digest(row.get::<_, Vec<u8>>(7)).into(),
+            cancellation_revision: state.cancellation_revision,
+        };
+        if address != expected
+            || state.terminal_checksum != Some(terminal_checksum)
+            || row.get::<_, i64>(8) != 1
+            || row.get::<_, i64>(15) != 1
+            || row.get::<_, Vec<u8>>(9).as_slice() != state.request_checksum
+            || row.get::<_, Value>(11) != serde_json::to_value(context).map_err(|_| invalid())?
+            || row.get::<_, Value>(12)
+                != serde_json::to_value(&context.actor).map_err(|_| invalid())?
+            || row.get::<_, Vec<u8>>(13).as_slice() != definition.checksum()
+            || row.get::<_, Vec<u8>>(14).as_slice() != expected.claim_checksum
+            || row.get::<_, Uuid>(16) != row.get::<_, Uuid>(5)
+            || row.get::<_, Uuid>(17) != state.request.run_id().as_uuid()
+            || Self::read_private_invocation_refs(tx, state.request.run_id()).await? != refs
+        {
+            return Err(invalid());
+        }
+        Ok(Some(status))
+    }
+}

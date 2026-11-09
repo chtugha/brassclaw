@@ -32,6 +32,152 @@ use crate::{
 #[path = "pure_case_seed_fixture.rs"]
 mod seed;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostingState {
+    Unknown,
+    NotStarted,
+    InFlight,
+    WorkerJoined,
+    ConfirmedClosed,
+}
+struct QualificationProgress {
+    phase: std::sync::Mutex<(&'static str, HostingState)>,
+    original: std::sync::Mutex<Option<Arc<seed::SeedOperation>>>,
+    closed: std::sync::Mutex<Option<Box<crate::bootstrap_recipe_flow::Observation>>>,
+    cleanup_pending: std::sync::atomic::AtomicBool,
+    cleanup_error: std::sync::Mutex<Option<RebornBuildError>>,
+    closed_turn: std::sync::Mutex<Option<brassclaw_turns::TurnRunRecord>>,
+    admission_reference: std::sync::Mutex<Option<String>>,
+}
+impl QualificationProgress {
+    fn new() -> Self {
+        Self {
+            phase: std::sync::Mutex::new(("case_package", HostingState::NotStarted)),
+            original: std::sync::Mutex::new(None),
+            closed: std::sync::Mutex::new(None),
+            cleanup_pending: std::sync::atomic::AtomicBool::new(false),
+            cleanup_error: std::sync::Mutex::new(None),
+            closed_turn: std::sync::Mutex::new(None),
+            admission_reference: std::sync::Mutex::new(None),
+        }
+    }
+    fn checkpoint(&self, phase: &'static str, state: HostingState) -> Result<(), RebornBuildError> {
+        *self
+            .phase
+            .lock()
+            .map_err(|_| invalid("case qualification custody unavailable"))? = (phase, state);
+        Ok(())
+    }
+    fn acknowledged_cleanup(
+        &self,
+        closed: &brassclaw_turns::TurnRunRecord,
+    ) -> Result<(), RebornBuildError> {
+        *self
+            .closed_turn
+            .lock()
+            .map_err(|_| invalid("case closed Turn custody unavailable"))? = Some(closed.clone());
+        self.cleanup_pending
+            .store(false, std::sync::atomic::Ordering::Release);
+        let (phase, state) = *self
+            .phase
+            .lock()
+            .map_err(|_| invalid("case closure custody unavailable"))?;
+        if state == HostingState::WorkerJoined {
+            self.checkpoint(phase, HostingState::ConfirmedClosed)?;
+        }
+        Ok(())
+    }
+}
+/// Optional private support only. The actual cause and current original stay
+/// with the catalogue owner; the operator projection exposes phase/kind only.
+pub(crate) struct CaseUnavailable {
+    phase: &'static str,
+    reason: &'static str,
+    cause: Option<Box<dyn std::error::Error + Send + Sync>>,
+    custody: Arc<QualificationProgress>,
+}
+impl std::fmt::Debug for CaseUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CaseUnavailable")
+            .field("phase", &self.phase)
+            .field("reason", &self.reason)
+            .finish_non_exhaustive()
+    }
+}
+impl std::fmt::Display for CaseUnavailable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "original Pure case {}: {}", self.phase, self.reason)
+    }
+}
+impl std::error::Error for CaseUnavailable {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.cause.as_deref().map(|e| e as _)
+    }
+}
+impl CaseUnavailable {
+    pub(crate) fn view(&self) -> brassclaw_product_workflow::OriginalPureCaseReadiness {
+        use crate::pure_case_execution::OriginalCaseOperation;
+        let native_pending = self
+            .custody
+            .original
+            .lock()
+            .map(|original| {
+                original
+                    .as_ref()
+                    .is_some_and(|operation| operation.has_uncommitted_evidence())
+            })
+            .unwrap_or(true)
+            || self
+                .custody
+                .cleanup_pending
+                .load(std::sync::atomic::Ordering::Acquire);
+        let cleanup_error = self
+            .custody
+            .cleanup_error
+            .lock()
+            .map(|error| error.is_some())
+            .unwrap_or(true);
+        let admission_present = self
+            .custody
+            .admission_reference
+            .lock()
+            .map(|reference| reference.is_some())
+            .unwrap_or(true);
+        let closed_turn_present = self
+            .custody
+            .closed_turn
+            .lock()
+            .map(|original| original.is_some())
+            .unwrap_or(false);
+        let evidence_pending =
+            native_pending || cleanup_error || (admission_present && !closed_turn_present);
+        brassclaw_product_workflow::OriginalPureCaseReadiness {
+            ready: false,
+            evidence_pending,
+            phase: Some(self.phase.into()),
+            reason_kind: Some(self.reason.into()),
+        }
+    }
+}
+fn failure(
+    phase: &'static str,
+    reason: &'static str,
+    cause: impl std::error::Error + Send + Sync + 'static,
+    custody: Arc<QualificationProgress>,
+) -> CaseUnavailable {
+    CaseUnavailable {
+        phase,
+        reason,
+        cause: Some(Box::new(cause)),
+        custody,
+    }
+}
+fn fatal(error: CaseUnavailable) -> RebornBuildError {
+    RebornBuildError::OriginalPureCaseQualification {
+        source: Box::new(error),
+    }
+}
+
 pub(crate) struct PackagedCaseGraph {
     pub(crate) program: Arc<RetainedToolProgram>,
     definitions: PackagedDefinitions,
@@ -40,16 +186,11 @@ pub(crate) struct PackagedCaseGraph {
 
 async fn retain(
     pool: Arc<PgPool>,
-    kernel: &dyn MontyKernelSnapshot,
+    identity: brassclaw_host_runtime::NativeImplementationRef,
     tenant: &str,
 ) -> Result<PackagedCaseGraph, RebornBuildError> {
     let capability =
         CapabilityId::new(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID).map_err(invalid)?;
-    let native = kernel.builtin(&capability, None).map_err(invalid)?;
-    native.verify_native_artifact().await.map_err(invalid)?;
-    let identity = native
-        .native_identity()
-        .ok_or_else(|| invalid("original Pure native implementation missing"))?;
     let tool = crate::builtin_bootstrap::seed_pure_case_tool(pool.clone(), tenant)
         .await
         .map_err(invalid)?;
@@ -252,6 +393,7 @@ fn specs() -> Vec<Spec> {
 }
 
 struct Context {
+    progress: Arc<QualificationProgress>,
     base: SessionInput,
     kernel: Arc<dyn MontyKernelSnapshot>,
     graph: PackagedCaseGraph,
@@ -326,13 +468,17 @@ impl Context {
             "selection_bytes":self.program(spec).inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes()})))
     }
     async fn run_stage(&self, spec: &Spec) -> Result<(), RebornBuildError> {
+        self.progress.checkpoint(spec.name, HostingState::Unknown)?;
         let id = self.id(&format!("{}:intent", spec.name));
         let done = self.id(&format!("{}:complete", spec.name));
         if io::read_record(&self.base.pool, self.base.storage.as_ref(), done)
             .await?
             .is_some()
         {
-            return self.verify_stage(spec).await.map(|_| ());
+            self.verify_stage(spec).await?;
+            self.progress
+                .checkpoint(spec.name, HostingState::ConfirmedClosed)?;
+            return Ok(());
         }
         if io::read_record(&self.base.pool, self.base.storage.as_ref(), id)
             .await?
@@ -342,9 +488,24 @@ impl Context {
                 "original Pure seed stage is unresolved; no fixture replay",
             ));
         }
+        self.progress
+            .checkpoint(spec.name, HostingState::NotStarted)?;
         let intent = self.stage_intent(spec)?;
         io::retain_new_intent(&self.base.pool, self.base.storage.as_ref(), id, &intent).await?;
         let reference = format!("original-pure-seed:{}:{}", self.operation, spec.name);
+        *self
+            .progress
+            .admission_reference
+            .lock()
+            .map_err(|_| invalid("case admission custody unavailable"))? = Some(reference.clone());
+        *self
+            .progress
+            .closed_turn
+            .lock()
+            .map_err(|_| invalid("case closed Turn custody unavailable"))? = None;
+        self.progress
+            .cleanup_pending
+            .store(true, std::sync::atomic::Ordering::Release);
         let admitted = io::bounded(
             self.base.storage.as_ref(),
             crate::bootstrap_validation::admit(
@@ -363,15 +524,36 @@ impl Context {
             let program=self.program(spec);
             let inspected=Arc::new(brassclaw_engine::executor::retained_source::InspectedRetainedProgram::inspect_with_limits(
                 RetainedProgram::Tools(program.clone()),&self.base.worker.path(),self.base.preparation.limits())
-                .await.map_err(invalid)?);
+                .await.map_err(|error| {
+                    if !matches!(&error,brassclaw_engine::executor::retained_source::RetainedSourceError::Invalid {..}) {
+                        let _=self.progress.checkpoint(spec.name,HostingState::InFlight);
+                    }
+                    invalid(error)
+                })?);
+            self.progress.checkpoint(spec.name,HostingState::InFlight)?;
             let tools=crate::installed_monty_catalogue::original_pure_case_tools(self.base.pool.clone(),self.kernel.clone(),
                 admitted.host.clone(),admitted.admission.clone(),program,operation.clone(),false)?;
             let source=Arc::new(seed::SeedSource {reference,inspected,operation:operation.clone(),tools,
                 raw:spec.raw,expected:spec.expected.clone(),received_receipt:std::sync::OnceLock::new()});
+            *self.progress.original.lock().map_err(|_|invalid("case original custody unavailable"))?=Some(operation.clone());
             let observation=crate::bootstrap_recipe_flow::execute(&admitted,
                 crate::bootstrap_recipe_flow::Request::contained(self.base.worker.path(),self.base.executor.clone(),
                     &self.base.root,source.clone())?).await?;
-            let (actual,quiescence)=observation.quiescence_proof()?;
+            if observation.receipt.root.source_checksum()!=self.base.root.source_checksum() {
+                *self.progress.closed.lock().map_err(|_|invalid("case closed custody unavailable"))?=Some(Box::new(observation));
+                return Err(invalid("case fixture changed the protected root"));
+            }
+            let (actual,quiescence)=match observation.quiescence_proof() {
+                Ok(proof)=>proof,
+                Err(error)=>{
+                    let safe=observation.ended_failure_projection().is_ok();
+                    *self.progress.closed.lock().map_err(|_|invalid("case closed custody unavailable"))?=Some(Box::new(observation));
+                    if safe {self.progress.checkpoint(spec.name,HostingState::WorkerJoined)?;}
+                    return Err(error);
+                }
+            };
+            *self.progress.closed.lock().map_err(|_|invalid("case closed custody unavailable"))?=Some(Box::new(observation));
+            self.progress.checkpoint(spec.name,HostingState::WorkerJoined)?;
             proof.set(quiescence).map_err(|_|invalid("duplicate seed quiescence"))?;
             let received=operation.received()?;
             let receipt=source.received_receipt.get().ok_or_else(||invalid("closed seed receipt missing"))?;
@@ -404,8 +586,26 @@ impl Context {
             self.base.storage.as_ref(),
         )
         .await;
-        let header = run?;
-        let closed = closed?;
+        let (header, closed) = match (run, closed) {
+            (Ok(header), Ok(closed)) => {
+                self.progress.acknowledged_cleanup(&closed)?;
+                (header, closed)
+            }
+            (Err(primary), Ok(closed)) => {
+                self.progress.acknowledged_cleanup(&closed)?;
+                return Err(primary);
+            }
+            (Ok(_), Err(primary)) => return Err(primary),
+            (Err(primary), Err(secondary)) => {
+                *self
+                    .progress
+                    .cleanup_error
+                    .lock()
+                    .map_err(|_| invalid("case cleanup cause custody unavailable"))? =
+                    Some(secondary);
+                return Err(primary);
+            }
+        };
         let report = json!({"format":"original-pure-seed-stage-complete/1","manifest_checksum":self.manifest_checksum,
             "stage":spec.name,"intent":{"id":id,"checksum":evidence::checksum(&intent)},
             "observed":header,"closed_turn":closed});
@@ -616,10 +816,115 @@ pub(crate) async fn qualify(
     base: SessionInput,
     kernel: Arc<dyn MontyKernelSnapshot>,
     tenant: &str,
+) -> Result<
+    (
+        Option<Arc<QualifiedCaseHarness>>,
+        Option<Arc<CaseUnavailable>>,
+    ),
+    RebornBuildError,
+> {
+    use brassclaw_host_runtime::RetainedCapabilityError as NativeError;
+    let progress = Arc::new(QualificationProgress::new());
+    let capability =
+        CapabilityId::new(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID).map_err(invalid)?;
+    let native = match kernel.builtin(&capability, None) {
+        Ok(native) => native,
+        Err(
+            error @ (NativeError::MissingCapability
+            | NativeError::MissingRegistration
+            | NativeError::MissingNativeRegistration),
+        ) => {
+            return Ok((
+                None,
+                Some(Arc::new(failure(
+                    "native_registration",
+                    "missing_optional_case_registration",
+                    error,
+                    progress,
+                ))),
+            ));
+        }
+        Err(error) => {
+            return Err(fatal(failure(
+                "native_registration",
+                "shared_registration_integrity",
+                error,
+                progress,
+            )));
+        }
+    };
+    if let Err(error) = native.verify_native_artifact().await {
+        return Err(fatal(failure(
+            "native_artifact",
+            "shared_native_artifact_integrity",
+            error,
+            progress,
+        )));
+    }
+    let identity = native.native_identity().ok_or_else(|| {
+        fatal(failure(
+            "native_artifact",
+            "missing_native_identity",
+            NativeError::MissingNativeRegistration,
+            progress.clone(),
+        ))
+    })?;
+    match qualify_inner(base, kernel, tenant, identity, progress.clone()).await {
+        Ok(Some(ready)) => {
+            *progress
+                .original
+                .lock()
+                .map_err(|_| invalid("case original custody unavailable"))? = None;
+            *progress
+                .closed
+                .lock()
+                .map_err(|_| invalid("case closed custody unavailable"))? = None;
+            Ok((Some(ready), None))
+        }
+        Ok(None) => Ok((
+            None,
+            Some(Arc::new(CaseUnavailable {
+                phase: "initial_tool_policy",
+                reason: "case_tool_blocked",
+                cause: None,
+                custody: progress,
+            })),
+        )),
+        Err(cause) => {
+            let (phase, state) = *progress
+                .phase
+                .lock()
+                .map_err(|_| invalid("case readiness custody unavailable"))?;
+            let reason = match state {
+                HostingState::NotStarted => "case_preparation_unavailable",
+                HostingState::ConfirmedClosed => "case_fixture_closed_unqualified",
+                HostingState::WorkerJoined => "case_worker_joined_cleanup_pending",
+                _ => "case_containment_unconfirmed",
+            };
+            let error = failure(phase, reason, cause, progress);
+            if matches!(
+                state,
+                HostingState::NotStarted
+                    | HostingState::WorkerJoined
+                    | HostingState::ConfirmedClosed
+            ) {
+                Ok((None, Some(Arc::new(error))))
+            } else {
+                Err(fatal(error))
+            }
+        }
+    }
+}
+async fn qualify_inner(
+    base: SessionInput,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    tenant: &str,
+    identity: brassclaw_host_runtime::NativeImplementationRef,
+    progress: Arc<QualificationProgress>,
 ) -> Result<Option<Arc<QualifiedCaseHarness>>, RebornBuildError> {
     let mut graph = io::bounded(
         base.storage.as_ref(),
-        retain(base.pool.clone(), kernel.as_ref(), tenant),
+        retain(base.pool.clone(), identity, tenant),
     )
     .await?;
     let draft = seed::fixture_draft()?;
@@ -642,7 +947,15 @@ pub(crate) async fn qualify(
             base.preparation.limits(),
         )
         .await
-        .map_err(invalid)?,
+        .map_err(|error| {
+            if !matches!(
+                &error,
+                brassclaw_engine::executor::retained_source::RetainedSourceError::Invalid { .. }
+            ) {
+                let _ = progress.checkpoint("fixture_inspection", HostingState::InFlight);
+            }
+            invalid(error)
+        })?,
     );
     let manifest = json!({"format":"original-pure-seed-manifest/1",
         "program":graph.program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
@@ -731,6 +1044,7 @@ pub(crate) async fn qualify(
         return Err(invalid("original Pure seed reservation differs"));
     }
     let context = Context {
+        progress,
         base,
         kernel,
         graph,
@@ -765,8 +1079,14 @@ pub(crate) async fn qualify(
                 .expect("closed Spec"),
         )
         .await?;
+    context
+        .progress
+        .checkpoint("independent_encoder", HostingState::InFlight)?;
     let encoder =
         crate::bootstrap_validator_approval::qualify_case_encoder(context.base.clone()).await?;
+    context
+        .progress
+        .checkpoint("independent_encoder", HostingState::ConfirmedClosed)?;
     let encoder_ref = verify_encoder(&context, &encoder).await?;
     context
         .run_stage(&specs().into_iter().find(|s| !s.raw).expect("closed Spec"))

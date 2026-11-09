@@ -1337,6 +1337,23 @@ pub trait RebornServicesApi: Send + Sync {
         Err(recipe_store_unavailable())
     }
 
+    async fn submit_original_pure_case(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _request: crate::recipes::SubmitOriginalPureCaseRequest,
+        _preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<crate::recipes::OriginalPureCaseView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
+    async fn get_original_pure_case(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        _case_id: &str,
+    ) -> Result<crate::recipes::OriginalPureCaseView, RebornServicesError> {
+        Err(recipe_store_unavailable())
+    }
+
     async fn get_component_revision_head(
         &self,
         _caller: WebUiAuthenticatedCaller,
@@ -4708,6 +4725,33 @@ impl RebornServicesApi for RebornServices {
             .as_ref()
             .ok_or_else(recipe_store_unavailable)?
             .submit_component_review(&caller.user_id.to_string(), request, preparation)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn submit_original_pure_case(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        request: crate::recipes::SubmitOriginalPureCaseRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<crate::recipes::OriginalPureCaseView, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .submit_original_pure_case(request, preparation)
+            .await
+            .map_err(map_recipe_store_error)
+    }
+
+    async fn get_original_pure_case(
+        &self,
+        _caller: WebUiAuthenticatedCaller,
+        case_id: &str,
+    ) -> Result<crate::recipes::OriginalPureCaseView, RebornServicesError> {
+        self.recipe_store
+            .as_ref()
+            .ok_or_else(recipe_store_unavailable)?
+            .get_original_pure_case(case_id)
             .await
             .map_err(map_recipe_store_error)
     }

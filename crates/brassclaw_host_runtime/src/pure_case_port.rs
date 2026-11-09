@@ -116,7 +116,8 @@ mod tests {
     }
     #[tokio::test]
     async fn foreign_case_service_scopes_cannot_enter_or_consume_the_original() {
-        let original = scope();
+        let mut original = scope();
+        original.agent_id = None;
         let operation = Arc::new(RefuseOriginal(AtomicUsize::new(0)));
         let view = PureCaseInvocationView::new(original.clone(), operation.clone());
         for field in [

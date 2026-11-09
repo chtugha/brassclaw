@@ -118,6 +118,11 @@ pub const WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW: &str =
     "/api/webchat/v2/component-review-submissions";
 pub const WEBUI_V2_PATTERN_GET_COMPONENT_REVIEW_SUBMISSION: &str =
     "/api/webchat/v2/component-review-submissions/{submission_id}";
+pub const WEBUI_V2_ROUTE_SUBMIT_ORIGINAL_PURE_CASE: &str = "webui.v2.submit_original_pure_case";
+pub const WEBUI_V2_ROUTE_GET_ORIGINAL_PURE_CASE: &str = "webui.v2.get_original_pure_case";
+pub const WEBUI_V2_PATTERN_SUBMIT_ORIGINAL_PURE_CASE: &str = "/api/webchat/v2/original-pure-cases";
+pub const WEBUI_V2_PATTERN_GET_ORIGINAL_PURE_CASE: &str =
+    "/api/webchat/v2/original-pure-cases/{case_id}";
 pub const WEBUI_V2_PATTERN_PREPARE_ASSOCIATION_REVIEW: &str =
     "/api/webchat/v2/skills/{skill_id}/association-review";
 pub const WEBUI_V2_PATTERN_APPROVE_ASSOCIATION: &str =
@@ -537,6 +542,8 @@ pub fn webui_v2_routes() -> Vec<IngressRouteDescriptor> {
         record_review_disposition_descriptor(),
         reconcile_post_turn_review_descriptor(),
         submit_component_review_descriptor(),
+        submit_original_pure_case_descriptor(),
+        get_original_pure_case_descriptor(),
         get_component_review_submission_descriptor(),
         get_component_revision_head_descriptor(),
         reject_component_descriptor(),
@@ -952,6 +959,8 @@ pub fn is_webui_v2_operator_route_id(route_id: &str) -> bool {
                 | WEBUI_V2_ROUTE_INSPECT_POST_TURN_REVIEW
                 | WEBUI_V2_ROUTE_RECONCILE_POST_TURN_REVIEW
                 | WEBUI_V2_ROUTE_RECORD_REVIEW_DISPOSITION
+                | WEBUI_V2_ROUTE_SUBMIT_ORIGINAL_PURE_CASE
+                | WEBUI_V2_ROUTE_GET_ORIGINAL_PURE_CASE
                 | WEBUI_V2_ROUTE_SUBMIT_COMPONENT_REVIEW
                 | WEBUI_V2_ROUTE_GET_COMPONENT_REVIEW_SUBMISSION
                 | WEBUI_V2_ROUTE_GET_COMPONENT_REVISION_HEAD
@@ -2429,6 +2438,33 @@ fn get_automation_run_history_descriptor() -> IngressRouteDescriptor {
             read_rate_limit(),
             AuditTraceClass::UserAction,
             AllowedEffectPath::ProductWorkflow,
+            StreamingMode::None,
+        ),
+    )
+}
+
+fn submit_original_pure_case_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_SUBMIT_ORIGINAL_PURE_CASE,
+        NetworkMethod::Post,
+        WEBUI_V2_PATTERN_SUBMIT_ORIGINAL_PURE_CASE,
+        mutation_policy(
+            BodyLimitPolicy::ComponentPreparation,
+            mutation_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProductWorkflow,
+        ),
+    )
+}
+fn get_original_pure_case_descriptor() -> IngressRouteDescriptor {
+    descriptor(
+        WEBUI_V2_ROUTE_GET_ORIGINAL_PURE_CASE,
+        NetworkMethod::Get,
+        WEBUI_V2_PATTERN_GET_ORIGINAL_PURE_CASE,
+        read_policy(
+            read_rate_limit(),
+            AuditTraceClass::UserAction,
+            AllowedEffectPath::ProjectionOnly,
             StreamingMode::None,
         ),
     )

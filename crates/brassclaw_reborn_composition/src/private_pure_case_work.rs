@@ -20,7 +20,148 @@ use brassclaw_turns::{
 };
 use tokio_postgres::{IsolationLevel, Transaction};
 
+pub(crate) enum CasePreparationError {
+    Invalid(&'static str),
+    Conflict(&'static str),
+    Dependency(RebornBuildError),
+}
+impl From<RebornBuildError> for CasePreparationError {
+    fn from(error: RebornBuildError) -> Self {
+        Self::Dependency(error)
+    }
+}
+impl CasePreparationError {
+    fn into_store_error(self) -> brassclaw_product_workflow::RecipeStoreError {
+        use brassclaw_product_workflow::RecipeStoreError;
+        match self {
+            Self::Invalid(reason) => RecipeStoreError::Invalid(reason.into()),
+            Self::Conflict(reason) => RecipeStoreError::Conflict(reason.into()),
+            Self::Dependency(error) => {
+                let _ = error;
+                RecipeStoreError::Unavailable(
+                    "original Pure case admission not acknowledged".into(),
+                )
+            }
+        }
+    }
+}
+
 impl InstalledMontyCatalogue {
+    /// Native product facade entry point. Exactly one explicit original case;
+    /// no case enumeration, oracle expectation or component approval is added.
+    pub(crate) async fn submit_original_pure_case(
+        &self,
+        request: brassclaw_product_workflow::SubmitOriginalPureCaseRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<
+        brassclaw_product_workflow::OriginalPureCaseView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        let case_id = original_case_identifier(&request.case_id)?;
+        let submission = original_case_identifier(&request.submission_id)?;
+        if request.export.is_empty() {
+            return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
+                "declared original export required".into(),
+            ));
+        }
+        let preparation = preparation
+            .map(crate::installed_monty_catalogue::PreparationCapture::from_original)
+            .transpose()
+            .map_err(|_| {
+                brassclaw_product_workflow::RecipeStoreError::Invalid(
+                    "invalid original case preparation".into(),
+                )
+            })?;
+        self.prepare_private_pure_case(
+            case_id,
+            submission,
+            &request.export,
+            &request.inputs,
+            preparation,
+        )
+        .await
+        .map_err(CasePreparationError::into_store_error)?;
+        self.get_original_pure_case(&request.case_id).await
+    }
+
+    /// Read metadata through the same catalogue/Source/H01 owners. Neither
+    /// admission nor qualification is retried by this historical projection.
+    pub(crate) async fn get_original_pure_case(
+        &self,
+        case_id: &str,
+    ) -> Result<
+        brassclaw_product_workflow::OriginalPureCaseView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        use brassclaw_product_workflow::{
+            OriginalPureCaseStatus as Status, OriginalPureCaseView, RecipeStoreError,
+        };
+        let id = original_case_identifier(case_id)?;
+        let timeout = self
+            .resource_store_settings
+            .snapshot()
+            .and_then(|s| s.validate())
+            .map_err(|_| {
+                RecipeStoreError::Unavailable(
+                    "original Pure case storage settings unavailable".into(),
+                )
+            })?
+            .timeout;
+        tokio::time::timeout(timeout, async {
+            let mut client = TransactionClient::from_client(self.pool.get().await
+                .map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?);
+            let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true).start().await.map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?;
+            let row = tx.query_opt("SELECT submission_id FROM reborn_original_pure_cases WHERE case_id=$1", &[&id])
+                .await.map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?
+                .ok_or_else(||RecipeStoreError::NotFound("original Pure case missing".into()))?;
+            let submission: Uuid = row.get(0);
+            let context = self.pure_case_context(&tx,submission).await
+                .map_err(|_|RecipeStoreError::Unavailable("original Pure case context unavailable".into()))?;
+            let settled = crate::pure_case_settlement::read(&tx,id,&context,&self.pure_source_review).await
+                .map_err(|_|RecipeStoreError::Unavailable("original Pure case settlement invalid".into()))?;
+            let pending_original=if settled.is_none() {
+                Some(CheckedOriginalPureCase::read(&tx,&self.pure_source_review,id,&context).await
+                    .map_err(|_|RecipeStoreError::Unavailable("original Pure case original invalid".into()))?
+                    .ok_or_else(||RecipeStoreError::NotFound("original Pure case missing".into()))?)
+            } else {None};
+            let case=settled.as_ref().map(|settled|settled.original()).or(pending_original.as_ref())
+                .ok_or_else(||RecipeStoreError::Unavailable("original Pure case original unavailable".into()))?;
+            let case_checksum=hex::encode(case.checksum());
+            let work = PgTurnStateStore::read_private_work_state_in_transaction(&tx,context.tenant_id.as_str(),id).await
+                .map_err(|_|RecipeStoreError::Unavailable("original Pure case Work unavailable".into()))?
+                .ok_or_else(||RecipeStoreError::Unavailable("original Pure case Work missing".into()))?;
+            if work.request.context()!=case.context()
+                || !matches!(work.request.original(),PrivateOriginalRef::OriginalPureCaseV1 {case_id,case_checksum}
+                    if *case_id==id && *case_checksum==case.checksum()) {
+                return Err(RecipeStoreError::Unavailable("original Pure case Work identity invalid".into()));
+            }
+
+            let terminal=crate::pg_monty_admission::PgMontyAdmission::read_private_terminal_status(&tx,id,&context).await
+                .map_err(|_|RecipeStoreError::Unavailable("original Pure terminal invalid".into()))?;
+            let (status,observation_bytes,settlement_checksum) = if let Some(settled)=settled {
+                (Status::Settled,Some(settled.observation_bytes().to_owned()),Some(hex::encode(settled.checksum())))
+            } else {
+                (match work.status {
+                    PrivateWorkStatus::AwaitingPreparation=>Status::AwaitingPreparation,
+                    PrivateWorkStatus::Ready=>Status::Ready,
+                    PrivateWorkStatus::Claimed=>Status::Running,
+                    PrivateWorkStatus::ReconciliationRequired=>Status::ReconciliationRequired,
+                    PrivateWorkStatus::Cancelled=>Status::Cancelled,
+                    PrivateWorkStatus::Settled=>match terminal {
+                        Some(crate::pg_monty_admission::PrivateOriginalTerminalStatus::Successful)=>Status::ObservationPendingDelivery,
+                        Some(crate::pg_monty_admission::PrivateOriginalTerminalStatus::TechnicalFailure)=>Status::TechnicalFailure,
+                        None=>return Err(RecipeStoreError::Unavailable("original Pure terminal missing".into())),
+                    },
+                },None,None)
+            };
+            let view=OriginalPureCaseView {case_id:id.to_string(),submission_id:submission.to_string(),
+                case_checksum,status,observation_bytes,settlement_checksum};
+            tx.commit().await.map_err(|_|RecipeStoreError::Unavailable("original Pure case read not acknowledged".into()))?;
+            client.recycle_after_commit();
+            Ok(view)
+        }).await.map_err(|_|RecipeStoreError::Unavailable("original Pure case read deadline elapsed".into()))?
+    }
     async fn pure_case_context(
         &self,
         tx: &Transaction<'_>,
@@ -51,9 +192,12 @@ impl InstalledMontyCatalogue {
         submission: Uuid,
         export: &str,
         inputs: &Value,
-    ) -> Result<PrivateWorkState, RebornBuildError> {
+        preparation: Option<crate::installed_monty_catalogue::PreparationCapture>,
+    ) -> Result<PrivateWorkState, CasePreparationError> {
         if case_id.is_nil() || case_id == submission {
-            return Err(invalid("distinct original Pure case ID required"));
+            return Err(CasePreparationError::Invalid(
+                "distinct original Pure case ID required",
+            ));
         }
         let timeout = self
             .resource_store_settings
@@ -76,14 +220,33 @@ impl InstalledMontyCatalogue {
             .case_harness
             .as_ref()
             .ok_or_else(|| invalid("original Pure case capability is unready"))?;
-        let preparation = self.capture_task_preparation().await?;
+        let preparation = match preparation {
+            Some(original) => original,
+            None => self.capture_task_preparation().await?,
+        };
+        #[cfg(test)]
+        {
+            let gate = self.capture_gate.lock().await.take();
+            if let Some((captured, release)) = gate {
+                captured.notify_one();
+                release.notified().await;
+            }
+        }
         let bounds = preparation.limits().bounds;
         let limits = brassclaw_skills::value_contract::ContractLimits {
             max_depth: bounds.max_value_depth,
             max_nodes: bounds.max_value_nodes,
             max_bytes: bounds.max_value_bytes,
         };
-        brassclaw_skills::value_contract::validate_data_bounds(inputs, limits).map_err(invalid)?;
+        // A larger borrowed-value setting does not expand the existing
+        // schema/default binder's supported profile. This is a technical
+        // prerequisite, not an invalid caller input or permission to clamp it.
+        limits.validate_binding_limits().map_err(invalid)?;
+        brassclaw_skills::value_contract::validate_data_bounds(inputs, limits).map_err(|_| {
+            CasePreparationError::Invalid(
+                "original Pure case inputs exceed their captured typed bounds",
+            )
+        })?;
         let (context, original) = tokio::time::timeout(timeout, async {
             let mut client =
                 TransactionClient::from_client(self.pool.get().await.map_err(invalid)?);
@@ -122,9 +285,7 @@ impl InstalledMontyCatalogue {
         .await
         .map_err(|_| invalid("original Pure Source prerequisite read deadline elapsed"))??;
         if original.worker_checksum() != self.worker_image.checksum() {
-            return Err(invalid(
-                "original Pure case requires its retained Source worker",
-            ));
+            return Err(invalid("original Pure case requires its retained Source worker").into());
         }
         let worker = crate::pg_review_admission_source::verified_worker(
             &self.worker_image,
@@ -141,9 +302,9 @@ impl InstalledMontyCatalogue {
         .map_err(invalid)?;
         // Qualify every export/closure above, then bind exactly this declared
         // export and typed original input. Loading/invocation occurs later.
-        inspected
-            .invocation(export, inputs, limits)
-            .map_err(invalid)?;
+        inspected.invocation(export, inputs, limits).map_err(|_| {
+            CasePreparationError::Invalid("unknown original Pure export or invalid typed inputs")
+        })?;
         let write = tokio::time::timeout(timeout, async {
             let mut client =
                 TransactionClient::from_client(self.pool.get().await.map_err(invalid)?);
@@ -245,10 +406,11 @@ impl InstalledMontyCatalogue {
             Ok(Some(state)) => state,
             Ok(None) => {
                 write?;
-                return Err(invalid(
-                    "original Pure case preparation remains unacknowledged",
-                ));
+                return Err(
+                    invalid("original Pure case preparation remains unacknowledged").into(),
+                );
             }
+            Err(error @ CasePreparationError::Conflict(_)) => return Err(error),
             Err(error) => {
                 write?;
                 return Err(error);
@@ -266,7 +428,7 @@ impl InstalledMontyCatalogue {
         submission: Uuid,
         export: &str,
         inputs: &Value,
-    ) -> Result<Option<PrivateWorkState>, RebornBuildError> {
+    ) -> Result<Option<PrivateWorkState>, CasePreparationError> {
         let mut client = TransactionClient::from_client(self.pool.get().await.map_err(invalid)?);
         let tx = client
             .build_transaction()
@@ -275,6 +437,24 @@ impl InstalledMontyCatalogue {
             .start()
             .await
             .map_err(invalid)?;
+        let original = tx
+            .query_opt(
+                "SELECT submission_id FROM reborn_original_pure_cases WHERE case_id=$1",
+                &[&case_id],
+            )
+            .await
+            .map_err(invalid)?;
+        if let Some(row) = original {
+            if row.get::<_, Uuid>(0) != submission {
+                return Err(CasePreparationError::Conflict(
+                    "same original Pure case ID has a different Source submission",
+                ));
+            }
+        } else {
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            return Ok(None);
+        }
         let context = self.pure_case_context(&tx, submission).await?;
         let Some(case) =
             CheckedOriginalPureCase::read(&tx, &self.pure_source_review, case_id, &context).await?
@@ -285,7 +465,7 @@ impl InstalledMontyCatalogue {
         };
         if case.submission_id() != submission || case.export() != export || case.inputs() != inputs
         {
-            return Err(invalid(
+            return Err(CasePreparationError::Conflict(
                 "same original Pure case ID has different input or export",
             ));
         }
@@ -302,7 +482,7 @@ impl InstalledMontyCatalogue {
             || !matches!(state.request.original(),PrivateOriginalRef::OriginalPureCaseV1 {case_id:id,case_checksum}
                 if *id==case_id && *case_checksum==case.checksum())
         {
-            return Err(invalid("original Pure case Ready seal differs"));
+            return Err(invalid("original Pure case Ready seal differs").into());
         }
         let row=tx.query_one("SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
             &[&case_id]).await.map_err(invalid)?;
@@ -319,7 +499,7 @@ impl InstalledMontyCatalogue {
             || definition.worker_checksum() != case.worker_checksum()
             || definition.input_checksum() != checksum("{}")
         {
-            return Err(invalid("original Pure case captured definition differs"));
+            return Err(invalid("original Pure case captured definition differs").into());
         }
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
@@ -412,4 +592,17 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for CaseWri
         }
         Ok(())
     }
+}
+
+fn original_case_identifier(
+    value: &str,
+) -> Result<Uuid, brassclaw_product_workflow::RecipeStoreError> {
+    Uuid::parse_str(value)
+        .ok()
+        .filter(|id| !id.is_nil() && id.to_string() == value)
+        .ok_or_else(|| {
+            brassclaw_product_workflow::RecipeStoreError::Invalid(
+                "canonical non-nil original case UUID required".into(),
+            )
+        })
 }

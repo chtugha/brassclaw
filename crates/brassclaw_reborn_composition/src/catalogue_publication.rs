@@ -326,6 +326,15 @@ impl InstalledMontyCatalogue {
             )
         });
         Ok(CatalogueActivationStatus {
+            original_pure_case: Some(match &self.case_unready {
+                Some(unready) => unready.view(),
+                None => brassclaw_product_workflow::OriginalPureCaseReadiness {
+                    ready: self.case_harness.is_some(),
+                    evidence_pending: false,
+                    phase: None,
+                    reason_kind: None,
+                },
+            }),
             generation: view.generation.to_string(),
             recipes: view.recipes.iter().map(|r| r.recipe_id.clone()).collect(),
             selections: view.recipes.clone(),

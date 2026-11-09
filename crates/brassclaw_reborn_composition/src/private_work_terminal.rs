@@ -143,7 +143,88 @@ pub(super) struct HistoricalNative {
     pub(super) receipt_checksum: [u8; 32],
     pub(super) reconciliation_refs: Vec<InvocationRef>,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HistoricalOutcome {
+    Successful,
+    TechnicalFailure,
+}
+
 impl Terminal {
+    /// Read-only status of the exact original terminal, including failed and
+    /// never-submitted cases. This cannot reconstruct a native receipt/proof.
+    pub(super) fn read_outcome(
+        bytes: &str,
+        expected: [u8; 32],
+        report: Option<&str>,
+        outcome: &serde_json::Value,
+        expected_root_source: [u8; 32],
+    ) -> Result<(Address, HistoricalOutcome, Vec<InvocationRef>), AgentLoopDriverError> {
+        Self::verify(bytes, expected, report)?;
+        let wire: Wire = serde_json::from_str(bytes).map_err(|_| invalid())?;
+        let status = match &wire.completion {
+            Completion::NativeReceipt {
+                root,
+                outcome: native,
+                ..
+            } => {
+                let report = report.ok_or_else(invalid)?;
+                let parsed: serde_json::Value =
+                    serde_json::from_str(report).map_err(|_| invalid())?;
+                if outcome.get("execution") != Some(&parsed)
+                    || root.source_checksum != expected_root_source
+                    || parsed["format"] != "monty-internal-task-execution/1"
+                    || parsed["root"]
+                        != serde_json::json!({"format":"monty-root-execution/1",
+                        "vm_id":root.vm_id,"source_checksum":hex::encode(root.source_checksum),
+                        "aliases_checksum":hex::encode(root.aliases_checksum),"workers":root.workers})
+                {
+                    return Err(invalid());
+                }
+                match native {
+                    Outcome::InternalCompleted { receipt_checksum } => {
+                        Self::read_success(bytes, expected, report)?;
+                        if outcome["status"] != "completed"
+                            || outcome["internal_receipt"].as_str().map(checksum)
+                                != Some(*receipt_checksum)
+                            || parsed["root_completed"] != true
+                            || parsed["all_selected_recipes_complete"] != true
+                            || parsed["withheld_root_answers"] != 0
+                            || parsed["withheld_host_answers"] != false
+                            || parsed["internal_receipt"] != outcome["internal_receipt"]
+                            || !parsed["reply"].is_null()
+                            || parsed["semantic_approval"] != false
+                            || parsed["catalogue_activation"] != false
+                        {
+                            return Err(invalid());
+                        }
+                        HistoricalOutcome::Successful
+                    }
+                    Outcome::Failed { reason_kind } => {
+                        if outcome["status"] != "failed"
+                            || outcome["reason_kind"].as_str() != Some(reason_kind.as_str())
+                        {
+                            return Err(invalid());
+                        }
+                        HistoricalOutcome::TechnicalFailure
+                    }
+                }
+            }
+            Completion::NeverSubmitted { reason } => {
+                let reason = match reason {
+                    Unsubmitted::TaskCancelled => "task_cancelled",
+                    Unsubmitted::MontyInputRejected => "monty_input_rejected",
+                    Unsubmitted::MontyAdmissionBackpressure => "monty_admission_backpressure",
+                    Unsubmitted::MontyServiceClosed => "monty_service_closed",
+                    Unsubmitted::MontyAdmissionRejected => "monty_admission_rejected",
+                };
+                if outcome != &serde_json::json!({"status":"failed","reason_kind":reason}) {
+                    return Err(invalid());
+                }
+                HistoricalOutcome::TechnicalFailure
+            }
+        };
+        Ok((wire.address, status, wire.reconciliation_refs))
+    }
     pub(super) fn read_success(
         bytes: &str,
         expected: [u8; 32],

@@ -157,10 +157,35 @@ impl OriginalCaseOperation for AuthoredCaseOperation {
                 invocation.data_limits(),
             )
             .map_err(invalid)?;
-        let bytes=serde_json::to_string(&serde_json::json!({"format":"original-pure-case-execution/1",
-            "case_id":self.case.id(),"case_checksum":self.case.checksum(),"run_id":self.host.attempt().run_id.as_uuid(),
-            "invocation_id":scope.invocation_id.as_uuid(),"task":invocation.task(),"scope":scope,
-            "worker_checksum":self.case.worker_checksum()})).map_err(invalid)?;
+        #[derive(serde::Serialize)]
+        struct Execution<'a> {
+            case_checksum: [u8; 32],
+            case_id: uuid::Uuid,
+            format: &'static str,
+            invocation_id: uuid::Uuid,
+            run_id: uuid::Uuid,
+            scope: &'a ResourceScope,
+            task: brassclaw_monty_host::process::TaskHandle,
+            worker_checksum: [u8; 32],
+        }
+        let evidence_max_bytes =
+            u64::try_from(invocation.data_limits().max_bytes).map_err(invalid)?;
+        let bytes = crate::pure_case_evidence::encode_original_for(
+            &Execution {
+                case_checksum: self.case.checksum(),
+                case_id: self.case.id(),
+                format: "original-pure-case-execution/1",
+                invocation_id: scope.invocation_id.as_uuid(),
+                run_id: self.host.attempt().run_id.as_uuid(),
+                scope,
+                task: invocation.task(),
+                worker_checksum: self.case.worker_checksum(),
+            },
+            evidence_max_bytes,
+            crate::pure_case_evidence::EXECUTION_INSERT,
+            &[16, 16, 32],
+        )
+        .map_err(invalid)?;
         let bound = Arc::new(BoundAuthoredCase {
             case: self.case.clone(),
             evidence: self.evidence.clone(),
@@ -175,6 +200,7 @@ impl OriginalCaseOperation for AuthoredCaseOperation {
             invocation_id: scope.invocation_id.as_uuid(),
             execution_bytes: bytes,
             received: OnceLock::new(),
+            evidence_max_bytes,
             failures: StdMutex::new(BTreeMap::new()),
             reconciliation_error: StdMutex::new(None),
             transport_pending: AtomicBool::new(false),
@@ -206,6 +232,7 @@ struct BoundAuthoredCase {
     invocation_id: uuid::Uuid,
     execution_bytes: String,
     received: OnceLock<Received>,
+    evidence_max_bytes: u64,
     failures: StdMutex<BTreeMap<&'static str, Arc<Failed>>>,
     reconciliation_error: StdMutex<Option<CaseCause>>,
     transport_pending: AtomicBool,
@@ -218,7 +245,7 @@ pub(crate) enum CaseCause {
     Engine(brassclaw_engine::executor::retained_recipe::RetainedExecutionError),
     Metadata(crate::pure_case_evidence::EvidenceError),
     Host(brassclaw_turns::run_profile::AgentLoopHostError),
-    Encoding(serde_json::Error),
+    Capacity(crate::pure_case_evidence::CaseEncodingError),
     Boundary(&'static str),
     Bootstrap {
         phase: &'static str,
@@ -234,8 +261,20 @@ impl CaseCause {
             Self::Host(error) => {
                 serde_json::json!({"kind":"host","cause":error.kind.as_str(),"reason":error.reason_kind})
             }
-            Self::Encoding(error) => {
-                serde_json::json!({"kind":"encoding","category":format!("{:?}",error.classify()),"line":error.line(),"column":error.column()})
+            Self::Capacity(error) => {
+                let kind = match error {
+                    crate::pure_case_evidence::CaseEncodingError::PolicyCapacity => {
+                        "original_policy"
+                    }
+                    crate::pure_case_evidence::CaseEncodingError::Representation => {
+                        "postgres_representation"
+                    }
+                    crate::pure_case_evidence::CaseEncodingError::Allocation(_) => {
+                        "host_allocation"
+                    }
+                    crate::pure_case_evidence::CaseEncodingError::Encoding(_) => "json_encoding",
+                };
+                serde_json::json!({"kind":"evidence_capacity","cause":kind})
             }
             Self::Bootstrap { phase, error } => {
                 let _ = error;
@@ -269,9 +308,9 @@ impl CaseCause {
                 Kind::OperationFailed,
                 "original Pure task is no longer dispatchable; original evidence retained",
             ),
-            Self::Encoding(_) => (
-                Kind::OutputDecode,
-                "original Pure evidence encoding failed; original evidence retained",
+            Self::Capacity(_) => (
+                Kind::Resource,
+                "original Pure evidence capacity unavailable; original evidence retained",
             ),
             Self::Boundary(_) => (
                 Kind::InvalidResult,
@@ -401,9 +440,15 @@ impl BoundAuthoredCase {
                     })
                     .collect(),
             };
-            let bytes = serde_json::to_string(&payload).map_err(|error| {
+            let bytes = crate::pure_case_evidence::encode_original_for(
+                &payload,
+                self.evidence_max_bytes,
+                crate::pure_case_evidence::FAILURE_INSERT,
+                &[16, 16, phase.len(), 32],
+            )
+            .map_err(|error| {
                 if let Ok(mut retained) = failed.capture_error.lock() {
-                    *retained = Some(CaseCause::Encoding(error));
+                    *retained = Some(CaseCause::Capacity(error));
                 }
                 Error
             })?;
@@ -528,15 +573,22 @@ impl BoundAuthoredCase {
             .invoke(selected)
             .await
             .map_err(CaseCause::Engine)?;
-        let output = serde_json::to_string(&observation).map_err(CaseCause::Encoding)?;
-        let native = serde_json::to_string(
+        let native = crate::pure_case_evidence::encode_original(
             &self
                 .context
                 .native_receipt_facts()
                 .await
                 .map_err(CaseCause::Engine)?,
+            self.evidence_max_bytes,
         )
-        .map_err(CaseCause::Encoding)?;
+        .map_err(CaseCause::Capacity)?;
+        let output = crate::pure_case_evidence::encode_original_for(
+            &observation,
+            self.evidence_max_bytes,
+            crate::pure_case_evidence::OBSERVATION_INSERT,
+            &[16, 32, native.len(), 32],
+        )
+        .map_err(CaseCause::Capacity)?;
         self.received
             .set(Received {
                 execution,
@@ -563,7 +615,13 @@ impl BoundAuthoredCase {
         received.observed.store(true, Ordering::Release);
         self.host.check_dispatch_open().map_err(CaseCause::Host)?;
         Ok(FirstPartyCapabilityResult::new(
-            serde_json::Value::String(received.output.clone()),
+            serde_json::Value::String(
+                crate::pure_case_evidence::copy_original_text(
+                    &received.output,
+                    self.evidence_max_bytes,
+                )
+                .map_err(CaseCause::Capacity)?,
+            ),
             brassclaw_host_api::ResourceUsage {
                 output_bytes: received.output.len() as u64,
                 ..Default::default()

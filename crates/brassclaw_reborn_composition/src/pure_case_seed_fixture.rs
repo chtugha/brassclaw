@@ -32,6 +32,75 @@ use serde_json::Value;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+const SEED_EVIDENCE_INSERT: &str = "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING";
+#[derive(serde::Serialize)]
+struct OriginalReceipt<'a> {
+    bytes: &'a str,
+    checksum: String,
+    ordinal: u64,
+    request_id: Uuid,
+    stage: &'a str,
+}
+fn original_receipts<'a>(
+    originals: &'a BTreeMap<&'static str, Arc<NativePureReceipt>>,
+) -> Vec<OriginalReceipt<'a>> {
+    originals
+        .iter()
+        .map(|(stage, r)| OriginalReceipt {
+            bytes: r.bytes(),
+            checksum: hex::encode(r.checksum()),
+            ordinal: r.ordinal(),
+            request_id: r.request_id(),
+            stage,
+        })
+        .collect()
+}
+#[derive(serde::Serialize)]
+struct NativeIntentRef {
+    checksum: String,
+    id: Uuid,
+}
+#[derive(serde::Serialize)]
+struct NativeObservationReport<'a> {
+    format: &'static str,
+    native_intent: NativeIntentRef,
+    native_manifest: &'a Value,
+    native_receipts: Vec<OriginalReceipt<'a>>,
+    operation: Uuid,
+    output: &'a str,
+    scope: &'a ResourceScope,
+    stage: Uuid,
+}
+#[derive(serde::Serialize)]
+struct NativeFailureReport<'a> {
+    cause: &'a Value,
+    format: &'static str,
+    native_manifest: &'a Value,
+    native_output: Option<&'a str>,
+    native_receipts: Vec<OriginalReceipt<'a>>,
+    native_scope: &'a ResourceScope,
+    operation: Uuid,
+    phase: &'a str,
+    run_id: Uuid,
+    scope: &'static str,
+    stage: Uuid,
+    stage_intent_checksum: String,
+}
+fn encode_record<T: serde::Serialize + ?Sized>(
+    id: Uuid,
+    association: &str,
+    components: &[Value],
+    report: &T,
+    original_max_bytes: u64,
+) -> Result<String, crate::pure_case_evidence::CaseEncodingError> {
+    crate::pure_case_evidence::encode_original_for(
+        &evidence::system_record_view(id, "behavior", false, association, components, report),
+        original_max_bytes,
+        SEED_EVIDENCE_INSERT,
+        &[16, 64],
+    )
+}
+
 const FIXTURE_SOURCE: &str = "def native_case_return(inputs):\n    return 'closed original Ü'\n\ndef native_case_exception(inputs):\n    raise ValueError('closed original exception')\n\ndef native_case_unexpected(inputs):\n    raise TypeError('closed unexpected exception')\n\ndef native_case_output_defect(inputs):\n    return 7\n";
 
 pub(super) fn fixture_id() -> Uuid {
@@ -303,24 +372,37 @@ impl BoundSeed {
                     }
                     Error
                 })?;
-            let report = json!({"format":"original-pure-seed-native-technical-failure/1","scope":"technical-observation-only",
-                "operation":self.operation,"stage":self.stage,"phase":phase,"run_id":self.run_id,"native_scope":self.scope,
-                "stage_intent_checksum":evidence::checksum(&self.intent_bytes),"cause":cause,"native_manifest":manifest,
-                "native_output":self.received.get().map(|r|r.output.as_str()),
-                "native_receipts":originals.iter().map(|(stage,r)|json!({"stage":stage,"ordinal":r.ordinal(),
-                    "request_id":r.request_id(),"checksum":hex::encode(r.checksum()),"bytes":r.bytes()})).collect::<Vec<_>>()});
+            let report = NativeFailureReport {
+                cause: &cause,
+                format: "original-pure-seed-native-technical-failure/1",
+                native_manifest: &manifest,
+                native_output: self.received.get().map(|r| r.output.as_str()),
+                native_receipts: original_receipts(&originals),
+                native_scope: &self.scope,
+                operation: self.operation,
+                phase,
+                run_id: self.run_id,
+                scope: "technical-observation-only",
+                stage: self.stage,
+                stage_intent_checksum: evidence::checksum(&self.intent_bytes),
+            };
             let id = Uuid::new_v5(
                 &self.stage,
                 format!("original-native-technical-failure:{phase}").as_bytes(),
             );
-            let bytes = evidence::system_record(
+            let bytes = encode_record(
                 id,
-                "behavior",
-                false,
                 &evidence::checksum(&self.intent_bytes),
                 &self.components,
-                report,
-            );
+                &report,
+                self.base.preparation.policy().max_value_bytes,
+            )
+            .map_err(|error| {
+                if let Ok(mut retained) = failure.last_error.lock() {
+                    *retained = Some(CaseCause::Capacity(error));
+                }
+                Error
+            })?;
             let _ = failure.bytes.set(bytes);
         }
         let bytes = failure.bytes.get().ok_or(Error)?;
@@ -437,7 +519,11 @@ impl BoundSeed {
             .invoke(selected)
             .await
             .map_err(CaseCause::Engine)?;
-        let output = serde_json::to_string(&observation).map_err(CaseCause::Encoding)?;
+        let output = crate::pure_case_evidence::encode_original(
+            &observation,
+            self.base.preparation.policy().max_value_bytes,
+        )
+        .map_err(CaseCause::Capacity)?;
         let manifest = self
             .context
             .native_receipt_facts()
@@ -457,19 +543,27 @@ impl BoundSeed {
             .get()
             .expect("retained native seed answer before metadata I/O");
         let id = Uuid::new_v5(&self.stage, b"original-native-observed");
-        let report = json!({"format":"original-pure-seed-native-observation/1","operation":self.operation,"stage":self.stage,
-            "native_intent":{"id":intent_id,"checksum":evidence::checksum(&bytes)},"output":received.output,
-            "scope":received.scope,"native_manifest":received.manifest,
-            "native_receipts":received.originals.iter().map(|(stage,r)|json!({"stage":stage,"ordinal":r.ordinal(),
-                "request_id":r.request_id(),"bytes":r.bytes(),"checksum":hex::encode(r.checksum())})).collect::<Vec<_>>()});
-        let bytes = evidence::system_record(
+        let report = NativeObservationReport {
+            format: "original-pure-seed-native-observation/1",
+            native_intent: NativeIntentRef {
+                id: intent_id,
+                checksum: evidence::checksum(&bytes),
+            },
+            native_manifest: &received.manifest,
+            native_receipts: original_receipts(&received.originals),
+            operation: self.operation,
+            output: &received.output,
+            scope: &received.scope,
+            stage: self.stage,
+        };
+        let bytes = encode_record(
             id,
-            "behavior",
-            false,
             &evidence::checksum(&self.intent_bytes),
             &self.components,
-            report,
-        );
+            &report,
+            self.base.preparation.policy().max_value_bytes,
+        )
+        .map_err(CaseCause::Capacity)?;
         io::retain_record(&self.base.pool, self.base.storage.as_ref(), id, &bytes)
             .await
             .map_err(|error| CaseCause::Bootstrap {
@@ -478,7 +572,13 @@ impl BoundSeed {
             })?;
         self.host.check_dispatch_open().map_err(CaseCause::Host)?;
         Ok(FirstPartyCapabilityResult::new(
-            json!(received.output),
+            Value::String(
+                crate::pure_case_evidence::copy_original_text(
+                    &received.output,
+                    self.base.preparation.policy().max_value_bytes,
+                )
+                .map_err(CaseCause::Capacity)?,
+            ),
             ResourceUsage {
                 output_bytes: received.output.len() as u64,
                 ..Default::default()
@@ -661,18 +761,53 @@ pub(super) async fn verify_originals(
         .ok_or_else(|| invalid("seed original native observation missing"))?;
     let envelope: Value = serde_json::from_str(&bytes).map_err(invalid)?;
     let report = &envelope["report"];
-    let expected = json!({"format":"original-pure-seed-native-observation/1","operation":context.operation,"stage":stage,
-        "native_intent":{"id":intent_id,"checksum":evidence::checksum(&intent)},"output":observed["native_output"],
-        "scope":scope,"native_manifest":report["native_manifest"],"native_receipts":report["native_receipts"]});
+    let stored_originals = report["native_receipts"]
+        .as_array()
+        .ok_or_else(|| invalid("seed original native receipts absent"))?;
+    let borrowed_receipts = stored_originals
+        .iter()
+        .map(|original| {
+            let bytes = original["bytes"]
+                .as_str()
+                .ok_or_else(|| invalid("seed native original bytes absent"))?;
+            Ok(OriginalReceipt {
+                bytes,
+                checksum: evidence::checksum(bytes),
+                ordinal: original["ordinal"]
+                    .as_u64()
+                    .ok_or_else(|| invalid("seed original ordinal absent"))?,
+                request_id: serde_json::from_value(original["request_id"].clone())
+                    .map_err(invalid)?,
+                stage: original["stage"]
+                    .as_str()
+                    .ok_or_else(|| invalid("seed original stage absent"))?,
+            })
+        })
+        .collect::<Result<Vec<_>, RebornBuildError>>()?;
+    let expected = NativeObservationReport {
+        format: "original-pure-seed-native-observation/1",
+        native_intent: NativeIntentRef {
+            id: intent_id,
+            checksum: evidence::checksum(&intent),
+        },
+        native_manifest: &report["native_manifest"],
+        native_receipts: borrowed_receipts,
+        operation: context.operation,
+        output: observed["native_output"]
+            .as_str()
+            .ok_or_else(|| invalid("seed original native output absent"))?,
+        scope: &scope,
+        stage,
+    };
     if bytes
-        != evidence::system_record(
+        != encode_record(
             observed_id,
-            "behavior",
-            false,
             &association,
             &components,
-            expected,
+            &expected,
+            context.base.preparation.policy().max_value_bytes,
         )
+        .map_err(invalid)?
     {
         return Err(invalid("seed original native observation bytes differ"));
     }
@@ -722,8 +857,11 @@ pub(super) async fn verify_originals(
             .ok_or_else(|| invalid("seed native receipt bytes absent"))?;
         let digest = evidence::checksum(bytes);
         let record: Value = serde_json::from_str(bytes).map_err(invalid)?;
-        let expected = json!({"stage":stage,"ordinal":record["ordinal"],"request_id":record["request_id"],"bytes":bytes,"checksum":digest});
-        if original != &expected
+        if original.as_object().is_none_or(|object| object.len() != 5)
+            || original["stage"] != stage
+            || original["ordinal"] != record["ordinal"]
+            || original["request_id"] != record["request_id"]
+            || original["checksum"] != digest
             || record["format"] != "original-pure-native-receipt/1"
             || record["transport_started"] != true
             || record["command"]["operation"] != "recipe"

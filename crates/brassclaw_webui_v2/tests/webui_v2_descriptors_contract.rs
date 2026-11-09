@@ -24,6 +24,9 @@ use brassclaw_webui_v2::{
 };
 use brassclaw_webui_v2::{WEBUI_V2_ROUTE_GET_LLM_MUTATION, WEBUI_V2_ROUTE_RECONCILE_LLM_MUTATION};
 use brassclaw_webui_v2::{
+    WEBUI_V2_ROUTE_GET_ORIGINAL_PURE_CASE, WEBUI_V2_ROUTE_SUBMIT_ORIGINAL_PURE_CASE,
+};
+use brassclaw_webui_v2::{
     WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES, WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE,
 };
 use std::collections::HashMap;
@@ -118,6 +121,40 @@ fn body_limit_kib(kib: u64) -> BodyLimitPolicy {
 
 fn expected_table() -> Vec<Expected> {
     vec![
+        Expected {
+            route_id: WEBUI_V2_ROUTE_SUBMIT_ORIGINAL_PURE_CASE,
+            method: NetworkMethod::Post,
+            pattern: "/api/webchat/v2/original-pure-cases",
+            listener_class: ListenerClass::LocalGateway,
+            auth_schemes: &[IngressAuthScheme::BearerToken],
+            scope_source: IngressScopeSource::AuthenticatedCaller,
+            body_limit: BodyLimitPolicy::ComponentPreparation,
+            rate_limit_max: 60,
+            rate_limit_window_seconds: 60,
+            rate_limit_scope: RateLimitScope::PerCaller,
+            cors: CorsPolicy::SameOriginOnly,
+            websocket_origin: WebSocketOriginPolicy::NotApplicable,
+            streaming: StreamingMode::None,
+            audit: AuditTraceClass::UserAction,
+            effect_path: AllowedEffectPath::ProductWorkflow,
+        },
+        Expected {
+            route_id: WEBUI_V2_ROUTE_GET_ORIGINAL_PURE_CASE,
+            method: NetworkMethod::Get,
+            pattern: "/api/webchat/v2/original-pure-cases/{case_id}",
+            listener_class: ListenerClass::LocalGateway,
+            auth_schemes: &[IngressAuthScheme::BearerToken],
+            scope_source: IngressScopeSource::AuthenticatedCaller,
+            body_limit: BodyLimitPolicy::NoBody,
+            rate_limit_max: 120,
+            rate_limit_window_seconds: 60,
+            rate_limit_scope: RateLimitScope::PerCaller,
+            cors: CorsPolicy::SameOriginOnly,
+            websocket_origin: WebSocketOriginPolicy::NotApplicable,
+            streaming: StreamingMode::None,
+            audit: AuditTraceClass::UserAction,
+            effect_path: AllowedEffectPath::ProjectionOnly,
+        },
         Expected {
             route_id: WEBUI_V2_ROUTE_LIST_POST_TURN_REVIEWS,
             method: NetworkMethod::Get,

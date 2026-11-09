@@ -29,6 +29,14 @@ pub const EXECUTION_DATA_LIMITS: ContractLimits = ContractLimits {
 };
 
 impl ContractLimits {
+    /// Check the existing schema/default-binding support profile separately
+    /// from borrowed data traversal. Callers can reject an unsupported captured
+    /// profile as a technical admission error before copying runtime inputs.
+    /// This changes neither the profile nor any input/result contract.
+    pub fn validate_binding_limits(self) -> Result<Self, ContractError> {
+        self.validate()
+    }
+
     fn validate_data(self) -> Result<Self, ContractError> {
         if self.max_depth == 0 || self.max_nodes == 0 || self.max_bytes == 0 {
             return Err(error("$", "invalid technical bounds"));

@@ -576,7 +576,7 @@ BEGIN
                 AND (f->>'execution_bytes')::jsonb->'case_checksum'=(SELECT jsonb_agg(get_byte(c.checksum,n) ORDER BY n) FROM generate_series(0,31)n)
                 AND (f->>'execution_bytes')::jsonb->'worker_checksum'=c.case_bytes::jsonb->'worker_checksum'
                 AND (f->>'execution_bytes')::jsonb->'scope'->>'tenant_id'=c.execution_context->>'tenant_id'
-                AND (f->>'execution_bytes')::jsonb->'scope'->'agent_id' IS NOT DISTINCT FROM c.execution_context->'agent_id'
+                AND COALESCE((f->>'execution_bytes')::jsonb->'scope'->'agent_id','null'::jsonb) IS NOT DISTINCT FROM c.execution_context->'agent_id'
                 AND (f->>'execution_bytes')::jsonb->'scope'->'project_id' IS NOT DISTINCT FROM c.execution_context->'project_id'
                 AND (f->>'execution_bytes')::jsonb->'scope'->'thread_id'='null'::jsonb
                 AND (f->>'execution_bytes')::jsonb->'scope'->>'user_id'=c.execution_context->'actor'->>'user_id')) IS NOT TRUE THEN

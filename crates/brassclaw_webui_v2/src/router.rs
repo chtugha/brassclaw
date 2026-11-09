@@ -594,6 +594,15 @@ pub fn webui_v2_router_with_options(state: WebUiV2State, options: WebUiV2RouteOp
                 post(handlers::reconcile_post_turn_review),
             )
             .route(
+                crate::descriptors::WEBUI_V2_PATTERN_SUBMIT_ORIGINAL_PURE_CASE,
+                post(handlers::submit_original_pure_case)
+                    .layer(axum::extract::DefaultBodyLimit::disable()),
+            )
+            .route(
+                crate::descriptors::WEBUI_V2_PATTERN_GET_ORIGINAL_PURE_CASE,
+                get(handlers::get_original_pure_case),
+            )
+            .route(
                 WEBUI_V2_PATTERN_SUBMIT_COMPONENT_REVIEW,
                 post(handlers::submit_component_review)
                     .layer(axum::extract::DefaultBodyLimit::disable()),

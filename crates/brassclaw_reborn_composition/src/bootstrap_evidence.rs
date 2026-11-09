@@ -27,6 +27,42 @@ pub(super) fn system_record(
         "association_checksum":association,"components":components,"succeeded":succeeded,"reviewed_evidence":[],"report":report}).to_string()
 }
 
+/// Borrow the existing /1 envelope without cloning a report's payload. The
+/// caller still owns counting, allocation/PG feasibility and qualification.
+/// Field order matches the existing serde_json::Map canonical encoding.
+pub(super) fn system_record_view<'a, T: serde::Serialize + ?Sized>(
+    id: Uuid,
+    kind: &'a str,
+    succeeded: bool,
+    association: &'a str,
+    components: &'a [serde_json::Value],
+    report: &'a T,
+) -> impl serde::Serialize + 'a {
+    #[derive(serde::Serialize)]
+    struct View<'a, T: ?Sized> {
+        association_checksum: &'a str,
+        components: &'a [serde_json::Value],
+        evidence_id: Uuid,
+        format: &'static str,
+        kind: &'a str,
+        report: &'a T,
+        reviewed_evidence: [serde_json::Value; 0],
+        succeeded: bool,
+        validation_mode: &'static str,
+    }
+    View {
+        association_checksum: association,
+        components,
+        evidence_id: id,
+        format: "component-review-evidence/1",
+        kind,
+        report,
+        reviewed_evidence: [],
+        succeeded,
+        validation_mode: "system_seed",
+    }
+}
+
 pub(super) async fn require_coherent(tx: &Transaction<'_>) -> Result<(), RebornBuildError> {
     let coherent: bool = tx
         .query_one(

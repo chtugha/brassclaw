@@ -147,6 +147,7 @@ pub(crate) struct InstalledCatalogueStartup<'a> {
 pub(crate) struct InstalledMontyCatalogue {
     pub(crate) pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview,
     pub(crate) case_harness: Option<Arc<crate::pure_case_qualification::QualifiedCaseHarness>>,
+    pub(crate) case_unready: Option<Arc<crate::pure_case_qualification::CaseUnavailable>>,
     initial_preparation: PreparationCapture,
     pub(crate) private_work_wake:
         std::sync::OnceLock<brassclaw_reborn::turn_runner::TurnRunnerWakeSender>,
@@ -965,7 +966,7 @@ impl InstalledMontyCatalogue {
             initial_preparation.limits(),
         )
         .await?;
-        let case_harness = Box::pin(crate::pure_case_qualification::qualify(
+        let (case_harness, case_unready) = Box::pin(crate::pure_case_qualification::qualify(
             crate::bootstrap_validator_approval::SessionInput {
                 pool: pool.clone(),
                 worker: worker_image.clone(),
@@ -1155,6 +1156,7 @@ impl InstalledMontyCatalogue {
         });
         let catalogue = Arc::new(Self {
             case_harness,
+            case_unready,
             pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview::new(
                 pure_workflow,
                 pure_checkers,

@@ -1620,6 +1620,45 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
     }
 
     #[cfg(feature = "skills-db")]
+    async fn submit_original_pure_case(
+        &self,
+        request: brassclaw_product_workflow::SubmitOriginalPureCaseRequest,
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+    ) -> Result<
+        brassclaw_product_workflow::OriginalPureCaseView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        self.catalogue
+            .as_ref()
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                    "original Pure case owner unavailable".into(),
+                )
+            })?
+            .submit_original_pure_case(request, preparation)
+            .await
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn get_original_pure_case(
+        &self,
+        case_id: &str,
+    ) -> Result<
+        brassclaw_product_workflow::OriginalPureCaseView,
+        brassclaw_product_workflow::RecipeStoreError,
+    > {
+        self.catalogue
+            .as_ref()
+            .ok_or_else(|| {
+                brassclaw_product_workflow::RecipeStoreError::Unavailable(
+                    "original Pure case owner unavailable".into(),
+                )
+            })?
+            .get_original_pure_case(case_id)
+            .await
+    }
+
+    #[cfg(feature = "skills-db")]
     async fn get_component_revision_head(
         &self,
         component_id: &str,

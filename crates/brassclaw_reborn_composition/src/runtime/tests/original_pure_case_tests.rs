@@ -2,7 +2,11 @@
 //! primitive -> normal ResultOnly delivery. These tests grant no candidate Q1.
 use super::local_dev_runtime_policy;
 use crate::{RebornRuntime, RebornRuntimeInput, build_reborn_runtime};
-use brassclaw_product_workflow::{MontyMemoryMode, ReviewWorkStatus, SubmitComponentReviewRequest};
+use brassclaw_product_workflow::{
+    MontyMemoryMode, OriginalPureCaseStatus, OriginalPureCaseView, RebornServicesApi as _,
+    ReviewWorkStatus, SubmitComponentReviewRequest, SubmitOriginalPureCaseRequest,
+    WebUiAuthenticatedCaller,
+};
 use brassclaw_turns::{TurnRunId, private_work::PrivateExecutionContext};
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -30,6 +34,66 @@ fn context(runtime: &RebornRuntime) -> PrivateExecutionContext {
             runtime.actor_user_id.clone(),
         )),
     }
+}
+fn caller(runtime: &RebornRuntime) -> WebUiAuthenticatedCaller {
+    WebUiAuthenticatedCaller::new(
+        runtime.thread_scope.tenant_id.clone(),
+        runtime.actor_user_id.clone(),
+        Some(runtime.thread_scope.agent_id.clone()),
+        runtime.thread_scope.project_id.clone(),
+    )
+}
+fn product_api(runtime: &RebornRuntime) -> brassclaw_product_workflow::RebornServices {
+    // The production product facade and actual catalogue-bound PG owner, not a
+    // fake executor, service or successful response. Reuses this running runtime.
+    brassclaw_product_workflow::RebornServices::new(
+        runtime.webui_thread_service(),
+        runtime.webui_turn_coordinator(),
+    )
+    .with_recipe_store(std::sync::Arc::new(
+        crate::pg_recipe_store::PgRecipeStoreFacade::new(
+            runtime.installed_catalogue.pool.clone(),
+            runtime.thread_scope.tenant_id.as_str(),
+            runtime.thread_scope.agent_id.as_str(),
+        )
+        .with_catalogue(runtime.installed_catalogue.clone()),
+    ))
+}
+async fn submit_case(
+    runtime: &RebornRuntime,
+    id: Uuid,
+    submission: Uuid,
+    export: &str,
+    inputs: &Value,
+) -> Result<OriginalPureCaseView, brassclaw_product_workflow::RebornServicesError> {
+    product_api(runtime)
+        .submit_original_pure_case(
+            caller(runtime),
+            SubmitOriginalPureCaseRequest {
+                case_id: id.to_string(),
+                submission_id: submission.to_string(),
+                export: export.into(),
+                inputs: inputs.clone(),
+            },
+            None,
+        )
+        .await
+}
+async fn assert_technical_case(runtime: &RebornRuntime, id: Uuid) {
+    tokio::time::timeout(WATCHDOG,async {
+        loop {
+            let view=product_api(runtime).get_original_pure_case(caller(runtime),&id.to_string()).await.unwrap();
+            assert!(view.observation_bytes.is_none());
+            assert!(view.settlement_checksum.is_none());
+            assert_ne!(view.status,OriginalPureCaseStatus::Settled);
+            assert_ne!(view.status,OriginalPureCaseStatus::ObservationPendingDelivery,
+                "a failed/unresolved Harness cannot be presented as a merely pending observation delivery");
+            match view.status {
+                OriginalPureCaseStatus::TechnicalFailure|OriginalPureCaseStatus::ReconciliationRequired=>break,
+                _=>tokio::task::yield_now().await,
+            }
+        }
+    }).await.expect("actual failed/unresolved terminal must have a technical operator projection");
 }
 fn source(component: Uuid) -> String {
     let exports = [
@@ -67,25 +131,16 @@ async fn original_source(runtime: &RebornRuntime) -> (Uuid, Uuid) {
         dependencies: vec![],
         function_partner: None,
     };
-    crate::pg_review_submission::submit_with_catalogue(
-        &runtime.installed_catalogue.pool,
-        runtime.actor_user_id.as_str(),
-        runtime.thread_scope.tenant_id.as_str(),
-        runtime.thread_scope.agent_id.as_str(),
-        request,
-        &runtime.installed_catalogue,
-    )
-    .await
-    .unwrap();
+    product_api(runtime)
+        .submit_component_review(caller(runtime), request, None)
+        .await
+        .unwrap();
     tokio::time::timeout(WATCHDOG, async {
         loop {
-            let view = crate::pg_review_submission::get_with_catalogue(
-                &runtime.installed_catalogue.pool,
-                &submission.to_string(),
-                &runtime.installed_catalogue,
-            )
-            .await
-            .unwrap();
+            let view = product_api(runtime)
+                .get_component_review_submission(caller(runtime), &submission.to_string())
+                .await
+                .unwrap();
             if matches!(
                 view.work.as_ref().map(|w| &w.status),
                 Some(ReviewWorkStatus::StructuralObservationsConfirmed)
@@ -138,12 +193,10 @@ async fn one_case_with_id(
         .0
         .private_completion_waiter(run)
         .unwrap();
-    let state = runtime
-        .installed_catalogue
-        .prepare_private_pure_case(id, submission, export, &json!({"text":text}))
+    let state = submit_case(&runtime, id, submission, export, &json!({"text":text}))
         .await
         .unwrap();
-    assert_eq!(state.request.run_id(), run);
+    assert_eq!(state.case_id, id.to_string());
     let driven = tokio::time::timeout(WATCHDOG, waiter.wait())
         .await
         .expect("original case must reach its actual native completion")
@@ -151,28 +204,18 @@ async fn one_case_with_id(
     assert!(driven.internal_completion.is_some());
     tokio::time::timeout(WATCHDOG, async {
         loop {
-            let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
-            let tx = client
-                .build_transaction()
-                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
+            let original = product_api(runtime)
+                .get_original_pure_case(caller(runtime), &id.to_string())
                 .await
                 .unwrap();
-            let present = crate::pure_case_settlement::read(
-                &tx,
-                id,
-                &context(runtime),
-                &runtime.installed_catalogue.pure_source_review,
-            )
-            .await
-            .unwrap();
-            tx.commit().await.unwrap();
-            if let Some(original) = present {
-                assert_eq!(original.original().id(), id);
-                assert!(!original.observation_bytes().is_empty());
+            assert_eq!(original.case_id, id.to_string());
+            if original.status == OriginalPureCaseStatus::Settled {
+                assert!(original.settlement_checksum.is_some());
+                assert!(!original.observation_bytes.as_deref().unwrap().is_empty());
                 break;
             }
+            assert!(original.settlement_checksum.is_none());
+            assert!(original.observation_bytes.is_none());
             tokio::task::yield_now().await;
         }
     })
@@ -235,18 +278,26 @@ async fn native_original_pure_case_records_real_return_exception_and_contract_de
     let text = "quotes: ' \" Ü {{vars.code}}\nresult = host.forbidden()";
     let (id, returned) = one_case(&runtime, submission, "return_value", text).await;
     assert_eq!(returned["outcome"], json!({"kind":"return","value":text}));
-    let state = runtime
-        .installed_catalogue
-        .prepare_private_pure_case(id, submission, "return_value", &json!({"text":text}))
-        .await
-        .unwrap();
-    assert_eq!(state.request.work_id(), id);
+    let state = submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":text}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(state.case_id, id.to_string());
     assert!(
-        runtime
-            .installed_catalogue
-            .prepare_private_pure_case(id, submission, "return_value", &json!({"text":"different"}))
-            .await
-            .is_err()
+        submit_case(
+            &runtime,
+            id,
+            submission,
+            "return_value",
+            &json!({"text":"different"})
+        )
+        .await
+        .is_err()
     );
     let (_, exception) = one_case(&runtime, submission, "domain_error", text).await;
     assert_eq!(
@@ -346,9 +397,7 @@ async fn native_original_pure_case_rejects_invalid_typed_admission_without_case_
     ] {
         let id = Uuid::new_v4();
         assert!(
-            runtime
-                .installed_catalogue
-                .prepare_private_pure_case(id, submission, export, &inputs)
+            submit_case(&runtime, id, submission, export, &inputs)
                 .await
                 .is_err()
         );
@@ -406,16 +455,15 @@ async fn native_original_pure_case_lost_new_execution_intent_ack_never_starts_ca
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
     transport.arm(1).unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "return_value",
-            &json!({"text":"must never execute"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"must never execute"}),
+    )
+    .await
+    .unwrap();
     assert!(
         tokio::time::timeout(WATCHDOG, waiter.wait())
             .await
@@ -453,16 +501,15 @@ async fn native_original_pure_case_lost_new_execution_intent_ack_never_starts_ca
     assert_eq!(failure["native"]["started"], false);
     assert_eq!(failure["originals"], json!({}));
     drop(client);
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "return_value",
-            &json!({"text":"must never execute"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"must never execute"}),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         rig.pool
             .get()
@@ -477,6 +524,7 @@ async fn native_original_pure_case_lost_new_execution_intent_ack_never_starts_ca
             .get::<_, i64>(0),
         1
     );
+    assert_technical_case(&runtime, id).await;
     runtime.shutdown().await.unwrap();
     transport.shutdown().await.unwrap();
 }
@@ -668,16 +716,15 @@ async fn native_original_pure_case_lost_native_answer_ack_keeps_actual_result_wi
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
     transport.arm(1).unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "return_value",
-            &json!({"text":"actual completed original"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"actual completed original"}),
+    )
+    .await
+    .unwrap();
     assert!(
         tokio::time::timeout(WATCHDOG, waiter.wait())
             .await
@@ -723,6 +770,7 @@ async fn native_original_pure_case_lost_native_answer_ack_keeps_actual_result_wi
         Some(json!("released"))
     );
     drop(client);
+    assert_technical_case(&runtime, id).await;
     runtime.shutdown().await.unwrap();
     transport.shutdown().await.unwrap();
 }
@@ -759,16 +807,15 @@ async fn native_original_pure_case_uses_its_own_live_policy_and_does_not_inherit
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "return_value",
-            &json!({"text":"blocked original"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"blocked original"}),
+    )
+    .await
+    .unwrap();
     assert!(
         tokio::time::timeout(WATCHDOG, waiter.wait())
             .await
@@ -814,6 +861,7 @@ async fn native_original_pure_case_uses_its_own_live_policy_and_does_not_inherit
         result["outcome"]["value"],
         "new independent case after policy edit"
     );
+    assert_technical_case(&runtime, id).await;
     runtime.shutdown().await.unwrap();
 }
 
@@ -831,11 +879,15 @@ async fn native_original_pure_case_actual_memory_limit_is_technical_failure_and_
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(id, submission, "resource_limit", &json!({"text":"x"}))
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "resource_limit",
+        &json!({"text":"x"}),
+    )
+    .await
+    .unwrap();
     assert!(
         tokio::time::timeout(WATCHDOG, waiter.wait())
             .await
@@ -872,9 +924,11 @@ async fn native_original_pure_case_actual_memory_limit_is_technical_failure_and_
     .unwrap();
     assert_eq!(actual["failure"], "Vm(Python)");
     assert_eq!(actual["python_exception"]["class"], "MemoryError");
+    // This case targets the allocator's actual Python MemoryError path. The
+    // separate control tracker resource path is not a Python domain exception.
     assert_eq!(
-        failure["failure"]["primary"]["cause"]["reason"],
-        "native Python exception has ambiguous resource origin"
+        failure["failure"]["primary"]["cause"],
+        json!({"kind":"process","failure":{"kind":"vm","failure":"Python"}})
     );
     drop(client);
     let (_, next) = one_case(
@@ -888,7 +942,17 @@ async fn native_original_pure_case_actual_memory_limit_is_technical_failure_and_
         next["outcome"]["value"],
         "same root after actual resource failure"
     );
+    assert_technical_case(&runtime, id).await;
+    let historical_api = product_api(&runtime);
+    let historical_caller = caller(&runtime);
     runtime.shutdown().await.unwrap();
+    let closed = historical_api
+        .get_original_pure_case(historical_caller, &id.to_string())
+        .await
+        .unwrap();
+    assert_eq!(closed.status, OriginalPureCaseStatus::TechnicalFailure);
+    assert!(closed.observation_bytes.is_none());
+    assert!(closed.settlement_checksum.is_none());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -908,16 +972,15 @@ async fn native_original_pure_case_worker_death_during_original_start_keeps_rece
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "never_complete",
-            &json!({"text":"actual interrupted candidate"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "never_complete",
+        &json!({"text":"actual interrupted candidate"}),
+    )
+    .await
+    .unwrap();
     tokio::time::timeout(WATCHDOG, pause.reached.notified())
         .await
         .expect("actual original Start must reach the actor before worker death");
@@ -1004,16 +1067,15 @@ async fn native_original_pure_case_worker_death_before_release_receipt_collectio
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "return_value",
-            &json!({"text":"actual return before worker death"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"actual return before worker death"}),
+    )
+    .await
+    .unwrap();
     tokio::time::timeout(WATCHDOG, pause.reached.notified())
         .await
         .expect(
@@ -1099,16 +1161,15 @@ async fn native_original_pure_case_provisional_observation_cannot_settle_before_
         .0
         .private_completion_waiter(run)
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "domain_error",
-            &json!({"text":"real candidate exception before delivery"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "domain_error",
+        &json!({"text":"real candidate exception before delivery"}),
+    )
+    .await
+    .unwrap();
     tokio::time::timeout(WATCHDOG, pause.reached.notified())
         .await
         .expect("actual terminal commit must reach the pre-Factory-ACK gate");
@@ -1189,16 +1250,15 @@ async fn native_original_pure_case_cancellation_fences_begun_case_without_poison
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    runtime
-        .installed_catalogue
-        .prepare_private_pure_case(
-            id,
-            submission,
-            "never_complete",
-            &json!({"text":"cancel actual running case"}),
-        )
-        .await
-        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "never_complete",
+        &json!({"text":"cancel actual running case"}),
+    )
+    .await
+    .unwrap();
     tokio::time::timeout(WATCHDOG, pause.reached.notified())
         .await
         .unwrap();
@@ -1373,6 +1433,581 @@ async fn native_original_pure_case_historical_observation_rejects_crossed_identi
             .query_one(
                 "SELECT original_pure_case_observation_valid($1,$2,$3,$4)",
                 &[&id, &execution, &observation.to_string(), &native]
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0)
+    );
+    drop(client);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_original_pure_case_operator_http_uses_original_capture_and_real_delivery() {
+    use axum::{
+        body::{Body, to_bytes},
+        http::{Request, StatusCode},
+    };
+    use brassclaw_product_workflow::MontyVmSettingsStore as _;
+    use sha2::Digest as _;
+    use tower::ServiceExt as _;
+    struct Operator(brassclaw_host_api::UserId);
+    #[async_trait::async_trait]
+    impl crate::WebuiAuthenticator for Operator {
+        async fn authenticate(&self, token: &str) -> Option<brassclaw_host_api::UserId> {
+            matches!(token, "j01-case-operator" | "j01-case-user").then(|| self.0.clone())
+        }
+        fn allows_operator_webui_config(&self) -> bool {
+            true
+        }
+        async fn authenticate_operator(&self, token: &str) -> Option<brassclaw_host_api::UserId> {
+            (token == "j01-case-operator").then(|| self.0.clone())
+        }
+    }
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = std::sync::Arc::new(start(&rig, home.path()).await);
+    let (submission, _) = original_source(&runtime).await;
+    let app = crate::webui_v2_app(
+        crate::build_webui_services(runtime.clone(), None)
+            .await
+            .unwrap(),
+        crate::WebuiServeConfig::new(
+            runtime.thread_scope.tenant_id.clone(),
+            std::sync::Arc::new(Operator(runtime.actor_user_id.clone())),
+            vec![],
+        ),
+    )
+    .unwrap();
+    let id = Uuid::new_v4();
+    let uri = "/api/webchat/v2/original-pure-cases";
+    let request = json!({"case_id":id,"submission_id":submission,"export":"return_value",
+        "inputs":{"text":"HTTP original Ü {{not_source}} 'quotes'"}})
+    .to_string();
+    for token in [None, Some("j01-case-user")] {
+        let mut builder = Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("content-type", "application/json");
+        if let Some(token) = token {
+            builder = builder.header("authorization", format!("Bearer {token}"));
+        }
+        let response = app
+            .clone()
+            .oneshot(builder.body(Body::from(request.clone())).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(
+            response.status(),
+            StatusCode::UNAUTHORIZED,
+            "ordinary authenticated user is not the protected operator ingress"
+        );
+    }
+    let client = rig.pool.get().await.unwrap();
+    assert_eq!(
+        client
+            .query_one(
+                "SELECT count(*) FROM reborn_original_pure_cases WHERE case_id=$1",
+                &[&id]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        0
+    );
+    drop(client);
+    let pause = runtime
+        .monty_test_controls
+        .1
+        .pause_private_settlement(TurnRunId::from_uuid(id));
+    let waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(id))
+        .unwrap();
+    let old_preparation = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+    let captured = std::sync::Arc::new(tokio::sync::Notify::new());
+    let release = std::sync::Arc::new(tokio::sync::Notify::new());
+    *runtime.installed_catalogue.capture_gate.lock().await =
+        Some((captured.clone(), release.clone()));
+    let send = app.clone().oneshot(
+        Request::builder()
+            .method("POST")
+            .uri(uri)
+            .header("authorization", "Bearer j01-case-operator")
+            .header("content-type", "application/json")
+            .body(Body::from(request.clone()))
+            .unwrap(),
+    );
+    let change = async {
+        tokio::time::timeout(WATCHDOG, captured.notified())
+            .await
+            .unwrap();
+        let store = runtime.webui_monty_settings_store();
+        let before = store.get("default", "default").await.unwrap();
+        assert_eq!(before.revision, old_preparation.revision());
+        let mut limits = before.execution_limits;
+        limits.max_value_bytes = limits.max_value_bytes.checked_sub(1).unwrap();
+        let update = serde_json::from_value(
+            json!({"expected_revision":before.revision,"execution_limits":limits}),
+        )
+        .unwrap();
+        let saved = store.upsert("default", "default", &update).await.unwrap();
+        assert!(saved.revision > old_preparation.revision());
+        release.notify_one();
+    };
+    let (response, ()) = tokio::join!(send, change);
+    let response = response.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let initial: OriginalPureCaseView =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(initial.case_id, id.to_string());
+    assert_ne!(initial.status, OriginalPureCaseStatus::Settled);
+    assert!(initial.observation_bytes.is_none());
+    tokio::time::timeout(WATCHDOG, pause.reached.notified())
+        .await
+        .unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let row = client
+        .query_one(
+            "SELECT definition_bytes FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    let definition: Value = serde_json::from_str(row.get(0)).unwrap();
+    let original = brassclaw_host_api::task_preparation::RetainedPreparation::restore_original(
+        definition["preparation_bytes"].as_str().unwrap(),
+        definition["preparation_checksum"].as_str().unwrap(),
+    )
+    .unwrap();
+    assert_eq!(original.bytes(), old_preparation.bytes());
+    assert_eq!(original.checksum(), old_preparation.checksum());
+    assert_eq!(original.policy(), old_preparation.policy());
+    assert_eq!(
+        definition["input_checksum"],
+        json!(sha2::Sha256::digest(b"{}").to_vec())
+    );
+    drop(client);
+    let get_uri = format!("{uri}/{id}");
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(&get_uri)
+                .header("authorization", "Bearer j01-case-operator")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let provisional: OriginalPureCaseView =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_ne!(provisional.status, OriginalPureCaseStatus::Settled);
+    assert!(provisional.observation_bytes.is_none());
+    pause.release.notify_one();
+    assert!(
+        tokio::time::timeout(WATCHDOG, waiter.wait())
+            .await
+            .unwrap()
+            .is_ok()
+    );
+    tokio::time::timeout(WATCHDOG, async {
+        loop {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .uri(&get_uri)
+                        .header("authorization", "Bearer j01-case-operator")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::OK);
+            let settled: OriginalPureCaseView =
+                serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap())
+                    .unwrap();
+            if settled.status == OriginalPureCaseStatus::Settled {
+                let observed: Value =
+                    serde_json::from_str(settled.observation_bytes.as_deref().unwrap()).unwrap();
+                assert_eq!(
+                    observed["outcome"]["value"],
+                    "HTTP original Ü {{not_source}} 'quotes'"
+                );
+                assert!(settled.settlement_checksum.is_some());
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    for (field, replacement) in [("export", json!("unknown_export")), ("inputs", Value::Null)] {
+        let rejected = Uuid::new_v4();
+        let mut bad: Value = serde_json::from_str(&request).unwrap();
+        bad["case_id"] = json!(rejected);
+        bad[field] = replacement;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(uri)
+                    .header("authorization", "Bearer j01-case-operator")
+                    .header("content-type", "application/json")
+                    .body(Body::from(bad.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let counts = rig
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT (SELECT count(*) FROM reborn_original_pure_cases WHERE case_id=$1),
+                (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1)",
+                &[&rejected],
+            )
+            .await
+            .unwrap();
+        assert_eq!((counts.get::<_, i64>(0), counts.get::<_, i64>(1)), (0, 0));
+    }
+    let mut changed: Value = serde_json::from_str(&request).unwrap();
+    changed["inputs"] = json!({"text":"different data under same original ID"});
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("authorization", "Bearer j01-case-operator")
+                .header("content-type", "application/json")
+                .body(Body::from(changed.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    // Exact same-ID HTTP retry returns metadata, never another candidate start.
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(uri)
+                .header("authorization", "Bearer j01-case-operator")
+                .header("content-type", "application/json")
+                .body(Body::from(request))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+                &[&id]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    drop(app);
+    std::sync::Arc::try_unwrap(runtime)
+        .ok()
+        .unwrap()
+        .shutdown()
+        .await
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_original_pure_case_actual_compute_tracker_limit_is_not_a_python_outcome() {
+    use brassclaw_product_workflow::MontyVmSettingsStore as _;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    let (submission, _) = original_source(&runtime).await;
+    let store = runtime.webui_monty_settings_store();
+    let before = store.get("default", "default").await.unwrap();
+    let update =
+        serde_json::from_value(json!({"expected_revision":before.revision,"max_duration_secs":1}))
+            .unwrap();
+    let saved = store.upsert("default", "default", &update).await.unwrap();
+    assert_eq!(saved.max_duration_secs, 1);
+    let id = Uuid::new_v4();
+    let waiter = runtime
+        .monty_test_controls
+        .0
+        .private_completion_waiter(TurnRunId::from_uuid(id))
+        .unwrap();
+    submit_case(
+        &runtime,
+        id,
+        submission,
+        "never_complete",
+        &json!({"text":"actual shared task compute limit"}),
+    )
+    .await
+    .unwrap();
+    assert!(
+        tokio::time::timeout(WATCHDOG, waiter.wait())
+            .await
+            .unwrap()
+            .is_err()
+    );
+    let client = rig.pool.get().await.unwrap();
+    let failure:Value=serde_json::from_str(client.query_one(
+        "SELECT failure_bytes FROM reborn_original_pure_case_failures WHERE case_id=$1 AND phase='operation'",&[&id])
+        .await.unwrap().get(0)).unwrap();
+    assert_eq!(
+        failure["failure"]["primary"]["native_failure"],
+        json!({"kind":"vm","failure":"ResourceLimit"})
+    );
+    let actual = failure["originals"]
+        .as_object()
+        .unwrap()
+        .values()
+        .filter_map(|original| original["bytes"].as_str())
+        .map(|bytes| serde_json::from_str::<Value>(bytes).unwrap())
+        .find(|record| record["failure"] == "Vm(ResourceLimit)")
+        .expect("actual tracker resource-failed receipt required");
+    assert!(actual["python_exception"].is_null());
+    assert!(
+        actual["snapshot"]["task_accounting"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|account| account["task"] == failure["native"]["task"]
+                && !account["failure"].is_null())
+    );
+    let counts = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1),
+        (SELECT count(*) FROM reborn_original_pure_case_observations WHERE case_id=$1),
+        (SELECT count(*) FROM brassclaw_monty_private_deliveries WHERE work_id=$1),
+        (SELECT count(*) FROM reborn_original_pure_case_settlements WHERE case_id=$1)",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            counts.get::<_, i64>(0),
+            counts.get::<_, i64>(1),
+            counts.get::<_, i64>(2),
+            counts.get::<_, i64>(3)
+        ),
+        (1, 0, 0, 0)
+    );
+    drop(client);
+    assert_technical_case(&runtime, id).await;
+    let (_, next) = one_case(
+        &runtime,
+        submission,
+        "return_value",
+        "independent task after compute failure",
+    )
+    .await;
+    assert_eq!(
+        next["outcome"]["value"],
+        "independent task after compute failure"
+    );
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_original_pure_case_actual_receipt_envelope_obeys_acknowledged_byte_boundary() {
+    use brassclaw_product_workflow::MontyVmSettingsStore as _;
+    use serde::Serialize;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    let (submission, _) = original_source(&runtime).await;
+    let (id, observed) = one_case(
+        &runtime,
+        submission,
+        "return_value",
+        &"quotes \\\" Ü\n".repeat(64),
+    )
+    .await;
+    let client = rig.pool.get().await.unwrap();
+    let rows=client.query("SELECT receipt_bytes FROM reborn_original_pure_case_native_receipts WHERE case_id=$1 ORDER BY ordinal",&[&id]).await.unwrap();
+    let originals = rows
+        .iter()
+        .map(|row| row.get::<_, String>(0))
+        .collect::<Vec<_>>();
+    assert!((4..=6).contains(&originals.len()));
+    drop(client);
+    #[derive(Serialize)]
+    struct BorrowedActual<'a> {
+        format: &'static str,
+        originals: Vec<&'a str>,
+    }
+    let borrowed = BorrowedActual {
+        format: "actual-original-receipt-capacity-test/1",
+        originals: originals.iter().map(String::as_str).collect(),
+    };
+    // Actual worker receipts, not fabricated outcomes. This is a pure metadata
+    // encoding boundary test and writes no new Case observation/failure rows.
+    let exact = brassclaw_common::json::count_json_bytes(&borrowed, None).unwrap();
+    let store = runtime.webui_monty_settings_store();
+    let before = store.get("default", "default").await.unwrap();
+    let mut limits = before.execution_limits;
+    assert!(exact < limits.max_ipc_frame_bytes && exact > 1);
+    limits.max_value_bytes = exact;
+    let update = serde_json::from_value(
+        json!({"expected_revision":before.revision,"execution_limits":limits}),
+    )
+    .unwrap();
+    store.upsert("default", "default", &update).await.unwrap();
+    let original = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+    assert_eq!(original.policy().max_value_bytes, exact);
+    let encoded =
+        crate::pure_case_evidence::encode_original(&borrowed, original.policy().max_value_bytes)
+            .unwrap();
+    assert_eq!(encoded.len() as u64, exact);
+    let saved = store.get("default", "default").await.unwrap();
+    limits.max_value_bytes = exact - 1;
+    let update = serde_json::from_value(
+        json!({"expected_revision":saved.revision,"execution_limits":limits}),
+    )
+    .unwrap();
+    store.upsert("default", "default", &update).await.unwrap();
+    let narrower = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+    assert!(matches!(
+        crate::pure_case_evidence::encode_original(&borrowed, narrower.policy().max_value_bytes),
+        Err(crate::pure_case_evidence::CaseEncodingError::PolicyCapacity)
+    ));
+    let historical = product_api(&runtime)
+        .get_original_pure_case(caller(&runtime), &id.to_string())
+        .await
+        .unwrap();
+    assert_eq!(historical.status, OriginalPureCaseStatus::Settled);
+    assert_eq!(
+        serde_json::from_str::<Value>(historical.observation_bytes.as_deref().unwrap()).unwrap(),
+        observed
+    );
+    assert_eq!(
+        rig.pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+                &[&id]
+            )
+            .await
+            .unwrap()
+            .get::<_, i64>(0),
+        1
+    );
+    let saved = store.get("default", "default").await.unwrap();
+    let restore = serde_json::from_value(
+        json!({"expected_revision":saved.revision,"execution_limits":before.execution_limits}),
+    )
+    .unwrap();
+    store.upsert("default", "default", &restore).await.unwrap();
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_original_pure_case_initial_live_block_is_visible_unready_without_blocking_source_work()
+ {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    let tool = brassclaw_skills::pure_case_components::usage_ids().tool;
+    // Enforce the real instance policy as soon as this new component identity
+    // exists, before its first fixture invocation. No qualification is faked.
+    rig.pool.get().await.unwrap().batch_execute(&format!(r#"
+        CREATE FUNCTION block_new_original_case_tool_for_test() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN
+            IF NEW.component_id='{tool}'::uuid THEN
+                INSERT INTO brassclaw_instance_tool_settings(tool_id,enabled) VALUES(NEW.component_id,false)
+                    ON CONFLICT(tool_id) DO NOTHING;
+            END IF;
+            RETURN NEW;
+        END $$;
+        CREATE TRIGGER block_new_original_case_tool_for_test AFTER INSERT ON reborn_component_revision_heads
+            FOR EACH ROW EXECUTE FUNCTION block_new_original_case_tool_for_test();
+    "#)).await.unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    assert!(runtime.installed_catalogue.case_harness.is_none());
+    let readiness = product_api(&runtime)
+        .catalogue_status(caller(&runtime))
+        .await
+        .unwrap()
+        .original_pure_case
+        .expect("existing catalogue status exposes optional private support");
+    assert!(!readiness.ready);
+    assert!(!readiness.evidence_pending);
+    assert_eq!(readiness.phase.as_deref(), Some("initial_tool_policy"));
+    assert_eq!(readiness.reason_kind.as_deref(), Some("case_tool_blocked"));
+    let (submission, _) = original_source(&runtime).await;
+    let id = Uuid::new_v4();
+    let error = submit_case(
+        &runtime,
+        id,
+        submission,
+        "return_value",
+        &json!({"text":"blocked only new case capability"}),
+    )
+    .await
+    .err()
+    .expect("unqualified case support cannot admit a native invocation");
+    assert_eq!(error.status_code, 503);
+    let client = rig.pool.get().await.unwrap();
+    let counts = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM reborn_original_pure_cases WHERE case_id=$1),
+        (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1),
+        (SELECT count(*) FROM reborn_original_pure_case_settlements WHERE case_id=$1)",
+            &[&id],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            counts.get::<_, i64>(0),
+            counts.get::<_, i64>(1),
+            counts.get::<_, i64>(2)
+        ),
+        (0, 0, 0)
+    );
+    assert!(
+        !client
+            .query_one(
+                "SELECT enabled FROM brassclaw_instance_tool_settings WHERE tool_id=$1",
+                &[&tool]
             )
             .await
             .unwrap()

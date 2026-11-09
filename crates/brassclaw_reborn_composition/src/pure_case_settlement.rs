@@ -67,15 +67,17 @@ async fn prepare(
     context: &PrivateExecutionContext,
     source: &QualifiedPureSourceReview,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
-    let case = CheckedOriginalPureCase::read(tx, source, id, context)
-        .await
-        .map_err(|_| invalid())?
-        .ok_or_else(invalid)?;
     let Some(delivery) =
         crate::pg_monty_admission::PgMontyAdmission::read_private_delivery(tx, id, context).await?
     else {
         return Ok(None);
     };
+    // A missing H01 acknowledgement needs no Source qualification walk. Every
+    // positive settlement still authenticates the complete exact original.
+    let case = CheckedOriginalPureCase::read(tx, source, id, context)
+        .await
+        .map_err(|_| invalid())?
+        .ok_or_else(invalid)?;
     if !matches!(delivery.original().request().original(),PrivateOriginalRef::OriginalPureCaseV1 {case_id,case_checksum}
         if *case_id==id && *case_checksum==case.checksum())
     {

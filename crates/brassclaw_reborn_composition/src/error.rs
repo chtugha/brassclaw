@@ -2,6 +2,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RebornBuildError {
+    #[error("original Pure case qualification containment/integrity is unresolved")]
+    OriginalPureCaseQualification {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("invalid reborn composition configuration: {reason}")]
     InvalidConfig { reason: String },
     #[error("reborn composition requires database handle for {backend}")]
