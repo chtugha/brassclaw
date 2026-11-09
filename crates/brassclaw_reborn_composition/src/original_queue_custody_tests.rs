@@ -177,7 +177,7 @@ async fn native_original_queue_recipe_and_catalogue_held_ack_discards_cancelled_
             let caller_app = app.clone();
             let caller_input = input.clone();
             let caller = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
-                submit(&caller_app, &caller_input, timeout).await
+                super::super::tests::send(&caller_app, "POST", URI, Some(&caller_input), true).await
             }));
             let held = tokio::time::timeout(timeout, ticket.wait_held())
                 .await
