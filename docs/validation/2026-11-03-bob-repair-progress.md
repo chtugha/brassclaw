@@ -28,10 +28,22 @@ batch is disposed and its source freeze released. Exact records remain under
 `target/validation/bob-native-repair-20261105/run-24-composition/`, including
 `independent-transport-1/`, `prerequisite-1/` and `native-batch-disposition.json`.
 
-J-01 continues its registered single-case runtime package. New K-01 is read-only
-proposal work on B2-06's real snapshot/dependency quotas, existing preparation
-settings and historical read limits; it has no implementation/migration approval.
-All three complete Bob plans remain open.
+The complete F-01 correction is source-reviewed/hash-verified and integrated as
+`b32a48901`/`e00c867e6`: immutable claim identity is encoded once and freshly
+checked at each full verification, and checked refs come from one complete RR
+walk. All original predicates and separate publication/readback phases remain.
+Safe operation labels retain actual selected deadline/revision; the final
+catalogue transaction uses the existing uncertain-client guard. The real held
+COMMIT test and extended actual proof/old-byte/foreign-snapshot checks remain
+unrun. This source correction does not establish the failed Run-24 operation or
+an observed performance improvement.
+
+J-01 continues its registered single-case runtime package. K-01 completed full
+architecture/proposal review and now implements B2-06's finite connected graph,
+submission, original capture and HTTP quota path with reserved V212. Existing
+acknowledged settings and exact old profiles are reused. Per-revision/evidence
+and historical native-image follow-ons remain open. All three complete Bob
+plans remain open; the next frozen native batch validates F-01's correction.
 
 **Run-23 and connected source checkpoint — 2026-11-09:** worker and complete
 six-library/four-integration test graph compile without warnings (0.823/623.518 s).

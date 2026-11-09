@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bootstrap original-proof work (validation pending)**: Reuse invariant claim
+  digests and return checked references from one complete snapshot walk, while
+  freshly checking every original and preserving separate publication/readback.
+  Add safe timeout phase/revision context and use the existing uncertain-client
+  guard for final catalogue publication. Real PostgreSQL deadline and original
+  proof regressions are source-reviewed; native validation remains pending.
+
 - **Qualified Pure Source review (validation pending)**: Connect exact shipped
   checking-workflow qualification to authored class-22 submission, typed capture,
   shared private Work and structural original confirmation. Add V210 with a

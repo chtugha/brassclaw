@@ -53,12 +53,24 @@ Source/HEAD and every retained executable are verified after the run; the freeze
 is released. See `run-24-composition/native-batch-disposition.json` in the existing
 validation evidence directory.
 
+F-01's complete reviewed deadline correction is integrated as `b32a48901` and
+`e00c867e6`: small invariant claim digest/components, one complete same-snapshot
+proof walk returning its exact checked references, safe fixed timeout context
+and the existing connection guard at final catalogue publication. Every complete
+verification still checks fresh claim identity and all originals. A genuine
+held-COMMIT timeout test and real proof/canonical-byte/foreign-PG checks are
+source-reviewed; compilation/native acceptance is next. No deadline is raised.
+
 J-01 continues its isolated V211 single-case runtime package. K-01, fresh chat
-`01a1c10c-3ba1-7a22-be23-4e8885c3f645`, worktree `24b2`, is **read-only proposal**
-for B2-06 snapshot/dependency quotas through existing acknowledged preparation
-settings and historical readers. No K-01 implementation or migration is reserved
-yet. I-01 remains available for its own findings; F-01 correction and J-01 are
-the two implementation slots when the concrete correction is authorized.
+`01a1c10c-3ba1-7a22-be23-4e8885c3f645`, worktree `24b2`, has completed the full
+architecture reading and connected proposal review and is now source-authorized
+for B2-06 graph/submission/capture/HTTP quota support, using existing acknowledged
+settings. V212 is reserved for its necessary subject/catalogue successor guards;
+V211 remains J-01's. Preserve the neutral preparation codec's exact old bytes,
+original graph profiles and the Composition facade; no general approval or
+historical native-image loader is supplied. Per-revision/evidence follow-ons
+remain explicit in B2-06. J-01 and K-01 are the two implementation slots; F-01 and
+I-01 are idle for their own concrete validation findings.
 
 **Run-23 and connected source checkpoint — 2026-11-09:** worker and complete
 six-library/four-integration test graph compile without warnings (0.823/623.518 s).

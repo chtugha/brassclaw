@@ -292,12 +292,16 @@ environment; an example string or parser pass is not behavioral evidence.
 
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
-**Latest bounded source/runtime checkpoint — 2026-11-09:** Run-23's corrected
-joint graph compiles without warnings and preserves all 1,376 tests, but actual
-common startup fails at receipt verification; no dependent execution acceptance
-is claimed. Source-reviewed `5922cba87` aligns F-01's actual variant producer and
-receipt-key normalization without changing oracles/readers. I-01's V210 qualified
-Source prerequisite is integrated through `7152f0e0a`, uncompiled/unrun; it is
+**Latest bounded source/runtime checkpoint — 2026-11-09:** Run-24 on `b9620a1f5`
+compiles the joint graph without warnings and preserves all 1,388 tests. The
+actual strict receipt-reader regression and both real operator HTTP/PG
+class-21/23 original-custody cases pass. Common startup fails at an original
+observation I/O deadline; F-01 owns exact-stage diagnosis and preservation of
+all original verification. No dependent Source execution acceptance is claimed.
+Source-reviewed `5922cba87` aligns the actual variant producer and receipt-key
+normalization without changing oracles/readers. I-01's V210 qualified Source
+prerequisite and common custody follow-up are integrated through `8b83d551d`;
+their compilation is accepted, while Source runtime remains unverified. This is
 not complete own Q1/behavior/Q2 or general publication. J-01/V211 owns the next
 actual single-Pure-call/technical settled-Case primitive, with normal component
 steps and global hosting. Reuse these exact owners and retain the full remaining

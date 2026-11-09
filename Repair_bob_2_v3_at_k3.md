@@ -376,6 +376,29 @@ new default constant is not completion. Intrinsic wire/type constraints remain
 explicitly distinct from adjustable resource quotas. Reuse the Simplified
 resource/settings owner, not a second catalogue or budget service.
 
+**Connected remaining gates, source audit 2026-11-09:** the submission store
+also imposes the dependency count during reconstruction. V104 separately caps
+the sealed subject at 16 MiB; actual HTTP descriptors/extractors impose 14 MiB
+before the outer default 64 MiB layer. Include their acknowledged, finite ingress
+and whole-subject policy handoff when enabling larger new graphs. Capture once;
+Source preparation must reuse that capture. Preserve independent explicit host
+restrictions and authentication, and distinguish a new transfer's limit from
+historical original inspection.
+
+The per-revision depth/node/8 MiB parser policy in `component_revision.rs` and
+V101 is separate remaining work in this same reader step, coordinated with
+Simplified's existing resource owner. Implement explicit original limits through
+candidate/base/partner/association parsers, retention, DB constraints and restore;
+qualify an actual larger revision, later reductions and old-byte upgrade before
+closing it. A graph-only repair does not complete this requirement. B1's evidence
+owner retains the separate association/evidence record quotas and compatible
+proof-format work; this plan consumes its checked successor instead of adding
+another evidence writer. No fixed policy quota becomes an intrinsic wire limit
+merely by renaming it. K-01 is now source-authorized for the graph/submission/
+capture/HTTP slice after full architecture and proposal review, with V212 reserved;
+its implementation and acceptance remain pending. It does not close the separate
+per-revision/evidence or historical native-image requirements.
+
 1. Update the actual engine selection constructor/parser, selected-program
    verifier, catalogue serializer/reloader, retained review preparation reader
    and DB format checks identified in B2-01. Keep parsing version-dispatched and
