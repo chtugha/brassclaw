@@ -28,14 +28,16 @@ oracles or the strict reader. Precise failed-run claim attribution and native
 success are not inferred from this source finding.
 
 I-01's complete Source slice and review corrections are source-reviewed,
-hash-verified and integrated through `7152f0e0a` (25 files). V210/outer selection
+hash-verified and integrated through `7152f0e0a` (25 files). The reviewed common class-21/23
+authoring follow-up is integrated as `d30a5126b`/`8b83d551d`; the complete
+I-01 package now covers 28 files and eleven new native test sources. V210/outer selection
 `/2` carries the exact qualified W/checker/parser/worker/package pins. Authoring,
 original typed capture and Ready share one transaction; actual parser observations
 and H-01 structural confirmation are connected. Uncertain connection disposal,
 bounded one-write/fresh-readback with all run-index fields, same-snapshot proof
 reuse and genuine fault/smaller-limit/upgrade test sources are reviewed. This
-source remains uncompiled/unrun. A final common queued-authoring custody fix
-for classes 21/23 is with I-01. Cross-package historical qualification/image
+source remains uncompiled/unrun. All three queued-authoring classes use the same uncertain-connection custody
+owner, with actual mounted HTTP ACK-loss/caller-abort regression sources. Cross-package historical qualification/image
 loading remains B2-06/07/09 work, not a schema-upgrade acceptance claim.
 
 J-01 now implements the reviewed registered single-Pure-invocation primitive

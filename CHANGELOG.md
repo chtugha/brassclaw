@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   acknowledgement from exact originals and avoid duplicate proof reads within
   one transaction. Source reviewed; native acceptance remains pending and no
   general Pure approval is granted.
+  Apply the same connection custody to queued Recipe/Catalogue authoring and
+  add real operator-HTTP lost-ACK/cancellation regression sources.
 - **Bootstrap fixture receipt identity (validation pending)**: Align later
   variant producer IDs and their receipt-key inputs through one normalization.
   Preserve strict result verification and add safe fixture failure context.

@@ -54,14 +54,16 @@ oracles or the strict reader. Precise failed-run claim attribution and native
 success are not inferred from this source finding.
 
 I-01's complete Source slice and review corrections are source-reviewed,
-hash-verified and integrated through `7152f0e0a` (25 files). V210/outer selection
+hash-verified and integrated through `7152f0e0a` (25 files). The reviewed common class-21/23
+authoring follow-up is integrated as `d30a5126b`/`8b83d551d`; the complete
+I-01 package now covers 28 files and eleven new native test sources. V210/outer selection
 `/2` carries the exact qualified W/checker/parser/worker/package pins. Authoring,
 original typed capture and Ready share one transaction; actual parser observations
 and H-01 structural confirmation are connected. Uncertain connection disposal,
 bounded one-write/fresh-readback with all run-index fields, same-snapshot proof
 reuse and genuine fault/smaller-limit/upgrade test sources are reviewed. This
-source remains uncompiled/unrun. A final common queued-authoring custody fix
-for classes 21/23 is with I-01. Cross-package historical qualification/image
+source remains uncompiled/unrun. All three queued-authoring classes use the same uncertain-connection custody
+owner, with actual mounted HTTP ACK-loss/caller-abort regression sources. Cross-package historical qualification/image
 loading remains B2-06/07/09 work, not a schema-upgrade acceptance claim.
 
 J-01 now implements the reviewed registered single-Pure-invocation primitive
@@ -247,7 +249,7 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | F-01 — closed Pure-checker/support qualification | `01a1babb-0ccd-7ed2-8211-f5a6a9f29976`, host `local`, title “Paket F-01 — Vollständige Pure-Eigenprüfung”; `/Users/ollama/.codex/worktrees/1a9e/brassclaw` | Full architecture/source proposals reviewed. Authorized connected implementation of ten existing public checking functions, separate private reader support and their Source workflow, reusing existing original-execution custody. Two private fixture identities reserved. The genuine E-01 common prerequisite passed in Run-20; source `0dad53132`/`ce00c3dec` is integrated as `48eec00f6`/`7b4c29596`. Compilation/native/lint acceptance remains pending. No general candidate Pure approval, authored Q2, `/2` publication or migration authorized. |
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 | H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
-| I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Connected 25-file source reviewed and integrated through `7152f0e0a`; V210/outer /2 and real Source observer/confirmation, metadata custody corrections and nine native test sources. Compile/native acceptance pending. Final common class-21/23 authoring custody correction under review. Positive future-consumer view test-only until J-01. No general Pure approval or cross-package loader. |
+| I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Connected 25-file source reviewed and integrated through `7152f0e0a`; V210/outer /2 and real Source observer/confirmation, metadata custody corrections and nine native test sources. Compile/native acceptance pending. Common class-21/23 authoring custody correction reviewed and integrated as `d30a5126b`/`8b83d551d`; full 28-file package awaits compilation/native acceptance. Positive future-consumer view test-only until J-01. No general Pure approval or cross-package loader. |
 | J-01 — Pure behavior and human Q2 contract | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; `/Users/ollama/.codex/worktrees/8147/brassclaw` | Reviewed registered single-invocation Tool/ToolSkill/Skill-code/encoder/private Recipe package authorized, V211 reserved. Implementing sealed same-task native context/outcome/release, real qualification and Harness delivery to technical settled Case. No general case iterator/behavior/Q1/Q2/approval/publication. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
