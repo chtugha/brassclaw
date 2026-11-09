@@ -90,7 +90,7 @@ async fn confirmation(runtime: &RebornRuntime, id: Uuid) -> Value {
     tokio::time::timeout(deadline(runtime).await, async {
         loop {
             let view = crate::pg_review_submission::get_with_catalogue(&runtime.installed_catalogue.pool, &id.to_string(), &runtime.installed_catalogue).await.unwrap();
-            if view.work.unwrap().status == ReviewWorkStatus::StructuralObservationsConfirmed {
+            if matches!(view.work.unwrap().status, ReviewWorkStatus::StructuralObservationsConfirmed) {
                 let bytes: String = runtime.installed_catalogue.pool.get().await.unwrap().query_one(
                     "SELECT confirmation_bytes FROM reborn_component_review_work_confirmations WHERE submission_id=$1", &[&id]
                 ).await.unwrap().get(0);
@@ -382,10 +382,10 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
     .unwrap()
     .work
     .unwrap();
-    assert_eq!(
+    assert!(matches!(
         pending_view.status,
         ReviewWorkStatus::NativeTerminalUnacknowledged
-    );
+    ));
     assert!(pending_view.delivery_checksum.is_none());
     assert!(pending_view.confirmation_checksum.is_none());
     let partial: i64 = rig
@@ -428,7 +428,7 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
     .unwrap()
     .work
     .unwrap();
-    assert_eq!(view.status, ReviewWorkStatus::Cancelled);
+    assert!(matches!(view.status, ReviewWorkStatus::Cancelled));
     assert!(view.confirmation_checksum.is_none());
     let count: i64 = rig
         .pool
