@@ -13,6 +13,22 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+**Run-22 follow-up — 2026-11-09:** worker compilation passes in 0.881 s.
+The joint graph reaches production and test branches, then stops after 247.24 s:
+four E0425 sites share one missing H-01 test-runtime import; production reports
+five unused historical waiter APIs. The two actual ProductWorkflow/inbound
+harnesses pass **93/93, zero ignored**. This complements Run-21's independent
+453-case acceptance, without claiming a passing Composition build. Source/HEAD
+and artifact identities are verified. Reviewed H-01 corrections `56a49ea22` and
+`aebdd70ea` scope only genuinely test-only consumers and add explicit imports;
+productive post-Factory proof creation/delivery and producer custody remain.
+The corrected baseline needs actual shared startup/native acceptance before new
+Source/Behavior consumers can claim qualification. I-01's delivered Source slice
+is under connected review: unknown-COMMIT connection custody, exact run-index
+readback and repeated same-snapshot proof checks have concrete corrections.
+J-01's revised read-only design uses typed native case outcomes with a normally
+completing qualified Harness, preserving ordinary fail-stop and H-01 delivery.
+
 **Run-21 follow-up — 2026-11-09:** the worker builds in 13.44 seconds.
 The joint test graph stops after 132.63 seconds with two API errors and one
 unused production import. Its independently produced Turns, Reborn and
