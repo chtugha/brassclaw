@@ -539,6 +539,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             .await
     }
 
+    #[cfg(test)]
     fn private_attempt_retained(
         &self,
         run: brassclaw_turns::TurnRunId,
