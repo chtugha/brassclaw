@@ -20,6 +20,15 @@ pub(super) struct Subject {
     association: String,
     root_reference: ComponentRevisionRef,
 }
+// Only raw fields already read by the original completion owner. This alias
+// carries no qualification authority and introduces no new record or codec.
+type OriginalReadback = (
+    String,
+    String,
+    String,
+    Option<brassclaw_turns::TurnRunRecord>,
+);
+
 impl Subject {
     pub(super) fn new(
         program: Arc<RetainedToolProgram>,
@@ -93,10 +102,96 @@ impl Subject {
             .start()
             .await
             .map_err(invalid)?;
-        let Some(intent_bytes) = crate::bootstrap_evidence::read_evidence(&tx, self.intent).await?
+        let original = self.read_in_transaction(&tx).await?;
+        // Turn's owner checks out its own client. Release this snapshot first,
+        // including for pool1. A missing completion is not proof of a past ACK.
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        drop(client);
+        let Some((intent_bytes, behavior_bytes, raw_quiescence, retained_turn)) = original else {
+            return Ok(None);
+        };
+        let intent = strict_json(&intent_bytes, REVISION_LIMITS).map_err(invalid)?;
+        let quiescence = strict_json(&raw_quiescence, REVISION_LIMITS).map_err(invalid)?;
+        let run: TurnRunId = serde_json::from_value(intent["report"]["header"]["run_id"].clone())
+            .map_err(invalid)?;
+        let scope: TurnScope =
+            serde_json::from_value(quiescence["report"]["turn_scope"].clone()).map_err(invalid)?;
+        // An existing immutable completion retains the original owner's real
+        // terminal ACK across normal Turn pruning. Only first completion reads
+        // the actual owner; neither path executes or replays qualification work.
+        let run_record = match retained_turn {
+            Some(record) => record,
+            None => PgTurnStateStore::new(pool.clone(), scope.tenant_id.as_str())
+                .get_run_record(&scope, run)
+                .await
+                .map_err(invalid)?
+                .ok_or_else(|| invalid("qualification original Turn missing before completion"))?,
+        };
+        verify_turn_record(&run_record, run, &scope)?;
+        let mut client = primitives::EvidenceClient::acquire(pool).await?;
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(invalid)?;
+        // Recheck the same complete kernel after the external Turn read. V102/
+        // V103 and settled V179 custody stay exact in this second RR snapshot.
+        let rechecked = self
+            .read_in_transaction(&tx)
+            .await?
+            .ok_or_else(|| invalid("qualification original missing across Turn read"))?;
+        if rechecked.0 != intent_bytes
+            || rechecked.1 != behavior_bytes
+            || rechecked.2 != raw_quiescence
+        {
+            return Err(invalid("qualification original changed across Turn read"));
+        }
+        let completion_bytes=self.record(self.completion,json!({"format":"inventory-qualification-completion/1","manifest":self.manifest,
+            "intent_checksum":crate::bootstrap_evidence::checksum(&intent_bytes),"behavior_checksum":crate::bootstrap_evidence::checksum(&behavior_bytes),
+            "quiescence_checksum":crate::bootstrap_evidence::checksum(&raw_quiescence),"turn_record":run_record}),false);
+        let stored = crate::bootstrap_evidence::read_evidence(&tx, self.completion).await?;
+        if stored
+            .as_deref()
+            .is_some_and(|stored| stored != completion_bytes)
+        {
+            return Err(invalid("qualification completed original readback differs"));
+        }
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        drop(client);
+        // Known completed original, including true Turn/Admission ACKs. This is
+        // metadata recovery only; no admission, worker or Tool is started.
+        if stored.is_none() {
+            primitives::retain_record(
+                pool,
+                self.storage.as_ref(),
+                self.completion,
+                &completion_bytes,
+            )
+            .await?;
+        }
+        Ok(Some(InventoryQualification {
+            subject: self.clone(),
+            intent_bytes,
+            behavior_bytes,
+            quiescence_bytes: raw_quiescence,
+            completion_bytes,
+        }))
+    }
+    /// Read and verify the full existing original under the caller's coherent
+    /// snapshot. No pool acquisition, Turn-owner lookup, write or VM execution.
+    /// A missing terminal snapshot is returned only for the pool owner's first
+    /// completion path; a checked qualification must already have that snapshot.
+    async fn read_in_transaction(
+        self: &Arc<Self>,
+        tx: &Transaction<'_>,
+    ) -> Result<Option<OriginalReadback>, RebornBuildError> {
+        crate::bootstrap_evidence::require_coherent(tx).await?;
+        let Some(intent_bytes) = crate::bootstrap_evidence::read_evidence(tx, self.intent).await?
         else {
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
             return Ok(None);
         };
         let intent = strict_json(&intent_bytes, REVISION_LIMITS).map_err(invalid)?;
@@ -154,13 +249,13 @@ impl Subject {
             return Err(invalid("qualification original subject or intent differs"));
         }
         brassclaw_skills::revision_store::PgComponentRevisionStore::read_revision_in_transaction(
-            &tx,
+            tx,
             self.root_reference,
         )
         .await
         .map_err(invalid)?;
         let reservation_id = Uuid::new_v5(&self.intent, b"pre-admission-intent");
-        let reservation = required(&tx, reservation_id).await?;
+        let reservation = required(tx, reservation_id).await?;
         let reserve = strict_json(&reservation, REVISION_LIMITS).map_err(invalid)?;
         exact_fields(
             &reserve["report"],
@@ -195,13 +290,13 @@ impl Subject {
             .map(|revision| revision.reference())
             .collect::<Vec<_>>();
         brassclaw_skills::revision_store::PgComponentRevisionStore::read_exact_in_transaction(
-            &tx,
+            tx,
             &[self.program.inputs().instruction().recipe().uuid],
             &refs,
         )
         .await
         .map_err(invalid)?;
-        let behavior_bytes = required(&tx, self.behavior).await?;
+        let behavior_bytes = required(tx, self.behavior).await?;
         let behavior = strict_json(&behavior_bytes, REVISION_LIMITS).map_err(invalid)?;
         exact_fields(
             &behavior["report"],
@@ -225,7 +320,7 @@ impl Subject {
         {
             return Err(invalid("qualification original native observation differs"));
         }
-        let raw_quiescence = required(&tx, self.quiescence).await?;
+        let raw_quiescence = required(tx, self.quiescence).await?;
         let quiescence = strict_json(&raw_quiescence, REVISION_LIMITS).map_err(invalid)?;
         let report = &quiescence["report"];
         exact_fields(
@@ -247,15 +342,15 @@ impl Subject {
                 "qualification original quiescence observation differs",
             ));
         }
-        self.verify_native(&tx, header, &behavior["report"], &report["native"])
+        self.verify_native(tx, header, &behavior["report"], &report["native"])
             .await?;
         let run: TurnRunId = serde_json::from_value(header["run_id"].clone()).map_err(invalid)?;
         let scope: TurnScope =
             serde_json::from_value(report["turn_scope"].clone()).map_err(invalid)?;
-        self.verify_closed_admission(&tx, run, header, &report["turn_scope"])
+        self.verify_closed_admission(tx, run, header, &report["turn_scope"])
             .await?;
         let completed_original =
-            crate::bootstrap_evidence::read_evidence(&tx, self.completion).await?;
+            crate::bootstrap_evidence::read_evidence(tx, self.completion).await?;
         let retained_turn = completed_original
             .as_deref()
             .map(|bytes| {
@@ -287,111 +382,15 @@ impl Subject {
                 exact_typed::<brassclaw_turns::TurnRunRecord>(&facts["turn_record"])
             })
             .transpose()?;
-        // Turn's owner checks out its own client. Release this snapshot first,
-        // including for a pool with exactly one connection. V102/V103 retain
-        // immutable facts; V179 makes settled Admission rows immutable. Verify
-        // those originals again after observing the actual terminal Turn.
-        tx.commit().await.map_err(invalid)?;
-        client.recycle_after_commit();
-        drop(client);
-        // The private immutable completion writer below is reached only after
-        // real native/VM/admission checks AND this original Turn owner's ACK.
-        // Normal Turn snapshot pruning may later remove terminal history. Its
-        // trusted V102 completion snapshot remains proof of that past ACK; a
-        // missing mutable row alone can never create this record or allow replay.
-        let run_record = match retained_turn {
-            Some(record) => record,
-            None => PgTurnStateStore::new(pool.clone(), scope.tenant_id.as_str())
-                .get_run_record(&scope, run)
-                .await
-                .map_err(invalid)?
-                .ok_or_else(|| invalid("qualification original Turn missing before completion"))?,
-        };
-        if run_record.run_id != run
-            || run_record.scope != scope
-            || run_record.claim_count != 1
-            || run_record.runner_id.is_some()
-            || run_record.lease_token.is_some()
-            || run_record.lease_expires_at.is_some()
-            || run_record.failure.is_some()
-            || run_record.native_auth_wait.is_some()
-        {
-            return Err(invalid(
-                "qualification original Turn settlement identity/custody differs",
-            ));
+        if let Some(record) = &retained_turn {
+            verify_turn_record(record, run, &scope)?;
         }
-        match run_record.status {
-            TurnStatus::Completed => {}
-            TurnStatus::Cancelled => {
-                return Err(invalid(
-                    "qualification original cancelled; cleanup confirmed Cancelled",
-                ));
-            }
-            other => {
-                return Err(invalid(format!(
-                    "qualification original Turn cleanup incomplete: {other:?}"
-                )));
-            }
-        }
-        let mut client = primitives::EvidenceClient::acquire(pool).await?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(invalid)?;
-        for (id, original) in [
-            (self.intent, &intent_bytes),
-            (self.behavior, &behavior_bytes),
-            (self.quiescence, &raw_quiescence),
-        ] {
-            if required(&tx, id).await? != *original {
-                return Err(invalid("qualification original changed across Turn read"));
-            }
-        }
-        brassclaw_skills::revision_store::PgComponentRevisionStore::read_exact_in_transaction(
-            &tx,
-            &[self.program.inputs().instruction().recipe().uuid],
-            &refs,
-        )
-        .await
-        .map_err(invalid)?;
-        self.verify_native(&tx, header, &behavior["report"], &report["native"])
-            .await?;
-        self.verify_closed_admission(&tx, run, header, &report["turn_scope"])
-            .await?;
-        let completion_bytes=self.record(self.completion,json!({"format":"inventory-qualification-completion/1","manifest":self.manifest,
-            "intent_checksum":crate::bootstrap_evidence::checksum(&intent_bytes),"behavior_checksum":crate::bootstrap_evidence::checksum(&behavior_bytes),
-            "quiescence_checksum":crate::bootstrap_evidence::checksum(&raw_quiescence),"turn_record":run_record}),false);
-        let stored = crate::bootstrap_evidence::read_evidence(&tx, self.completion).await?;
-        if stored
-            .as_deref()
-            .is_some_and(|stored| stored != completion_bytes)
-        {
-            return Err(invalid("qualification completed original readback differs"));
-        }
-        tx.commit().await.map_err(invalid)?;
-        client.recycle_after_commit();
-        drop(client);
-        // Known completed original, including true Turn/Admission ACKs. This is
-        // metadata recovery only; no admission, worker or Tool is started.
-        if stored.is_none() {
-            primitives::retain_record(
-                pool,
-                self.storage.as_ref(),
-                self.completion,
-                &completion_bytes,
-            )
-            .await?;
-        }
-        Ok(Some(InventoryQualification {
-            subject: self.clone(),
+        Ok(Some((
             intent_bytes,
             behavior_bytes,
-            quiescence_bytes: raw_quiescence,
-            completion_bytes,
-        }))
+            raw_quiescence,
+            retained_turn,
+        )))
     }
     async fn verify_closed_admission(
         &self,
@@ -885,6 +884,40 @@ impl Subject {
         ))
     }
 }
+fn verify_turn_record(
+    run_record: &brassclaw_turns::TurnRunRecord,
+    run: TurnRunId,
+    scope: &TurnScope,
+) -> Result<(), RebornBuildError> {
+    if run_record.run_id != run
+        || run_record.scope != *scope
+        || run_record.claim_count != 1
+        || run_record.runner_id.is_some()
+        || run_record.lease_token.is_some()
+        || run_record.lease_expires_at.is_some()
+        || run_record.failure.is_some()
+        || run_record.native_auth_wait.is_some()
+    {
+        return Err(invalid(
+            "qualification original Turn settlement identity/custody differs",
+        ));
+    }
+    match run_record.status {
+        TurnStatus::Completed => {}
+        TurnStatus::Cancelled => {
+            return Err(invalid(
+                "qualification original cancelled; cleanup confirmed Cancelled",
+            ));
+        }
+        other => {
+            return Err(invalid(format!(
+                "qualification original Turn cleanup incomplete: {other:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn exact_fields(value: &Value, keys: &[&str]) -> Result<(), RebornBuildError> {
     let object = value
         .as_object()
@@ -938,6 +971,31 @@ impl InventoryQualification {
             || self.behavior_bytes != read.behavior_bytes
             || self.quiescence_bytes != read.quiescence_bytes
             || self.completion_bytes != read.completion_bytes
+        {
+            return Err(invalid("qualification original exact readback differs"));
+        }
+        Ok(())
+    }
+    /// Historical exact verification only: the existing pool owner must have
+    /// completed/reconciled the original before entering this caller snapshot.
+    /// Never consult the pool or synthesize a missing terminal ACK here.
+    pub(in crate::validator_inventory_review) async fn verify_in_transaction(
+        &self,
+        tx: &Transaction<'_>,
+    ) -> Result<(), RebornBuildError> {
+        let read = self
+            .subject
+            .read_in_transaction(tx)
+            .await?
+            .ok_or_else(|| invalid("qualification original missing"))?;
+        if read.3.is_none() {
+            return Err(invalid("checked qualification original completion missing"));
+        }
+        let completion = required(tx, self.subject.completion).await?;
+        if self.intent_bytes != read.0
+            || self.behavior_bytes != read.1
+            || self.quiescence_bytes != read.2
+            || self.completion_bytes != completion
         {
             return Err(invalid("qualification original exact readback differs"));
         }

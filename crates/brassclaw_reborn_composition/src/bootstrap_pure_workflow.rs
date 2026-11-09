@@ -269,6 +269,10 @@ pub(crate) async fn qualify_pure_workflow(
         .context
         .clone();
     checkers.require_program(&base.program)?;
+    // Preserve the original owner's full completion/reconciliation stages before
+    // acquiring W's RR client. The inner check then authenticates those same
+    // immutable originals under W's snapshot without a nested pool checkout.
+    base.parser.proof.verify(&base.pool).await?;
     let prerequisites = io::bounded(base.storage.as_ref(), async {
         let mut client = io::EvidenceClient::acquire(&base.pool).await?;
         let tx = client
@@ -280,7 +284,7 @@ pub(crate) async fn qualify_pure_workflow(
             .map_err(invalid)?;
         observations.verify_in_transaction(&tx).await?;
         let proofs = checkers.proof_references(&tx).await?;
-        base.parser.proof.verify(&tx).await?;
+        base.parser.proof.verify_in_transaction(&tx).await?;
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
         Ok(proofs)
