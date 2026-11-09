@@ -166,7 +166,7 @@ impl ValidationQueueStore {
         Ok(review)
     }
 
-    pub(super) async fn capture_candidate_in_transaction(
+    pub(crate) async fn capture_candidate_in_transaction(
         tx: &tokio_postgres::Transaction<'_>,
         scope: &ComponentScope,
         component_id: Uuid,
