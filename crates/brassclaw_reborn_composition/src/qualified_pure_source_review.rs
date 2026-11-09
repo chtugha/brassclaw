@@ -9,19 +9,22 @@ use crate::private_work_definition::{
     DefinitionCapture, DomainCapture, PrivateWorkDefinition, decode_checksum,
 };
 use brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage;
+#[cfg(test)]
+use brassclaw_skills::review_submission_store::selection::SourceProofReference;
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
     review_submission_store::{
         PgReviewSubmissionStore, ReviewSubmissionDraft,
-        selection::{self, RetainedValidatorSelection, SourceProofReference, SourceQualification},
+        selection::{self, RetainedValidatorSelection, SourceQualification},
     },
     revision_store::PgComponentRevisionStore,
 };
+#[cfg(test)]
+use brassclaw_turns::private_work::PrivateExecutionContext;
 use brassclaw_turns::{
     PgTurnStateStore, TurnRunId,
     private_work::{
-        PrivateExecutionContext, PrivateOriginalRef, PrivatePreparationReason, PrivateWorkRequest,
-        PrivateWorkStatus,
+        PrivateOriginalRef, PrivatePreparationReason, PrivateWorkRequest, PrivateWorkStatus,
     },
 };
 use tokio_postgres::{IsolationLevel, Transaction};
@@ -36,15 +39,42 @@ pub(crate) struct SourceReviewPreparation {
     inspected: Arc<InspectedRetainedProgram>,
     preparation: PreparationCapture,
 }
+/// A single original qualification read, usable only with this owner and the
+/// exact still-borrowed transaction. No UUID/global cache or public constructor.
+struct CheckedSourceQualification<'checked, 'connection> {
+    tx: &'checked Transaction<'connection>,
+    owner: &'checked QualifiedPureSourceReview,
+    pins: SourceQualification,
+    validator_bytes: String,
+}
+impl CheckedSourceQualification<'_, '_> {
+    fn require(
+        &self,
+        tx: &Transaction<'_>,
+        owner: &QualifiedPureSourceReview,
+        selected: &RetainedValidatorSelection,
+    ) -> Result<(), RebornBuildError> {
+        if std::ptr::from_ref(self.tx).cast::<()>() != std::ptr::from_ref(tx).cast::<()>()
+            || !std::ptr::eq(self.owner, owner)
+            || selected.source_qualification() != Some(&self.pins)
+            || selected.validator_bytes() != self.validator_bytes
+        {
+            return Err(invalid("original qualified Source selection differs"));
+        }
+        Ok(())
+    }
+}
 /// Positive source-only prerequisite, issued solely by the reader below. This
 /// is neither a live native completion nor behavior/Q1/Q2/activation authority.
 /// Its references describe the exact original; they do not select replacements.
+#[cfg(test)]
 pub(crate) struct CheckedPureSourceOriginal {
     subject: Arc<RetainedValidatorSubject>,
     selection: Arc<RetainedValidatorSelection>,
     delivery: crate::pg_monty_admission::DeliveredPrivateCompletion,
     confirmation: SourceProofReference,
 }
+#[cfg(test)]
 impl CheckedPureSourceOriginal {
     pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
         &self.subject
@@ -72,18 +102,14 @@ impl QualifiedPureSourceReview {
     ) -> Self {
         Self { workflow, checkers }
     }
-    async fn qualification(
-        &self,
-        tx: &Transaction<'_>,
-    ) -> Result<SourceQualification, RebornBuildError> {
-        self.workflow.source_qualification(tx, &self.checkers).await
-    }
-    pub(crate) async fn require_selection(
-        &self,
-        tx: &Transaction<'_>,
-        selected: &RetainedValidatorSelection,
-    ) -> Result<(), RebornBuildError> {
-        let expected = self.qualification(tx).await?;
+    async fn check_in_transaction<'checked, 'connection>(
+        &'checked self,
+        tx: &'checked Transaction<'connection>,
+    ) -> Result<CheckedSourceQualification<'checked, 'connection>, RebornBuildError> {
+        let pins = self
+            .workflow
+            .source_qualification(tx, &self.checkers)
+            .await?;
         let bytes = self
             .workflow
             .program()?
@@ -93,11 +119,21 @@ impl QualifiedPureSourceReview {
             .map_err(invalid)?
             .exact_bytes()
             .to_owned();
-        if selected.source_qualification() != Some(&expected) || selected.validator_bytes() != bytes
-        {
-            return Err(invalid("original qualified Source selection differs"));
-        }
-        Ok(())
+        Ok(CheckedSourceQualification {
+            tx,
+            owner: self,
+            pins,
+            validator_bytes: bytes,
+        })
+    }
+    pub(crate) async fn require_selection(
+        &self,
+        tx: &Transaction<'_>,
+        selected: &RetainedValidatorSelection,
+    ) -> Result<(), RebornBuildError> {
+        self.check_in_transaction(tx)
+            .await?
+            .require(tx, self, selected)
     }
     pub(crate) fn parser(&self) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
         self.workflow.parser()
@@ -108,6 +144,7 @@ impl QualifiedPureSourceReview {
     /// This performs no writes, native execution, requalification or recovery.
     /// Cross-package handle/image loading remains the separate recovery owner;
     /// this owner never substitutes today's package for a historical original.
+    #[cfg(test)]
     pub(crate) async fn read_positive_original(
         &self,
         tx: &Transaction<'_>,
@@ -133,7 +170,6 @@ impl QualifiedPureSourceReview {
         if subject.candidate().class_code != 22 || selection.source_qualification().is_none() {
             return Err(invalid("qualified Source prerequisite required"));
         }
-        self.require_selection(tx, &selection).await?;
         let Some(delivery) = PgMontyAdmission::read_private_delivery(tx, submission_id, context)
             .await
             .map_err(invalid)?
@@ -214,7 +250,9 @@ impl InstalledMontyCatalogue {
         }
         // Historical same-ID requests must not capture today's settings or
         // inspect new definitions. The transaction later compares exact bytes.
-        let mut client = self.pool.get().await.map_err(invalid)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(invalid)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -227,6 +265,7 @@ impl InstalledMontyCatalogue {
             .map_err(invalid)?
             .is_some();
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         drop(client);
         if existing {
             return Ok(None);
@@ -278,16 +317,36 @@ impl InstalledMontyCatalogue {
         tx: &Transaction<'_>,
         id: Uuid,
     ) -> Result<(), RebornBuildError> {
+        self.verify_source_submission_checked(tx, id, None).await
+    }
+    async fn verify_source_submission_checked(
+        &self,
+        tx: &Transaction<'_>,
+        id: Uuid,
+        checked: Option<&CheckedSourceQualification<'_, '_>>,
+    ) -> Result<(), RebornBuildError> {
         let Some(selected) = selection::read_preparation_in_transaction(tx, id, REVISION_LIMITS)
             .await
             .map_err(invalid)?
         else {
-            return Ok(());
+            return if checked.is_some() {
+                Err(invalid("checked Source preparation disappeared"))
+            } else {
+                Ok(())
+            };
         };
         if selected.source_qualification().is_none() {
-            return Ok(());
+            return if checked.is_some() {
+                Err(invalid("checked Source qualification disappeared"))
+            } else {
+                Ok(())
+            };
         }
-        self.require_source_selection(tx, &selected).await?;
+        if let Some(checked) = checked {
+            checked.require(tx, &self.pure_source_review, &selected)?;
+        } else {
+            self.require_source_selection(tx, &selected).await?;
+        }
         let subject =
             PgReviewSubmissionStore::read_validator_subject_in_transaction(tx, id, REVISION_LIMITS)
                 .await
@@ -351,7 +410,9 @@ impl InstalledMontyCatalogue {
         Ok(())
     }
     pub(crate) async fn read_source_submission(&self, id: Uuid) -> Result<(), RebornBuildError> {
-        let mut client = self.pool.get().await.map_err(invalid)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(invalid)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -360,7 +421,9 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(invalid)?;
         self.verify_source_submission(&tx, id).await?;
-        tx.commit().await.map_err(invalid)
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        Ok(())
     }
 }
 impl SourceReviewPreparation {
@@ -397,7 +460,11 @@ impl SourceReviewPreparation {
             // Reuse its original preparation; never replace it with this capture.
             return self.verify_original(tx, id).await;
         }
-        let qualification = self.catalogue.pure_source_review.qualification(tx).await?;
+        let checked = self
+            .catalogue
+            .pure_source_review
+            .check_in_transaction(tx)
+            .await?;
         let coverage = RetainedValidatorCoverage::from_inputs(self.inspected.program().inputs())
             .map_err(invalid)?;
         let mut value: Value = serde_json::from_str(
@@ -407,7 +474,7 @@ impl SourceReviewPreparation {
         .map_err(invalid)?;
         value["format"] = json!("component-validator-selection/2");
         value["scope"] = json!("qualified-pure-source-prerequisite");
-        value["qualification"] = serde_json::to_value(qualification).map_err(invalid)?;
+        value["qualification"] = serde_json::to_value(&checked.pins).map_err(invalid)?;
         selection::retain_in_transaction(tx, &value.to_string(), REVISION_LIMITS)
             .await
             .map_err(invalid)?;
@@ -492,6 +559,8 @@ impl SourceReviewPreparation {
         self.catalogue
             .retain_private_definition(tx, &definition, &store, &state)
             .await?;
-        self.verify_original(tx, id).await
+        self.catalogue
+            .verify_source_submission_checked(tx, id, Some(&checked))
+            .await
     }
 }

@@ -1,6 +1,7 @@
 //! Real original authoring -> qualified W -> shared Worker -> native parser ->
 //! post-Factory delivery -> source-only confirmation. No candidate is invoked.
 use super::*;
+use crate::RebornRuntime;
 use brassclaw_product_workflow::{
     MontyMemoryMode, MontyVmSettingsStore, ReviewWorkStatus, SubmitComponentReviewRequest,
 };
@@ -143,12 +144,8 @@ async fn read_positive(
             brassclaw_host_api::UserId::new("i01-foreign-source-actor").unwrap(),
         ));
         assert!(
-            runtime
-                .installed_catalogue
-                .pure_source_review
-                .read_positive_original(&tx, id, &foreign)
-                .await
-                .is_err()
+            matches!(runtime.installed_catalogue.pure_source_review.read_positive_original(&tx,id,&foreign).await,
+            Err(crate::RebornBuildError::InvalidConfig { reason }) if reason=="agent loop driver failed: private_delivery_original_invalid")
         );
     }
     tx.commit().await.unwrap();
@@ -339,18 +336,27 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
     original_request.base = Some(crate::pg_review_submission::selection(base_a));
     original_request.dependencies = vec![crate::pg_review_submission::selection(dependency_a)];
     submit(&runtime, original_request.clone()).await.unwrap();
-    confirmation(&runtime, id).await;
+    assert_scope(&runtime, id, component, true).await;
     let original = selection_bytes(&runtime, id).await;
     let mut changed = original_request.clone();
     root["document"]["description"] = json!("Changed complete source subject");
     changed.candidate_bytes = root.to_string();
-    assert!(submit(&runtime, changed.clone()).await.is_err());
+    assert!(matches!(
+        submit(&runtime, changed.clone()).await,
+        Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
+    ));
     changed = original_request.clone();
     changed.base = Some(crate::pg_review_submission::selection(base_b));
-    assert!(submit(&runtime, changed.clone()).await.is_err());
+    assert!(matches!(
+        submit(&runtime, changed.clone()).await,
+        Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
+    ));
     changed = original_request;
     changed.dependencies = vec![crate::pg_review_submission::selection(dependency_b)];
-    assert!(submit(&runtime, changed).await.is_err());
+    assert!(matches!(
+        submit(&runtime, changed).await,
+        Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
+    ));
     assert_eq!(selection_bytes(&runtime, id).await, original);
     assert_scope(&runtime, id, component, true).await;
     runtime.shutdown().await.unwrap();
@@ -364,17 +370,43 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let transport = AckCutTransport::start(
-        rig.url.expose_secret(),
-        vec![AckCutRule::after_bind(
-            1,
+    let evidence_cut = Uuid::new_v4();
+    let author_held = Uuid::new_v4();
+    let queue_held = Uuid::new_v4();
+    let evidence_held = Uuid::new_v4();
+    let queue_cut = Uuid::new_v4();
+    let author_rule = |rule, id: Uuid| {
+        AckCutRule::after_bind(
+            rule,
             vec![
                 id.as_bytes().to_vec(),
                 b"component-validator-selection/2".to_vec(),
             ],
             vec![],
             AckBoundary::Commit,
-        )],
+        )
+    };
+    let evidence_rule = |rule, id: Uuid| {
+        AckCutRule::after_bind(
+            rule,
+            vec![
+                id.to_string().into_bytes(),
+                b"observed-subject-validator-checks/1".to_vec(),
+            ],
+            vec![],
+            AckBoundary::Commit,
+        )
+    };
+    let transport = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![
+            author_rule(1, id),
+            evidence_rule(2, evidence_cut),
+            author_rule(3, author_held).hold(),
+            author_rule(4, queue_held).hold(),
+            evidence_rule(5, evidence_held).hold(),
+            author_rule(6, queue_cut),
+        ],
     )
     .await
     .unwrap();
@@ -390,6 +422,11 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     )))
     .await
     .unwrap();
+    // Bootstrap is unchanged; the actual author/evidence/Worker operations
+    // below share exactly one ordinary pooled connection.
+    transport.pool.resize(1);
+    assert_eq!(transport.pool.status().max_size, 1);
+    faults::install_write_counter(&rig).await;
     transport.arm(1).unwrap();
     submit(&runtime, request(id, component, false))
         .await
@@ -405,6 +442,7 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
         .unwrap();
     assert_eq!(selection_bytes(&runtime, id).await, original);
     assert_scope(&runtime, id, component, true).await;
+    assert_eq!(faults::writes(&rig).await, 1);
     let row = rig
         .pool
         .get()
@@ -422,6 +460,64 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     for column in 0..3 {
         assert_eq!(row.get::<_, i64>(column), 1);
     }
+    // Lose the real Source-observation metadata ACK, rather than an author or
+    // terminal ACK. Original readback must compare its entire evidence/index.
+    transport.arm(2).unwrap();
+    let code = Uuid::new_v4();
+    submit(&runtime, request(evidence_cut, code, false))
+        .await
+        .unwrap();
+    assert_scope(&runtime, evidence_cut, code, true).await;
+    assert_eq!(transport.cut_count(), 2);
+    assert_eq!(
+        faults::writes(&rig).await,
+        2,
+        "unknown Source ACK must not repeat the metadata write"
+    );
+    faults::cancelled_author_commit(
+        &runtime,
+        &rig,
+        &transport,
+        3,
+        author_held,
+        Uuid::new_v4(),
+        false,
+    )
+    .await;
+    assert_eq!(faults::writes(&rig).await, 3);
+    faults::cancelled_author_commit(
+        &runtime,
+        &rig,
+        &transport,
+        4,
+        queue_held,
+        Uuid::new_v4(),
+        true,
+    )
+    .await;
+    assert_eq!(faults::writes(&rig).await, 4);
+    faults::timed_out_evidence_commit(&runtime, &rig, &transport, 5, evidence_held, Uuid::new_v4())
+        .await;
+    assert_eq!(
+        faults::writes(&rig).await,
+        5,
+        "the actual bounded evidence write is never repeated after timeout"
+    );
+    transport.arm(6).unwrap();
+    let code = Uuid::new_v4();
+    let mut queued = request(queue_cut, code, false);
+    queued.create_queue_project = Some("i01-cut-queue".into());
+    let receipt = submit(&runtime, queued).await.unwrap();
+    assert_eq!(receipt.queue_ids.len(), 1);
+    assert_scope(&runtime, queue_cut, code, true).await;
+    assert_eq!(transport.cut_count(), 3);
+    assert_eq!(faults::writes(&rig).await, 6);
+    faults::corrupt_run_index(&runtime, &rig, Uuid::new_v4(), Uuid::new_v4()).await;
+    assert_eq!(
+        faults::writes(&rig).await,
+        7,
+        "a corrupt index causes one failed atomic write, never metadata/native replay"
+    );
     runtime.shutdown().await.unwrap();
     transport.shutdown().await.unwrap();
 }
@@ -588,6 +684,28 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .unwrap();
     let settings = runtime.monty_settings_owner.store();
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let support = PgComponentRevisionStore::new(rig.pool.clone())
+        .read_revision(
+            brassclaw_skills::global_bootstrap_components::packaged_component_id(
+                "validator:python-pure-calls",
+            ),
+            1,
+        )
+        .await
+        .unwrap();
+    let support_bytes = support.draft().document()["content"]
+        .as_str()
+        .unwrap()
+        .len();
+    let comment = "# retained source data, never invoked\n";
+    let mut authored = request(id, component, false);
+    let mut document: Value = serde_json::from_str(&authored.candidate_bytes).unwrap();
+    document["document"]["content"] = json!(format!(
+        "{}{}",
+        comment.repeat(2 * support_bytes.div_ceil(comment.len())),
+        document["document"]["content"].as_str().unwrap()
+    ));
+    authored.candidate_bytes = document.to_string();
     let captured = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     *runtime.installed_catalogue.capture_gate.lock().await =
@@ -609,7 +727,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
             .unwrap();
         release.notify_one();
     };
-    let (result, ()) = tokio::join!(submit(&runtime, request(id, component, false)), edit);
+    let (result, ()) = tokio::join!(submit(&runtime, authored), edit);
     result.unwrap();
     assert_scope(&runtime, id, component, true).await;
     let row = rig.pool.get().await.unwrap().query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1 AND w.record_kind='private_work'", &[&id]).await.unwrap();
@@ -636,6 +754,166 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .read_source_submission(id)
         .await
         .unwrap();
+    let checked = read_positive(&runtime, id).await.unwrap();
+    let crate::private_work_definition::DomainCapture::ValidatorStructural {
+        capture_bytes, ..
+    } = definition.domain()
+    else {
+        panic!("actual source input capture required");
+    };
+    let capture: Value = serde_json::from_str(capture_bytes).unwrap();
+    let input_bytes = capture["input_bytes"].as_str().unwrap();
+    let input: Value = serde_json::from_str(input_bytes).unwrap();
+    let evidence_bytes: String = rig.pool.get().await.unwrap().query_one("SELECT e.evidence_bytes FROM reborn_validator_q1_runs r JOIN reborn_component_review_evidence e USING(evidence_id) WHERE r.submission_id=$1", &[&id]).await.unwrap().get(0);
+    let evidence: Value = serde_json::from_str(&evidence_bytes).unwrap();
+    let source_bytes = checked.subject().value()["candidate"]["revision"]["document"]["content"]
+        .as_str()
+        .unwrap()
+        .len();
+    // Derive a smaller valid byte limit from the actual persisted values. Keep
+    // source/frame/transport, node and depth limits unchanged; no product quota
+    // or unsupported depth profile is introduced by this finite test fixture.
+    let before = settings.get("default", "default").await.unwrap();
+    let mut reduced = before.execution_limits;
+    let old_bounds = definition.preparation().limits().bounds;
+    let original_limits = brassclaw_skills::value_contract::ContractLimits {
+        max_depth: old_bounds.max_value_depth,
+        max_nodes: old_bounds.max_value_nodes,
+        max_bytes: old_bounds.max_value_bytes,
+    };
+    // Measure the actual logical-byte requirement through the supported
+    // whole-value contract, rather than treating escaped JSON length as that
+    // contract's accounting. Depth and node budgets are fixed and already pass.
+    let byte_requirement = |value: &Value| {
+        brassclaw_skills::value_contract::validate_data_bounds(value, original_limits).unwrap();
+        let (mut low, mut high) = (1, original_limits.max_bytes);
+        while low < high {
+            let middle = low + (high - low) / 2;
+            let mut limits = original_limits;
+            limits.max_bytes = middle;
+            match brassclaw_skills::value_contract::validate_data_bounds(value, limits) {
+                Ok(()) => high = middle,
+                Err(error) => {
+                    assert_eq!(error.reason, "technical value bound exceeded");
+                    low = middle + 1;
+                }
+            }
+        }
+        low
+    };
+    reduced.max_value_bytes = u64::try_from(
+        byte_requirement(&input)
+            .min(byte_requirement(&evidence))
+            .min(source_bytes)
+            / 2,
+    )
+    .unwrap();
+    assert!(
+        reduced.max_value_bytes > 0
+            && reduced.max_value_bytes < before.execution_limits.max_value_bytes
+    );
+    reduced.validate().unwrap();
+    let changed = settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(
+                json!({"expected_revision":before.revision,"execution_limits":reduced}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    tokio::time::timeout(
+        Duration::from_millis(reduced.settings_uptake_timeout_millis),
+        async {
+            loop {
+                let state = settings
+                    .runtime_status()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .execution_limits
+                    .unwrap();
+                if state.effective_revision == changed.revision
+                    && state.uptake == brassclaw_product_workflow::MontyBudgetUptake::Applied
+                {
+                    assert_eq!(state.desired_revision, changed.revision);
+                    assert_eq!(state.limits.max_value_bytes, reduced.max_value_bytes);
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        },
+    )
+    .await
+    .expect("actual Rust/Monty acknowledgement must apply the smaller supported value limit");
+    assert_eq!(
+        runtime
+            .global_monty_owner
+            .client()
+            .live_task_settings()
+            .current()
+            .revision,
+        changed.revision
+    );
+    let current = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+    assert_eq!(current.revision(), changed.revision);
+    let bounds = current.limits().bounds;
+    let current_limits = brassclaw_skills::value_contract::ContractLimits {
+        max_depth: bounds.max_value_depth,
+        max_nodes: bounds.max_value_nodes,
+        max_bytes: bounds.max_value_bytes,
+    };
+    for value in [&input, &evidence] {
+        assert_eq!(
+            brassclaw_skills::value_contract::validate_data_bounds(value, current_limits)
+                .unwrap_err()
+                .reason,
+            "technical value bound exceeded"
+        );
+    }
+    let program = brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage::restore_preparation(checked.selection()).unwrap();
+    let coverage =
+        brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage::from_inputs(
+            program.inputs(),
+        )
+        .unwrap();
+    assert!(
+        matches!(
+            coverage.subject_task_inputs(checked.subject(), program.inputs(), current_limits),
+            Err("validator subject exceeds owner policy")
+        ),
+        "a new typed input consumer must obey the actual smaller current limit"
+    );
+    runtime
+        .installed_catalogue
+        .read_source_submission(id)
+        .await
+        .unwrap();
+    assert!(
+        read_positive(&runtime, id).await.is_some(),
+        "historical source evidence uses its original acknowledged data profile"
+    );
+    let stored: String = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT definition_bytes FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+            &[&id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(stored, definition.bytes());
+    let stored_evidence: String = rig.pool.get().await.unwrap().query_one("SELECT e.evidence_bytes FROM reborn_validator_q1_runs r JOIN reborn_component_review_evidence e USING(evidence_id) WHERE r.submission_id=$1", &[&id]).await.unwrap().get(0);
+    assert_eq!(stored_evidence, evidence_bytes);
     runtime.shutdown().await.unwrap();
 }
 
@@ -713,11 +991,8 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
             .unwrap()
             .unwrap();
         assert!(
-            runtime
-                .installed_catalogue
-                .require_source_selection(&tx, &saved)
-                .await
-                .is_err()
+            matches!(runtime.installed_catalogue.require_source_selection(&tx,&saved).await,
+            Err(crate::RebornBuildError::InvalidConfig { reason }) if reason=="original qualified Source selection differs")
         );
         tx.rollback().await.unwrap();
     }
@@ -790,11 +1065,10 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
             .start()
             .await
             .unwrap();
-        assert!(
-            selection::retain_in_transaction(&tx, &bytes, REVISION_LIMITS)
-                .await
-                .is_err()
-        );
+        assert!(matches!(
+            selection::retain_in_transaction(&tx, &bytes, REVISION_LIMITS).await,
+            Err(brassclaw_skills::review_submission_store::SubmissionStoreError::Invalid)
+        ));
         tx.rollback().await.unwrap();
     }
     let absent: i64 = rig
@@ -816,5 +1090,7 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
     runtime.shutdown().await.unwrap();
 }
 
+#[path = "qualified_source_faults.rs"]
+mod faults;
 #[path = "qualified_source_legacy_fixture.rs"]
 mod legacy_fixture;

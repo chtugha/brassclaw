@@ -65,9 +65,9 @@ pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 
 #[path = "qualified_pure_source_review.rs"]
 mod qualified_source;
-pub(crate) use qualified_source::{
-    CheckedPureSourceOriginal, QualifiedPureSourceReview, SourceReviewPreparation,
-};
+#[cfg(test)]
+pub(crate) use qualified_source::CheckedPureSourceOriginal;
+pub(crate) use qualified_source::{QualifiedPureSourceReview, SourceReviewPreparation};
 
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;
@@ -202,6 +202,7 @@ pub(crate) struct InventoryReviewSource {
     #[cfg(test)]
     worker: Arc<PackagedExecutableImage>,
     persist: bool,
+    storage: Option<Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>>,
     tools: Arc<dyn RetainedToolPort>,
     host: Arc<MontyTaskHost>,
     pool: Arc<PgPool>,
@@ -304,6 +305,7 @@ impl InventoryReviewSource {
             parser,
             worker,
             persist: false,
+            storage: None,
             tools,
             host,
             pool,
@@ -366,6 +368,7 @@ impl InventoryReviewSource {
             limits,
             observation: Mutex::new(None),
             persist: true,
+            storage: Some(catalogue.resource_store_settings.clone()),
         })
     }
 }
@@ -446,6 +449,7 @@ impl InternalRecipeSource for InventoryReviewSource {
                 &checks,
                 task,
                 self.limits,
+                self.storage.as_deref().ok_or_else(failure)?,
             )
             .await
             .map_err(|_| failure())?;

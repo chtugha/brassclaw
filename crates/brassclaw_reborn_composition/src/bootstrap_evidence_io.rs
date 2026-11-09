@@ -1,50 +1,16 @@
 //! Bounded immutable evidence I/O under the existing acknowledged technical
 //! ResourceStore deadline. No task execution, queue or approval authority.
+/// Do not recycle a connection whose transaction response was lost/cancelled.
+/// The normal acknowledged path still uses the existing pool. Detaching only
+/// the uncertain connection prevents a queued BEGIN from leaking into readback.
+pub(crate) use crate::pg_transaction_client::TransactionClient as EvidenceClient;
 use crate::{RebornBuildError, bootstrap_reply_validation::invalid};
 use brassclaw_pg::PgPool;
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
-/// Do not recycle a connection whose transaction response was lost/cancelled.
-/// The normal acknowledged path still uses the existing pool. Detaching only
-/// the uncertain connection prevents a queued BEGIN from leaking into readback.
-pub(crate) struct EvidenceClient {
-    inner: Option<brassclaw_pg::PgClient>,
-    recyclable: bool,
-}
 impl EvidenceClient {
     pub(crate) async fn acquire(pool: &PgPool) -> Result<Self, RebornBuildError> {
         Ok(Self::from_client(pool.get().await.map_err(invalid)?))
-    }
-    /// Retain the caller's existing connection error classification while
-    /// applying the same uncertain-transaction custody and drop discipline.
-    pub(crate) fn from_client(client: brassclaw_pg::PgClient) -> Self {
-        Self {
-            inner: Some(client),
-            recyclable: false,
-        }
-    }
-    pub(crate) fn recycle_after_commit(&mut self) {
-        self.recyclable = true;
-    }
-}
-impl std::ops::Deref for EvidenceClient {
-    type Target = brassclaw_pg::PgClient;
-    fn deref(&self) -> &Self::Target {
-        self.inner.as_ref().expect("owned evidence connection")
-    }
-}
-impl std::ops::DerefMut for EvidenceClient {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.as_mut().expect("owned evidence connection")
-    }
-}
-impl Drop for EvidenceClient {
-    fn drop(&mut self) {
-        if !self.recyclable {
-            if let Some(client) = self.inner.take() {
-                drop(brassclaw_pg::PgClient::take(client));
-            }
-        }
     }
 }
 

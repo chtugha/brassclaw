@@ -520,7 +520,9 @@ impl PgPythonCodeStore {
                     .into(),
             );
         }
-        let mut client = self.pool.get().await.map_err(map_pool)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            self.pool.get().await.map_err(map_pool)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -532,6 +534,7 @@ impl PgPythonCodeStore {
             ValidationQueueStore::read_original_create(&tx, draft, &scope).await?
         {
             tx.commit().await.map_err(map_pg)?;
+            client.recycle_after_commit();
             return Ok(original);
         }
         Self::insert_on(&*tx, row, false, id).await?;
@@ -559,7 +562,9 @@ impl PgPythonCodeStore {
         }
         if let Err(error) = tx.commit().await {
             drop(client);
-            let mut readback = self.pool.get().await.map_err(map_pool)?;
+            let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
+                self.pool.get().await.map_err(map_pool)?,
+            );
             let original = readback
                 .build_transaction()
                 .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -584,6 +589,9 @@ impl PgPythonCodeStore {
                     })?;
             }
             original.commit().await.map_err(map_pg)?;
+            readback.recycle_after_commit();
+        } else {
+            client.recycle_after_commit();
         }
         #[cfg(feature = "skills-db")]
         if let Some(source) = source {

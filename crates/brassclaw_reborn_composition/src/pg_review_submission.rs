@@ -278,7 +278,9 @@ async fn submit_inner(
         return original_receipt(pool, &retained).await;
     }
     let retained = {
-        let mut client = pool.get().await.map_err(storage_io)?;
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            pool.get().await.map_err(storage_io)?,
+        );
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -350,7 +352,9 @@ async fn submit_inner(
             // The server may have committed. End this client before one fresh,
             // read-only snapshot; never repeat authoring or capture settings.
             drop(client);
-            let mut readback = pool.get().await.map_err(storage_io)?;
+            let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
+                pool.get().await.map_err(storage_io)?,
+            );
             let original = readback
                 .build_transaction()
                 .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -403,8 +407,10 @@ async fn submit_inner(
                     .map_err(storage_io)?;
             }
             original.commit().await.map_err(storage_io)?;
+            readback.recycle_after_commit();
             saved
         } else {
+            client.recycle_after_commit();
             retained
         }
     };

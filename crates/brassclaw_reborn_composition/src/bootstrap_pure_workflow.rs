@@ -166,7 +166,7 @@ impl CheckedPureSourceWorkflow {
         brassclaw_skills::review_submission_store::selection::SourceQualification,
         RebornBuildError,
     > {
-        self.verify_in_transaction(tx, checkers).await?;
+        let prerequisites = self.verify_with_prerequisites(tx, checkers).await?;
         let first = self
             .cases
             .first()
@@ -175,9 +175,7 @@ impl CheckedPureSourceWorkflow {
         let program = self.program()?;
         let recipe = &program.inputs().instruction().snapshot().revisions()
             [&program.inputs().instruction().recipe().uuid];
-        let mut prerequisite_proofs = checkers
-            .proof_references(tx)
-            .await?
+        let mut prerequisite_proofs = prerequisites
             .into_iter()
             .map(|value| serde_json::from_value(value).map_err(invalid))
             .collect::<Result<Vec<_>, _>>()?;
@@ -288,6 +286,17 @@ impl CheckedPureSourceWorkflow {
         tx: &Transaction<'_>,
         checkers: &CheckedPureCheckerClosure,
     ) -> Result<(), RebornBuildError> {
+        self.verify_with_prerequisites(tx, checkers)
+            .await
+            .map(|_| ())
+    }
+    /// Reuse only facts authenticated by this exact invocation/snapshot. These
+    /// references are not a cache or an authority usable by another transaction.
+    async fn verify_with_prerequisites(
+        &self,
+        tx: &Transaction<'_>,
+        checkers: &CheckedPureCheckerClosure,
+    ) -> Result<Vec<Value>, RebornBuildError> {
         let prerequisites = checkers.proof_references(tx).await?;
         for case in &self.cases {
             checkers.require_program(&case.context.program)?;
@@ -317,7 +326,7 @@ impl CheckedPureSourceWorkflow {
         {
             return Err(invalid("whole workflow original qualification differs"));
         }
-        Ok(())
+        Ok(prerequisites)
     }
 }
 pub(crate) async fn qualify_pure_workflow(

@@ -57,6 +57,8 @@ pub(crate) enum ValidatorQ1EvidenceError {
     Connection(#[source] deadpool_postgres::PoolError),
     #[error("validator Q1 evidence integrity check failed")]
     Integrity,
+    #[error("original validator observation I/O deadline elapsed; outcome unresolved")]
+    Unresolved,
 }
 fn invalid(reason: &'static str) -> ValidatorQ1EvidenceError {
     ValidatorQ1EvidenceError::Invalid(reason)
@@ -113,7 +115,7 @@ pub(crate) async fn persist_validator_q1_evidence(
     checks: &ObservedSubjectValidatorChecks,
     task_handle: Uuid,
 ) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
-    persist_observation(pool, subject, selection, checks, task_handle, None).await
+    persist_observation(pool, subject, selection, checks, task_handle, None, None).await
 }
 /// Source-only observations use their original acknowledged whole-value bounds,
 /// not the legacy writer's fixed eight-MiB quota. They still grant no full Q1.
@@ -124,10 +126,18 @@ pub(crate) async fn persist_validator_source_evidence(
     checks: &ObservedSubjectValidatorChecks,
     task_handle: Uuid,
     original_limits: brassclaw_skills::value_contract::ContractLimits,
+    storage: &dyn brassclaw_resources::PgResourceStoreSettingsSource,
 ) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
     if selection.source_qualification().is_none() {
         return Err(invalid("qualified Source selection required"));
     }
+    // Capture the existing acknowledged technical store deadline once. Both
+    // the single metadata write and any fresh original readback are bounded;
+    // a timeout does not authorize a second write or native replay.
+    let policy = storage
+        .snapshot()
+        .and_then(|p| p.validate())
+        .map_err(|_| ValidatorQ1EvidenceError::Unresolved)?;
     persist_observation(
         pool,
         subject,
@@ -135,6 +145,7 @@ pub(crate) async fn persist_validator_source_evidence(
         checks,
         task_handle,
         Some(original_limits),
+        Some(policy.timeout),
     )
     .await
 }
@@ -145,6 +156,7 @@ async fn persist_observation(
     checks: &ObservedSubjectValidatorChecks,
     task_handle: Uuid,
     original_limits: Option<brassclaw_skills::value_contract::ContractLimits>,
+    deadline: Option<std::time::Duration>,
 ) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
     if task_handle.is_nil() {
         return Err(invalid("task handle must be a non-nil UUID"));
@@ -220,80 +232,120 @@ async fn persist_observation(
         .map(|byte| format!("{byte:02x}"))
         .collect();
 
-    let mut client = pool
-        .get()
-        .await
-        .map_err(ValidatorQ1EvidenceError::Connection)?;
-    let tx = client
-        .build_transaction()
-        .isolation_level(IsolationLevel::RepeatableRead)
-        .start()
-        .await
-        .map_err(db)?;
-
-    // Idempotent insert into evidence store: ON CONFLICT DO NOTHING preserves
-    // existing rows; integrity check below detects differing concurrent writes.
-    tx.execute(
-        "INSERT INTO reborn_component_review_evidence(evidence_id, evidence_bytes, checksum)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (evidence_id) DO NOTHING",
-        &[&evidence_id, &bytes, &checksum],
-    )
-    .await
-    .map_err(db)?;
-
-    // Integrity check: the stored bytes must be byte-identical.
-    let stored = tx
-        .query_one(
-            "SELECT evidence_bytes, checksum FROM reborn_component_review_evidence
-             WHERE evidence_id = $1",
-            &[&evidence_id],
-        )
-        .await
-        .map_err(db)?;
-    if stored.get::<_, &str>(0) != bytes.as_str() || stored.get::<_, &str>(1) != checksum.as_str() {
-        return Err(ValidatorQ1EvidenceError::Integrity);
-    }
-
-    // Write the FK-indexed run row so readers can find evidence without JSONB
-    // parsing. The UNIQUE constraint on (submission_id, validator_selection_checksum)
-    // makes this idempotent; a conflict means an identical run was already recorded.
     let class_i16 = i16::try_from(subject.candidate().class_code)
         .map_err(|_| invalid("candidate class code is out of i16 range"))?;
-    tx.execute(
-        "INSERT INTO reborn_validator_q1_runs
-             (run_id, submission_id, validator_selection_checksum,
-              candidate_class_code, task_handle, evidence_id, succeeded)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (submission_id, validator_selection_checksum) DO NOTHING",
-        &[
-            &evidence_id,
-            &subject.submission_id(),
-            &validator_selection_checksum,
-            &class_i16,
-            &task_handle,
-            &evidence_id,
-            &succeeded,
-        ],
-    )
-    .await
-    .map_err(db)?;
-
-    // Verify the run row is consistent: its evidence_id must match ours.
-    let run_row = tx
-        .query_one(
-            "SELECT evidence_id FROM reborn_validator_q1_runs
-             WHERE submission_id = $1 AND validator_selection_checksum = $2",
-            &[&subject.submission_id(), &validator_selection_checksum],
-        )
-        .await
-        .map_err(db)?;
-    if run_row.get::<_, Uuid>(0) != evidence_id {
-        return Err(ValidatorQ1EvidenceError::Integrity);
+    let original = ObservationOriginal {
+        evidence_id,
+        submission_id: subject.submission_id(),
+        selection_checksum: validator_selection_checksum,
+        class_code: class_i16,
+        task_handle,
+        succeeded,
+        bytes,
+        checksum,
+    };
+    // At most one write transaction. A failed/lost response is not permission
+    // to repeat the metadata write, native parser, task or execution identity.
+    if let Err(primary) = within_deadline(deadline, original.write(pool)).await {
+        // write() has ended and its unacknowledged connection has been
+        // physically discarded before this fresh, read-only RR checkout.
+        match within_deadline(deadline, original.read(pool)).await {
+            Ok(true) => {}
+            Ok(false) => return Err(primary),
+            Err(error) => return Err(error),
+        }
     }
-
-    tx.commit().await.map_err(db)?;
     Ok(PersistedValidatorQ1Evidence { evidence_id })
+}
+
+/// Exact metadata derived solely from the original sealed execution observer.
+/// This is not a constructor for observations or any live native authority.
+struct ObservationOriginal {
+    evidence_id: Uuid,
+    submission_id: Uuid,
+    selection_checksum: String,
+    class_code: i16,
+    task_handle: Uuid,
+    succeeded: bool,
+    bytes: String,
+    checksum: String,
+}
+impl ObservationOriginal {
+    async fn require_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+    ) -> Result<bool, ValidatorQ1EvidenceError> {
+        let evidence = tx.query_opt("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1", &[&self.evidence_id]).await.map_err(db)?;
+        let run = tx.query_opt("SELECT run_id,submission_id,validator_selection_checksum,candidate_class_code,task_handle,evidence_id,succeeded FROM reborn_validator_q1_runs WHERE submission_id=$1 AND validator_selection_checksum=$2", &[&self.submission_id,&self.selection_checksum]).await.map_err(db)?;
+        let (evidence, run) = match (evidence, run) {
+            (None, None) => return Ok(false),
+            (Some(evidence), Some(run)) => (evidence, run),
+            _ => return Err(ValidatorQ1EvidenceError::Integrity),
+        };
+        if evidence.get::<_, &str>(0) != self.bytes
+            || evidence.get::<_, &str>(1) != self.checksum
+            || run.get::<_, Uuid>(0) != self.evidence_id
+            || run.get::<_, Uuid>(1) != self.submission_id
+            || run.get::<_, &str>(2) != self.selection_checksum
+            || run.get::<_, i16>(3) != self.class_code
+            || run.get::<_, Uuid>(4) != self.task_handle
+            || run.get::<_, Uuid>(5) != self.evidence_id
+            || run.get::<_, bool>(6) != self.succeeded
+        {
+            return Err(ValidatorQ1EvidenceError::Integrity);
+        }
+        Ok(true)
+    }
+    async fn write(&self, pool: &PgPool) -> Result<(), ValidatorQ1EvidenceError> {
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            pool.get()
+                .await
+                .map_err(ValidatorQ1EvidenceError::Connection)?,
+        );
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .map_err(db)?;
+        tx.execute("INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING", &[&self.evidence_id,&self.bytes,&self.checksum]).await.map_err(db)?;
+        tx.execute("INSERT INTO reborn_validator_q1_runs(run_id,submission_id,validator_selection_checksum,candidate_class_code,task_handle,evidence_id,succeeded) VALUES($1,$2,$3,$4,$5,$1,$6) ON CONFLICT(submission_id,validator_selection_checksum) DO NOTHING", &[&self.evidence_id,&self.submission_id,&self.selection_checksum,&self.class_code,&self.task_handle,&self.succeeded]).await.map_err(db)?;
+        if !self.require_in_transaction(&tx).await? {
+            return Err(ValidatorQ1EvidenceError::Integrity);
+        }
+        tx.commit().await.map_err(db)?;
+        client.recycle_after_commit();
+        Ok(())
+    }
+    async fn read(&self, pool: &PgPool) -> Result<bool, ValidatorQ1EvidenceError> {
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            pool.get()
+                .await
+                .map_err(ValidatorQ1EvidenceError::Connection)?,
+        );
+        let tx = client
+            .build_transaction()
+            .isolation_level(IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(db)?;
+        let exact = self.require_in_transaction(&tx).await?;
+        tx.commit().await.map_err(db)?;
+        client.recycle_after_commit();
+        Ok(exact)
+    }
+}
+async fn within_deadline<T>(
+    deadline: Option<std::time::Duration>,
+    operation: impl std::future::Future<Output = Result<T, ValidatorQ1EvidenceError>>,
+) -> Result<T, ValidatorQ1EvidenceError> {
+    match deadline {
+        Some(deadline) => tokio::time::timeout(deadline, operation)
+            .await
+            .map_err(|_| ValidatorQ1EvidenceError::Unresolved)?,
+        None => operation.await,
+    }
 }
 
 #[cfg(all(test, feature = "skills-db"))]

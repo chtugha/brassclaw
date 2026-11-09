@@ -1136,6 +1136,8 @@ mod bootstrap_encoding_fixture;
 mod bootstrap_encoding_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_evidence;
+#[cfg(feature = "postgres")]
+mod pg_transaction_client;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_free_workflow_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]

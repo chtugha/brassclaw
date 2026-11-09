@@ -151,7 +151,6 @@ pub(crate) struct InstalledMontyCatalogue {
     // Real retained startup ports used to rebuild contained native test fixtures.
     #[cfg(test)]
     pub(crate) startup_executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
-    #[cfg(test)]
     pub(crate) resource_store_settings: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     preparation_settings:
         std::sync::RwLock<Option<Arc<dyn brassclaw_product_workflow::MontyVmSettingsStore>>>,
@@ -1113,7 +1112,6 @@ impl InstalledMontyCatalogue {
             private_work_wake: std::sync::OnceLock::new(),
             #[cfg(test)]
             startup_executor,
-            #[cfg(test)]
             resource_store_settings,
             preparation_settings: std::sync::RwLock::new(None),
             captured_prefixes: std::sync::Mutex::new(BTreeMap::new()),
