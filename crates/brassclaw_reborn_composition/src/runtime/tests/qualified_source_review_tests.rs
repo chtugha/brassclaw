@@ -86,6 +86,74 @@ async fn selection_bytes(runtime: &RebornRuntime, id: Uuid) -> String {
         "SELECT selection_bytes FROM reborn_component_validator_selections WHERE submission_id=$1", &[&id]
     ).await.unwrap().get(0)
 }
+async fn read_positive(
+    runtime: &RebornRuntime,
+    id: Uuid,
+) -> Option<crate::validator_inventory_review::CheckedPureSourceOriginal> {
+    let context = brassclaw_turns::private_work::PrivateExecutionContext {
+        tenant_id: runtime.thread_scope.tenant_id.clone(),
+        agent_id: Some(runtime.thread_scope.agent_id.clone()),
+        project_id: runtime.thread_scope.project_id.clone(),
+        actor: Some(brassclaw_turns::TurnActor::new(
+            runtime.actor_user_id.clone(),
+        )),
+    };
+    let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
+    let tx = client
+        .build_transaction()
+        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+        .read_only(true)
+        .start()
+        .await
+        .unwrap();
+    let checked = runtime
+        .installed_catalogue
+        .pure_source_review
+        .read_positive_original(&tx, id, &context)
+        .await
+        .unwrap();
+    if let Some(original) = &checked {
+        assert_eq!(original.subject().submission_id(), id);
+        assert_eq!(original.selection().submission_id(), id);
+        assert_eq!(
+            original.selection().subject_checksum(),
+            original.subject().subject_checksum()
+        );
+        assert_eq!(
+            original
+                .selection()
+                .source_qualification()
+                .unwrap()
+                .worker_checksum,
+            hex::encode(original.worker_checksum())
+        );
+        assert_eq!(original.delivery_reference().id, id);
+        assert_eq!(original.confirmation_reference().id, id);
+        let row = tx.query_one("SELECT d.checksum,c.checksum FROM brassclaw_monty_private_deliveries d JOIN reborn_component_review_work_confirmations c ON c.submission_id=d.work_id WHERE d.work_id=$1", &[&id]).await.unwrap();
+        assert_eq!(
+            original.delivery_reference().checksum,
+            hex::encode(row.get::<_, Vec<u8>>(0))
+        );
+        assert_eq!(
+            original.confirmation_reference().checksum,
+            hex::encode(row.get::<_, Vec<u8>>(1))
+        );
+        let mut foreign = context.clone();
+        foreign.actor = Some(brassclaw_turns::TurnActor::new(
+            brassclaw_host_api::UserId::new("i01-foreign-source-actor").unwrap(),
+        ));
+        assert!(
+            runtime
+                .installed_catalogue
+                .pure_source_review
+                .read_positive_original(&tx, id, &foreign)
+                .await
+                .is_err()
+        );
+    }
+    tx.commit().await.unwrap();
+    checked
+}
 async fn confirmation(runtime: &RebornRuntime, id: Uuid) -> Value {
     tokio::time::timeout(deadline(runtime).await, async {
         loop {
@@ -168,6 +236,7 @@ async fn native_qualified_pure_source_original_reaches_existing_worker() {
     assert!(!receipt.catalogue_activated);
     assert_eq!(receipt.review_status, "unreviewed");
     assert_scope(&runtime, id, component, true).await;
+    assert!(read_positive(&runtime, id).await.is_some());
     runtime
         .installed_catalogue
         .read_source_submission(id)
@@ -187,6 +256,10 @@ async fn native_qualified_pure_source_rejects_hidden_host_in_unused_export() {
         .await
         .unwrap();
     assert_scope(&runtime, id, component, false).await;
+    assert!(
+        read_positive(&runtime, id).await.is_none(),
+        "a genuine negative source confirmation supplies no positive prerequisite"
+    );
     let record = confirmation(&runtime, id).await;
     assert!(record["errors"].to_string().contains("host call"));
     runtime.shutdown().await.unwrap();
@@ -403,6 +476,10 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
     assert_eq!(
         partial, 1,
         "actual source observations already exist but cannot replace native delivery"
+    );
+    assert!(
+        read_positive(&runtime, pending).await.is_none(),
+        "a native terminal without the actual Factory ACK supplies no positive prerequisite"
     );
     pause.release.notify_one();
     let settled = tokio::time::timeout(deadline(&runtime).await, waiter.wait())

@@ -65,7 +65,9 @@ pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 
 #[path = "qualified_pure_source_review.rs"]
 mod qualified_source;
-pub(crate) use qualified_source::{QualifiedPureSourceReview, SourceReviewPreparation};
+pub(crate) use qualified_source::{
+    CheckedPureSourceOriginal, QualifiedPureSourceReview, SourceReviewPreparation,
+};
 
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;

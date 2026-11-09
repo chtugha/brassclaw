@@ -13,14 +13,15 @@ use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
     review_submission_store::{
         PgReviewSubmissionStore, ReviewSubmissionDraft,
-        selection::{self, RetainedValidatorSelection, SourceQualification},
+        selection::{self, RetainedValidatorSelection, SourceProofReference, SourceQualification},
     },
     revision_store::PgComponentRevisionStore,
 };
 use brassclaw_turns::{
     PgTurnStateStore, TurnRunId,
     private_work::{
-        PrivateOriginalRef, PrivatePreparationReason, PrivateWorkRequest, PrivateWorkStatus,
+        PrivateExecutionContext, PrivateOriginalRef, PrivatePreparationReason, PrivateWorkRequest,
+        PrivateWorkStatus,
     },
 };
 use tokio_postgres::{IsolationLevel, Transaction};
@@ -34,6 +35,35 @@ pub(crate) struct SourceReviewPreparation {
     catalogue: Arc<InstalledMontyCatalogue>,
     inspected: Arc<InspectedRetainedProgram>,
     preparation: PreparationCapture,
+}
+/// Positive source-only prerequisite, issued solely by the reader below. This
+/// is neither a live native completion nor behavior/Q1/Q2/activation authority.
+/// Its references describe the exact original; they do not select replacements.
+pub(crate) struct CheckedPureSourceOriginal {
+    subject: Arc<RetainedValidatorSubject>,
+    selection: Arc<RetainedValidatorSelection>,
+    delivery: crate::pg_monty_admission::DeliveredPrivateCompletion,
+    confirmation: SourceProofReference,
+}
+impl CheckedPureSourceOriginal {
+    pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
+        &self.subject
+    }
+    pub(crate) fn selection(&self) -> &RetainedValidatorSelection {
+        &self.selection
+    }
+    pub(crate) fn worker_checksum(&self) -> [u8; 32] {
+        self.delivery.original().definition().worker_checksum()
+    }
+    pub(crate) fn delivery_reference(&self) -> SourceProofReference {
+        SourceProofReference {
+            id: self.delivery.original().request().work_id(),
+            checksum: hex::encode(self.delivery.checksum()),
+        }
+    }
+    pub(crate) fn confirmation_reference(&self) -> &SourceProofReference {
+        &self.confirmation
+    }
 }
 impl QualifiedPureSourceReview {
     pub(crate) fn new(
@@ -71,6 +101,105 @@ impl QualifiedPureSourceReview {
     }
     pub(crate) fn parser(&self) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
         self.workflow.parser()
+    }
+    /// Read the complete exact-positive prerequisite in the caller's coherent
+    /// RR snapshot. None means no positively acknowledged original exists yet
+    /// (including a genuine negative). Corrupt or incompatible originals error.
+    /// This performs no writes, native execution, requalification or recovery.
+    /// Cross-package handle/image loading remains the separate recovery owner;
+    /// this owner never substitutes today's package for a historical original.
+    pub(crate) async fn read_positive_original(
+        &self,
+        tx: &Transaction<'_>,
+        submission_id: Uuid,
+        context: &PrivateExecutionContext,
+    ) -> Result<Option<CheckedPureSourceOriginal>, RebornBuildError> {
+        let subject = Arc::new(
+            PgReviewSubmissionStore::read_validator_subject_in_transaction(
+                tx,
+                submission_id,
+                REVISION_LIMITS,
+            )
+            .await
+            .map_err(invalid)?
+            .ok_or_else(|| invalid("Source prerequisite subject missing"))?,
+        );
+        let selection = Arc::new(
+            selection::read_preparation_in_transaction(tx, submission_id, REVISION_LIMITS)
+                .await
+                .map_err(invalid)?
+                .ok_or_else(|| invalid("Source prerequisite selection missing"))?,
+        );
+        if subject.candidate().class_code != 22 || selection.source_qualification().is_none() {
+            return Err(invalid("qualified Source prerequisite required"));
+        }
+        self.require_selection(tx, &selection).await?;
+        let Some(delivery) = PgMontyAdmission::read_private_delivery(tx, submission_id, context)
+            .await
+            .map_err(invalid)?
+        else {
+            return Ok(None);
+        };
+        crate::pg_review_admission_source::ValidatorInputCapture::verify_historical(
+            &subject,
+            &selection,
+            delivery.original().definition(),
+        )?;
+        if selection.source_qualification().is_none_or(|q| {
+            q.worker_checksum != hex::encode(delivery.original().definition().worker_checksum())
+        }) {
+            return Err(invalid("Source prerequisite original worker differs"));
+        }
+        // H01 authenticates the actual delivered verdict and reconstructs and
+        // byte-compares its original /1 acknowledgement. No JSON flag by itself
+        // creates the checked view, and no missing confirmation is produced.
+        let Some(record) = crate::review_work_confirmation::read_with_source(
+            tx,
+            submission_id,
+            context,
+            Some(self),
+        )
+        .await
+        .map_err(invalid)?
+        else {
+            return Ok(None);
+        };
+        if record["format"] != "component-review-work-confirmation/1"
+            || record["scope"] != "structural-observations-only"
+            || record["q1_qualified"] != false
+            || record["human_q2"] != false
+            || record["activation"] != false
+        {
+            return Err(invalid("Source prerequisite confirmation scope differs"));
+        }
+        match record["checks_succeeded"].as_bool() {
+            Some(false) => return Ok(None),
+            Some(true) if record["errors"] == json!([]) => {}
+            _ => return Err(invalid("Source prerequisite positive verdict differs")),
+        }
+        let row = tx.query_opt("SELECT confirmation_bytes,checksum FROM reborn_component_review_work_confirmations WHERE submission_id=$1", &[&submission_id])
+            .await.map_err(invalid)?.ok_or_else(|| invalid("Source prerequisite original confirmation missing"))?;
+        let bytes: &str = row.get(0);
+        let checksum: [u8; 32] = row
+            .get::<_, Vec<u8>>(1)
+            .try_into()
+            .map_err(|_| invalid("Source prerequisite confirmation checksum invalid"))?;
+        if bytes != serde_json::to_string(&record).map_err(invalid)?
+            || crate::private_work_definition::checksum(bytes) != checksum
+            || record["delivery_checksum"]
+                != serde_json::to_value(delivery.checksum()).map_err(invalid)?
+        {
+            return Err(invalid("Source prerequisite original confirmation differs"));
+        }
+        Ok(Some(CheckedPureSourceOriginal {
+            subject,
+            selection,
+            delivery,
+            confirmation: SourceProofReference {
+                id: submission_id,
+                checksum: hex::encode(checksum),
+            },
+        }))
     }
 }
 impl InstalledMontyCatalogue {
