@@ -13,6 +13,39 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+**Run-25 — 2026-11-09:** frozen `4a6f07c8d` builds the worker and joint graph
+without warnings (14.435/676.992 s). The actual profile/link/source gate passes,
+including 1,389 accounted Composition names and `__eh_frame` 13,062,052 bytes.
+The strict factory transport test and common global startup (340.075 s) pass.
+The dependent batch executes 37 selected cases: nine pass, 28 fail. Six actual
+structural-checker ACK/cancellation/death cases, tuple-return checking, original
+review discovery and opaque global handoff pass. Source confirmation/gate
+timeouts and shutdown reconciliation remain unaccepted. The atomic pool-one
+Source case is terminated after 11,152 s; its bounded read-only original metadata
+shows one claimed Work/reserved admission and no terminal, delivery or
+confirmation, with idle DB clients. This does not establish the blocked Rust
+phase or permit replay.
+
+Indices 19–35 fail at native executable retention before their intended checks;
+the system filesystem is observed at 100% used. No exact failing storage syscall
+is claimed. Thirty-one closed temporary copies (9.115 GiB), each matching the
+preserved Run-25 executable, are audited and removed; no source, reference
+artifact, log or PG data is deleted. Disk-guard restoration and per-case temporary
+artifact custody precede the next batch. Source/HEAD identity is verified and
+the source freeze released. See `run-25-composition/native-batch-disposition.json`,
+`connected-cases-1/`, and the native-copy audit/completion receipts.
+
+Reviewed F-01 fixture corrections are integrated as `3d4080366`: initialize the
+real persisted settings revision before the held-intent test, and declare the
+required input `checks:[]`. The non-JSON native utility loop and integer-result
+assertions had already executed before the latter input-constructor failure;
+no result-validator defect is inferred. Both corrected tests remain unrun.
+J-01 continues its original single-case production connection; K-01's source
+handoff `94946166d` remains under complete review, not integrated/compiled.
+I-01 owns the minimal original-completion/settlement test-diagnostic correction.
+J-01/I-01 are the two implementers; F-01/K-01 are read-only. All three Bob plans
+remain open.
+
 **Run-24 — 2026-11-09:** exact Main `b9620a1f5` builds the current worker
 and complete six-library/four-integration graph without compiler/link warnings
 (7.136/644.104 s). Actual profiles, source, eleven retained executable hashes

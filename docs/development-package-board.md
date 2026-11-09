@@ -39,6 +39,41 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ### Current integration checkpoint — 2026-11-09
 
+**Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
+joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
+`__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
+for. Strict factory transport passes and actual common global startup passes
+in 340.075 s. The connected batch executes all 37 selected cases: nine pass,
+28 fail. Six genuine structural-checker ACK/cancellation/death cases, original
+tuple-return checking, original review discovery and opaque global handoff pass.
+Source confirmation/gate timeouts and a shutdown-reconciliation error remain;
+their precise production cause is not established. The pool-one atomic Source
+case is terminated after 11,152 s, with read-only metadata retained: one claimed
+Work, one reserved admission, no terminal/delivery/confirmation, idle DB clients.
+This is a failed/incomplete case, never a successful fault test.
+
+Indices 19–35 fail during native executable retention rather than their intended
+assertions. The system filesystem is observed at 100% used; the exact failed
+storage syscall is unknown. An audited 31 closed temporary copies of the exact
+Run-25 executable (9.115 GiB) are removed after hash/open-handle checks; the
+reference binary, logs, source and PG data are preserved. Before another batch,
+restore the disk guard and isolate/reap supervisor-owned temporary artifacts.
+Two separate fixture defects are source-proven and corrected in `3d4080366`:
+real positive settings initialization before the held-intent test, and explicit
+input-schema checks in the non-JSON-return test. Those corrected cases are unrun.
+Exact evidence/disposition remains under `run-25-composition/`; source identity
+is unchanged through completion and the freeze is released. No full Bob gate
+is closed.
+
+K-01's `94946166d` is a source-only handoff under connected supervisor review,
+not integrated or compiled; explicit-host and exact-byte acceptance sources are
+being checked. J-01's `dddb4a36a` is an intermediate private source snapshot;
+its existing-owner production linkage remains in progress. I-01 now corrects
+only its Source-test completion/settlement diagnostics, preserving actual fault
+assertions and deadlines. J-01 and I-01 occupy the two implementation slots;
+K-01 and F-01 are read-only for review/own findings. V211 and V212 ownership
+remains J-01 and K-01 respectively.
+
 **Run-24 — 2026-11-09:** exact Main `b9620a1f5` compiles the current worker
 and complete six-library/four-integration graph without warnings (7.136/644.104 s).
 Actual source, profiles, eleven retained artifacts and link checks pass;

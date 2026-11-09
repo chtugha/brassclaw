@@ -307,6 +307,19 @@ actual single-Pure-call/technical settled-Case primitive, with normal component
 steps and global hosting. Reuse these exact owners and retain the full remaining
 qualification/behavior/approval gates below.
 
+**Run-25 successor checkpoint:** frozen `4a6f07c8d` compiles the worker/joint
+graph without warnings, preserves all 1,389 names and passes actual common
+global startup. Six structural-checker ACK/cancellation/death cases and exact
+tuple-return checking pass. The connected batch is nevertheless failed (nine
+of 37 pass): Source confirmation/lifecycle remains unresolved, one pool-one case
+is terminated after original metadata capture, and later native-retention cases
+fail with the system filesystem full. Reviewed two-fixture correction
+`3d4080366` remains unrun. J-01's single-case source/production connection is
+not accepted or integrated; I-01 corrects its original completion/settlement
+test diagnostics. These results do not close B1-05; reuse the exact evidence
+and outstanding gates in the current package board instead of rebuilding
+completed infrastructure or treating storage-blocked cases as semantic failures.
+
 **Scoped progress, 2026-11-08:** Run-20 confirms genuine common installation
 startup and five E-01 ACK/cancellation/worker-death cases on `377ad1bec`. The
 originals/settings case exposed an unsupported test request (depth 65 above the

@@ -12,7 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   freshly checking every original and preserving separate publication/readback.
   Add safe timeout phase/revision context and use the existing uncertain-client
   guard for final catalogue publication. Real PostgreSQL deadline and original
-  proof regressions are source-reviewed; native validation remains pending.
+  proof regressions are source-reviewed. The joint build and actual common
+  global startup pass; connected Source/lifecycle acceptance remains open.
+  Correct two native test fixtures without changing production timeouts or
+  validator requirements; their corrected executions remain pending.
 
 - **Qualified Pure Source review (validation pending)**: Connect exact shipped
   checking-workflow qualification to authored class-22 submission, typed capture,
@@ -25,12 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Apply the same connection custody to queued Recipe/Catalogue authoring and
   add real operator-HTTP lost-ACK/cancellation regression sources. The joint
   build is warning-free and both HTTP/PG custody cases pass; dependent Source
-  runtime acceptance is blocked by the common bootstrap I/O-deadline failure.
+  runtime acceptance remains open after confirmation/gate timeouts and a
+  shutdown-reconciliation failure; later cases encounter storage exhaustion.
 - **Bootstrap fixture receipt identity (scoped validation)**: Align later
   variant producer IDs and their receipt-key inputs through one normalization.
   Preserve strict result verification and add safe fixture failure context.
-  The actual strict receipt-reader regression passes. Common startup now fails
-  at an original-observation I/O deadline; full bootstrap acceptance remains open.
+  The actual strict receipt-reader regression and later common startup pass;
+  full connected bootstrap/runtime acceptance remains open.
 
 - **Original proof transaction correction (validation pending)**: Share complete
   historical inventory-qualification checks with the caller's coherent snapshot,
