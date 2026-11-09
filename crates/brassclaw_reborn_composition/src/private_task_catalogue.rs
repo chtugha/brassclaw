@@ -94,6 +94,14 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for Install
 }
 
 impl InstalledMontyCatalogue {
+    pub(crate) fn source_work_context(
+        &self,
+    ) -> Result<brassclaw_turns::private_work::PrivateExecutionContext, RebornBuildError> {
+        self.private_work_context
+            .get()
+            .cloned()
+            .ok_or_else(|| invalid("Source Work runtime context unavailable"))
+    }
     #[cfg(test)]
     pub(crate) async fn prepare_private_validator(
         &self,
@@ -656,7 +664,7 @@ impl InstalledMontyCatalogue {
             .await
     }
 
-    async fn retain_private_definition(
+    pub(crate) async fn retain_private_definition(
         &self,
         tx: &tokio_postgres::Transaction<'_>,
         definition: &PrivateWorkDefinition,
@@ -893,6 +901,10 @@ impl InstalledMontyCatalogue {
                 {
                     return Err(failed());
                 }
+                self.require_source_selection(&tx, &selection)
+                    .await
+                    .map_err(|_| failed())?;
+                let source_profile = selection.source_qualification().is_some();
                 tx.commit().await.map_err(|_| failed())?;
                 drop(client);
                 let capture_checksum = hex::encode(capture_checksum);
@@ -916,13 +928,27 @@ impl InstalledMontyCatalogue {
                 {
                     return Err(failed());
                 }
-                let source = Arc::new(
-                    crate::pg_review_admission_source::ReviewAdmissionSource::from_prepared(
-                        prepared,
-                        self.pool.clone(),
-                    )
-                    .map_err(|_| failed())?,
-                );
+                let source: Arc<dyn crate::global_recipe_ports::InternalRecipeSource> =
+                    if source_profile {
+                        Arc::new(
+                            crate::validator_inventory_review::InventoryReviewSource::from_qualified(
+                                prepared,
+                                self.pure_source_review.parser().map_err(|_| failed())?,
+                                self,
+                                host,
+                                admission,
+                            )
+                            .map_err(|_| failed())?,
+                        )
+                    } else {
+                        Arc::new(
+                            crate::pg_review_admission_source::ReviewAdmissionSource::from_prepared(
+                                prepared,
+                                self.pool.clone(),
+                            )
+                            .map_err(|_| failed())?,
+                        )
+                    };
                 Ok(crate::global_task_factory::CapturedPrivateRecipe {
                     definition: captured,
                     source,

@@ -138,6 +138,74 @@ impl CheckedCase {
     }
 }
 impl CheckedPureSourceWorkflow {
+    pub(crate) fn program(&self) -> Result<Arc<RetainedToolProgram>, RebornBuildError> {
+        Ok(self
+            .cases
+            .first()
+            .ok_or_else(|| invalid("qualified W missing"))?
+            .context
+            .program
+            .clone())
+    }
+    pub(crate) fn parser(&self) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
+        Ok(self
+            .cases
+            .first()
+            .ok_or_else(|| invalid("qualified parser missing"))?
+            .context
+            .parser
+            .clone())
+    }
+    /// Passive pins derived only after re-reading the complete original F01
+    /// proof and every independently qualified prerequisite in this snapshot.
+    pub(crate) async fn source_qualification(
+        &self,
+        tx: &Transaction<'_>,
+        checkers: &CheckedPureCheckerClosure,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::selection::SourceQualification,
+        RebornBuildError,
+    > {
+        self.verify_in_transaction(tx, checkers).await?;
+        let first = self
+            .cases
+            .first()
+            .ok_or_else(|| invalid("qualified W missing"))?;
+        first.context.parser.proof.verify_in_transaction(tx).await?;
+        let program = self.program()?;
+        let recipe = &program.inputs().instruction().snapshot().revisions()
+            [&program.inputs().instruction().recipe().uuid];
+        let mut prerequisite_proofs = checkers
+            .proof_references(tx)
+            .await?
+            .into_iter()
+            .map(|value| serde_json::from_value(value).map_err(invalid))
+            .collect::<Result<Vec<_>, _>>()?;
+        let parser = first.context.parser.proof.record_reference();
+        prerequisite_proofs.push(
+            brassclaw_skills::review_submission_store::selection::SourceProofReference {
+                id: parser.id,
+                checksum: parser.checksum,
+            },
+        );
+        let qualification =
+            brassclaw_skills::review_submission_store::selection::SourceQualification {
+                profile: "pure_source_structure".into(),
+                workflow_proof:
+                    brassclaw_skills::review_submission_store::selection::SourceProofReference {
+                        id: self.report_id()?,
+                        checksum: evidence::checksum(&self.report),
+                    },
+                prerequisite_proofs,
+                required_checks_checksum: evidence::checksum(
+                    &recipe.draft().document()["validator_coverage"].to_string(),
+                ),
+                worker_checksum: hex::encode(first.context.worker.checksum()),
+                package_checksum: evidence::checksum(&first.claim["base"]["package"].to_string()),
+            };
+        qualification.validate().map_err(invalid)?;
+        Ok(qualification)
+    }
     fn claim_value(&self) -> Result<Value, RebornBuildError> {
         let first = self
             .cases
@@ -269,9 +337,7 @@ pub(crate) async fn qualify_pure_workflow(
         .context
         .clone();
     checkers.require_program(&base.program)?;
-    // Preserve the original owner's full completion/reconciliation stages before
-    // acquiring W's RR client. The inner check then authenticates those same
-    // immutable originals under W's snapshot without a nested pool checkout.
+    // Complete the owner's two-phase custody before acquiring W's RR client.
     base.parser.proof.verify(&base.pool).await?;
     let prerequisites = io::bounded(base.storage.as_ref(), async {
         let mut client = io::EvidenceClient::acquire(&base.pool).await?;

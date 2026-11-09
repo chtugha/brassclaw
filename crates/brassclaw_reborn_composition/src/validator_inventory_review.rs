@@ -27,6 +27,7 @@ use brassclaw_skills::{
 };
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 use crate::pg_review_admission_source::verified_worker;
 
@@ -47,6 +48,7 @@ fn revision_reference_value(reference: ComponentRevisionRef) -> Value {
 
 #[path = "installation_inventory_observation.rs"]
 mod installation;
+pub(crate) use installation::CheckedPureSourceWorkflow;
 #[cfg(test)]
 pub(crate) use installation::assert_original_installation_readback;
 #[cfg(test)]
@@ -61,11 +63,13 @@ pub(crate) use installation::tests::before_reservation as installation_test_befo
 pub(crate) use installation::tests::before_turn_close as installation_test_before_turn_close;
 pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 
+#[path = "qualified_pure_source_review.rs"]
+mod qualified_source;
+pub(crate) use qualified_source::{QualifiedPureSourceReview, SourceReviewPreparation};
+
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;
-#[cfg(test)]
 use brassclaw_engine::memory::retained_validator::ObservedSubjectValidatorChecks;
-#[cfg(test)]
 use brassclaw_skills::review_submission_store::{
     RetainedValidatorSubject, selection::RetainedValidatorSelection,
 };
@@ -186,7 +190,6 @@ fn require_packaged_inventory_profile(
 
 /// Original prepared graph/subject plus real native ports. Complete observations
 /// may survive later cancellation; this type never claims terminal settlement.
-#[cfg(test)]
 pub(crate) struct InventoryReviewSource {
     reference: String,
     subject: Arc<RetainedValidatorSubject>,
@@ -194,7 +197,9 @@ pub(crate) struct InventoryReviewSource {
     inspected: Arc<InspectedRetainedProgram>,
     coverage: RetainedValidatorCoverage,
     parser: Arc<QualifiedSourceInventoryUsage>,
+    #[cfg(test)]
     worker: Arc<PackagedExecutableImage>,
+    persist: bool,
     tools: Arc<dyn RetainedToolPort>,
     host: Arc<MontyTaskHost>,
     pool: Arc<PgPool>,
@@ -296,6 +301,7 @@ impl InventoryReviewSource {
             coverage,
             parser,
             worker,
+            persist: false,
             tools,
             host,
             pool,
@@ -312,11 +318,59 @@ impl InventoryReviewSource {
         self.observation.lock().await.take()
     }
 }
+impl InventoryReviewSource {
+    /// Production entry accepts only an original /2 preparation already checked
+    /// by the qualified owner in the same captured admission snapshot.
+    pub(crate) fn from_qualified(
+        prepared: Arc<crate::pg_review_admission_source::PreparedValidatorReview>,
+        parser: Arc<QualifiedSourceInventoryUsage>,
+        catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
+        host: Arc<MontyTaskHost>,
+        admission: Arc<PgMontyAdmission>,
+    ) -> Result<Self, RebornBuildError> {
+        if prepared.selection().source_qualification().is_none() {
+            return Err(invalid("qualified Source preparation required"));
+        }
+        let inspected = prepared.inspected();
+        let RetainedProgram::Tools(program) = inspected.program() else {
+            return Err(invalid("Source bindings required"));
+        };
+        parser.require_program(program)?;
+        let tools = crate::installed_monty_catalogue::qualified_inventory_tools(
+            catalogue.pool.clone(),
+            catalogue.kernel.clone(),
+            host.clone(),
+            admission,
+            program.clone(),
+            &parser,
+        )?;
+        let limits = captured_limits(&inspected);
+        Ok(Self {
+            reference: crate::pg_review_admission_source::validator_review_reference(
+                prepared.subject().submission_id(),
+            ),
+            subject: prepared.retained_subject(),
+            saved: prepared.selection(),
+            inspected: inspected.clone(),
+            coverage: RetainedValidatorCoverage::from_inputs(inspected.program().inputs())
+                .map_err(invalid)?,
+            #[cfg(test)]
+            worker: catalogue.worker_image.clone(),
+            parser,
+            tools,
+            host,
+            pool: catalogue.pool.clone(),
+            inputs: prepared.input_capture().inputs().as_value().clone(),
+            limits,
+            observation: Mutex::new(None),
+            persist: true,
+        })
+    }
+}
 fn failure() -> PortFailure {
     PortFailure::new("validator_inventory_observation_invalid").expect("static classification")
 }
 
-#[cfg(test)]
 #[async_trait]
 impl InternalRecipeSource for InventoryReviewSource {
     fn name(&self) -> &str {
@@ -380,6 +434,20 @@ impl InternalRecipeSource for InventoryReviewSource {
         .verify(execution, &results[step])
         .await
         .map_err(|_| failure())?;
+        if self.persist {
+            let task =
+                Uuid::parse_str(&execution.task_handle().to_string()).map_err(|_| failure())?;
+            crate::pg_validator_q1_evidence::persist_validator_source_evidence(
+                &self.pool,
+                &self.subject,
+                &self.saved,
+                &checks,
+                task,
+                self.limits,
+            )
+            .await
+            .map_err(|_| failure())?;
+        }
         let mut retained = self.observation.lock().await;
         if retained.is_some() {
             return Err(failure());

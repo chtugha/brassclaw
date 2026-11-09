@@ -19,6 +19,7 @@ pub struct RetainedValidatorSelection {
     validator_bytes: String,
     selection: serde_json::Value,
     snapshot: std::sync::Arc<crate::component_revision::RetainedComponentSnapshot>,
+    qualification: Option<SourceQualification>,
 }
 impl RetainedValidatorSelection {
     pub fn submission_id(&self) -> Uuid {
@@ -39,6 +40,55 @@ impl RetainedValidatorSelection {
     pub fn snapshot(&self) -> std::sync::Arc<crate::component_revision::RetainedComponentSnapshot> {
         self.snapshot.clone()
     }
+    /// Untrusted qualification pins. The installation owner must authenticate
+    /// their complete original proof before admission or historical acceptance.
+    pub fn source_qualification(&self) -> Option<&SourceQualification> {
+        self.qualification.as_ref()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceProofReference {
+    pub id: Uuid,
+    pub checksum: String,
+}
+/// Strict passive wire pins only. Format validation authenticates no proof,
+/// component approval or execution authority; the qualified runtime owner must
+/// verify the complete original native provenance in its coherent transaction.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SourceQualification {
+    pub profile: String,
+    pub workflow_proof: SourceProofReference,
+    pub prerequisite_proofs: Vec<SourceProofReference>,
+    pub required_checks_checksum: String,
+    pub worker_checksum: String,
+    /// SHA256 of the exact canonical package-context subdocument in the
+    /// original F01 fixture claim, not a synthetic whole-package digest.
+    pub package_checksum: String,
+}
+impl SourceQualification {
+    pub fn validate(&self) -> Result<(), SubmissionStoreError> {
+        let digest = |s: &str| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        };
+        let mut ids = std::collections::BTreeSet::new();
+        if self.profile != "pure_source_structure"
+            || self.prerequisite_proofs.is_empty()
+            || !digest(&self.required_checks_checksum)
+            || !digest(&self.worker_checksum)
+            || !digest(&self.package_checksum)
+            || std::iter::once(&self.workflow_proof)
+                .chain(&self.prerequisite_proofs)
+                .any(|r| r.id.is_nil() || !digest(&r.checksum) || !ids.insert(r.id))
+        {
+            return Err(SubmissionStoreError::Invalid);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]
@@ -51,6 +101,8 @@ struct Selection {
     validator_selection_bytes: String,
     validator_selection_checksum: String,
     scope: String,
+    #[serde(default)]
+    qualification: Option<SourceQualification>,
 }
 
 async fn verify(
@@ -58,10 +110,36 @@ async fn verify(
     bytes: &str,
     limits: ContractLimits,
 ) -> Result<RetainedValidatorSelection, SubmissionStoreError> {
-    let value = strict_json(bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
+    let raw = strict_json(bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
+    let qualification_present = raw.get("qualification").is_some();
+    let qualification_raw = raw.get("qualification").cloned();
     let value: Selection =
-        serde_json::from_value(value).map_err(|_| SubmissionStoreError::Invalid)?;
-    if value.format != "component-validator-selection/1" || value.scope != "preparation-only" {
+        serde_json::from_value(raw).map_err(|_| SubmissionStoreError::Invalid)?;
+    let qualified = match value.format.as_str() {
+        "component-validator-selection/1"
+            if value.scope == "preparation-only" && !qualification_present =>
+        {
+            false
+        }
+        "component-validator-selection/2"
+            if value.scope == "qualified-pure-source-prerequisite" =>
+        {
+            value
+                .qualification
+                .as_ref()
+                .ok_or(SubmissionStoreError::Invalid)?
+                .validate()?;
+            if serde_json::to_value(&value.qualification)
+                .map_err(|_| SubmissionStoreError::Invalid)?
+                != qualification_raw.ok_or(SubmissionStoreError::Invalid)?
+            {
+                return Err(SubmissionStoreError::Invalid);
+            }
+            true
+        }
+        _ => return Err(SubmissionStoreError::Invalid),
+    };
+    if qualified && value.candidate.class_code != 22 {
         return Err(SubmissionStoreError::Invalid);
     }
     let subject = PgReviewSubmissionStore::read_in_transaction(tx, value.submission_id)
@@ -98,6 +176,7 @@ async fn verify(
         validator_bytes: value.validator_selection_bytes,
         selection,
         snapshot,
+        qualification: value.qualification,
     })
 }
 

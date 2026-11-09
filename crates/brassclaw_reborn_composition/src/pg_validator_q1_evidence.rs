@@ -113,6 +113,39 @@ pub(crate) async fn persist_validator_q1_evidence(
     checks: &ObservedSubjectValidatorChecks,
     task_handle: Uuid,
 ) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
+    persist_observation(pool, subject, selection, checks, task_handle, None).await
+}
+/// Source-only observations use their original acknowledged whole-value bounds,
+/// not the legacy writer's fixed eight-MiB quota. They still grant no full Q1.
+pub(crate) async fn persist_validator_source_evidence(
+    pool: &PgPool,
+    subject: &RetainedValidatorSubject,
+    selection: &RetainedValidatorSelection,
+    checks: &ObservedSubjectValidatorChecks,
+    task_handle: Uuid,
+    original_limits: brassclaw_skills::value_contract::ContractLimits,
+) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
+    if selection.source_qualification().is_none() {
+        return Err(invalid("qualified Source selection required"));
+    }
+    persist_observation(
+        pool,
+        subject,
+        selection,
+        checks,
+        task_handle,
+        Some(original_limits),
+    )
+    .await
+}
+async fn persist_observation(
+    pool: &PgPool,
+    subject: &RetainedValidatorSubject,
+    selection: &RetainedValidatorSelection,
+    checks: &ObservedSubjectValidatorChecks,
+    task_handle: Uuid,
+    original_limits: Option<brassclaw_skills::value_contract::ContractLimits>,
+) -> Result<PersistedValidatorQ1Evidence, ValidatorQ1EvidenceError> {
     if task_handle.is_nil() {
         return Err(invalid("task handle must be a non-nil UUID"));
     }
@@ -174,10 +207,10 @@ pub(crate) async fn persist_validator_q1_evidence(
         "report": report,
     });
 
-    validate_data_bounds(&record, REVISION_LIMITS)
+    validate_data_bounds(&record, original_limits.unwrap_or(REVISION_LIMITS))
         .map_err(|_| invalid("Q1 evidence record exceeds technical data contract limits"))?;
     let bytes = record.to_string();
-    if bytes.len() > MAX_EVIDENCE_BYTES {
+    if bytes.len() > original_limits.map_or(MAX_EVIDENCE_BYTES, |limits| limits.max_bytes) {
         return Err(invalid(
             "serialized Q1 evidence record exceeds technical capacity",
         ));

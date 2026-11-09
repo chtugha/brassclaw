@@ -142,6 +142,7 @@ pub(crate) struct InstalledCatalogueStartup<'a> {
 }
 
 pub(crate) struct InstalledMontyCatalogue {
+    pub(crate) pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview,
     initial_preparation: PreparationCapture,
     pub(crate) private_work_wake:
         std::sync::OnceLock<brassclaw_reborn::turn_runner::TurnRunnerWakeSender>,
@@ -1103,6 +1104,10 @@ impl InstalledMontyCatalogue {
             disabled_recipes: Default::default(),
         });
         let catalogue = Arc::new(Self {
+            pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview::new(
+                pure_workflow,
+                pure_checkers,
+            ),
             initial_preparation,
             private_work_context: std::sync::OnceLock::new(),
             private_work_wake: std::sync::OnceLock::new(),

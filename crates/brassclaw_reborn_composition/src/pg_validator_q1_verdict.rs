@@ -112,7 +112,22 @@ pub(crate) async fn read_delivered_validator_q1(
     if hex::encode(Sha256::digest(evidence_bytes.as_bytes())) != row.get::<_, &str>(3) {
         return Err(ValidatorQ1EvidenceError::Integrity);
     }
-    let evidence = strict_json(evidence_bytes, REVISION_LIMITS)
+    let bounds = delivery
+        .original()
+        .definition()
+        .preparation()
+        .limits()
+        .bounds;
+    let evidence_limits = if selection.source_qualification().is_some() {
+        brassclaw_skills::value_contract::ContractLimits {
+            max_depth: bounds.max_value_depth,
+            max_nodes: bounds.max_value_nodes,
+            max_bytes: bounds.max_value_bytes,
+        }
+    } else {
+        REVISION_LIMITS
+    };
+    let evidence = strict_json(evidence_bytes, evidence_limits)
         .map_err(|_| invalid("validator evidence violates the strict data contract"))?;
     let fields = [
         "format",

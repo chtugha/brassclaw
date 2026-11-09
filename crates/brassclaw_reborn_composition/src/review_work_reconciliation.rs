@@ -91,7 +91,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
                 let tx=client.build_transaction()
                     .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
                     .read_only(true).start().await.map_err(|_|unavailable())?;
-                let view=inspect(&tx,id).await?;
+                let view=inspect_with_source(&tx,id,Some(&self.catalogue.pure_source_review)).await?;
                 let mut confirmation_context=None;
                 if view.delivery_checksum.is_some() && view.confirmation_checksum.is_none() {
                     let row=tx.query_one("SELECT private_request_bytes FROM brassclaw_turns WHERE validator_submission_id=$1 AND record_kind='private_work'",&[&id]).await.map_err(|_|unavailable())?;
@@ -108,7 +108,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
                 client.recycle_after_commit();
                 drop(client);
                 if let Some(context)=confirmation_context {
-                    crate::review_work_confirmation::confirm_original(&self.pool,id,&context).await?;
+                    crate::review_work_confirmation::confirm_original_with_source(&self.pool,id,&context,Some(&self.catalogue.pure_source_review)).await?;
                 }
                 Ok(())
             }).await.unwrap_or_else(|_|Err(unavailable()));
@@ -128,9 +128,17 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
 
 /// Same original projection used by worker discovery and authenticated operator
 /// inspection. Missing Work never causes a new selection or preparation.
+#[cfg(test)]
 pub(crate) async fn inspect(
     tx: &Transaction<'_>,
     id: Uuid,
+) -> Result<ReviewWorkView, AgentLoopDriverError> {
+    inspect_with_source(tx, id, None).await
+}
+pub(crate) async fn inspect_with_source(
+    tx: &Transaction<'_>,
+    id: Uuid,
+    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<ReviewWorkView, AgentLoopDriverError> {
     let row=tx.query_opt("SELECT r.subject_checksum,s.checksum,s.subject_bytes,
         q.submission_id,w.private_request_bytes,w.status,d.checksum,c.checksum,
@@ -212,7 +220,7 @@ pub(crate) async fn inspect(
         if view.delivery_checksum.is_none() {
             return Err(invalid());
         }
-        crate::review_work_confirmation::read(tx, id, request.context())
+        crate::review_work_confirmation::read_with_source(tx, id, request.context(), source)
             .await?
             .ok_or_else(invalid)?;
         view.confirmation_checksum = Some(hex::encode(checksum));

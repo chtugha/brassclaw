@@ -41,9 +41,7 @@ pub(crate) struct ValidatorInputCapture {
     wire: Wire,
     inputs: brassclaw_host_api::JsonValue,
     preparation: PreparationCapture,
-    #[cfg(test)]
     bytes: String,
-    #[cfg(test)]
     checksum: String,
 }
 impl ValidatorInputCapture {
@@ -96,6 +94,18 @@ impl ValidatorInputCapture {
                 "historical validator inputs differ from captured binding",
             ));
         }
+        if selection.source_qualification().is_some() {
+            let expected = coverage
+                .subject_task_inputs(subject, program.inputs(), limits(definition.preparation()))
+                .map_err(invalid)?;
+            if expected != inputs
+                || serde_json::to_string(&expected).map_err(invalid)? != wire.input_bytes
+            {
+                return Err(invalid(
+                    "historical Source input differs from complete original subject",
+                ));
+            }
+        }
         Ok(())
     }
     pub(crate) fn inputs(&self) -> &brassclaw_host_api::JsonValue {
@@ -110,11 +120,9 @@ impl ValidatorInputCapture {
     pub(crate) fn preparation(&self) -> &PreparationCapture {
         &self.preparation
     }
-    #[cfg(test)]
     pub(crate) fn bytes(&self) -> &str {
         &self.bytes
     }
-    #[cfg(test)]
     pub(crate) fn checksum(&self) -> &str {
         &self.checksum
     }
@@ -127,6 +135,64 @@ pub(crate) struct PreparedValidatorReview {
     capture: ValidatorInputCapture,
 }
 impl PreparedValidatorReview {
+    /// Transaction-local data capture of W already inspected under the same
+    /// acknowledged preparation. The qualification owner is the only caller.
+    pub(crate) fn capture_qualified(
+        subject: Arc<RetainedValidatorSubject>,
+        selection: Arc<RetainedValidatorSelection>,
+        inspected: Arc<InspectedRetainedProgram>,
+        coverage: RetainedValidatorCoverage,
+        preparation: PreparationCapture,
+        worker_checksum: [u8; 32],
+    ) -> Result<Arc<Self>, RebornBuildError> {
+        if selection.source_qualification().is_none()
+            || selection.submission_id() != subject.submission_id()
+            || selection.subject_checksum() != subject.subject_checksum()
+            || inspected
+                .program()
+                .inputs()
+                .instruction()
+                .retained_selection()
+                .map_err(invalid)?
+                .exact_bytes()
+                != selection.validator_bytes()
+        {
+            return Err(invalid("qualified Source capture differs"));
+        }
+        let inputs =
+            subject_validator_task_inputs(&coverage, &subject, &inspected, limits(&preparation))
+                .map_err(invalid)?;
+        let input_bytes = serde_json::to_string(inputs.as_value()).map_err(invalid)?;
+        let wire = Wire {
+            format: "validator-input-capture/1".into(),
+            submission_id: subject.submission_id(),
+            subject_checksum: subject.subject_checksum().to_owned(),
+            validator_selection_bytes: selection.bytes().to_owned(),
+            validator_selection_checksum: checksum(selection.bytes()),
+            validator_bytes: selection.validator_bytes().to_owned(),
+            validator_checksum: checksum(selection.validator_bytes()),
+            input_checksum: checksum(&input_bytes),
+            input_bytes,
+            preparation_bytes: preparation.bytes().to_owned(),
+            preparation_checksum: preparation.checksum().to_owned(),
+            worker_checksum: hex::encode(worker_checksum),
+        };
+        let bytes = serde_json::to_string(&wire).map_err(invalid)?;
+        let capture = ValidatorInputCapture {
+            wire,
+            inputs,
+            preparation,
+            checksum: checksum(&bytes),
+            bytes,
+        };
+        Ok(Arc::new(Self {
+            subject,
+            selection,
+            inspected,
+            coverage,
+            capture,
+        }))
+    }
     /// Fresh task preparation is captured by the catalogue exactly once before
     /// this call. No caller-provided inputs or separate revision claims exist.
     #[cfg(test)]
@@ -234,9 +300,7 @@ impl PreparedValidatorReview {
             wire,
             inputs: original.into(),
             preparation,
-            #[cfg(test)]
             bytes: capture_bytes.to_owned(),
-            #[cfg(test)]
             checksum: capture_checksum.to_owned(),
         };
         Ok(Arc::new(Self {
@@ -289,6 +353,12 @@ impl PreparedValidatorReview {
     }
     pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
         &self.subject
+    }
+    pub(crate) fn retained_subject(&self) -> Arc<RetainedValidatorSubject> {
+        self.subject.clone()
+    }
+    pub(crate) fn selection(&self) -> Arc<RetainedValidatorSelection> {
+        self.selection.clone()
     }
 }
 

@@ -139,6 +139,38 @@ pub(crate) async fn submit(
     agent: &str,
     request: SubmitComponentReviewRequest,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+    submit_inner(
+        pool,
+        actor,
+        tenant,
+        agent,
+        request,
+        #[cfg(feature = "skills-db")]
+        None,
+    )
+    .await
+}
+#[cfg(feature = "skills-db")]
+pub(crate) async fn submit_with_catalogue(
+    pool: &Arc<PgPool>,
+    actor: &str,
+    tenant: &str,
+    agent: &str,
+    request: SubmitComponentReviewRequest,
+    catalogue: &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+    submit_inner(pool, actor, tenant, agent, request, Some(catalogue)).await
+}
+async fn submit_inner(
+    pool: &Arc<PgPool>,
+    actor: &str,
+    tenant: &str,
+    agent: &str,
+    request: SubmitComponentReviewRequest,
+    #[cfg(feature = "skills-db")] catalogue: Option<
+        &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
+    >,
+) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
     if request.dependencies.len() > 4095 {
         return Err(RecipeStoreError::Invalid(
             "dependency selection exceeds capacity".into(),
@@ -201,6 +233,14 @@ pub(crate) async fn submit(
         (None, None) => ReviewSubmissionDraft::new(id, actor, candidate, base, dependencies),
     }
     .map_err(storage)?;
+    #[cfg(feature = "skills-db")]
+    let source_preparation = match catalogue {
+        Some(owner) => owner
+            .prepare_source_submission(&draft)
+            .await
+            .map_err(storage_io)?,
+        None => None,
+    };
     if let Some(project) = request.create_queue_project {
         if project.is_empty()
             || !queue_ids.is_empty()
@@ -219,8 +259,22 @@ pub(crate) async fn submit(
                 project_id: project,
             },
             &draft,
+            #[cfg(feature = "skills-db")]
+            source_preparation.as_ref(),
         )
         .await?;
+        #[cfg(feature = "skills-db")]
+        if let Some(owner) = catalogue {
+            if source_preparation.is_none() {
+                owner
+                    .read_source_submission(retained.id)
+                    .await
+                    .map_err(storage_io)?;
+            }
+            if let Some(wake) = owner.private_work_wake.get() {
+                wake.wake();
+            }
+        }
         return original_receipt(pool, &retained).await;
     }
     let retained = {
@@ -276,9 +330,90 @@ pub(crate) async fn submit(
             )
             .await
             .map_err(crate::validation_queue::original_review_error)?;
-        tx.commit().await.map_err(storage_io)?;
-        retained
+        #[cfg(feature = "skills-db")]
+        if let Some(prepared) = &source_preparation {
+            prepared
+                .retain(&tx, retained.id)
+                .await
+                .map_err(storage_io)?;
+        }
+        #[cfg(feature = "skills-db")]
+        if let Some(owner) = catalogue {
+            if source_preparation.is_none() {
+                owner
+                    .verify_source_submission(&tx, retained.id)
+                    .await
+                    .map_err(storage_io)?;
+            }
+        }
+        if tx.commit().await.is_err() {
+            // The server may have committed. End this client before one fresh,
+            // read-only snapshot; never repeat authoring or capture settings.
+            drop(client);
+            let mut readback = pool.get().await.map_err(storage_io)?;
+            let original = readback
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(storage_io)?;
+            let saved = PgReviewSubmissionStore::read_in_transaction(&original, id)
+                .await
+                .map_err(storage)?
+                .ok_or_else(|| storage_io("original commit unresolved"))?;
+            draft.require_original(&saved).map_err(storage)?;
+            let request = original.query_opt("SELECT queue_ids,request_kind FROM reborn_component_review_queue_requests WHERE submission_id=$1", &[&id])
+                .await.map_err(storage_io)?.ok_or_else(|| storage_io("original queue request missing"))?;
+            let mut expected_ids = queue_ids.clone();
+            expected_ids.sort();
+            if request.get::<_, Vec<Uuid>>(0) != expected_ids
+                || request.get::<_, String>(1)
+                    != if expected_ids.is_empty() {
+                        "standalone"
+                    } else {
+                        "existing_queue"
+                    }
+            {
+                return Err(RecipeStoreError::Conflict(
+                    "original queue request differs".into(),
+                ));
+            }
+            for queue_id in &expected_ids {
+                let binding =
+                    brassclaw_skills::review_submission_store::queue::read_in_transaction(
+                        &original, *queue_id,
+                    )
+                    .await
+                    .map_err(storage)?
+                    .ok_or_else(|| storage_io("original queue binding missing"))?;
+                if binding.submission_id() != saved.id
+                    || binding.subject_checksum() != saved.checksum
+                {
+                    return Err(RecipeStoreError::Conflict(
+                        "original queue binding differs".into(),
+                    ));
+                }
+            }
+            #[cfg(feature = "skills-db")]
+            if let Some(owner) = catalogue {
+                owner
+                    .verify_source_submission(&original, id)
+                    .await
+                    .map_err(storage_io)?;
+            }
+            original.commit().await.map_err(storage_io)?;
+            saved
+        } else {
+            retained
+        }
     };
+    #[cfg(feature = "skills-db")]
+    if let Some(owner) = catalogue {
+        if let Some(wake) = owner.private_work_wake.get() {
+            wake.wake();
+        }
+    }
     original_receipt(pool, &retained).await
 }
 pub(crate) async fn head(
@@ -300,6 +435,29 @@ pub(crate) async fn head(
 pub(crate) async fn get(
     pool: &Arc<PgPool>,
     submission_id: &str,
+) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
+    get_inner(
+        pool,
+        submission_id,
+        #[cfg(feature = "skills-db")]
+        None,
+    )
+    .await
+}
+#[cfg(feature = "skills-db")]
+pub(crate) async fn get_with_catalogue(
+    pool: &Arc<PgPool>,
+    submission_id: &str,
+    catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
+) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
+    get_inner(pool, submission_id, Some(&catalogue.pure_source_review)).await
+}
+async fn get_inner(
+    pool: &Arc<PgPool>,
+    submission_id: &str,
+    #[cfg(feature = "skills-db")] source: Option<
+        &crate::validator_inventory_review::QualifiedPureSourceReview,
+    >,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
     let id = identifier(submission_id)?;
     let mut client = pool
@@ -352,7 +510,7 @@ pub(crate) async fn get(
     }
     #[cfg(feature = "skills-db")]
     let work = Some(
-        crate::review_work_reconciliation::inspect(&tx, id)
+        crate::review_work_reconciliation::inspect_with_source(&tx, id, source)
             .await
             .map_err(|_| {
                 RecipeStoreError::Unavailable("original review work requires reconciliation".into())

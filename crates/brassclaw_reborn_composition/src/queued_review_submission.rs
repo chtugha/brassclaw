@@ -56,6 +56,9 @@ pub(crate) async fn create(
     pool: &Arc<PgPool>,
     scope: ComponentScope,
     draft: &ReviewSubmissionDraft,
+    #[cfg(feature = "skills-db")] source: Option<
+        &crate::validator_inventory_review::SourceReviewPreparation,
+    >,
 ) -> Result<RetainedReviewSubmission, RecipeStoreError> {
     let d = draft.candidate_document();
     let queue = ValidationQueueStore::new(pool.clone());
@@ -67,7 +70,7 @@ pub(crate) async fn create(
                 prior_knowledge_content:field(d,"prior_knowledge_content")?,override_prompt_creation:field(d,"override_prompt_creation")?,
                 consumer_tags:field(d,"consumer_tags")?,intent_examples:json(d,"intent_examples")?,source:"authored".into(),
                 dependency_registry:json(d,"dependency_registry")?,includes:field(d,"includes")?,content_checksum:None,
-            },draft,&queue).await.map_err(python_error),
+            },draft,&queue, #[cfg(feature="skills-db")] source).await.map_err(python_error),
         21=>crate::pg_recipe_store::PgRecipeStore::new(pool.clone()).create_and_submit_review(
             crate::pg_recipe_store::NewPgRecipe{
                 tenant_id:scope.tenant_id,user_id:scope.user_id,agent_id:scope.agent_id,project_id:scope.project_id,

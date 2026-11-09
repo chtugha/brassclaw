@@ -142,6 +142,20 @@ pub struct ReviewSubmissionDraft {
     function_partner: Option<FunctionPartner>,
 }
 impl ReviewSubmissionDraft {
+    /// Compare the complete immutable original after an uncertain commit. This
+    /// does not retain a revision, fill missing records or choose new inputs.
+    pub fn require_original(
+        &self,
+        original: &RetainedReviewSubmission,
+    ) -> Result<(), SubmissionStoreError> {
+        if original.subject_bytes != self.bytes || original.checksum != self.checksum {
+            return Err(SubmissionStoreError::Conflict);
+        }
+        Ok(())
+    }
+    pub fn is_function_review(&self) -> bool {
+        self.function_partner.is_some()
+    }
     pub fn submission_id(&self) -> Uuid {
         self.id
     }

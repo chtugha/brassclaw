@@ -4557,6 +4557,9 @@ mod tests {
     #[path = "private_delivery_tests.rs"]
     mod private_delivery_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "qualified_source_review_tests.rs"]
+    mod qualified_source_review_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_prefix_work_tests.rs"]
     mod private_prefix_work_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]

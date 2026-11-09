@@ -500,6 +500,9 @@ impl PgPythonCodeStore {
         row: NewPgPythonCode,
         draft: &brassclaw_skills::review_submission_store::ReviewSubmissionDraft,
         queue_store: &ValidationQueueStore,
+        #[cfg(feature = "skills-db")] source: Option<
+            &crate::validator_inventory_review::SourceReviewPreparation,
+        >,
     ) -> Result<
         brassclaw_skills::review_submission_store::RetainedReviewSubmission,
         PgPythonCodeStoreError,
@@ -544,7 +547,48 @@ impl PgPythonCodeStore {
             "create_queue",
         )
         .await?;
-        tx.commit().await.map_err(map_pg)?;
+        #[cfg(feature = "skills-db")]
+        if let Some(source) = source {
+            source.retain(&tx, subject.id).await.map_err(|_| {
+                PgPythonCodeStoreError::OriginalReview(
+                    crate::validation_queue::ValidationQueueError::ReviewChanged {
+                        component_id: id,
+                    },
+                )
+            })?;
+        }
+        if let Err(error) = tx.commit().await {
+            drop(client);
+            let mut readback = self.pool.get().await.map_err(map_pool)?;
+            let original = readback
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(map_pg)?;
+            ValidationQueueStore::read_original_create(&original, draft, &scope)
+                .await?
+                .ok_or_else(|| map_pg(error))?;
+            #[cfg(feature = "skills-db")]
+            if let Some(source) = source {
+                source
+                    .verify_original(&original, subject.id)
+                    .await
+                    .map_err(|_| {
+                        PgPythonCodeStoreError::OriginalReview(
+                            crate::validation_queue::ValidationQueueError::ReviewChanged {
+                                component_id: id,
+                            },
+                        )
+                    })?;
+            }
+            original.commit().await.map_err(map_pg)?;
+        }
+        #[cfg(feature = "skills-db")]
+        if let Some(source) = source {
+            source.notify();
+        }
         #[cfg(feature = "skills-db")]
         queue_store.fire_q1_kick_if_wired(&scope, id, 22);
         Ok(subject)

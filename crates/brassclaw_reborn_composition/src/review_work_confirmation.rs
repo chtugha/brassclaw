@@ -36,6 +36,7 @@ async fn prepare(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
+    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
     let Some(delivery) =
         crate::pg_monty_admission::PgMontyAdmission::read_private_delivery(tx, id, context).await?
@@ -51,6 +52,13 @@ async fn prepare(
         .await
         .map_err(|_| invalid())?
         .ok_or_else(invalid)?;
+    if selected.source_qualification().is_some() {
+        source
+            .ok_or_else(invalid)?
+            .require_selection(tx, &selected)
+            .await
+            .map_err(|_| invalid())?;
+    }
     let verdict = crate::pg_validator_q1_evidence::read_delivered_validator_q1(
         tx, &subject, &selected, &delivery,
     )
@@ -112,12 +120,21 @@ async fn read_prepared(
     Ok(true)
 }
 /// Strict readback after original mutable queues have legitimately disappeared.
+#[cfg(test)]
 pub(crate) async fn read(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
-    let Some(prepared) = prepare(tx, id, context).await? else {
+    read_with_source(tx, id, context, None).await
+}
+pub(crate) async fn read_with_source(
+    tx: &Transaction<'_>,
+    id: Uuid,
+    context: &PrivateExecutionContext,
+    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+) -> Result<Option<Value>, AgentLoopDriverError> {
+    let Some(prepared) = prepare(tx, id, context, source).await? else {
         return Ok(None);
     };
     if read_prepared(tx, id, &prepared.bytes, prepared.checksum).await? {
@@ -130,10 +147,19 @@ pub(crate) async fn read(
 /// A waiter can retain an older RR snapshot while another confirmer commits.
 /// Its conflict is not a negative verdict or permission to rerun native work.
 /// The caller's acknowledged storage deadline bounds both transactions.
+#[cfg(test)]
 pub(crate) async fn confirm_original(
     pool: &brassclaw_pg::PgPool,
     id: Uuid,
     context: &PrivateExecutionContext,
+) -> Result<Option<Value>, AgentLoopDriverError> {
+    confirm_original_with_source(pool, id, context, None).await
+}
+pub(crate) async fn confirm_original_with_source(
+    pool: &brassclaw_pg::PgPool,
+    id: Uuid,
+    context: &PrivateExecutionContext,
+    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let write = async {
         let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
@@ -145,7 +171,7 @@ pub(crate) async fn confirm_original(
             .start()
             .await
             .map_err(database)?;
-        let result = confirm(&tx, id, context).await?;
+        let result = confirm_with_source(&tx, id, context, source).await?;
         tx.commit().await.map_err(database)?;
         client.recycle_after_commit();
         Ok(result)
@@ -166,7 +192,7 @@ pub(crate) async fn confirm_original(
                 .start()
                 .await
                 .map_err(database)?;
-            let original = read(&tx, id, context).await?;
+            let original = read_with_source(&tx, id, context, source).await?;
             tx.commit().await.map_err(database)?;
             client.recycle_after_commit();
             original.map(Some).ok_or(primary)
@@ -181,10 +207,19 @@ fn database_unavailable() -> AgentLoopDriverError {
 
 /// The caller commits this original acknowledgement and any permitted negative
 /// diagnostics together. Successful structural observations cannot write state 2.
+#[cfg(test)]
 pub(crate) async fn confirm(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
+) -> Result<Option<Value>, AgentLoopDriverError> {
+    confirm_with_source(tx, id, context, None).await
+}
+async fn confirm_with_source(
+    tx: &Transaction<'_>,
+    id: Uuid,
+    context: &PrivateExecutionContext,
+    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let Some(Prepared {
         delivery,
@@ -195,7 +230,7 @@ pub(crate) async fn confirm(
         checksum,
         succeeded,
         errors,
-    }) = prepare(tx, id, context).await?
+    }) = prepare(tx, id, context, source).await?
     else {
         return Ok(None);
     };

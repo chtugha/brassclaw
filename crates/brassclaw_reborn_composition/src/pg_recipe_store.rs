@@ -1543,6 +1543,18 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         brassclaw_product_workflow::ComponentReviewSubmissionReceipt,
         brassclaw_product_workflow::RecipeStoreError,
     > {
+        #[cfg(feature = "skills-db")]
+        if let Some(catalogue) = &self.catalogue {
+            return crate::pg_review_submission::submit_with_catalogue(
+                &self.inner.pool,
+                actor,
+                &self.tenant_id,
+                &self.agent_id,
+                request,
+                catalogue,
+            )
+            .await;
+        }
         crate::pg_review_submission::submit(
             &self.inner.pool,
             actor,
@@ -1572,6 +1584,15 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         brassclaw_product_workflow::ComponentReviewSubmissionView,
         brassclaw_product_workflow::RecipeStoreError,
     > {
+        #[cfg(feature = "skills-db")]
+        if let Some(catalogue) = &self.catalogue {
+            return crate::pg_review_submission::get_with_catalogue(
+                &self.inner.pool,
+                submission_id,
+                catalogue,
+            )
+            .await;
+        }
         crate::pg_review_submission::get(&self.inner.pool, submission_id).await
     }
 

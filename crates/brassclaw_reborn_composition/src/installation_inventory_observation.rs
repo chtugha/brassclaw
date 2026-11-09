@@ -18,6 +18,7 @@ use brassclaw_skills::{
 #[cfg(test)]
 use brassclaw_turns::{TurnRunId, TurnSpawnTreeStateStore};
 use brassclaw_turns::{TurnRunRecord, TurnScope, TurnStatus};
+pub(crate) use pure_workflow::CheckedPureSourceWorkflow;
 #[cfg(test)]
 pub(crate) use pure_workflow::assert_original_pure_workflow_readback;
 pub(crate) use pure_workflow::qualify_pure_workflow;
