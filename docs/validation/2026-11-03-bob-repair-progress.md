@@ -13,6 +13,24 @@ concurrently; all must complete the full architecture reading.
 
 ## Latest scoped acceptance and active packages
 
+**Run-21 follow-up — 2026-11-09:** the worker builds in 13.44 seconds.
+The joint test graph stops after 132.63 seconds with two API errors and one
+unused production import. Its independently produced Turns, Reborn and
+loop-driver caller executables pass **453/453 actual tests, zero ignored**;
+this is not Composition acceptance. Source/HEAD and artifact hashes are verified.
+The H-01 import/visibility corrections are reviewed and integrated as
+`515035298`/`a474c1740`. F-01's complete original-proof transaction correction
+is reviewed and integrated as `9d807f6fc`: preserve the genuine two-phase Turn
+custody, verify before acquiring W's client, then recheck all original facts in
+its RR snapshot without a nested pool checkout. Native/primitive/worker/admission
+verifiers are unchanged. A single corrected joint build is next; no F-01/H-01/
+V209 runtime or full Bob completion follows yet.
+
+I-01 is implementing qualified Pure Source selection/original admission under
+reserved V210 and `component-validator-selection/2`, without behavior/Q1/Q2
+approval. J-01 is a read-only Behavior/Human-Q2 design package. These reuse the
+existing owners; new source is isolated from the supervisor's build inputs.
+
 Latest integration `7b4c29596` includes reviewed E-01 supported-settings correction
 and F-01's closed shipped checking-helper/support/Source-workflow package plus
 real Store scope tests. F-01 remains uncompiled/unexecuted. Run-20's prior source

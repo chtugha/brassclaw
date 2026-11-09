@@ -37,7 +37,25 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current integration checkpoint — 2026-11-08
+### Current integration checkpoint — 2026-11-09
+
+**Run-21 follow-up — 2026-11-09:** the worker builds in 13.44 seconds.
+The joint test graph stops after 132.63 seconds with two API errors and one
+unused production import. Its independently produced Turns, Reborn and
+loop-driver caller executables pass **453/453 actual tests, zero ignored**;
+this is not Composition acceptance. Source/HEAD and artifact hashes are verified.
+The H-01 import/visibility corrections are reviewed and integrated as
+`515035298`/`a474c1740`. F-01's complete original-proof transaction correction
+is reviewed and integrated as `9d807f6fc`: preserve the genuine two-phase Turn
+custody, verify before acquiring W's client, then recheck all original facts in
+its RR snapshot without a nested pool checkout. Native/primitive/worker/admission
+verifiers are unchanged. A single corrected joint build is next; no F-01/H-01/
+V209 runtime or full Bob completion follows yet.
+
+I-01 is implementing qualified Pure Source selection/original admission under
+reserved V210 and `component-validator-selection/2`, without behavior/Q1/Q2
+approval. J-01 is a read-only Behavior/Human-Q2 design package. These reuse the
+existing owners; new source is isolated from the supervisor's build inputs.
 
 **Latest reviewed integration:** E-01's supported-settings test correction is
 integrated as `0039b365e`. F-01's complete 15-file checking-function/support/Source
@@ -176,7 +194,8 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | F-01 — closed Pure-checker/support qualification | `01a1babb-0ccd-7ed2-8211-f5a6a9f29976`, host `local`, title “Paket F-01 — Vollständige Pure-Eigenprüfung”; `/Users/ollama/.codex/worktrees/1a9e/brassclaw` | Full architecture/source proposals reviewed. Authorized connected implementation of ten existing public checking functions, separate private reader support and their Source workflow, reusing existing original-execution custody. Two private fixture identities reserved. The genuine E-01 common prerequisite passed in Run-20; source `0dad53132`/`ce00c3dec` is integrated as `48eec00f6`/`7b4c29596`. Compilation/native/lint acceptance remains pending. No general candidate Pure approval, authored Q2, `/2` publication or migration authorized. |
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 | H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
-| I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Read-only connected proposal delivered for exact qualified F-01 W selection, atomic original admission and H-01 confirmation. No implementation/build authorized yet; no claim of general Pure behavior/Q2/approval. |
+| I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Proposal reviewed; implementing exact qualified F-01 W selection, atomic original admission and H-01 structural confirmation. V210 and outer selection /2 reserved for this scope. No general Pure behavior/Q2/approval. |
+| J-01 — Pure behavior and human Q2 contract | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; `/Users/ollama/.codex/worktrees/8147/brassclaw` | Read-only connected proposal for genuine all-export behavior, independent oracles, settled evidence and existing operator-Q2 owner. No implementation/migration/build authorized yet. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

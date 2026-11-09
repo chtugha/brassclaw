@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original proof transaction correction (validation pending)**: Share complete
+  historical inventory-qualification checks with the caller's coherent snapshot,
+  retaining genuine Turn settlement and pool-one-safe original reconciliation.
+  Correct internal review capture visibility and test-only import scoping.
+  Source reviewed; the affected independent caller artifacts pass 453 tests,
+  while the corrected Composition build and native acceptance remain pending.
+
 - **Original native delivery and SQL guard repair (validation pending)**:
   Retain post-Factory private delivery and immutable original structural review
   confirmation in V208, with shared Worker discovery and strict transaction/
