@@ -304,6 +304,7 @@ impl InstalledMontyCatalogue {
                 program: program.clone(),
                 runtimes,
                 kernel: self.kernel.clone(),
+                pure_case: None,
                 credential_policies,
                 credentials: credentials.clone(),
                 mounts: self.memory_mounts.clone(),

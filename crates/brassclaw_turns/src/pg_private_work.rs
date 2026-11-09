@@ -45,6 +45,29 @@ fn read_request(row: &tokio_postgres::Row) -> Result<(PrivateWorkRequest, [u8; 3
     {
         return Err(invalid());
     }
+    let columns = (
+        row.try_get::<_, Option<Uuid>>("validator_submission_id")
+            .map_err(map_pg)?,
+        row.try_get::<_, Option<Uuid>>("prefix_job_id")
+            .map_err(map_pg)?,
+        row.try_get::<_, Option<Uuid>>("original_pure_case_id")
+            .map_err(map_pg)?,
+    );
+    let original_columns = match request.original() {
+        PrivateOriginalRef::ValidatorStructural { submission_id, .. } => {
+            (Some(*submission_id), None, None)
+        }
+        PrivateOriginalRef::PrefixSourceOnly { job_id, .. } => (None, Some(*job_id), None),
+        PrivateOriginalRef::OriginalPureCaseV1 { case_id, .. } => {
+            if request.work_id() != *case_id || request.run_id().as_uuid() != *case_id {
+                return Err(invalid());
+            }
+            (None, None, Some(*case_id))
+        }
+    };
+    if columns != original_columns {
+        return Err(invalid());
+    }
     Ok((request, expected))
 }
 
@@ -161,11 +184,12 @@ impl PgTurnStateStore {
         }
         let bytes = serde_json::to_string(request).map_err(|_| invalid())?;
         let digest = checksum(&bytes);
-        let (validator, prefix) = match request.original() {
+        let (validator, prefix, pure_case) = match request.original() {
             PrivateOriginalRef::ValidatorStructural { submission_id, .. } => {
-                (Some(*submission_id), None)
+                (Some(*submission_id), None, None)
             }
-            PrivateOriginalRef::PrefixSourceOnly { job_id, .. } => (None, Some(*job_id)),
+            PrivateOriginalRef::PrefixSourceOnly { job_id, .. } => (None, Some(*job_id), None),
+            PrivateOriginalRef::OriginalPureCaseV1 { case_id, .. } => (None, None, Some(*case_id)),
         };
         let reason = match reason {
             PrivatePreparationReason::PreparationPending => "preparation_pending",
@@ -175,9 +199,9 @@ impl PgTurnStateStore {
         tx.execute(
             "INSERT INTO brassclaw_turns(id,tenant_id,turn_id,status,version,record_kind,
             work_id,execution_run_id,private_request_bytes,private_request_checksum,
-            validator_submission_id,prefix_job_id,preparation_reason,
+            validator_submission_id,prefix_job_id,original_pure_case_id,preparation_reason,
             private_claim_generation,private_claim_attempts,private_cancel_revision)
-            VALUES($1,$2,NULL,'awaiting_preparation',1,'private_work',$3,$4,$5,$6,$7,$8,$9,0,0,0)
+            VALUES($1,$2,NULL,'awaiting_preparation',1,'private_work',$3,$4,$5,$6,$7,$8,$9,$10,0,0,0)
             ON CONFLICT(work_id) DO NOTHING",
             &[
                 &format!("private-work:{}", request.work_id()),
@@ -188,6 +212,7 @@ impl PgTurnStateStore {
                 &&digest[..],
                 &validator,
                 &prefix,
+                &pure_case,
                 &reason,
             ],
         )

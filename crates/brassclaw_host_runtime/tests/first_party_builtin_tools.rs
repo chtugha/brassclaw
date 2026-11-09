@@ -6886,3 +6886,22 @@ async fn native_http_tool_complete_responses_save_and_large_requests_use_real_bo
             > 15 * 1024 * 1024
     );
 }
+
+#[tokio::test]
+async fn builtin_pure_case_cannot_invoke_an_original_from_request_json() {
+    // The actual first-party dispatch path has no sealed invocation service.
+    // Even {} cannot acquire authority or start a candidate by itself.
+    for input in [
+        json!({}),
+        json!({"source":"raise RuntimeError('caller source')"}),
+        json!({"export":"candidate","inputs":{}}),
+        json!({"case_id":"00000000-0000-0000-0000-000000000001","authorized":true}),
+        json!(null),
+    ] {
+        assert!(
+            invoke(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID, input)
+                .await
+                .is_err()
+        );
+    }
+}

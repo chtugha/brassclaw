@@ -3,8 +3,11 @@
 use super::*;
 use brassclaw_skills::component_revision::ComponentRevisionDraft;
 
+#[path = "bootstrap_case_encoder.rs"]
+pub(super) mod case_encoder;
 #[path = "bootstrap_pure_checker_fixtures.rs"]
 mod cases;
+
 #[path = "bootstrap_pure_source_cases.rs"]
 mod source_gallery;
 #[cfg(test)]

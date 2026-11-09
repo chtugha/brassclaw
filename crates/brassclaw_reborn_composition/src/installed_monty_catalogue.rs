@@ -61,6 +61,9 @@ use crate::{
 mod child_tasks;
 #[path = "native_tool_answers.rs"]
 mod native_answers;
+#[path = "private_pure_case_work.rs"]
+mod private_pure_case_work;
+
 #[path = "private_task_catalogue.rs"]
 mod private_tasks;
 #[path = "task_catalogue_binding.rs"]
@@ -86,7 +89,7 @@ pub(crate) fn id(name: &str) -> Uuid {
     brassclaw_skills::global_bootstrap_components::packaged_component_id(name)
 }
 
-fn reference_value(
+pub(crate) fn reference_value(
     reference: brassclaw_skills::association_contract::ComponentRevisionRef,
 ) -> Value {
     json!({"uuid":reference.uuid,"class_code":reference.class_code,
@@ -143,6 +146,7 @@ pub(crate) struct InstalledCatalogueStartup<'a> {
 
 pub(crate) struct InstalledMontyCatalogue {
     pub(crate) pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview,
+    pub(crate) case_harness: Option<Arc<crate::pure_case_qualification::QualifiedCaseHarness>>,
     initial_preparation: PreparationCapture,
     pub(crate) private_work_wake:
         std::sync::OnceLock<brassclaw_reborn::turn_runner::TurnRunnerWakeSender>,
@@ -305,6 +309,7 @@ impl InstalledMontyCatalogue {
             program,
             runtimes,
             kernel: self.kernel.clone(),
+            pure_case: None,
             credential_policies: BTreeMap::new(),
             credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
             mounts: MountView::default(),
@@ -960,6 +965,20 @@ impl InstalledMontyCatalogue {
             initial_preparation.limits(),
         )
         .await?;
+        let case_harness = Box::pin(crate::pure_case_qualification::qualify(
+            crate::bootstrap_validator_approval::SessionInput {
+                pool: pool.clone(),
+                worker: worker_image.clone(),
+                root: root_definition.clone(),
+                executor: startup_executor.clone(),
+                preparation: initial_preparation.clone(),
+                storage: resource_store_settings.clone(),
+                application_checksum: hex::encode(image.checksum()),
+            },
+            kernel.clone(),
+            &scope.tenant_id,
+        ))
+        .await?;
         let mut documents = BTreeMap::new();
         let mut references = BTreeMap::new();
         for selected in [&reply, &history] {
@@ -1050,6 +1069,15 @@ impl InstalledMontyCatalogue {
             pure_workflow.verify_in_transaction(&tx, &pure_checkers),
         )
         .await?;
+        if let Some(harness) = &case_harness {
+            crate::bootstrap_evidence::io::bounded_for(
+                resource_store_settings.as_ref(),
+                "boot_original_pure_case_harness",
+                generation,
+                harness.require(&tx),
+            )
+            .await?;
+        }
         tracing::info!(
             status = inventory_observations.status(),
             "contained installation source observations; no checker qualification or activation"
@@ -1126,6 +1154,7 @@ impl InstalledMontyCatalogue {
             graph_limits: brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
         });
         let catalogue = Arc::new(Self {
+            case_harness,
             pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview::new(
                 pure_workflow,
                 pure_checkers,
@@ -1634,6 +1663,7 @@ pub(crate) fn bootstrap_reply_tools(
         program,
         runtimes: BTreeMap::from([("0:2".to_owned(), Arc::new(runtime))]),
         kernel,
+        pure_case: None,
         credential_policies: BTreeMap::new(),
         credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),
@@ -1855,6 +1885,7 @@ pub(crate) fn model_recipe_candidate_tools(
         answers: native_answers::NativeToolAnswers::default(),
         model_responses: Some(responses),
         kernel,
+        pure_case: None,
         credential_policies: BTreeMap::new(),
         credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
     }))
@@ -1879,6 +1910,76 @@ fn bootstrap_builtin_tools(
         program,
         runtimes,
         kernel,
+        pure_case: None,
+        credential_policies: BTreeMap::new(),
+        credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
+        mounts: MountView::default(),
+        answers: native_answers::NativeToolAnswers::default(),
+        model_responses: None,
+    }))
+}
+
+/// One private original operation through the ordinary native dispatcher. The
+/// sealed producer supplies only its case operation; registration, native ABI,
+/// current Tool policy and journalling remain the existing owners' work.
+pub(crate) fn original_pure_case_tools(
+    pool: Arc<PgPool>,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    host: Arc<MontyTaskHost>,
+    admission: Arc<PgMontyAdmission>,
+    program: Arc<RetainedToolProgram>,
+    operation: Arc<dyn crate::pure_case_execution::OriginalCaseOperation>,
+    denied: bool,
+) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    let ids = brassclaw_skills::pure_case_components::usage_ids();
+    let binding = program
+        .bindings()
+        .get("0:2")
+        .filter(|binding| {
+            program.bindings().len() == 1
+                && binding.tool().uuid == ids.tool
+                && binding.tool_skill().uuid == ids.tool_skill
+                && binding.python().uuid == ids.python_code
+                && binding.skill().uuid == ids.skill
+                && binding.capability_id() == brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID
+        })
+        .ok_or_else(|| invalid("original Pure case usage differs"))?;
+    let capability =
+        CapabilityId::new(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID).map_err(invalid)?;
+    let descriptor = kernel
+        .builtin(&capability, None)
+        .map_err(invalid)?
+        .descriptor()
+        .clone();
+    if descriptor.effects != vec![brassclaw_host_api::EffectKind::ExecuteCode] {
+        return Err(invalid("original Pure case native effect contract differs"));
+    }
+    let policy = Arc::new(crate::public_recipe_population::RestrictedBootstrapPolicy {
+        live: Arc::new(PgSelectedToolPolicy {
+            host: host.clone(),
+            pool,
+            tool: ids.tool,
+            capability: capability.clone(),
+            effects: descriptor.effects,
+            mounts: MountView::default(),
+        }),
+        denied,
+    });
+    let document = program.inputs().instruction().snapshot().revisions()[&binding.tool().uuid]
+        .draft()
+        .document();
+    let expected =
+        serde_json::from_value(document["implementation"]["identity"].clone()).map_err(invalid)?;
+    let runtime = kernel
+        .builtin_with_policy(&capability, expected, policy.clone())
+        .map_err(invalid)?;
+    Ok(Arc::new(SelectedTools {
+        host,
+        admission,
+        program,
+        runtimes: BTreeMap::from([("0:2".into(), Arc::new(runtime))]),
+        kernel,
+        pure_case: Some(crate::pure_case_execution::NativeCaseBinding { operation, policy }),
         credential_policies: BTreeMap::new(),
         credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),
@@ -2096,6 +2197,7 @@ struct SelectedTools {
     program: Arc<RetainedToolProgram>,
     runtimes: BTreeMap<String, Arc<RetainedFirstPartyCapability>>,
     kernel: Arc<dyn crate::monty_kernel::MontyKernelSnapshot>,
+    pure_case: Option<crate::pure_case_execution::NativeCaseBinding>,
     credential_policies: BTreeMap<String, Arc<PgSelectedToolPolicy>>,
     credentials: crate::task_tool_credentials::CapturedToolCredentials,
     mounts: MountView,
@@ -2110,7 +2212,30 @@ impl SelectedTools {
         step: &str,
         original: &Arc<RetainedFirstPartyCapability>,
         scope: &brassclaw_host_api::ResourceScope,
+        invocation: &RetainedToolInvocation<'_>,
     ) -> Result<Arc<RetainedFirstPartyCapability>, AgentLoopDriverError> {
+        if original.descriptor().id.as_str() == brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID {
+            let case = self.pure_case.as_ref().ok_or_else(failed)?;
+            let operation = case
+                .operation
+                .bind(invocation, scope)
+                .map_err(|_| failed())?;
+            let runtime = self
+                .kernel
+                .pure_case_with_policy(
+                    original.native_identity().ok_or_else(failed)?,
+                    scope,
+                    operation,
+                    case.policy.clone(),
+                )
+                .map_err(|_| failed())?;
+            if runtime.native_identity() != original.native_identity()
+                || runtime.descriptor() != original.descriptor()
+            {
+                return Err(failed());
+            }
+            return Ok(Arc::new(runtime));
+        }
         if original.descriptor().runtime_credentials.is_empty() {
             return Ok(original.clone());
         }
@@ -2142,6 +2267,10 @@ impl RetainedToolPort for SelectedTools {
     fn has_uncommitted_native_results(&self) -> bool {
         self.answers.has_pending()
             || self
+                .pure_case
+                .as_ref()
+                .is_some_and(|case| case.operation.has_uncommitted_evidence())
+            || self
                 .model_responses
                 .as_ref()
                 .is_some_and(|owner| owner.has_uncommitted_results())
@@ -2151,9 +2280,19 @@ impl RetainedToolPort for SelectedTools {
         &self,
     ) -> Result<(), brassclaw_engine::executor::retained_recipe::NativeResultReconciliationError>
     {
-        self.answers
+        let case = if let Some(case) = &self.pure_case {
+            case.operation.reconcile_evidence().await
+        } else {
+            Ok(())
+        };
+        // Both owners retain independent originals. A still-fenced case must
+        // not prevent acknowledgement of an already received native answer;
+        // neither reconciliation operation dispatches or resumes execution.
+        let answers = self
+            .answers
             .reconcile(self.model_responses.as_deref())
-            .await
+            .await;
+        case.and(answers)
     }
 
     async fn dispatch(
@@ -2239,8 +2378,12 @@ impl RetainedToolPort for SelectedTools {
         // Bind the captured family to this already journalled ORIGINAL native
         // invocation. A failed binding is retained as its answer; it cannot
         // abandon custody or cause a replacement dispatch/selection.
-        let native =
-            self.runtime_for_invocation(invocation.step_id(), runtime, &execution.resource_scope);
+        let native = self.runtime_for_invocation(
+            invocation.step_id(),
+            runtime,
+            &execution.resource_scope,
+            &invocation,
+        );
         let answer = match native {
             Err(_) => error(),
             Ok(runtime) => match self
@@ -2272,6 +2415,14 @@ impl RetainedToolPort for SelectedTools {
                 Ok(RuntimeCapabilityOutcome::Failed(failed)) => PortAnswer::TerminalError {
                     reason_kind: format!("retained_tool_{}", failed.kind.as_str()),
                 },
+                Err(host_error) => {
+                    if binding.capability_id() == brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID
+                        && let Some(case) = &self.pure_case
+                    {
+                        case.operation.dispatch_host_failure(host_error).await;
+                    }
+                    error()
+                }
                 _ => error(),
             },
         };
@@ -2279,11 +2430,27 @@ impl RetainedToolPort for SelectedTools {
             Ok(answer) => answer,
             Err(_) => return error(),
         };
+        if binding.capability_id() == brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID
+            && !matches!(&answer, PortAnswer::Return { .. })
+            && let Some(case) = &self.pure_case
+        {
+            case.operation
+                .dispatch_failure("kernel_result", serde_json::json!({"answer":&answer}))
+                .await;
+        }
         match received.acknowledge().await {
             Ok(()) => answer,
-            Err(_) => PortAnswer::TerminalError {
-                reason_kind: "tool_answer_persistence_failed".into(),
-            },
+            Err(_) => {
+                if binding.capability_id() == brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID
+                    && let Some(case) = &self.pure_case
+                {
+                    case.operation.dispatch_failure("answer_ack",serde_json::json!({"kind":"original_native_answer_acknowledgement_failed",
+                        "answer":&answer})).await;
+                }
+                PortAnswer::TerminalError {
+                    reason_kind: "tool_answer_persistence_failed".into(),
+                }
+            }
         }
     }
 }

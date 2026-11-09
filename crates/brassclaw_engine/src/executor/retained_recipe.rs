@@ -75,6 +75,7 @@ pub struct RetainedToolInvocation<'a> {
     task: TaskHandle,
     step_id: &'a str,
     data_limits: ContractLimits,
+    pure_context: Option<super::retained_pure_invocation::BoundPureContext>,
 }
 impl RetainedToolInvocation<'_> {
     /// Bounds captured before this step began, retained through its actual answer.
@@ -86,6 +87,11 @@ impl RetainedToolInvocation<'_> {
     }
     pub fn step_id(&self) -> &str {
         self.step_id
+    }
+    /// A one-shot, live HostCall window. It exposes neither the actor nor raw
+    /// worker commands; only the separately retained native case service uses it.
+    pub fn pure_context(&self) -> Option<&super::retained_pure_invocation::BoundPureContext> {
+        self.pure_context.as_ref()
     }
 }
 
@@ -986,17 +992,39 @@ impl RetainedRecipeExecution {
                                     Err(error) => observation.observation_error = Some(error),
                                 }
                             }
+                            let (pure_context, invocation_window) = if binding.capability_id()
+                                == brassclaw_host_api::ORIGINAL_PURE_INVOKE_CAPABILITY_ID
+                            {
+                                let (context, window) =
+                                    super::retained_pure_invocation::BoundPureContext::at_host_call(
+                                        transport.clone(),
+                                        self.task,
+                                        context,
+                                        key,
+                                        self.latest_snapshot.as_ref().and_then(|s| s.root).ok_or(
+                                            RetainedExecutionError::Invalid(
+                                                "HostCall lacks actual root identity",
+                                            ),
+                                        )?,
+                                        self.data_limits,
+                                    );
+                                (Some(context), Some(window))
+                            } else {
+                                (None, None)
+                            };
                             let answer = port
                                 .dispatch(
                                     RetainedToolInvocation {
                                         task: self.task,
                                         step_id,
                                         data_limits: self.data_limits,
+                                        pure_context,
                                     },
                                     binding,
                                     arguments,
                                 )
                                 .await;
+                            drop(invocation_window);
                             if let Some(observation) = self.observations.get_mut(step_id) {
                                 match port_answer_checksum_with_limits(&answer, self.data_limits) {
                                     Ok(checksum) => observation.answer_checksum = Some(checksum),

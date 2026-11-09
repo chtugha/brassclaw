@@ -735,6 +735,18 @@ pub(crate) async fn seed_source_inspection_tool(
 }
 
 #[cfg(feature = "skills-db")]
+pub(crate) async fn seed_pure_case_tool(
+    pool: Arc<PgPool>,
+    tenant_id: &str,
+) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    seed_primitive_registration(pool, tenant_id, registered_primitive_row(
+        tenant_id, "invoke_original_pure_case",
+        "Invoke one sealed original Pure export in the same task; no approval or behavioral verdict.",
+        "write", brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID),
+        brassclaw_skills::pure_case_components::usage_ids().tool).await
+}
+
+#[cfg(feature = "skills-db")]
 pub(crate) async fn seed_json_primitive_tool(
     pool: Arc<PgPool>,
     tenant_id: &str,

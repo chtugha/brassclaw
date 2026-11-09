@@ -180,6 +180,8 @@ pub enum RecipeEvent {
     Released {
         task: Option<TaskHandle>,
         contexts: Vec<ReleasedContext>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        parent_host: Option<RecipePendingHost>,
     },
     SettingsUpdated,
     CancellationRequested {
@@ -209,6 +211,37 @@ pub struct RecipeContextCapacity {
     pub active: usize,
 }
 
+/// Exact paused native call routing, not a dispatch or continuation grant.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RecipePendingHost {
+    pub task: TaskHandle,
+    pub context: RecipeContextId,
+    pub key: ContinuationKey,
+}
+
+impl RecipeEvent {
+    pub(crate) fn pure_release_frame_projection() -> Self {
+        let id = Uuid::from_bytes([u8::MAX; 16]);
+        Self::Released {
+            task: None,
+            contexts: vec![ReleasedContext {
+                context: RecipeContextId(id),
+                pending_host: None,
+                stdout: String::new(),
+            }],
+            parent_host: Some(RecipePendingHost {
+                task: TaskHandle(id),
+                context: RecipeContextId(id),
+                key: ContinuationKey {
+                    vm_id: id,
+                    ordinal: u64::MAX,
+                },
+            }),
+        }
+    }
+}
+
 struct TaskRecord {
     run_id: String,
     budget: SharedMontyTaskBudget,
@@ -221,6 +254,12 @@ struct ContextRecord {
     parent: Option<RecipeContextId>,
     vm: RecipeVm,
 }
+pub(crate) struct ContextReleasePlan {
+    task: TaskHandle,
+    selected: BTreeSet<RecipeContextId>,
+    parent: Option<RecipeContextId>,
+}
+
 pub(crate) struct WorkerRecipes {
     tasks: BTreeMap<TaskHandle, TaskRecord>,
     contexts: BTreeMap<RecipeContextId, ContextRecord>,
@@ -548,35 +587,8 @@ impl WorkerRecipes {
                 })
             }
             RecipeCommand::CancelContext { context } => {
-                let task = self
-                    .contexts
-                    .get(&context)
-                    .ok_or_else(|| VmError::kind(VmFailure::ForeignContinuation))?
-                    .task;
-                // Build the same-task descendant graph once. Cancellation of a
-                // deep child chain must not repeatedly scan all live contexts.
-                let mut children: BTreeMap<RecipeContextId, Vec<RecipeContextId>> = BTreeMap::new();
-                for (id, record) in &self.contexts {
-                    if record.task == task
-                        && let Some(parent) = record.parent
-                    {
-                        children.entry(parent).or_default().push(*id);
-                    }
-                }
-                let mut selected = BTreeSet::new();
-                let mut pending = vec![context];
-                while let Some(id) = pending.pop() {
-                    if selected.insert(id)
-                        && let Some(descendants) = children.remove(&id)
-                    {
-                        pending.extend(descendants);
-                    }
-                }
-                let contexts = self.release(task, &selected)?;
-                Ok(RecipeEvent::Released {
-                    task: None,
-                    contexts,
-                })
+                let plan = self.prepare_context_release(context)?;
+                self.apply_context_release(plan)
             }
             RecipeCommand::CancelTask { task } => {
                 let record = self
@@ -617,6 +629,7 @@ impl WorkerRecipes {
                 Ok(RecipeEvent::Released {
                     task: Some(task),
                     contexts,
+                    parent_host: None,
                 })
             }
             RecipeCommand::UpdateRuntimeSettings {
@@ -688,6 +701,143 @@ impl WorkerRecipes {
                 Ok(RecipeEvent::SettingsUpdated)
             }
         }
+    }
+    pub(crate) fn prepare_context_release(
+        &self,
+        context: RecipeContextId,
+    ) -> Result<ContextReleasePlan, VmError> {
+        let owner = self
+            .contexts
+            .get(&context)
+            .ok_or_else(|| VmError::kind(VmFailure::ForeignContinuation))?;
+        let task = owner.task;
+        let mut children: BTreeMap<RecipeContextId, Vec<RecipeContextId>> = BTreeMap::new();
+        for (id, record) in &self.contexts {
+            if record.task == task
+                && let Some(parent) = record.parent
+            {
+                children.entry(parent).or_default().push(*id);
+            }
+        }
+        let mut selected = BTreeSet::new();
+        let mut pending = vec![context];
+        while let Some(id) = pending.pop() {
+            if selected.insert(id)
+                && let Some(descendants) = children.remove(&id)
+            {
+                pending.extend(descendants);
+            }
+        }
+        Ok(ContextReleasePlan {
+            task,
+            selected,
+            parent: owner.parent,
+        })
+    }
+    fn paused_parent(
+        &self,
+        task: TaskHandle,
+        parent: Option<RecipeContextId>,
+    ) -> Option<RecipePendingHost> {
+        let parent = parent?;
+        let record = self.contexts.get(&parent)?;
+        if record.task != task || self.tasks.get(&task)?.cancel_requested {
+            return None;
+        }
+        match &record.vm.state {
+            crate::VmState::Paused { key, progress }
+                if matches!(progress.as_ref(), crate::ReplProgress::FunctionCall(_)) =>
+            {
+                Some(RecipePendingHost {
+                    task,
+                    context: parent,
+                    key: *key,
+                })
+            }
+            _ => None,
+        }
+    }
+    /// Exact requested subtree only, for pre-mutation frame sizing. This is a
+    /// projection, never an observed release or a reusable continuation proof.
+    pub(crate) fn project_context_release(
+        &self,
+        plan: &ContextReleasePlan,
+        max_frame_bytes: usize,
+    ) -> Result<RecipeEvent, VmError> {
+        #[derive(Serialize)]
+        struct BorrowedContext<'a> {
+            context: RecipeContextId,
+            pending_host: Option<ContinuationKey>,
+            stdout: &'a str,
+        }
+        let limit =
+            u64::try_from(max_frame_bytes).map_err(|_| VmError::kind(VmFailure::InvalidBounds))?;
+        let mut bytes = 0u64;
+        for context in &plan.selected {
+            let record = &self.contexts[context];
+            let pending_host = match &record.vm.state {
+                crate::VmState::Paused { key, progress }
+                    if matches!(progress.as_ref(), crate::ReplProgress::FunctionCall(_)) =>
+                {
+                    Some(*key)
+                }
+                _ => None,
+            };
+            // Bound borrowed original stdout before cloning any payload or
+            // constructing a response Vec. The full envelope is checked by
+            // process.rs before release mutates this registry.
+            let remaining = limit
+                .checked_sub(bytes)
+                .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+            let count = brassclaw_common::json::count_json_bytes(
+                &BorrowedContext {
+                    context: *context,
+                    pending_host,
+                    stdout: &record.vm.stdout,
+                },
+                Some(remaining),
+            )
+            .map_err(|_| VmError::kind(VmFailure::InvalidBounds))?;
+            bytes = bytes
+                .checked_add(count)
+                .ok_or_else(|| VmError::kind(VmFailure::InvalidBounds))?;
+        }
+        let contexts = plan
+            .selected
+            .iter()
+            .map(|context| {
+                let record = &self.contexts[context];
+                let pending_host = match &record.vm.state {
+                    crate::VmState::Paused { key, progress }
+                        if matches!(progress.as_ref(), crate::ReplProgress::FunctionCall(_)) =>
+                    {
+                        Some(*key)
+                    }
+                    _ => None,
+                };
+                ReleasedContext {
+                    context: *context,
+                    pending_host,
+                    stdout: record.vm.stdout.clone(),
+                }
+            })
+            .collect();
+        Ok(RecipeEvent::Released {
+            task: None,
+            contexts,
+            parent_host: self.paused_parent(plan.task, plan.parent),
+        })
+    }
+    pub(crate) fn apply_context_release(
+        &mut self,
+        plan: ContextReleasePlan,
+    ) -> Result<RecipeEvent, VmError> {
+        let contexts = self.release(plan.task, &plan.selected)?;
+        Ok(RecipeEvent::Released {
+            task: None,
+            contexts,
+            parent_host: self.paused_parent(plan.task, plan.parent),
+        })
     }
     fn release(
         &mut self,

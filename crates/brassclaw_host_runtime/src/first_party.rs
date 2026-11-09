@@ -73,6 +73,7 @@ impl FirstPartyCapabilityRequest {
             mounts: None,
             services: InvocationServices {
                 source_inspection_fixture: None,
+                pure_case: None,
                 child_tasks: None,
                 memory_embeddings: None,
                 filesystem: Arc::new(brassclaw_filesystem::InMemoryBackend::new()),

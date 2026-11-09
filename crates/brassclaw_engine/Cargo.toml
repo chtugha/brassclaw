@@ -17,6 +17,8 @@ dist = false
 workspace = true
 
 [features]
+# Passive original-command gates used only by real native fault acceptance.
+test-support = []
 # Load skills from reborn_skills DB table instead of MemoryDoc filesystem.
 # Load tools from reborn_tools DB table into the ToolRegistry capability surface.
 # Both require a live brassclaw_pg pool to be threaded in.

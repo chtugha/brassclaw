@@ -2301,7 +2301,7 @@ async fn run(
                     command: RecipeCommand::CloseTask { task: id },
                 }).await?;
                 if !matches!(&receipt.recipe,
-                    Some(RecipeEvent::Released { task: Some(task), contexts })
+                    Some(RecipeEvent::Released { task: Some(task), contexts, .. })
                     if *task == id && contexts.iter().all(|context| context.pending_host.is_none()))
                     || receipt.boundary.is_some() || receipt.admitted_task.is_some()
                     || !receipt.withheld_answers.is_empty() {

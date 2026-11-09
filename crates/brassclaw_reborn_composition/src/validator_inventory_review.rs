@@ -65,7 +65,6 @@ pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 
 #[path = "qualified_pure_source_review.rs"]
 mod qualified_source;
-#[cfg(test)]
 pub(crate) use qualified_source::CheckedPureSourceOriginal;
 pub(crate) use qualified_source::{QualifiedPureSourceReview, SourceReviewPreparation};
 

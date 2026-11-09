@@ -1465,7 +1465,7 @@ async fn real_worker_rejects_malformed_frames_without_private_diagnostics() {
 #[tokio::test]
 async fn real_worker_rejects_invalid_exchange_frames_before_boot() {
     for accepted in [0, 1, limits().max_frame_bytes + 1] {
-        let request = json!({"protocol":20,"sequence":1,"max_frame_bytes":accepted,
+        let request = json!({"protocol":21,"sequence":1,"max_frame_bytes":accepted,
             "command":WorkerCommand::Boot { boot:boot(SOURCE) }});
         let body = serde_json::to_vec(&request).unwrap();
         assert!(body.len() < limits().max_frame_bytes);
@@ -2857,6 +2857,279 @@ async fn dependent_transport_rejects_wrong_parent_and_never_acknowledges_missing
             .unwrap()
             .capacity
             .target_present()
+    );
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn original_child_release_keeps_one_real_parent_witness_near_live_frame_limit() {
+    use brassclaw_monty_host::{
+        heap::FrameUpdate,
+        process::{RecipeBoundary, RecipeCommand, RecipeEvent, RuntimeSettingsCandidate},
+    };
+    let mut configuration = boot(SOURCE);
+    configuration.max_recipe_contexts = 32;
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let task = admitted.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, .. }) = admitted.boundary else {
+        panic!("actual root task port required")
+    };
+    process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let parent = open_context(&mut process, task, None).await;
+    let RecipeBoundary::HostCall {
+        key: parent_key, ..
+    } = start_context(
+        &mut process,
+        parent,
+        "value = host.child()\nresult = value + 1",
+        json!({}),
+        &["child"],
+    )
+    .await
+    else {
+        panic!("actual paused parent required")
+    };
+    let baseline = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    let baseline_bytes = serde_json::to_vec(&baseline).unwrap().len();
+    let mut siblings = Vec::new();
+    for _ in 0..24 {
+        let context = open_context(&mut process, task, Some(parent)).await;
+        let RecipeBoundary::HostCall { key, .. } = start_context(
+            &mut process,
+            context,
+            "result = host.child()",
+            json!({}),
+            &["child"],
+        )
+        .await
+        else {
+            panic!("actual paused sibling required")
+        };
+        siblings.push((context, key));
+    }
+    let parked = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert_eq!(parked.recipe_context_capacity.unwrap().active, 25);
+    // Only numeric usage/capacity widths change. A global paused-context list
+    // would grow by thousands of bytes and violate this actual wire property.
+    assert!(
+        serde_json::to_vec(&parked)
+            .unwrap()
+            .len()
+            .abs_diff(baseline_bytes)
+            < 128
+    );
+    let child = open_context(&mut process, task, Some(parent)).await;
+    assert!(
+        matches!(start_context(&mut process,child,"result = 41",json!({}),&[]).await,
+        RecipeBoundary::Complete {value} if value==json!(41))
+    );
+    let before_reduction = process.exchange(WorkerCommand::Inspect).await.unwrap();
+    assert!(before_reduction.vm_live_bytes > 2);
+    let current = process
+        .exchange(WorkerCommand::UpdateHeap {
+            expected_revision: before_reduction.heap.desired.unwrap().revision,
+            settings: brassclaw_monty_host::heap::HeapSettings {
+                revision: 2,
+                max_vm_bytes: before_reduction.vm_live_bytes / 2,
+            },
+            automatic: true,
+        })
+        .await
+        .unwrap();
+    assert!(
+        current.heap.pending_reduction,
+        "actual unsafe automatic reduction must remain pending with retained paused contexts"
+    );
+    let mut values = current.vm_bounds.unwrap();
+    values.max_source_bytes = 1;
+    values.max_stdout_bytes = 1;
+    values.max_value_bytes = 64;
+    let mut candidate = RuntimeSettingsCandidate {
+        expected_revision: 1,
+        settings: TaskSettings {
+            revision: 2,
+            ..current.effective_task_settings.unwrap()
+        },
+        values,
+        max_recipe_contexts: None,
+        max_pending_host_calls: None,
+        max_workers: Some(4),
+        adapter_reserve_bytes: Some(0),
+        heap_update: None,
+        frame_update: None,
+    };
+    // Probe the real serializer's feasibility boundary without publishing any
+    // setting or dropping a context. This is a test search, not a runtime quota.
+    let (mut lower, mut upper) = (1, limits().max_frame_bytes);
+    while lower < upper {
+        let middle = lower + (upper - lower) / 2;
+        candidate.frame_update = Some(FrameUpdate {
+            configured_frame_bytes: middle,
+            required_capacity_bytes: limits().max_frame_bytes,
+        });
+        match process
+            .exchange(WorkerCommand::ValidateRuntimeSettings { candidate })
+            .await
+        {
+            Ok(snapshot) => {
+                assert_eq!(snapshot.runtime_settings(), current.runtime_settings());
+                upper = middle;
+            }
+            Err(error) => {
+                assert_eq!(error.kind, ProcessFailure::Vm(VmFailure::InvalidBounds));
+                assert_eq!(
+                    error.snapshot.unwrap().runtime_settings(),
+                    current.runtime_settings()
+                );
+                lower = middle + 1;
+            }
+        }
+    }
+    assert!(lower < limits().max_frame_bytes);
+    candidate.frame_update = Some(FrameUpdate {
+        configured_frame_bytes: lower,
+        required_capacity_bytes: limits().max_frame_bytes,
+    });
+    process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::UpdateRuntimeSettings {
+                expected_revision: candidate.expected_revision,
+                settings: candidate.settings,
+                values: candidate.values,
+                max_recipe_contexts: candidate.max_recipe_contexts,
+                max_pending_host_calls: candidate.max_pending_host_calls,
+                max_workers: candidate.max_workers,
+                adapter_reserve_bytes: candidate.adapter_reserve_bytes,
+                heap_update: candidate.heap_update,
+                frame_update: candidate.frame_update,
+            },
+        })
+        .await
+        .unwrap();
+    let released = recipe_command(
+        &mut process,
+        RecipeCommand::CancelContext { context: child },
+    )
+    .await;
+    let Some(RecipeEvent::Released {
+        task: None,
+        contexts,
+        parent_host: Some(witness),
+    }) = released.recipe
+    else {
+        panic!("actual child release with its single surviving parent required")
+    };
+    assert_eq!(contexts.len(), 1);
+    assert_eq!(contexts[0].context, child);
+    assert!(contexts[0].pending_host.is_none());
+    assert_eq!(witness.task, task);
+    assert_eq!(witness.context, parent);
+    assert_eq!(witness.key, parent_key);
+    assert_eq!(released.recipe_context_capacity.unwrap().active, 25);
+    // Existing continuations are genuinely usable after release; no re-start,
+    // synthetic snapshot or replacement parent can satisfy this continuation.
+    let completed = recipe_command(
+        &mut process,
+        RecipeCommand::ResumeHost {
+            context: parent,
+            key: parent_key,
+            answer: PortAnswer::Return {
+                value: json!(41).into(),
+            },
+        },
+    )
+    .await;
+    assert!(
+        matches!(completed.recipe,Some(RecipeEvent::Progress {boundary:RecipeBoundary::Complete {value},..}) if value==json!(42))
+    );
+    for (context, key) in siblings {
+        let completed = recipe_command(
+            &mut process,
+            RecipeCommand::ResumeHost {
+                context,
+                key,
+                answer: PortAnswer::Return {
+                    value: json!(0).into(),
+                },
+            },
+        )
+        .await;
+        assert!(
+            matches!(completed.recipe,Some(RecipeEvent::Progress {boundary:RecipeBoundary::Complete {value},..}) if value==json!(0))
+        );
+    }
+    assert!(process.terminate().await.is_some());
+}
+
+#[tokio::test]
+async fn typed_python_exception_metadata_cannot_break_an_otherwise_representable_failure_frame() {
+    use brassclaw_monty_host::process::{RecipeCommand, RecipeEvent};
+    let mut configuration = boot(SOURCE);
+    configuration.bounds.values.max_value_bytes = 48 * 1024;
+    let mut framing = limits();
+    framing.max_frame_bytes = 64 * 1024;
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, framing)
+        .await
+        .unwrap();
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: task(),
+        })
+        .await
+        .unwrap();
+    let task = admitted.admitted_task.unwrap();
+    let Some(ProcessBoundary::HostCall { key, .. }) = admitted.boundary else {
+        panic!("actual root admission required")
+    };
+    process
+        .exchange(WorkerCommand::Defer { key })
+        .await
+        .unwrap();
+    let context = open_context(&mut process, task, None).await;
+    let message = "x".repeat(35000);
+    let error = process
+        .exchange(WorkerCommand::Recipe {
+            command: RecipeCommand::Start {
+                context,
+                selected: selected("raise ValueError(inputs['text'])", &[]),
+                inputs: json!({"text":message}),
+            },
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ProcessFailure::Vm(VmFailure::Python));
+    assert!(
+        error.diagnostic.as_deref().unwrap().contains(&message),
+        "complete actual legacy diagnostic must survive"
+    );
+    assert!(
+        error.python_exception.is_none(),
+        "optional typed metadata must be omitted when its complete enriched reply cannot fit"
+    );
+    let snapshot = error.snapshot.unwrap();
+    assert_eq!(snapshot.lifecycle, Lifecycle::Ready);
+    assert_eq!(snapshot.root, ready.root);
+    assert!(
+        matches!(snapshot.recipe,Some(RecipeEvent::Failed {context:Some(actual),..}) if actual==context)
+    );
+    let released = recipe_command(&mut process, RecipeCommand::CancelContext { context }).await;
+    assert_eq!(released.recipe_context_capacity.unwrap().active, 0);
+    assert_eq!(
+        process.exchange(WorkerCommand::Inspect).await.unwrap().root,
+        ready.root
     );
     assert!(process.terminate().await.is_some());
 }

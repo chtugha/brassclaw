@@ -108,6 +108,7 @@ pub(crate) fn source_inventory_candidate_tools(
         program,
         runtimes,
         kernel,
+        pure_case: None,
         credential_policies: BTreeMap::new(),
         credentials: crate::task_tool_credentials::CapturedToolCredentials::Uncaptured,
         mounts: MountView::default(),

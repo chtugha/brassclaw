@@ -104,6 +104,13 @@ pub(crate) trait MontyKernelSnapshot: Send + Sync {
         sink: Arc<dyn brassclaw_host_runtime::SourceInspectionObservationSink>,
         policy: Arc<dyn InstanceToolPolicySource>,
     ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
+    fn pure_case_with_policy(
+        &self,
+        expected: NativeImplementationRef,
+        scope: &brassclaw_host_api::ResourceScope,
+        operation: Arc<dyn brassclaw_host_runtime::RuntimePureCasePort>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError>;
     fn child_with_policy(
         &self,
         expected: NativeImplementationRef,
@@ -294,6 +301,20 @@ impl<F: RootFilesystem + 'static, G: ResourceGovernor + 'static> MontyKernelSnap
             &scope,
             arguments,
             sink,
+            Arc::new(InstanceToolAuthorizer::new(policy)),
+        )
+    }
+    fn pure_case_with_policy(
+        &self,
+        expected: NativeImplementationRef,
+        scope: &brassclaw_host_api::ResourceScope,
+        operation: Arc<dyn brassclaw_host_runtime::RuntimePureCasePort>,
+        policy: Arc<dyn InstanceToolPolicySource>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        self.retain_native_with_pure_case(
+            expected,
+            scope,
+            operation,
             Arc::new(InstanceToolAuthorizer::new(policy)),
         )
     }

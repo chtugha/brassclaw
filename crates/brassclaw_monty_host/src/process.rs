@@ -39,15 +39,15 @@ use crate::heap::{
 use crate::process_recipe::WorkerRecipes;
 pub use crate::process_recipe::{
     RecipeBoundary, RecipeCommand, RecipeContextCapacity, RecipeContextId, RecipeEvent,
-    ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
+    RecipePendingHost, ReleasedContext, SelectedPython, TaskAccounting, TaskHandle, TaskSettings,
 };
 
 #[path = "process_answer.rs"]
 mod answer;
 
-// Version 20 transports exact dependent-slot ownership with pool observations.
+// Version 21 adds original Python exception data and exact paused Recipe-host witnesses.
 // Reject older workers before readiness rather than claiming false capacity.
-const PROTOCOL: u32 = 20;
+const PROTOCOL: u32 = 21;
 #[path = "process_pool_projection.rs"]
 mod pool_projection;
 // Leave space for the protocol wrapper under serde_json's receive depth limit
@@ -497,6 +497,28 @@ struct Request<C = WorkerCommand> {
     max_frame_bytes: usize,
     command: C,
 }
+/// Actual worker exception data, separate from display diagnostics. The enclosing
+/// actor receipt binds this record to its original command and context. It is
+/// observation only; Python exceptions are not necessarily expected domain errors.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PythonExceptionObservation {
+    format: String,
+    class: String,
+    message: Option<String>,
+}
+impl PythonExceptionObservation {
+    pub fn class(&self) -> &str {
+        &self.class
+    }
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
+    }
+    pub fn has_supported_format(&self) -> bool {
+        self.format == "native-python-exception/1"
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Reply<S = ProcessSnapshot> {
@@ -506,6 +528,8 @@ struct Reply<S = ProcessSnapshot> {
     snapshot: S,
     failure: Option<VmFailure>,
     diagnostic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    python_exception: Option<PythonExceptionObservation>,
 }
 
 fn validate_dependent_frame(
@@ -575,6 +599,26 @@ fn validate_dependent_frame(
             snapshot: &snapshot,
             failure: None,
             diagnostic: None,
+            python_exception: None,
+        },
+        accepted_frame,
+    )
+    .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let original_recipe = snapshot
+        .recipe
+        .replace(RecipeEvent::pure_release_frame_projection());
+    if let Some(capacity) = snapshot.recipe_context_capacity.as_mut() {
+        capacity.active = capacity.active.max(capacity.limit as usize);
+    }
+    encode(
+        &Reply {
+            protocol: PROTOCOL,
+            sequence: u64::MAX,
+            max_frame_bytes: accepted_frame,
+            snapshot: &snapshot,
+            failure: None,
+            diagnostic: None,
+            python_exception: None,
         },
         accepted_frame,
     )
@@ -585,7 +629,69 @@ fn validate_dependent_frame(
         .expect("validated pool")
         .capacity
         .desired;
+    // Future membership must fit the new witness too, not only today's pool.
+    pool_projection::validate(&snapshot, target, accepted_frame)?;
+    snapshot.recipe = original_recipe;
     pool_projection::validate(&snapshot, target, accepted_frame)
+}
+
+/// Preflight the exact requested release before dropping any context. The
+/// parent witness is obtained again after actual release; this preview confers
+/// no release/continuation authority. No all-paused-context inventory is emitted.
+fn validate_context_release_frame(
+    root: &GlobalVm,
+    registry: &WorkerRecipes,
+    heap: &WorkerHeap,
+    plan: &crate::process_recipe::ContextReleasePlan,
+    accepted_frame: usize,
+) -> Result<(), crate::VmError> {
+    let event = registry.project_context_release(plan, accepted_frame)?;
+    let count = match &event {
+        RecipeEvent::Released { contexts, .. } => contexts.len(),
+        _ => unreachable!(),
+    };
+    let mut capacity = registry.context_capacity();
+    capacity.active = capacity
+        .active
+        .checked_sub(count)
+        .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
+    let snapshot = ProcessSnapshot {
+        worker_pool: WorkerPoolSnapshot::from_root(root),
+        pending_call_capacity: Some(root.pending_call_capacity()),
+        allocator: heap.allocator_status(),
+        frame: heap.frame_status(),
+        vm_live_bytes: usize::MAX,
+        root: Some(root.execution_identity()),
+        heap: heap.status(),
+        lifecycle: root.lifecycle(),
+        boundary: None,
+        work_waits: root.work_waits(),
+        outstanding: root.outstanding(),
+        stdout: String::new(),
+        admitted_task: None,
+        recipe: Some(event),
+        effective_task_settings: Some(registry.settings()),
+        vm_bounds: Some(registry.bounds()),
+        recipe_context_capacity: Some(capacity),
+        task_accounting: registry.accounting(),
+        withheld_answers: Vec::new(),
+    };
+    // Release executes no root Python and produces no new root stdout/withheld
+    // answer. Actual child stdout/key bytes are included by the exact preview.
+    encode(
+        &Reply {
+            protocol: PROTOCOL,
+            sequence: u64::MAX,
+            max_frame_bytes: accepted_frame,
+            snapshot: &snapshot,
+            failure: None,
+            diagnostic: None,
+            python_exception: None,
+        },
+        accepted_frame,
+    )
+    .map(|_| ())
+    .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))
 }
 
 /// Size the actual control wire representation without changing VM state or
@@ -696,7 +802,7 @@ fn validate_candidate_frame(
         task_accounting: accounting,
         withheld_answers: Vec::new(),
     };
-    let check = |snapshot: &ProcessSnapshot| {
+    let encode_snapshot = |snapshot: &ProcessSnapshot| {
         encode(
             &Reply {
                 protocol: PROTOCOL,
@@ -705,16 +811,37 @@ fn validate_candidate_frame(
                 snapshot,
                 failure: None,
                 diagnostic: None,
+                python_exception: None,
             },
             frame.configured_frame_bytes,
         )
         .map(|_| ())
         .map_err(|_| crate::VmError::kind(VmFailure::InvalidBounds))
     };
-    check(&projection)?;
-    if let Some(workers) = candidate.max_workers {
-        pool_projection::validate(&projection, workers, frame.configured_frame_bytes)?;
+    let check = |snapshot: &mut ProcessSnapshot| {
+        let validate = |snapshot: &ProcessSnapshot| {
+            encode_snapshot(snapshot)?;
+            if let Some(workers) = candidate.max_workers {
+                pool_projection::validate(snapshot, workers, frame.configured_frame_bytes)?;
+            }
+            Ok::<(), crate::VmError>(())
+        };
+        validate(snapshot)?;
+        let settings_event = snapshot
+            .recipe
+            .replace(RecipeEvent::pure_release_frame_projection());
+        let release = validate(snapshot);
+        snapshot.recipe = settings_event;
+        release
+    };
+    if let Some(capacity) = projection.recipe_context_capacity.as_mut() {
+        // The new witness is constant-sized for one parent/child, independent
+        // of proposed context count. Reserve numeric width under the proposed
+        // context policy as well as the existing over-limit retained count.
+        capacity.active = capacity.active.max(capacity.limit as usize);
     }
+    check(&mut projection)?;
+
     // A pending automatic heap target can become feasible after the coupled
     // reserve update. Validate both possible acknowledgements, without applying it.
     if heap_status.pending_reduction
@@ -726,7 +853,7 @@ fn validate_candidate_frame(
             .max_vm_bytes
             .checked_add(non_vm)
             .ok_or_else(|| crate::VmError::kind(VmFailure::InvalidBounds))?;
-        check(&projection)?;
+        check(&mut projection)?;
     }
     for command in [
         WorkerCommand::Inspect,
@@ -770,6 +897,7 @@ pub struct ProcessError {
     pub command: Option<Box<WorkerCommand>>,
     pub snapshot: Option<Box<ProcessSnapshot>>,
     pub diagnostic: Option<String>,
+    pub python_exception: Option<PythonExceptionObservation>,
     pub exit_status: Option<ExitStatus>,
     pub containment_error: Option<io::Error>,
     pub reap_error: Option<io::Error>,
@@ -781,6 +909,7 @@ impl ProcessError {
             command: None,
             snapshot: None,
             diagnostic: None,
+            python_exception: None,
             exit_status: None,
             containment_error: None,
             reap_error: None,
@@ -1186,6 +1315,7 @@ impl GlobalProcess {
                 .map(|request| Box::new(request.command));
             error.snapshot = Some(Box::new(reply.snapshot));
             error.diagnostic = reply.diagnostic;
+            error.python_exception = reply.python_exception;
             guard.owner.attach_failures(&mut error);
             return Err(error);
         }
@@ -1498,10 +1628,13 @@ pub(crate) fn write_frame(
     limit: usize,
 ) -> io::Result<()> {
     let bytes = encode(reply, limit)?;
+    write_encoded_frame(output, &bytes)
+}
+fn write_encoded_frame(output: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
     let length = u32::try_from(bytes.len())
         .map_err(|_| io::Error::other("frame length exceeds wire representation"))?;
     output.write_all(&length.to_be_bytes())?;
-    output.write_all(&bytes)?;
+    output.write_all(bytes)?;
     output.flush()
 }
 
@@ -1826,6 +1959,24 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                                 Ok(None)
                             }
                         }
+                        WorkerCommand::Recipe {
+                            command: RecipeCommand::CancelContext { context },
+                        } => registry
+                            .prepare_context_release(context)
+                            .and_then(|plan| {
+                                validate_context_release_frame(
+                                    root,
+                                    registry,
+                                    &heap,
+                                    &plan,
+                                    request.max_frame_bytes,
+                                )?;
+                                registry.apply_context_release(plan)
+                            })
+                            .map(|event| {
+                                recipe = Some(event);
+                                None
+                            }),
                         WorkerCommand::Recipe { command } => {
                             registry.apply(command, root).map(|event| {
                                 recipe = Some(event);
@@ -1890,19 +2041,43 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             }
         };
-        let (boundary, failure, diagnostic, failed_stdout) = match result {
+        // Render the legacy diagnostic, then move the actual exception's
+        // message into the typed view. Do not allocate a third full copy of a
+        // large candidate message before bounded reply encoding can reject it.
+        let (boundary, failure, diagnostic, failed_stdout, python_exception) = match result {
             Ok(boundary) => (
                 boundary.map(ProcessBoundary::from),
                 None,
                 None,
                 String::new(),
-            ),
-            Err(error) => (
                 None,
-                Some(error.failure),
-                error.exception.map(|error| error.to_string()),
-                error.stdout,
             ),
+            Err(error) => {
+                let (diagnostic, python_exception) = match error.exception {
+                    Some(exception) => {
+                        let diagnostic = exception.to_string();
+                        let typed = if error.failure == VmFailure::Python {
+                            let class: &'static str = exception.exc_type().into();
+                            Some(PythonExceptionObservation {
+                                format: "native-python-exception/1".into(),
+                                class: class.into(),
+                                message: (*exception).into_message(),
+                            })
+                        } else {
+                            None
+                        };
+                        (Some(diagnostic), typed)
+                    }
+                    None => (None, None),
+                };
+                (
+                    None,
+                    Some(error.failure),
+                    diagnostic,
+                    error.stdout,
+                    python_exception,
+                )
+            }
         };
         let failed_stdout = if recipe_command && failure.is_some() {
             recipe = Some(RecipeEvent::Failed {
@@ -1977,19 +2152,31 @@ pub fn worker_main() -> Result<(), Box<dyn std::error::Error>> {
         snapshot.frame = heap.frame_status();
         snapshot.vm_live_bytes = monty_alloc::vm_live_bytes();
         let stopped = snapshot.lifecycle == Lifecycle::Stopped;
-        write_frame(
-            &mut output,
-            &Reply {
-                protocol: PROTOCOL,
-                sequence,
-                max_frame_bytes: request.max_frame_bytes,
-                snapshot,
-                failure,
-                diagnostic,
-            },
-            request.max_frame_bytes,
-        )
-        .map_err(|_| io::Error::other("worker reply failed"))?;
+        let mut reply = Reply {
+            protocol: PROTOCOL,
+            sequence,
+            max_frame_bytes: request.max_frame_bytes,
+            snapshot,
+            failure,
+            diagnostic,
+            python_exception,
+        };
+        // Optional typed observation must not turn an otherwise transportable
+        // ordinary Python failure into a broken global worker. Encode before
+        // writing anything. If only the enriched frame cannot fit, preserve the
+        // complete original diagnostic/failure; the private case adapter then
+        // rejects missing typed evidence instead of inventing a domain outcome.
+        // This retries serialization only, never Python, a Tool or any command.
+        let encoded = match encode(&reply, request.max_frame_bytes) {
+            Ok(bytes) => bytes,
+            Err(_) if reply.python_exception.is_some() => {
+                reply.python_exception = None;
+                encode(&reply, request.max_frame_bytes)?
+            }
+            Err(error) => return Err(error.into()),
+        };
+        write_encoded_frame(&mut output, &encoded)
+            .map_err(|_| io::Error::other("worker reply failed"))?;
         if stopped {
             return Ok(());
         }

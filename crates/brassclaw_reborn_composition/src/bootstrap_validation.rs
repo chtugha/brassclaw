@@ -31,6 +31,7 @@ use uuid::Uuid;
 mod host;
 
 pub(super) const NAMESPACE: &str = "bootstrap-validation";
+pub(super) const INSTALLATION_ACTOR: &str = "installation-owner";
 
 // Fixed transport-only root: register every configured native slot, then hold
 // the admitted task while the existing closed qualifier drives its pinned steps.
@@ -345,7 +346,7 @@ async fn prepare_admission(
 ) -> Result<Admitted, RebornBuildError> {
     let tenant = TenantId::new(NAMESPACE).map_err(invalid)?;
     let agent = AgentId::new(identity).map_err(invalid)?;
-    let actor = UserId::new("installation-owner").map_err(invalid)?;
+    let actor = UserId::new(INSTALLATION_ACTOR).map_err(invalid)?;
     let (project, owner) = match mode {
         AdmissionMode::Contained => (Some(ProjectId::new("contained").map_err(invalid)?), None),
         AdmissionMode::ModelContained(_) => (None, Some(actor.clone())),

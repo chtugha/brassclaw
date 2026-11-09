@@ -41,6 +41,11 @@ where
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "purpose", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PrivateOriginalRef {
+    #[serde(rename = "original_pure_case/1")]
+    OriginalPureCaseV1 {
+        case_id: Uuid,
+        case_checksum: [u8; 32],
+    },
     ValidatorStructural {
         submission_id: Uuid,
         subject_checksum: [u8; 32],

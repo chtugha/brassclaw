@@ -1136,8 +1136,6 @@ mod bootstrap_encoding_fixture;
 mod bootstrap_encoding_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_evidence;
-#[cfg(feature = "postgres")]
-mod pg_transaction_client;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_free_workflow_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
@@ -1166,6 +1164,8 @@ mod bootstrap_validation;
 mod bootstrap_validator_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_workflow_evidence;
+#[cfg(feature = "postgres")]
+mod pg_transaction_client;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod prefix_bootstrap_setup;
 #[cfg(feature = "skills-db")]
@@ -1188,6 +1188,18 @@ mod model_encoding;
 mod model_quote_settings;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod monty_kernel;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_evidence;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_execution;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_original;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_qualification;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_settlement;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod pure_case_source;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod resource_store_settings;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]

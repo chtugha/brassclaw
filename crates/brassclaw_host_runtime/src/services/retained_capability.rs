@@ -317,6 +317,36 @@ where
         bound.retain_native(&capability, expected)
     }
 
+    /// Bind the checked single original operation to the actual registered native
+    /// handler and exact invocation scope. Input JSON cannot create this service.
+    pub fn retain_native_with_pure_case(
+        &self,
+        expected: crate::NativeImplementationRef,
+        scope: &brassclaw_host_api::ResourceScope,
+        operation: Arc<dyn crate::RuntimePureCasePort>,
+        authorizer: Arc<dyn brassclaw_authorization::TrustAwareCapabilityDispatchAuthorizer>,
+    ) -> Result<RetainedFirstPartyCapability, RetainedCapabilityError> {
+        let capability = CapabilityId::new(crate::PURE_CASE_CAPABILITY_ID)
+            .map_err(|_| RetainedCapabilityError::InconsistentDeclaration)?;
+        self.native_descriptor(&capability, expected)?;
+        let bound = Self {
+            registry: self.registry.clone(),
+            registrations: self.registrations.clone(),
+            kernel: self.kernel.retain_authorizer(authorizer),
+            builtin_obligations: self.builtin_obligations.clone(),
+            filesystem: self.filesystem.clone(),
+            governor: self.governor.clone(),
+            services: Arc::new(crate::pure_case_port::PureCaseBoundServices::new(
+                self.services.clone(),
+                scope.clone(),
+                operation,
+            )),
+            policy: self.policy.clone(),
+            events: self.events.clone(),
+        };
+        bound.retain_native(&capability, expected)
+    }
+
     /// Bind one host-owned child operation to the exact native subagent Tool.
     /// The original handler, declaration, artifact, planner and substrate stay
     /// retained; the supplied authorizer still checks every actual invocation.

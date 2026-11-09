@@ -49,6 +49,8 @@ pub mod memory_context;
 mod memory_embedding_port;
 mod memory_probe;
 mod native_image;
+mod pure_case_port;
+pub use pure_case_port::{PURE_CASE_CAPABILITY_ID, RuntimePureCasePort};
 mod source_inspection_fixture;
 pub use source_inspection_fixture::{
     RetainedSourceInspectionFixture, SourceInspectionDispatchObservation,

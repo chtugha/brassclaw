@@ -17,6 +17,7 @@ pub(crate) struct ReviewWorkReconciler {
     catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
     context: PrivateExecutionContext,
     cursor: tokio::sync::Mutex<Option<(DateTime<Utc>, Uuid)>>,
+    case_cursor: tokio::sync::Mutex<Option<(DateTime<Utc>, Uuid)>>,
 }
 fn invalid() -> AgentLoopDriverError {
     AgentLoopDriverError::Failed {
@@ -39,6 +40,73 @@ impl ReviewWorkReconciler {
             catalogue,
             context,
             cursor: tokio::sync::Mutex::new(None),
+            case_cursor: tokio::sync::Mutex::new(None),
+        }
+    }
+    /// Existing lifecycle participant discovers case originals independently of
+    /// review confirmations. It never creates Work or replays a native case.
+    async fn reconcile_cases(
+        &self,
+        capacity: i64,
+        deadline: std::time::Duration,
+    ) -> Result<(), AgentLoopDriverError> {
+        let mut cursor = self.case_cursor.lock().await;
+        let (after_time, after_id) = cursor
+            .as_ref()
+            .map(|(time, id)| (Some(*time), Some(*id)))
+            .unwrap_or((None, None));
+        let rows=tokio::time::timeout(deadline,async {
+            let client=self.pool.get().await.map_err(|_|unavailable())?;
+            client.query("SELECT c.recorded_at,c.case_id,c.execution_context FROM reborn_original_pure_cases c
+                WHERE ($1::timestamptz IS NULL OR (c.recorded_at,c.case_id)>($1,$2::uuid))
+                AND EXISTS(SELECT 1 FROM brassclaw_monty_private_deliveries d WHERE d.work_id=c.case_id)
+                AND NOT EXISTS(SELECT 1 FROM reborn_original_pure_case_settlements s WHERE s.case_id=c.case_id)
+                ORDER BY c.recorded_at,c.case_id LIMIT $3",&[&after_time,&after_id,&capacity]).await.map_err(|_|unavailable())
+        }).await.map_err(|_|unavailable())??;
+        if rows.is_empty() {
+            *cursor = None;
+            return Ok(());
+        }
+        let mut first_error = None;
+        for row in rows {
+            let id: Uuid = row.get(1);
+            *cursor = Some((row.get(0), id));
+            let result = match serde_json::from_value::<PrivateExecutionContext>(row.get(2)) {
+                Err(_) => Err(invalid()),
+                Ok(context) => {
+                    if context.tenant_id != self.context.tenant_id
+                        || context.agent_id != self.context.agent_id
+                        || context.project_id != self.context.project_id
+                    {
+                        continue;
+                    }
+                    crate::pure_case_settlement::settle(
+                        &self.pool,
+                        id,
+                        &context,
+                        &self.catalogue.pure_source_review,
+                        deadline,
+                    )
+                    .await
+                }
+            };
+            match result {
+                Ok(Some(original)) => {
+                    tracing::debug!(case_id=%original.original().id(),settlement_checksum=%hex::encode(original.checksum()),
+                        observation_bytes=original.observation_bytes().len(),"original Pure case delivery acknowledged");
+                }
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(case_id=%id,%error,"original Pure case delivery remains unresolved");
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
         }
     }
     #[cfg(test)]
@@ -66,6 +134,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
             .map_err(|_| unavailable())?;
         let capacity = i64::from(policy.max_pending_ownership_checks);
         let deadline = std::time::Duration::from_millis(policy.resource_store_timeout_millis);
+        let case_error = self.reconcile_cases(capacity, deadline).await.err();
         let mut cursor = self.cursor.lock().await;
         let (after_time, after_id) = cursor
             .as_ref()
@@ -80,9 +149,9 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
         }).await.map_err(|_|unavailable())??;
         if rows.is_empty() {
             *cursor = None;
-            return Ok(());
+            return case_error.map_or(Ok(()), Err);
         }
-        let mut first_error = None;
+        let mut first_error = case_error;
         for row in rows {
             let id: Uuid = row.get(1);
             *cursor = Some((row.get(0), id));

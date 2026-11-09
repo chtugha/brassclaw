@@ -31,6 +31,32 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for Install
             reason: "private domain original mismatch".into(),
         };
         match request.original() {
+            PrivateOriginalRef::OriginalPureCaseV1 {
+                case_id,
+                case_checksum,
+            } => {
+                let case = crate::pure_case_original::CheckedOriginalPureCase::read(
+                    tx,
+                    &self.pure_source_review,
+                    *case_id,
+                    request.context(),
+                )
+                .await
+                .map_err(|_| error())?
+                .ok_or_else(error)?;
+                if case.checksum() != *case_checksum
+                    || request.work_id() != *case_id
+                    || request.run_id().as_uuid() != *case_id
+                    || self.private_work_context.get().is_none_or(|context| {
+                        context.tenant_id != request.context().tenant_id
+                            || context.agent_id != request.context().agent_id
+                            || context.project_id != request.context().project_id
+                    })
+                {
+                    return Err(error());
+                }
+            }
+
             PrivateOriginalRef::PrefixSourceOnly {
                 job_id,
                 definition_checksum,
@@ -754,6 +780,35 @@ impl InstalledMontyCatalogue {
             .await
             .map_err(|_| failed())?;
         match captured.domain() {
+            DomainCapture::OriginalPureCaseV1 { .. } => {
+                let case = self
+                    .read_private_case_for_dispatch(&tx, claim, &captured)
+                    .await
+                    .map_err(|_| failed())?;
+                let qualified = self.case_harness.as_ref().ok_or_else(failed)?;
+                tx.commit().await.map_err(|_| failed())?;
+                drop(client);
+                let source = crate::pure_case_source::CaseSource::new(
+                    case,
+                    qualified,
+                    &self.worker_image,
+                    captured.preparation(),
+                    self.kernel.clone(),
+                    host,
+                    admission,
+                    Arc::new(crate::pure_case_evidence::EvidenceStore {
+                        pool: self.pool.clone(),
+                        storage: self.resource_store_settings.clone(),
+                    }),
+                )
+                .await
+                .map_err(|_| failed())?;
+                Ok(crate::global_task_factory::CapturedPrivateRecipe {
+                    definition: captured,
+                    source,
+                })
+            }
+
             DomainCapture::PrefixSourceOnly { job_id } => {
                 let definition =
                     crate::prefix_job_definitions::Store::get_in_transaction(&tx, *job_id)

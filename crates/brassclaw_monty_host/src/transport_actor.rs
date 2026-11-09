@@ -148,6 +148,13 @@ impl HostingDeadlines {
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct RequestId(Uuid);
+impl RequestId {
+    /// Observation/correlation only, never authority to submit or replay work.
+    pub fn as_uuid(self) -> Uuid {
+        self.0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActorFailure {
     Backpressure,
@@ -338,6 +345,19 @@ impl CompletionInbox {
             .keys()
             .copied()
             .collect())
+    }
+    /// Passive ownership facts only; this neither collects a result/refunds
+    /// credit nor permits submitting or replaying a request.
+    pub fn request_observation(&self, id: RequestId) -> Result<(bool, bool), ActorFailure> {
+        let ledger = self
+            .ledger
+            .lock()
+            .map_err(|_| ActorFailure::AccountingUnavailable)?;
+        let record = ledger
+            .records
+            .get(&id)
+            .ok_or(ActorFailure::UnknownRequest)?;
+        Ok((record.transport_started, record.outcome.is_some()))
     }
     pub fn try_take(&self, id: RequestId) -> Result<TransportReceipt, ActorFailure> {
         let mut ledger = self

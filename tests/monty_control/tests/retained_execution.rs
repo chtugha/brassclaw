@@ -215,6 +215,10 @@ impl RetainedToolPort for KernelPort {
         arguments: Value,
     ) -> PortAnswer {
         assert_eq!(invocation.task(), self.task);
+        assert!(
+            invocation.pure_context().is_none(),
+            "ordinary JSON bindings must not receive the original-Pure execution seam"
+        );
         let selected = &self.prepared.bindings()[invocation.step_id()];
         assert_eq!(selected.tool(), binding.tool());
         assert_eq!(selected.python(), binding.python());
@@ -911,6 +915,7 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
     let Some(RecipeEvent::Released {
         task: None,
         contexts,
+        ..
     }) = released.recipe
     else {
         panic!("actual task context release required")

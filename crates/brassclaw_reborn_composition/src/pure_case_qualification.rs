@@ -1,0 +1,824 @@
+//! Controlled installation qualification of the narrow original-invocation
+//! primitive, its usage, independent encoder and private consuming harness.
+//! The installed authored-case constructor remains separate from seed fixtures.
+use std::sync::Arc;
+
+use crate::{
+    bootstrap_evidence::{self as evidence, io},
+    bootstrap_validator_approval::{CheckedCaseEncoder, SessionInput},
+};
+use brassclaw_engine::{
+    executor::retained_recipe::RetainedProgram,
+    memory::{
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
+        retained_tools::{RetainedToolProgram, prepare_retained_tool_program},
+    },
+};
+use brassclaw_host_api::CapabilityId;
+use brassclaw_pg::PgPool;
+use brassclaw_skills::{
+    component_revision::{ComponentRevisionDraft, REVISION_LIMITS},
+    pure_case_components,
+    revision_store::PgComponentRevisionStore,
+};
+use serde_json::{Value, json};
+use uuid::Uuid;
+
+use crate::{
+    RebornBuildError, bootstrap_reply_validation::invalid, monty_kernel::MontyKernelSnapshot,
+    source_inspection_components::PackagedDefinitions,
+};
+
+#[path = "pure_case_seed_fixture.rs"]
+mod seed;
+
+pub(crate) struct PackagedCaseGraph {
+    pub(crate) program: Arc<RetainedToolProgram>,
+    definitions: PackagedDefinitions,
+    qualification: Arc<RetainedToolProgram>,
+}
+
+async fn retain(
+    pool: Arc<PgPool>,
+    kernel: &dyn MontyKernelSnapshot,
+    tenant: &str,
+) -> Result<PackagedCaseGraph, RebornBuildError> {
+    let capability =
+        CapabilityId::new(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID).map_err(invalid)?;
+    let native = kernel.builtin(&capability, None).map_err(invalid)?;
+    native.verify_native_artifact().await.map_err(invalid)?;
+    let identity = native
+        .native_identity()
+        .ok_or_else(|| invalid("original Pure native implementation missing"))?;
+    let tool = crate::builtin_bootstrap::seed_pure_case_tool(pool.clone(), tenant)
+        .await
+        .map_err(invalid)?;
+    if tool != pure_case_components::usage_ids().tool {
+        return Err(invalid("original Pure Tool identity differs"));
+    }
+    let draft=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":tool,
+        "class_code":0,"document":{"capability_id":capability.as_str(),"callable":"host.invoke_original_pure_case",
+            "implementation":{"identity":identity},"input_contract":{}},"dependencies":[],"association":null}).to_string())
+        .map_err(invalid)?;
+    let store = PgComponentRevisionStore::new(pool.clone());
+    let mut definitions = PackagedDefinitions::default();
+    definitions.retain(&store, &draft).await?;
+    for draft in pure_case_components::drafts().map_err(invalid)? {
+        definitions.retain(&store, &draft).await?;
+    }
+    pool.get()
+        .await
+        .map_err(invalid)?
+        .execute(
+            "INSERT INTO brassclaw_instance_tool_settings(tool_id)
+        VALUES($1) ON CONFLICT(tool_id) DO NOTHING",
+            &[&tool],
+        )
+        .await
+        .map_err(invalid)?;
+    let qualification_recipe = pure_case_components::qualification_recipe().map_err(invalid)?;
+    definitions.retain(&store, &qualification_recipe).await?;
+    let qualification_snapshot = definitions
+        .snapshot(pool.clone(), qualification_recipe.uuid())
+        .await?;
+    let qualification = Arc::new(
+        prepare_retained_tool_program(
+            compile_retained_recipe(
+                qualification_snapshot,
+                qualification_recipe.uuid(),
+                "selected",
+                WorkflowClass::Deterministic,
+            )
+            .map_err(invalid)?,
+        )
+        .map_err(invalid)?,
+    );
+    let snapshot = definitions
+        .snapshot(pool, pure_case_components::usage_ids().recipe)
+        .await?;
+    let program = Arc::new(
+        prepare_retained_tool_program(
+            compile_retained_recipe(
+                snapshot,
+                pure_case_components::usage_ids().recipe,
+                "selected",
+                WorkflowClass::Deterministic,
+            )
+            .map_err(invalid)?,
+        )
+        .map_err(invalid)?,
+    );
+    Ok(PackagedCaseGraph {
+        program,
+        definitions,
+        qualification,
+    })
+}
+
+/// The capability remains private; no public active catalogue is manufactured.
+/// Only this installation owner's completed exact proof can construct the view.
+pub(crate) struct QualifiedCaseHarness {
+    program: Arc<RetainedToolProgram>,
+    proof_id: uuid::Uuid,
+    proof_bytes: String,
+    context: Arc<Context>,
+    encoder: CheckedCaseEncoder,
+    prerequisites: Vec<(Uuid, String)>,
+}
+impl QualifiedCaseHarness {
+    pub(crate) fn program(&self) -> Arc<RetainedToolProgram> {
+        self.program.clone()
+    }
+    pub(crate) async fn require(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+    ) -> Result<(), RebornBuildError> {
+        let actual = crate::bootstrap_evidence::read_evidence(tx, self.proof_id)
+            .await?
+            .ok_or_else(|| invalid("original Pure harness qualification missing"))?;
+        if actual != self.proof_bytes {
+            return Err(invalid("original Pure harness qualification differs"));
+        }
+        for (id, bytes) in &self.prerequisites {
+            if evidence::read_evidence(tx, *id).await?.as_deref() != Some(bytes.as_str()) {
+                return Err(invalid("original Pure harness prerequisite differs"));
+            }
+        }
+        let binding = self
+            .prerequisites
+            .iter()
+            .find_map(|(_, bytes)| {
+                serde_json::from_str::<Value>(bytes).ok().filter(|value| {
+                    value["report"]["format"] == "original-pure-tool-skill-qualification/1"
+                })
+            })
+            .ok_or_else(|| invalid("original Pure binding qualification absent"))?;
+        if binding["report"]["argument_checks"] != self.context.binding_checks()? {
+            return Err(invalid("original Pure binding negative checks differ"));
+        }
+        let encoder = self.encoder.verify(tx, &self.program).await?;
+        let final_record: Value = serde_json::from_str(&self.proof_bytes).map_err(invalid)?;
+        if final_record["report"]["encoder"] != serde_json::to_value(encoder).map_err(invalid)? {
+            return Err(invalid("original Pure harness encoder proof differs"));
+        }
+        for spec in specs() {
+            let bytes =
+                evidence::read_evidence(tx, self.context.id(&format!("{}:complete", spec.name)))
+                    .await?
+                    .ok_or_else(|| invalid("original Pure harness stage missing"))?;
+            self.context
+                .verify_stage_bytes_in_transaction(tx, &spec, &bytes)
+                .await?;
+            let expected =
+                brassclaw_skills::review_submission_store::selection::SourceProofReference {
+                    id: self.context.id(&format!("{}:complete", spec.name)),
+                    checksum: evidence::checksum(&bytes),
+                };
+            if !final_record["report"]["completed"]
+                .as_array()
+                .is_some_and(|refs| refs.contains(&json!(expected)))
+            {
+                return Err(invalid(
+                    "original Pure harness final stage reference differs",
+                ));
+            }
+        }
+        // Exact retained graph selection remains immutable for this private use.
+        for revision in self
+            .program
+            .inputs()
+            .instruction()
+            .snapshot()
+            .revisions()
+            .values()
+        {
+            PgComponentRevisionStore::read_revision_in_transaction(tx, revision.reference())
+                .await
+                .map_err(invalid)?;
+        }
+        Ok(())
+    }
+}
+
+struct Spec {
+    name: &'static str,
+    export: &'static str,
+    expected: Value,
+    raw: bool,
+}
+fn specs() -> Vec<Spec> {
+    let exception = |class, message| {
+        json!({"kind":"python_exception","exception":{
+        "format":"native-python-exception/1","class":class,"message":message}})
+    };
+    vec![
+        Spec {
+            name: "primitive-return",
+            export: "native_case_return",
+            expected: json!({"kind":"return","value":"closed original Ü"}),
+            raw: true,
+        },
+        Spec {
+            name: "primitive-exception",
+            export: "native_case_exception",
+            expected: exception("ValueError", "closed original exception"),
+            raw: true,
+        },
+        Spec {
+            name: "primitive-unexpected",
+            export: "native_case_unexpected",
+            expected: exception("TypeError", "closed unexpected exception"),
+            raw: true,
+        },
+        Spec {
+            name: "primitive-output-contract",
+            export: "native_case_output_defect",
+            expected: json!({"kind":"result_contract_violation","value":7}),
+            raw: true,
+        },
+        Spec {
+            name: "skill-code-function",
+            export: "native_case_return",
+            expected: json!({"kind":"return","value":"closed original Ü"}),
+            raw: true,
+        },
+        Spec {
+            name: "private-harness-exception",
+            export: "native_case_exception",
+            expected: exception("ValueError", "closed original exception"),
+            raw: false,
+        },
+    ]
+}
+
+struct Context {
+    base: SessionInput,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    graph: PackagedCaseGraph,
+    instrument: Arc<brassclaw_engine::executor::retained_source::InspectedPureSelection>,
+    manifest: Value,
+    manifest_checksum: String,
+    operation: Uuid,
+    components: Vec<Value>,
+    association: String,
+}
+impl Context {
+    fn id(&self, name: &str) -> Uuid {
+        Uuid::new_v5(&self.operation, name.as_bytes())
+    }
+    fn record(&self, id: Uuid, kind: &str, complete: bool, report: Value) -> String {
+        evidence::system_record(
+            id,
+            kind,
+            complete,
+            &self.association,
+            &self.components,
+            report,
+        )
+    }
+    fn program(&self, spec: &Spec) -> Arc<RetainedToolProgram> {
+        if spec.raw {
+            self.graph.qualification.clone()
+        } else {
+            self.graph.program.clone()
+        }
+    }
+    fn binding_checks(&self) -> Result<Value, RebornBuildError> {
+        let binding = &self.graph.program.bindings()["0:2"];
+        let bounds = self.base.preparation.limits().bounds;
+        let limits = brassclaw_skills::value_contract::ContractLimits {
+            max_depth: bounds.max_value_depth,
+            max_nodes: bounds.max_value_nodes,
+            max_bytes: bounds.max_value_bytes,
+        };
+        let empty = binding
+            .bind_tool_arguments_with_limits(&json!({}), &json!({}), limits)
+            .map_err(invalid)?;
+        if empty != json!({}) {
+            return Err(invalid("original Pure binding changed empty arguments"));
+        }
+        let mut checks = Vec::new();
+        for (name, arguments) in [
+            ("null", Value::Null),
+            ("array", json!([])),
+            ("source", json!({"source":"caller code"})),
+            ("export", json!({"export":"caller export","inputs":{}})),
+            ("authority", json!({"authorized":true})),
+        ] {
+            if binding
+                .bind_tool_arguments_with_limits(&json!({}), &arguments, limits)
+                .is_ok()
+            {
+                return Err(invalid(
+                    "original Pure binding accepted a forbidden caller argument",
+                ));
+            }
+            checks.push(json!({"case":name,"arguments":arguments,"rejected":true}));
+        }
+        Ok(json!({"accepted_empty":empty,"rejected":checks,"limits":{
+            "max_depth":limits.max_depth,"max_nodes":limits.max_nodes,"max_bytes":limits.max_bytes}}))
+    }
+    fn stage_intent(&self, spec: &Spec) -> Result<String, RebornBuildError> {
+        let id = self.id(&format!("{}:intent", spec.name));
+        Ok(self.record(id,"behavior",false,json!({"format":"original-pure-seed-stage-intent/1",
+            "operation":self.operation,"manifest_checksum":self.manifest_checksum,"stage":spec.name,
+            "export":spec.export,"expected":spec.expected,"raw":spec.raw,
+            "selection_bytes":self.program(spec).inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes()})))
+    }
+    async fn run_stage(&self, spec: &Spec) -> Result<(), RebornBuildError> {
+        let id = self.id(&format!("{}:intent", spec.name));
+        let done = self.id(&format!("{}:complete", spec.name));
+        if io::read_record(&self.base.pool, self.base.storage.as_ref(), done)
+            .await?
+            .is_some()
+        {
+            return self.verify_stage(spec).await.map(|_| ());
+        }
+        if io::read_record(&self.base.pool, self.base.storage.as_ref(), id)
+            .await?
+            .is_some()
+        {
+            return Err(invalid(
+                "original Pure seed stage is unresolved; no fixture replay",
+            ));
+        }
+        let intent = self.stage_intent(spec)?;
+        io::retain_new_intent(&self.base.pool, self.base.storage.as_ref(), id, &intent).await?;
+        let reference = format!("original-pure-seed:{}:{}", self.operation, spec.name);
+        let admitted = io::bounded(
+            self.base.storage.as_ref(),
+            crate::bootstrap_validation::admit(
+                self.base.pool.clone(),
+                "original-pure-seed-qualification",
+                &reference,
+                None,
+            ),
+        )
+        .await?;
+        let proof = std::sync::OnceLock::new();
+        let run=async {
+            let stage=self.id(spec.name);
+            let operation=seed::SeedOperation::from_reserved_stage(self.operation,stage,intent.clone(),self.base.clone(),
+                admitted.host.clone(),self.instrument.clone(),spec.export)?;
+            let program=self.program(spec);
+            let inspected=Arc::new(brassclaw_engine::executor::retained_source::InspectedRetainedProgram::inspect_with_limits(
+                RetainedProgram::Tools(program.clone()),&self.base.worker.path(),self.base.preparation.limits())
+                .await.map_err(invalid)?);
+            let tools=crate::installed_monty_catalogue::original_pure_case_tools(self.base.pool.clone(),self.kernel.clone(),
+                admitted.host.clone(),admitted.admission.clone(),program,operation.clone(),false)?;
+            let source=Arc::new(seed::SeedSource {reference,inspected,operation:operation.clone(),tools,
+                raw:spec.raw,expected:spec.expected.clone(),received_receipt:std::sync::OnceLock::new()});
+            let observation=crate::bootstrap_recipe_flow::execute(&admitted,
+                crate::bootstrap_recipe_flow::Request::contained(self.base.worker.path(),self.base.executor.clone(),
+                    &self.base.root,source.clone())?).await?;
+            let (actual,quiescence)=observation.quiescence_proof()?;
+            proof.set(quiescence).map_err(|_|invalid("duplicate seed quiescence"))?;
+            let received=operation.received()?;
+            let receipt=source.received_receipt.get().ok_or_else(||invalid("closed seed receipt missing"))?;
+            let header=json!({"format":"original-pure-seed-stage-observed/1","operation":self.operation,
+                "manifest_checksum":self.manifest_checksum,"stage":spec.name,"run_id":admitted.attempt.run_id.as_uuid(),
+                "scope":admitted.chat_context()?.scope,"runner_id":admitted.attempt.runner_id.as_uuid(),
+                "claim_checksum":evidence::checksum(&serde_json::to_string(&admitted.attempt.lease_token).map_err(invalid)?),
+                "native_invocation_id":received.invocation_id,"native_output":received.output,
+                "receipt":receipt,"quiescence":actual});
+            Ok::<_,RebornBuildError>(header)
+        }.await;
+        let close = match proof.get() {
+            Some(proof) => {
+                crate::bootstrap_validation::settle_quiescent_closed(
+                    &self.base.pool,
+                    &admitted,
+                    proof,
+                )
+                .await
+            }
+            None => crate::bootstrap_validation::settle_closed(&admitted)
+                .await
+                .map(|_| brassclaw_turns::TurnStatus::Completed),
+        };
+        let closed = crate::bootstrap_validation::read_source_close(
+            &self.base.pool,
+            &admitted,
+            proof.get(),
+            close,
+            self.base.storage.as_ref(),
+        )
+        .await;
+        let header = run?;
+        let closed = closed?;
+        let report = json!({"format":"original-pure-seed-stage-complete/1","manifest_checksum":self.manifest_checksum,
+            "stage":spec.name,"intent":{"id":id,"checksum":evidence::checksum(&intent)},
+            "observed":header,"closed_turn":closed});
+        let bytes = self.record(done, "behavior", true, report);
+        // Original native journals, joined worker and acknowledged closed Turn
+        // are checked before any qualifying completion is published.
+        self.verify_stage_bytes(spec, &bytes).await?;
+        io::retain_record(&self.base.pool, self.base.storage.as_ref(), done, &bytes).await?;
+        self.verify_stage(spec).await.map(|_| ())
+    }
+    async fn verify_stage(
+        &self,
+        spec: &Spec,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::selection::SourceProofReference,
+        RebornBuildError,
+    > {
+        let id = self.id(&format!("{}:complete", spec.name));
+        let bytes = io::read_record(&self.base.pool, self.base.storage.as_ref(), id)
+            .await?
+            .ok_or_else(|| invalid("original Pure seed completion missing"))?;
+        self.verify_stage_bytes(spec, &bytes).await?;
+        Ok(
+            brassclaw_skills::review_submission_store::selection::SourceProofReference {
+                id,
+                checksum: evidence::checksum(&bytes),
+            },
+        )
+    }
+
+    async fn verify_stage_bytes(&self, spec: &Spec, bytes: &str) -> Result<(), RebornBuildError> {
+        io::bounded(self.base.storage.as_ref(), async {
+            let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+                self.base.pool.get().await.map_err(invalid)?,
+            );
+            let tx = client
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            self.verify_stage_bytes_in_transaction(&tx, spec, bytes)
+                .await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(())
+        })
+        .await
+    }
+    async fn verify_stage_bytes_in_transaction(
+        &self,
+        tx: &tokio_postgres::Transaction<'_>,
+        spec: &Spec,
+        bytes: &str,
+    ) -> Result<(), RebornBuildError> {
+        let envelope: Value = serde_json::from_str(bytes).map_err(invalid)?;
+        let report = &envelope["report"];
+        let id = self.id(&format!("{}:complete", spec.name));
+        if bytes != self.record(id, "behavior", true, report.clone())
+            || report["format"] != "original-pure-seed-stage-complete/1"
+            || report["manifest_checksum"] != self.manifest_checksum
+            || report["stage"] != spec.name
+        {
+            return Err(invalid("original Pure seed completion scope differs"));
+        }
+        if report.as_object().is_none_or(|r| r.len() != 6)
+            || report["observed"].as_object().is_none_or(|r| r.len() != 12)
+        {
+            return Err(invalid("original Pure seed stage fields differ"));
+        }
+        let observed = &report["observed"];
+        let run: Uuid = serde_json::from_value(observed["run_id"].clone()).map_err(invalid)?;
+        let invocation: Uuid =
+            serde_json::from_value(observed["native_invocation_id"].clone()).map_err(invalid)?;
+        let output = observed["native_output"]
+            .as_str()
+            .ok_or_else(|| invalid("seed native output absent"))?;
+        let native: Value = serde_json::from_str(output).map_err(invalid)?;
+        let receipt = observed["receipt"]
+            .as_str()
+            .ok_or_else(|| invalid("seed receipt absent"))?;
+        let q = &observed["quiescence"];
+        if observed["format"] != "original-pure-seed-stage-observed/1"
+            || observed["operation"] != json!(self.operation)
+            || observed["manifest_checksum"] != self.manifest_checksum
+            || observed["stage"] != spec.name
+            || native["format"] != "original-pure-invocation/1"
+            || native["outcome"] != spec.expected
+            || native["export"] != spec.export
+            || native["component"]
+                != serde_json::to_value(self.instrument.inspected().map_err(invalid)?.component())
+                    .map_err(invalid)?
+            || q["receipt_root"]["source_checksum"] != json!(self.base.root.source_checksum())
+            || q["accounting"]["task"] != native["task"]
+            || q["accounting"]["failure"] != Value::Null
+            || !q["accounting"]["compute_time"].is_object()
+            || q["execution"]["root_completed"] != true
+            || q["execution"]["all_selected_recipes_complete"] != true
+            || q["execution"]["controlled_executor_configuration_checksum"]
+                != self.base.executor.checksum()
+            || q["execution"]["model_exchange_count"] != 0
+            // This existing counter covers the legacy capability port. The
+            // retained native dispatch is proved by its exact journal below.
+            || q["execution"]["capability_dispatch_count"] != 0
+            || q["execution"]["withheld_root_answers"] != 0
+            || q["execution"]["withheld_host_answers"] != false
+            || q["execution"]["internal_receipt"] != receipt
+            || q["execution"]["root"]["vm_id"] != q["receipt_root"]["vm_id"]
+            || q["execution"]["root"]["source_checksum"]
+                != hex::encode(self.base.root.source_checksum())
+            || q["execution"]["reply"] != Value::Null
+            || q["execution"]["semantic_approval"] != false
+            || q["execution"]["catalogue_activation"] != false
+            || q["worker_exit"]["root"] != q["receipt_root"]
+            || q["worker_exit"]["status"]["success"] != true
+            || q["worker_exit"]["retained_tasks"] != 0
+            || q["worker_exit"]["pending_admissions"] != 0
+            || q["worker_exit"]["queued_admissions"] != 0
+            || q["worker_exit"]["failed_exchanges"] != 0
+            || q["worker_exit"]["rejected_commands"] != 0
+        {
+            return Err(invalid(
+                "seed actual outcome, account or joined lifecycle differs",
+            ));
+        }
+        if (spec.raw && receipt != output)
+            || (!spec.raw
+                && serde_json::from_str::<Value>(receipt).map_err(invalid)?
+                    != json!({"format":"original-pure-case-receipt/1","observation":native}))
+        {
+            return Err(invalid("seed actual harness relation differs"));
+        }
+        let closed: brassclaw_turns::TurnRunRecord =
+            serde_json::from_value(report["closed_turn"].clone()).map_err(invalid)?;
+        if closed.run_id.as_uuid() != run
+            || serde_json::to_value(&closed.scope).map_err(invalid)? != observed["scope"]
+            || closed.claim_count != 1
+            || closed.runner_id.is_some()
+            || closed.lease_token.is_some()
+            || closed.lease_expires_at.is_some()
+            || closed.failure.is_some()
+            || closed.native_auth_wait.is_some()
+            || !matches!(
+                closed.status,
+                brassclaw_turns::TurnStatus::Completed | brassclaw_turns::TurnStatus::Cancelled
+            )
+        {
+            return Err(invalid(
+                "seed original closed Turn is not a settled single claim",
+            ));
+        }
+        let actual_turn = brassclaw_turns::PgTurnStateStore::read_run_record_in_transaction(
+            tx,
+            &closed.scope,
+            closed.run_id,
+        )
+        .await
+        .map_err(invalid)?
+        .ok_or_else(|| invalid("seed actual closed Turn missing"))?;
+        if serde_json::to_value(&actual_turn).map_err(invalid)? != report["closed_turn"] {
+            return Err(invalid("seed actual closed Turn differs"));
+        }
+        seed::verify_originals(tx, self, spec, observed, &native).await?;
+        let intent = self.stage_intent(spec)?;
+        let actual = evidence::read_evidence(&tx, self.id(&format!("{}:intent", spec.name)))
+            .await?
+            .ok_or_else(|| invalid("original seed stage intent missing"))?;
+        if actual != intent
+            || report["intent"]
+                != json!({"id":self.id(&format!("{}:intent",spec.name)),"checksum":evidence::checksum(&intent)})
+        {
+            return Err(invalid("original seed stage intent differs"));
+        }
+        let row=tx.query_one("SELECT i.selection_bytes,i.arguments_bytes,i.answer_bytes,i.phase,i.attempt_count,
+                a.phase,a.outcome,a.scope,a.runner_id,a.claim_checksum,a.started_at IS NOT NULL,
+                (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1)
+                FROM brassclaw_monty_tool_invocations i JOIN brassclaw_monty_task_admissions a USING(run_id)
+                WHERE i.run_id=$1 AND i.invocation_id=$2",&[&run,&invocation]).await.map_err(invalid)?;
+        let selected = crate::pg_monty_admission::PgMontyAdmission::invocation_selection(
+            &self.program(spec),
+            "0:2",
+        )
+        .map_err(invalid)?;
+        let answer: Value = serde_json::from_str(row.get::<_, &str>(2)).map_err(invalid)?;
+        if row.get::<_, &str>(0) != selected
+            || row.get::<_, &str>(1) != "{}"
+            || answer != json!({"kind":"return","value":output})
+            || row.get::<_, &str>(3) != "answered"
+            || row.get::<_, i16>(4) != 1
+            || row.get::<_, &str>(5) != "settled"
+            || row.get::<_, Value>(6)
+                != json!({"status":"failed","reason_kind":"bootstrap_validation_closed"})
+            || row.get::<_, Value>(7) != observed["scope"]
+            || json!(row.get::<_, Uuid>(8)) != observed["runner_id"]
+            || hex::encode(row.get::<_, Vec<u8>>(9))
+                != observed["claim_checksum"].as_str().unwrap_or("")
+            || !row.get::<_, bool>(10)
+            || row.get::<_, i64>(11) != 1
+        {
+            return Err(invalid("seed original native journal/admission differs"));
+        }
+        Ok(())
+    }
+}
+
+pub(crate) async fn qualify(
+    base: SessionInput,
+    kernel: Arc<dyn MontyKernelSnapshot>,
+    tenant: &str,
+) -> Result<Option<Arc<QualifiedCaseHarness>>, RebornBuildError> {
+    let mut graph = io::bounded(
+        base.storage.as_ref(),
+        retain(base.pool.clone(), kernel.as_ref(), tenant),
+    )
+    .await?;
+    let draft = seed::fixture_draft()?;
+    let store = PgComponentRevisionStore::new(base.pool.clone());
+    io::bounded(
+        base.storage.as_ref(),
+        graph.definitions.retain(&store, &draft),
+    )
+    .await?;
+    let instrument_snapshot = io::bounded(
+        base.storage.as_ref(),
+        graph.definitions.snapshot(base.pool.clone(), draft.uuid()),
+    )
+    .await?;
+    let instrument = Arc::new(
+        brassclaw_engine::executor::retained_source::InspectedPureSelection::inspect(
+            instrument_snapshot,
+            draft.uuid(),
+            &base.worker.path(),
+            base.preparation.limits(),
+        )
+        .await
+        .map_err(invalid)?,
+    );
+    let manifest = json!({"format":"original-pure-seed-manifest/1",
+        "program":graph.program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
+        "qualification_program":graph.qualification.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
+        "instrument":instrument.inspected().map_err(invalid)?.component(),"worker_checksum":hex::encode(base.worker.checksum()),
+        "root":base.root.reference(),"root_checksum":hex::encode(base.root.source_checksum()),
+        "executor_bytes":base.executor.exact_bytes(),"executor_checksum":base.executor.checksum(),
+        "preparation_bytes":base.preparation.bytes(),"application_checksum":base.application_checksum,
+        "owner_checksum":evidence::checksum(include_str!("pure_case_qualification.rs")),
+        "fixture_owner_checksum":evidence::checksum(include_str!("pure_case_seed_fixture.rs")),
+        "native_handler_checksum":evidence::checksum(include_str!("../../brassclaw_host_runtime/src/first_party_tools/pure_case.rs")),
+        "carrier_checksum":evidence::checksum(include_str!("../../brassclaw_engine/src/executor/retained_pure_invocation.rs")),
+        "specs":specs().iter().map(|s|json!({"stage":s.name,"export":s.export,"expected":s.expected,"raw":s.raw})).collect::<Vec<_>>()});
+    let manifest_checksum = evidence::checksum(&manifest.to_string());
+    let slot = Uuid::new_v5(
+        &pure_case_components::usage_ids().recipe,
+        format!("original-pure-seed-reservation/1:{manifest_checksum}").as_bytes(),
+    );
+    let components = graph
+        .program
+        .inputs()
+        .instruction()
+        .snapshot()
+        .revisions()
+        .values()
+        .map(|r| crate::installed_monty_catalogue::reference_value(r.reference()))
+        .collect::<Vec<_>>();
+    let association =
+        evidence::checksum(graph.program.bindings()["0:2"].association().exact_bytes());
+    let existing = io::read_record(&base.pool, base.storage.as_ref(), slot).await?;
+    let bytes = match existing {
+        Some(bytes) => bytes,
+        None => {
+            let enabled = io::bounded(base.storage.as_ref(), async {
+                Ok(base
+                    .pool
+                    .get()
+                    .await
+                    .map_err(invalid)?
+                    .query_one(
+                        "SELECT enabled FROM brassclaw_instance_tool_settings WHERE tool_id=$1",
+                        &[&pure_case_components::usage_ids().tool],
+                    )
+                    .await
+                    .map_err(invalid)?
+                    .get::<_, bool>(0))
+            })
+            .await?;
+            if !enabled {
+                tracing::info!(
+                    "original Pure case feature unready: its separate native Tool is blocked before first qualification"
+                );
+                return Ok(None);
+            }
+            let offered = evidence::system_record(
+                slot,
+                "behavior",
+                false,
+                &association,
+                &components,
+                json!({"format":"original-pure-seed-reservation/1","manifest":manifest,"operation_id":Uuid::new_v4()}),
+            );
+            let _write = io::retain_record(&base.pool, base.storage.as_ref(), slot, &offered).await;
+            io::read_record(&base.pool, base.storage.as_ref(), slot)
+                .await?
+                .ok_or_else(|| invalid("original Pure seed reservation remains unresolved"))?
+        }
+    };
+    let offered: Value = serde_json::from_str(&bytes).map_err(invalid)?;
+    let report = &offered["report"];
+    let operation: Uuid =
+        serde_json::from_value(report["operation_id"].clone()).map_err(invalid)?;
+    if operation.is_nil()
+        || report["format"] != "original-pure-seed-reservation/1"
+        || report["manifest"] != manifest
+        || bytes
+            != evidence::system_record(
+                slot,
+                "behavior",
+                false,
+                &association,
+                &components,
+                report.clone(),
+            )
+    {
+        return Err(invalid("original Pure seed reservation differs"));
+    }
+    let context = Context {
+        base,
+        kernel,
+        graph,
+        instrument,
+        manifest,
+        manifest_checksum,
+        operation,
+        components,
+        association,
+    };
+    for spec in specs().iter().filter(|s| s.name.starts_with("primitive-")) {
+        context.run_stage(spec).await?;
+    }
+    let tool = context.graph.program.bindings()["0:2"].tool();
+    let tool_skill = context.graph.program.bindings()["0:2"].tool_skill();
+    let binding_record = context.id("tool-skill-compatible");
+    let binding=context.record(binding_record,"behavior",true,json!({"format":"original-pure-tool-skill-qualification/1",
+        "manifest_checksum":context.manifest_checksum,"tool":tool,"tool_skill":tool_skill,"argument_checks":context.binding_checks()?,
+        "prerequisites":specs().iter().filter(|s|s.name.starts_with("primitive-")).map(|s|context.id(&format!("{}:complete",s.name))).collect::<Vec<_>>() }));
+    io::retain_record(
+        &context.base.pool,
+        context.base.storage.as_ref(),
+        binding_record,
+        &binding,
+    )
+    .await?;
+    context
+        .run_stage(
+            &specs()
+                .into_iter()
+                .find(|s| s.name == "skill-code-function")
+                .expect("closed Spec"),
+        )
+        .await?;
+    let encoder =
+        crate::bootstrap_validator_approval::qualify_case_encoder(context.base.clone()).await?;
+    let encoder_ref = verify_encoder(&context, &encoder).await?;
+    context
+        .run_stage(&specs().into_iter().find(|s| !s.raw).expect("closed Spec"))
+        .await?;
+    let mut completed = Vec::new();
+    for spec in specs() {
+        completed.push(context.verify_stage(&spec).await?);
+    }
+    let proof_id = context.id("qualified-private-harness");
+    let proof=context.record(proof_id,"behavior",true,json!({"format":"qualified-original-pure-harness/1",
+        "manifest":context.manifest,"reservation":{"id":slot,"checksum":evidence::checksum(&bytes)},
+        "tool_skill":{"id":binding_record,"checksum":evidence::checksum(&binding)},"encoder":encoder_ref,
+        "completed":completed,"scope":"private-single-case-observation-only","authored_q1":false,"human_q2":false,"activation":false}));
+    io::retain_record(
+        &context.base.pool,
+        context.base.storage.as_ref(),
+        proof_id,
+        &proof,
+    )
+    .await?;
+    Ok(Some(Arc::new(QualifiedCaseHarness {
+        program: context.graph.program.clone(),
+        proof_id,
+        proof_bytes: proof,
+        prerequisites: vec![(slot, bytes), (binding_record, binding)],
+        context: Arc::new(context),
+        encoder,
+    })))
+}
+
+async fn verify_encoder(
+    context: &Context,
+    encoder: &CheckedCaseEncoder,
+) -> Result<
+    brassclaw_skills::review_submission_store::selection::SourceProofReference,
+    RebornBuildError,
+> {
+    io::bounded(context.base.storage.as_ref(), async {
+        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+            context.base.pool.get().await.map_err(invalid)?,
+        );
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .map_err(invalid)?;
+        let reference = encoder.verify(&tx, &context.graph.program).await?;
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        Ok(reference)
+    })
+    .await
+}

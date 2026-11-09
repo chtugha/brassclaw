@@ -30,6 +30,11 @@ pub(crate) fn decode_checksum(hex_bytes: &str) -> Result<[u8; 32], RebornBuildEr
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "purpose", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum DomainCapture {
+    #[serde(rename = "original_pure_case/1")]
+    OriginalPureCaseV1 {
+        case_id: Uuid,
+        case_checksum: [u8; 32],
+    },
     ValidatorStructural {
         capture_bytes: String,
         capture_checksum: [u8; 32],
@@ -145,6 +150,19 @@ impl PrivateWorkDefinition {
             return Err(invalid());
         }
         match (domain, request.original()) {
+            (
+                DomainCapture::OriginalPureCaseV1 {
+                    case_id,
+                    case_checksum,
+                },
+                brassclaw_turns::private_work::PrivateOriginalRef::OriginalPureCaseV1 {
+                    case_id: original,
+                    case_checksum: expected,
+                },
+            ) if case_id == original
+                && case_checksum == expected
+                && *case_id == request.work_id()
+                && *case_id == request.run_id().as_uuid() => {}
             (
                 DomainCapture::PrefixSourceOnly { job_id },
                 brassclaw_turns::private_work::PrivateOriginalRef::PrefixSourceOnly {

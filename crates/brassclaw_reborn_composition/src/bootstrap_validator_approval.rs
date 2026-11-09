@@ -827,6 +827,9 @@ struct Spec {
     profile: Option<Arc<pure::Profile>>,
 }
 
+pub(crate) use pure::case_encoder::{CheckedCaseEncoder, qualify as qualify_case_encoder};
+
+#[derive(Clone)]
 pub(crate) struct SessionInput {
     pub(crate) pool: Arc<PgPool>,
     pub(crate) worker: Arc<PackagedExecutableImage>,

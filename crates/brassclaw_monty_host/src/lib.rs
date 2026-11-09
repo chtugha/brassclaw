@@ -296,6 +296,7 @@ struct TaskControl {
     clock: Mutex<MontyTaskClock>,
     preparation_clock: Mutex<MontyTaskClock>,
     cancelled: AtomicBool,
+    terminal_failure: AtomicBool,
     last_yield: Mutex<Duration>,
     slice_nanos: AtomicU64,
 }
@@ -307,10 +308,23 @@ impl ExecutionControl for TaskControl {
         // The legacy callback supplies a combined clock and cannot establish
         // the required executing/preparation attribution. The qualified tracker
         // always calls checkpoint_context; missing observations fail closed.
+        self.terminal_failure.store(true, Ordering::Release);
         Err(ExecutionControlError::AccountingUnavailable)
     }
 
     fn checkpoint_context(
+        &self,
+        observation: ExecutionObservation,
+    ) -> Result<ExecutionControlAction, ExecutionControlError> {
+        let result = self.observe_context(observation);
+        if result.is_err() {
+            self.terminal_failure.store(true, Ordering::Release);
+        }
+        result
+    }
+}
+impl TaskControl {
+    fn observe_context(
         &self,
         observation: ExecutionObservation,
     ) -> Result<ExecutionControlAction, ExecutionControlError> {
@@ -339,8 +353,7 @@ impl ExecutionControl for TaskControl {
                 .ok_or(ExecutionControlError::AccountingUnavailable)?,
         )
     }
-}
-impl TaskControl {
+
     fn slice_action(
         &self,
         elapsed: Duration,
@@ -419,6 +432,7 @@ impl RecipeVm {
             preparation_clock: Mutex::new(budget.preparation_clock(Duration::ZERO)),
             budget,
             cancelled: AtomicBool::new(false),
+            terminal_failure: AtomicBool::new(false),
             last_yield: Mutex::new(Duration::ZERO),
             slice_nanos: AtomicU64::new(bounds.execution_slice.as_nanos() as u64),
         });
@@ -634,7 +648,9 @@ impl RecipeVm {
         operation: impl FnOnce(VmBounds) -> Result<T, VmError>,
     ) -> Result<T, VmError> {
         let check = || {
-            if self.control.cancelled.load(Ordering::Acquire) {
+            if self.control.cancelled.load(Ordering::Acquire)
+                || self.control.terminal_failure.load(Ordering::Acquire)
+            {
                 let mut failure = VmError::kind(VmFailure::ResourceLimit);
                 failure.exception = Some(Box::new(cancel_exception()));
                 return Err(failure);
@@ -708,7 +724,14 @@ impl RecipeVm {
                 self.artifact = None;
                 self.state = VmState::Terminal;
                 return Err(VmError {
-                    failure: VmFailure::Python,
+                    failure: if self.control.cancelled.load(Ordering::Acquire)
+                        || self.control.terminal_failure.load(Ordering::Acquire)
+                        || self.control.budget.check().is_err()
+                    {
+                        VmFailure::ResourceLimit
+                    } else {
+                        VmFailure::Python
+                    },
                     exception: Some(Box::new(error.error)),
                     stdout: self.take_stdout(),
                     rejected_answer: None,

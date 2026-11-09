@@ -17,6 +17,7 @@ mod prefix_bundle;
 mod prefix_generation;
 mod prefix_source;
 mod primitive_settings;
+mod pure_case;
 mod schemas;
 mod shell;
 mod source_inspection;
@@ -191,6 +192,7 @@ pub fn builtin_first_party_package() -> Result<ExtensionPackage, ExtensionError>
                     time::manifest()?,
                     json::manifest()?,
                     source_inspection::manifest()?,
+                    pure_case::manifest()?,
                     model_encoding::manifest()?,
                     http::manifest()?,
                     http::save_manifest()?,
@@ -365,6 +367,10 @@ fn builtin_first_party_registry_from_tools(
         .with_handler(CapabilityId::new(ECHO_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(TIME_CAPABILITY_ID)?, handler.clone())
         .with_handler(CapabilityId::new(JSON_CAPABILITY_ID)?, handler.clone())
+        .with_handler(
+            CapabilityId::new(crate::PURE_CASE_CAPABILITY_ID)?,
+            handler.clone(),
+        )
         .with_handler(
             CapabilityId::new(SOURCE_INSPECTION_CAPABILITY_ID)?,
             handler.clone(),
@@ -559,6 +565,9 @@ impl FirstPartyCapabilityHandler for BuiltinFirstPartyTools {
         &self,
         mut request: FirstPartyCapabilityRequest,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
+        if request.capability_id.as_str() == crate::PURE_CASE_CAPABILITY_ID {
+            return pure_case::dispatch(&request).await;
+        }
         if request.capability_id.as_str() == JSON_CAPABILITY_ID {
             // JSON owns acknowledged parsing/output bounds. Literal "null" is
             // valid data/path text, not an omitted optional-argument sentinel.

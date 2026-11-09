@@ -9,6 +9,9 @@ pub(super) fn current_builtin_input_schema_ref(schema_name: &str) -> String {
 
 pub(crate) fn resolve_builtin_input_schema_ref(reference: &str) -> Option<Value> {
     Some(match reference {
+        "schemas/builtin/pure_review-invoke_original.input.v1.json" => json!({
+            "type":"object", "properties":{}, "additionalProperties":false
+        }),
         "schemas/builtin/model_encoding.input.v1.json" => json!({
             "type":"object","properties":{
                 "specification":{"type":"string","pattern":"^[0-9a-f]{64}$"},

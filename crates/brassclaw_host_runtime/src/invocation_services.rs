@@ -35,6 +35,7 @@ pub struct InvocationServices {
     pub filesystem: Arc<dyn RootFilesystem>,
     pub(crate) source_inspection_fixture:
         Option<Arc<crate::source_inspection_fixture::SourceInspectionInvocationView>>,
+    pub(crate) pure_case: Option<Arc<crate::pure_case_port::PureCaseInvocationView>>,
     pub child_tasks: Option<Arc<dyn crate::RuntimeChildTaskPort>>,
     pub memory_embeddings: Option<Arc<dyn crate::RuntimeMemoryEmbeddingPort>>,
     pub runtime_http_egress: Option<Arc<dyn RuntimeHttpEgress>>,
@@ -50,6 +51,7 @@ impl fmt::Debug for InvocationServices {
         formatter
             .debug_struct("InvocationServices")
             .field("filesystem", &"[REDACTED]")
+            .field("pure_case", &self.pure_case.as_ref().map(|_| "[REDACTED]"))
             .field(
                 "child_tasks",
                 &self.child_tasks.as_ref().map(|_| "[REDACTED]"),
@@ -268,6 +270,7 @@ impl InvocationServicesResolver for LocalInvocationServicesResolver {
         }
         Ok(InvocationServices {
             source_inspection_fixture: None,
+            pure_case: None,
             child_tasks: None,
             memory_embeddings: None,
             filesystem: Arc::clone(&self.filesystem),

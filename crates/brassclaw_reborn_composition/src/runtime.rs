@@ -4558,6 +4558,9 @@ mod tests {
     // Retained validator Q1 tests use private Work through the existing Worker
     // and the common global driver lifecycle.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    #[path = "original_pure_case_tests.rs"]
+    mod original_pure_case_tests;
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
     #[path = "private_delivery_tests.rs"]
     mod private_delivery_tests;
     #[cfg(all(feature = "postgres", feature = "skills-db"))]

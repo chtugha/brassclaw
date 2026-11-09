@@ -9,7 +9,6 @@ use crate::private_work_definition::{
     DefinitionCapture, DomainCapture, PrivateWorkDefinition, decode_checksum,
 };
 use brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage;
-#[cfg(test)]
 use brassclaw_skills::review_submission_store::selection::SourceProofReference;
 use brassclaw_skills::{
     component_revision::REVISION_LIMITS,
@@ -19,7 +18,6 @@ use brassclaw_skills::{
     },
     revision_store::PgComponentRevisionStore,
 };
-#[cfg(test)]
 use brassclaw_turns::private_work::PrivateExecutionContext;
 use brassclaw_turns::{
     PgTurnStateStore, TurnRunId,
@@ -67,15 +65,16 @@ impl CheckedSourceQualification<'_, '_> {
 /// Positive source-only prerequisite, issued solely by the reader below. This
 /// is neither a live native completion nor behavior/Q1/Q2/activation authority.
 /// Its references describe the exact original; they do not select replacements.
-#[cfg(test)]
 pub(crate) struct CheckedPureSourceOriginal {
     subject: Arc<RetainedValidatorSubject>,
     selection: Arc<RetainedValidatorSelection>,
     delivery: crate::pg_monty_admission::DeliveredPrivateCompletion,
     confirmation: SourceProofReference,
 }
-#[cfg(test)]
 impl CheckedPureSourceOriginal {
+    pub(crate) fn context(&self) -> &PrivateExecutionContext {
+        self.delivery.original().request().context()
+    }
     pub(crate) fn subject(&self) -> &RetainedValidatorSubject {
         &self.subject
     }
@@ -144,7 +143,6 @@ impl QualifiedPureSourceReview {
     /// This performs no writes, native execution, requalification or recovery.
     /// Cross-package handle/image loading remains the separate recovery owner;
     /// this owner never substitutes today's package for a historical original.
-    #[cfg(test)]
     pub(crate) async fn read_positive_original(
         &self,
         tx: &Transaction<'_>,

@@ -34,7 +34,7 @@ root-llm-provider = [
 # Enable AWS Bedrock embedding provider (Titan Text Embeddings V2).
 bedrock = ["dep:aws-config", "dep:aws-sdk-bedrockruntime", "dep:aws-smithy-types"]
 # Expose test-only helpers (mock LLM gateway, budget runtime accessors).
-test-support = []
+test-support = ["brassclaw_engine/test-support"]
 # Backward-compat alias.
 libsql = ["migrate-from-libsql"]
 postgres = [

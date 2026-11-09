@@ -31,6 +31,11 @@
 //! - [`ingress`]: host-owned HTTP ingress descriptors for product/API surfaces.
 #![warn(unreachable_pub)]
 
+/// Native registration identity for the sealed single-original Pure operation.
+/// A matching binding identifies the seam; current kernel policy still grants
+/// or denies the actual dispatch independently.
+pub const ORIGINAL_PURE_INVOKE_CAPABILITY_ID: &str = "builtin.pure_review.invoke_original";
+
 pub mod action;
 pub mod approval;
 pub mod audit;

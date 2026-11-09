@@ -50,6 +50,8 @@ pub mod completed_turn_analysis;
 /// Private consumer Recipe, canonical usage variants and executable associations.
 mod builtin_bootstrap;
 pub mod completed_turn_review_components;
+/// Private original Pure invocation usage and independent receipt encoder.
+pub mod pure_case_components;
 /// Pure validator rule aggregation; full class review and approval are separate.
 pub mod validator_components;
 
