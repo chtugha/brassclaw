@@ -31,28 +31,32 @@ async fn require_live(rig: &crate::runtime::test_pg::PgRig, pid: i32) {
 }
 async fn require_discarded(
     runtime: &RebornRuntime,
+    id: Uuid,
     rig: &crate::runtime::test_pg::PgRig,
     wire: &AckCutTransport,
     ticket: &mut brassclaw_pg::test_support::AckHoldTicket,
     pid: i32,
 ) {
     assert_eq!(
-        tokio::time::timeout(deadline(runtime).await, ticket.wait_closed())
+        watchdog(runtime, id, "held connection closure", ticket.wait_closed())
             .await
-            .unwrap()
             .unwrap(),
         AckHoldEnd::PeerClosed,
         "caller custody, not wire release/shutdown/cut, must close the held connection"
     );
     assert!(ticket.release().await.is_err());
-    let replacement = tokio::time::timeout(deadline(runtime).await, backend(&wire.pool))
-        .await
-        .expect("max-one pool must release its old slot before readback");
+    let replacement = watchdog(
+        runtime,
+        id,
+        "max-one replacement backend",
+        backend(&wire.pool),
+    )
+    .await;
     assert_ne!(
         replacement, pid,
         "an unacknowledged backend must not return to the pool"
     );
-    tokio::time::timeout(deadline(runtime).await, async {
+    watchdog(runtime, id, "old physical backend termination", async {
         loop {
             let exists: bool = rig
                 .pool
@@ -72,8 +76,7 @@ async fn require_discarded(
             tokio::task::yield_now().await;
         }
     })
-    .await
-    .expect("the old physical PostgreSQL backend must actually end");
+    .await;
 }
 pub(super) async fn install_write_counter(rig: &crate::runtime::test_pg::PgRig) {
     rig.pool.get().await.unwrap().batch_execute("CREATE SEQUENCE i01_source_metadata_writes;
@@ -104,7 +107,8 @@ pub(super) async fn cancelled_author_commit(
     component: Uuid,
     queued: bool,
 ) {
-    let pid = backend(&wire.pool).await;
+    let mut review = OriginalReview::new(runtime, id);
+    let pid = watchdog(runtime, id, "fault backend selection", backend(&wire.pool)).await;
     let mut ticket = wire.arm_hold(rule, pid).unwrap();
     let mut original = request(id, component, false);
     if queued {
@@ -126,10 +130,14 @@ pub(super) async fn cancelled_author_commit(
         )
         .await
     }));
-    let held = tokio::time::timeout(deadline(runtime).await, ticket.wait_held())
-        .await
-        .unwrap()
-        .unwrap();
+    let held = watchdog(
+        runtime,
+        id,
+        "author COMMIT acknowledgement hold",
+        ticket.wait_held(),
+    )
+    .await
+    .unwrap();
     assert_eq!(held.backend_pid, pid);
     require_live(rig, pid).await;
     let committed: i64 = rig
@@ -150,13 +158,10 @@ pub(super) async fn cancelled_author_commit(
     );
     producer.abort();
     assert!(producer.await.unwrap_err().is_cancelled());
-    require_discarded(runtime, rig, wire, &mut ticket, pid).await;
-    let receipt = tokio::time::timeout(deadline(runtime).await, submit(runtime, retry))
-        .await
-        .unwrap()
-        .unwrap();
+    require_discarded(runtime, id, rig, wire, &mut ticket, pid).await;
+    let receipt = submit(runtime, retry).await.unwrap();
     assert_eq!(receipt.queue_ids.len(), usize::from(queued));
-    assert_scope(runtime, id, component, true).await;
+    assert_scope(runtime, &mut review, component, true).await;
 }
 pub(super) async fn timed_out_evidence_commit(
     runtime: &RebornRuntime,
@@ -166,15 +171,20 @@ pub(super) async fn timed_out_evidence_commit(
     id: Uuid,
     component: Uuid,
 ) {
-    let pid = backend(&wire.pool).await;
+    let mut review = OriginalReview::new(runtime, id);
+    let pid = watchdog(runtime, id, "fault backend selection", backend(&wire.pool)).await;
     let mut ticket = wire.arm_hold(rule, pid).unwrap();
     submit(runtime, request(id, component, false))
         .await
         .unwrap();
-    let held = tokio::time::timeout(deadline(runtime).await, ticket.wait_held())
-        .await
-        .unwrap()
-        .unwrap();
+    let held = watchdog(
+        runtime,
+        id,
+        "source evidence COMMIT acknowledgement hold",
+        ticket.wait_held(),
+    )
+    .await
+    .unwrap();
     assert_eq!(held.backend_pid, pid);
     require_live(rig, pid).await;
     let committed: i64 = rig
@@ -195,8 +205,8 @@ pub(super) async fn timed_out_evidence_commit(
     );
     // No test abort or wire release: the writer's actual acknowledged resource
     // store deadline cancels its write future and disposes of that connection.
-    require_discarded(runtime, rig, wire, &mut ticket, pid).await;
-    assert_scope(runtime, id, component, true).await;
+    require_discarded(runtime, id, rig, wire, &mut ticket, pid).await;
+    assert_scope(runtime, &mut review, component, true).await;
 }
 pub(super) async fn corrupt_run_index(
     runtime: &RebornRuntime,
@@ -216,17 +226,13 @@ pub(super) async fn corrupt_run_index(
         .batch_execute(&sql)
         .await
         .unwrap();
-    let waiter = runtime
-        .monty_test_controls
-        .0
-        .private_completion_waiter(brassclaw_turns::TurnRunId::from_uuid(id))
-        .unwrap();
+    let mut review = OriginalReview::new(runtime, id);
     submit(runtime, request(id, component, false))
         .await
         .unwrap();
-    let _actual = tokio::time::timeout(deadline(runtime).await, waiter.wait())
-        .await
-        .unwrap();
+    // Finish-observation failure may surface as the retained service failure;
+    // inspect the original producer error, never accept Ok or discard it.
+    review.failed(runtime, None).await;
     let row = rig.pool.get().await.unwrap().query_one("SELECT
         (SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1),
         (SELECT count(*) FROM reborn_validator_q1_runs WHERE submission_id=$1),

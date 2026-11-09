@@ -72,147 +72,165 @@ async fn submit(
     brassclaw_product_workflow::ComponentReviewSubmissionReceipt,
     brassclaw_product_workflow::RecipeStoreError,
 > {
-    crate::pg_review_submission::submit_with_catalogue(
-        &runtime.installed_catalogue.pool,
-        runtime.actor_user_id.as_str(),
-        runtime.thread_scope.tenant_id.as_str(),
-        runtime.thread_scope.agent_id.as_str(),
-        request,
-        &runtime.installed_catalogue,
+    let id = Uuid::parse_str(&request.submission_id).unwrap();
+    watchdog(
+        runtime,
+        id,
+        "original submit/readback",
+        crate::pg_review_submission::submit_with_catalogue(
+            &runtime.installed_catalogue.pool,
+            runtime.actor_user_id.as_str(),
+            runtime.thread_scope.tenant_id.as_str(),
+            runtime.thread_scope.agent_id.as_str(),
+            request,
+            &runtime.installed_catalogue,
+        ),
     )
     .await
 }
 async fn selection_bytes(runtime: &RebornRuntime, id: Uuid) -> String {
-    runtime.installed_catalogue.pool.get().await.unwrap().query_one(
+    watchdog(runtime, id, "original selection read", async { runtime.installed_catalogue.pool.get().await.unwrap().query_one(
         "SELECT selection_bytes FROM reborn_component_validator_selections WHERE submission_id=$1", &[&id]
-    ).await.unwrap().get(0)
+    ).await.unwrap().get(0) }).await
 }
 async fn read_positive(
     runtime: &RebornRuntime,
     id: Uuid,
 ) -> Option<crate::validator_inventory_review::CheckedPureSourceOriginal> {
-    let context = brassclaw_turns::private_work::PrivateExecutionContext {
-        tenant_id: runtime.thread_scope.tenant_id.clone(),
-        agent_id: Some(runtime.thread_scope.agent_id.clone()),
-        project_id: runtime.thread_scope.project_id.clone(),
-        actor: Some(brassclaw_turns::TurnActor::new(
-            runtime.actor_user_id.clone(),
-        )),
-    };
-    let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
-    let tx = client
-        .build_transaction()
-        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-        .read_only(true)
-        .start()
-        .await
-        .unwrap();
-    let checked = runtime
-        .installed_catalogue
-        .pure_source_review
-        .read_positive_original(&tx, id, &context)
-        .await
-        .unwrap();
-    if let Some(original) = &checked {
-        assert_eq!(original.subject().submission_id(), id);
-        assert_eq!(original.selection().submission_id(), id);
-        assert_eq!(
-            original.selection().subject_checksum(),
-            original.subject().subject_checksum()
-        );
-        assert_eq!(
-            original
-                .selection()
-                .source_qualification()
-                .unwrap()
-                .worker_checksum,
-            hex::encode(original.worker_checksum())
-        );
-        assert_eq!(original.delivery_reference().id, id);
-        assert_eq!(original.confirmation_reference().id, id);
-        let row = tx.query_one("SELECT d.checksum,c.checksum FROM brassclaw_monty_private_deliveries d JOIN reborn_component_review_work_confirmations c ON c.submission_id=d.work_id WHERE d.work_id=$1", &[&id]).await.unwrap();
-        assert_eq!(
-            original.delivery_reference().checksum,
-            hex::encode(row.get::<_, Vec<u8>>(0))
-        );
-        assert_eq!(
-            original.confirmation_reference().checksum,
-            hex::encode(row.get::<_, Vec<u8>>(1))
-        );
-        let mut foreign = context.clone();
-        foreign.actor = Some(brassclaw_turns::TurnActor::new(
-            brassclaw_host_api::UserId::new("i01-foreign-source-actor").unwrap(),
-        ));
-        assert!(
-            matches!(runtime.installed_catalogue.pure_source_review.read_positive_original(&tx,id,&foreign).await,
-            Err(crate::RebornBuildError::InvalidConfig { reason }) if reason=="agent loop driver failed: private_delivery_original_invalid")
-        );
-    }
-    tx.commit().await.unwrap();
-    checked
-}
-async fn confirmation(runtime: &RebornRuntime, id: Uuid) -> Value {
-    tokio::time::timeout(deadline(runtime).await, async {
-        loop {
-            let view = crate::pg_review_submission::get_with_catalogue(&runtime.installed_catalogue.pool, &id.to_string(), &runtime.installed_catalogue).await.unwrap();
-            if matches!(view.work.unwrap().status, ReviewWorkStatus::StructuralObservationsConfirmed) {
-                let bytes: String = runtime.installed_catalogue.pool.get().await.unwrap().query_one(
-                    "SELECT confirmation_bytes FROM reborn_component_review_work_confirmations WHERE submission_id=$1", &[&id]
-                ).await.unwrap().get(0);
-                return serde_json::from_str(&bytes).unwrap();
-            }
-            tokio::task::yield_now().await;
+    watchdog(
+        runtime,
+        id,
+        "positive original read",
+        async {
+        let context = brassclaw_turns::private_work::PrivateExecutionContext {
+            tenant_id: runtime.thread_scope.tenant_id.clone(),
+            agent_id: Some(runtime.thread_scope.agent_id.clone()),
+            project_id: runtime.thread_scope.project_id.clone(),
+            actor: Some(brassclaw_turns::TurnActor::new(
+                runtime.actor_user_id.clone(),
+            )),
+        };
+        let mut client = runtime.installed_catalogue.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let checked = runtime
+            .installed_catalogue
+            .pure_source_review
+            .read_positive_original(&tx, id, &context)
+            .await
+            .unwrap();
+        if let Some(original) = &checked {
+            assert_eq!(original.subject().submission_id(), id);
+            assert_eq!(original.selection().submission_id(), id);
+            assert_eq!(
+                original.selection().subject_checksum(),
+                original.subject().subject_checksum()
+            );
+            assert_eq!(
+                original
+                    .selection()
+                    .source_qualification()
+                    .unwrap()
+                    .worker_checksum,
+                hex::encode(original.worker_checksum())
+            );
+            assert_eq!(original.delivery_reference().id, id);
+            assert_eq!(original.confirmation_reference().id, id);
+            let row = tx.query_one("SELECT d.checksum,c.checksum FROM brassclaw_monty_private_deliveries d JOIN reborn_component_review_work_confirmations c ON c.submission_id=d.work_id WHERE d.work_id=$1", &[&id]).await.unwrap();
+            assert_eq!(
+                original.delivery_reference().checksum,
+                hex::encode(row.get::<_, Vec<u8>>(0))
+            );
+            assert_eq!(
+                original.confirmation_reference().checksum,
+                hex::encode(row.get::<_, Vec<u8>>(1))
+            );
+            let mut foreign = context.clone();
+            foreign.actor = Some(brassclaw_turns::TurnActor::new(
+                brassclaw_host_api::UserId::new("i01-foreign-source-actor").unwrap(),
+            ));
+            assert!(
+                matches!(runtime.installed_catalogue.pure_source_review.read_positive_original(&tx,id,&foreign).await,
+                Err(crate::RebornBuildError::InvalidConfig { reason }) if reason=="agent loop driver failed: private_delivery_original_invalid")
+            );
         }
-    }).await.expect("existing Worker must deliver and confirm the original source observations")
+        tx.commit().await.unwrap();
+        checked
+        },
+    )
+    .await
 }
-async fn assert_scope(runtime: &RebornRuntime, id: Uuid, component: Uuid, pass: bool) {
-    let record = confirmation(runtime, id).await;
-    assert_eq!(record["format"], "component-review-work-confirmation/1");
-    assert_eq!(record["checks_succeeded"], pass);
-    assert_eq!(record["q1_qualified"], false);
-    assert_eq!(record["human_q2"], false);
-    assert_eq!(record["activation"], false);
-    let envelope: Value = serde_json::from_str(&selection_bytes(runtime, id).await).unwrap();
-    assert_eq!(envelope["format"], "component-validator-selection/2");
-    let inner: Value =
-        serde_json::from_str(envelope["validator_selection_bytes"].as_str().unwrap()).unwrap();
-    assert_eq!(inner["format"], "monty-retained-recipe-selection/1");
-    assert!(
-        !inner.to_string().contains(&component.to_string()),
-        "candidate is data, never an executable W component"
-    );
-    let client = runtime.installed_catalogue.pool.get().await.unwrap();
-    let rows = client.query("SELECT phase,attempt_count,selection_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1", &[&id]).await.unwrap();
-    assert_eq!(
-        rows.len(),
-        1,
-        "one actual parser dispatch, zero candidate/model/reply dispatches"
-    );
-    assert_eq!(rows[0].get::<_, String>(0), "answered");
-    assert_eq!(rows[0].get::<_, i16>(1), 1);
-    let selected: Value = serde_json::from_str(rows[0].get(2)).unwrap();
-    assert_eq!(
-        selected["capability_id"],
-        brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
-    );
-    let count: i64 = client
-        .query_one(
-            "SELECT count(*) FROM reborn_pure_component_approvals WHERE root_id=$1",
-            &[&component],
-        )
-        .await
-        .unwrap()
-        .get(0);
-    assert_eq!(count, 0);
-    let promoted: i64 = client
-        .query_one(
-            "SELECT count(*) FROM reborn_validation_queue WHERE component_id=$1 AND state=2",
-            &[&component],
-        )
-        .await
-        .unwrap()
-        .get(0);
-    assert_eq!(promoted, 0);
+#[path = "qualified_source_progress.rs"]
+mod progress;
+use progress::{OriginalReview, watchdog};
+
+async fn assert_scope(
+    runtime: &RebornRuntime,
+    review: &mut OriginalReview,
+    component: Uuid,
+    pass: bool,
+) {
+    let id = review.id();
+    let record = review.confirmation(runtime).await;
+    watchdog(
+        runtime,
+        id,
+        "confirmed scope metadata read",
+        async {
+        assert_eq!(record["format"], "component-review-work-confirmation/1");
+        assert_eq!(record["checks_succeeded"], pass);
+        assert_eq!(record["q1_qualified"], false);
+        assert_eq!(record["human_q2"], false);
+        assert_eq!(record["activation"], false);
+        let envelope: Value = serde_json::from_str(&selection_bytes(runtime, id).await).unwrap();
+        assert_eq!(envelope["format"], "component-validator-selection/2");
+        let inner: Value =
+            serde_json::from_str(envelope["validator_selection_bytes"].as_str().unwrap()).unwrap();
+        assert_eq!(inner["format"], "monty-retained-recipe-selection/1");
+        assert!(
+            !inner.to_string().contains(&component.to_string()),
+            "candidate is data, never an executable W component"
+        );
+        let client = runtime.installed_catalogue.pool.get().await.unwrap();
+        let rows = client.query("SELECT phase,attempt_count,selection_bytes FROM brassclaw_monty_tool_invocations WHERE run_id=$1", &[&id]).await.unwrap();
+        assert_eq!(
+            rows.len(),
+            1,
+            "one actual parser dispatch, zero candidate/model/reply dispatches"
+        );
+        assert_eq!(rows[0].get::<_, String>(0), "answered");
+        assert_eq!(rows[0].get::<_, i16>(1), 1);
+        let selected: Value = serde_json::from_str(rows[0].get(2)).unwrap();
+        assert_eq!(
+            selected["capability_id"],
+            brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID
+        );
+        let count: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_pure_component_approvals WHERE root_id=$1",
+                &[&component],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0);
+        let promoted: i64 = client
+            .query_one(
+                "SELECT count(*) FROM reborn_validation_queue WHERE component_id=$1 AND state=2",
+                &[&component],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(promoted, 0);
+        },
+    )
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -222,6 +240,7 @@ async fn native_qualified_pure_source_original_reaches_existing_worker() {
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     let mut queued = request(id, component, false);
     queued.create_queue_project = Some("i01-review".into());
     let receipt = submit(&runtime, queued).await.unwrap();
@@ -232,7 +251,7 @@ async fn native_qualified_pure_source_original_reaches_existing_worker() {
     );
     assert!(!receipt.catalogue_activated);
     assert_eq!(receipt.review_status, "unreviewed");
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     assert!(read_positive(&runtime, id).await.is_some());
     runtime
         .installed_catalogue
@@ -249,15 +268,16 @@ async fn native_qualified_pure_source_rejects_hidden_host_in_unused_export() {
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     submit(&runtime, request(id, component, true))
         .await
         .unwrap();
-    assert_scope(&runtime, id, component, false).await;
+    assert_scope(&runtime, &mut review, component, false).await;
     assert!(
         read_positive(&runtime, id).await.is_none(),
         "a genuine negative source confirmation supplies no positive prerequisite"
     );
-    let record = confirmation(&runtime, id).await;
+    let record = review.confirmation(&runtime).await;
     assert!(record["errors"].to_string().contains("host call"));
     runtime.shutdown().await.unwrap();
 }
@@ -269,6 +289,7 @@ async fn native_qualified_pure_source_ignores_draft_heads_and_keeps_original_pin
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     let captured = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     *runtime.installed_catalogue.capture_gate.lock().await =
@@ -297,7 +318,7 @@ async fn native_qualified_pure_source_ignores_draft_heads_and_keeps_original_pin
     let (result, ()) = tokio::join!(submit(&runtime, request(id, component, false)), edit);
     result.unwrap();
     let original = selection_bytes(&runtime, id).await;
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     submit(&runtime, request(id, component, false))
         .await
         .unwrap();
@@ -312,6 +333,7 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let old_root = ComponentRevisionDraft::from_json(&candidate(component, false)).unwrap();
     let base_a = store.stage(&old_root, 0).await.unwrap();
@@ -336,7 +358,7 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
     original_request.base = Some(crate::pg_review_submission::selection(base_a));
     original_request.dependencies = vec![crate::pg_review_submission::selection(dependency_a)];
     submit(&runtime, original_request.clone()).await.unwrap();
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     let original = selection_bytes(&runtime, id).await;
     let mut changed = original_request.clone();
     root["document"]["description"] = json!("Changed complete source subject");
@@ -358,7 +380,7 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
         Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
     ));
     assert_eq!(selection_bytes(&runtime, id).await, original);
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     runtime.shutdown().await.unwrap();
 }
 
@@ -426,6 +448,7 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     // below share exactly one ordinary pooled connection.
     transport.pool.resize(1);
     assert_eq!(transport.pool.status().max_size, 1);
+    let mut review = OriginalReview::new(&runtime, id);
     faults::install_write_counter(&rig).await;
     transport.arm(1).unwrap();
     submit(&runtime, request(id, component, false))
@@ -441,7 +464,7 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
         .await
         .unwrap();
     assert_eq!(selection_bytes(&runtime, id).await, original);
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     assert_eq!(faults::writes(&rig).await, 1);
     let row = rig
         .pool
@@ -464,10 +487,11 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     // terminal ACK. Original readback must compare its entire evidence/index.
     transport.arm(2).unwrap();
     let code = Uuid::new_v4();
+    let mut evidence_review = OriginalReview::new(&runtime, evidence_cut);
     submit(&runtime, request(evidence_cut, code, false))
         .await
         .unwrap();
-    assert_scope(&runtime, evidence_cut, code, true).await;
+    assert_scope(&runtime, &mut evidence_review, code, true).await;
     assert_eq!(transport.cut_count(), 2);
     assert_eq!(
         faults::writes(&rig).await,
@@ -505,11 +529,12 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     );
     transport.arm(6).unwrap();
     let code = Uuid::new_v4();
+    let mut queue_review = OriginalReview::new(&runtime, queue_cut);
     let mut queued = request(queue_cut, code, false);
     queued.create_queue_project = Some("i01-cut-queue".into());
     let receipt = submit(&runtime, queued).await.unwrap();
     assert_eq!(receipt.queue_ids.len(), 1);
-    assert_scope(&runtime, queue_cut, code, true).await;
+    assert_scope(&runtime, &mut queue_review, code, true).await;
     assert_eq!(transport.cut_count(), 3);
     assert_eq!(faults::writes(&rig).await, 6);
     faults::corrupt_run_index(&runtime, &rig, Uuid::new_v4(), Uuid::new_v4()).await;
@@ -531,17 +556,13 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
     let (pending, pending_component) = (Uuid::new_v4(), Uuid::new_v4());
     let run = brassclaw_turns::TurnRunId::from_uuid(pending);
     let pause = runtime.monty_test_controls.1.pause_private_settlement(run);
-    let waiter = runtime
-        .monty_test_controls
-        .0
-        .private_completion_waiter(run)
-        .unwrap();
+    let mut pending_review = OriginalReview::new(&runtime, pending);
     submit(&runtime, request(pending, pending_component, false))
         .await
         .unwrap();
-    tokio::time::timeout(deadline(&runtime).await, pause.reached.notified())
-        .await
-        .unwrap();
+    pending_review
+        .reached(&runtime, pause.reached.notified())
+        .await;
     let pending_view = crate::pg_review_submission::get_with_catalogue(
         &rig.pool,
         &pending.to_string(),
@@ -578,13 +599,8 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
         "a native terminal without the actual Factory ACK supplies no positive prerequisite"
     );
     pause.release.notify_one();
-    let settled = tokio::time::timeout(deadline(&runtime).await, waiter.wait())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(settled.internal_completion.is_some());
-    drop(settled);
-    assert_scope(&runtime, pending, pending_component, true).await;
+    pending_review.settled(&runtime).await;
+    assert_scope(&runtime, &mut pending_review, pending_component, true).await;
     crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
     submit(&runtime, request(id, component, false))
@@ -626,11 +642,8 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let waiter = runtime
-        .monty_test_controls
-        .0
-        .private_completion_waiter(brassclaw_turns::TurnRunId::from_uuid(id))
-        .unwrap();
+    let mut review = OriginalReview::new(&runtime, id);
+
     let captured = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     *runtime.installed_catalogue.capture_gate.lock().await =
@@ -647,9 +660,9 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
     };
     let (result, ()) = tokio::join!(submit(&runtime, request(id, component, false)), block);
     result.unwrap();
-    let _actual_completion = tokio::time::timeout(deadline(&runtime).await, waiter.wait())
-        .await
-        .unwrap();
+    review
+        .failed(&runtime, Some("recipe_execution_failed"))
+        .await;
     let count: i64 = rig.pool.get().await.unwrap().query_one("SELECT count(*) FROM reborn_component_review_work_confirmations WHERE submission_id=$1", &[&id]).await.unwrap().get(0);
     assert_eq!(count, 0, "a live parser block cannot become source success");
     let observed: i64 = rig
@@ -684,6 +697,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .unwrap();
     let settings = runtime.monty_settings_owner.store();
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     let support = PgComponentRevisionStore::new(rig.pool.clone())
         .read_revision(
             brassclaw_skills::global_bootstrap_components::packaged_component_id(
@@ -729,7 +743,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
     };
     let (result, ()) = tokio::join!(submit(&runtime, authored), edit);
     result.unwrap();
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     let row = rig.pool.get().await.unwrap().query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1 AND w.record_kind='private_work'", &[&id]).await.unwrap();
     let request: PrivateWorkRequest = serde_json::from_str(row.get(0)).unwrap();
     let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
@@ -925,10 +939,11 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
     let home = tempfile::tempdir().unwrap();
     let runtime = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
+    let mut review = OriginalReview::new(&runtime, id);
     submit(&runtime, request(id, component, false))
         .await
         .unwrap();
-    assert_scope(&runtime, id, component, true).await;
+    assert_scope(&runtime, &mut review, component, true).await;
     let outer: Value = serde_json::from_str(&selection_bytes(&runtime, id).await).unwrap();
     let mut client = rig.pool.get().await.unwrap();
     let tx = client
