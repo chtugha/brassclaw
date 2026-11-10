@@ -86,6 +86,26 @@ reuse the actual J single-case primitive, preserve flat `/1` and old effect
 journals, and keep sequencing in Monty. No source/migration/build/DB/Modal work
 is authorized yet. All three Bob plans remain open.
 
+**Run-27:** frozen `ffb4e23b3` builds and preserves the actual worker without
+warnings in 10.945 s. The joint graph stops after 49.801 s with E0603:
+`pure_case_port.rs:46` accesses private `first_party_tools::operation_error`.
+No native tests run. Source identity is verified through terminal failure;
+the freeze is released. J-01's complete five-file correction `aacc308fc` is
+reviewed, all final/base hashes verified and integrated as `0deb857ae`.
+It preserves `OperationFailed` without private-module access, compares the
+already typed capability exactly, replaces ten productive `unwrap`/`expect`
+sites through existing fallible contracts and fences missing original evidence.
+The complete correction awaits Run-28. No successful Source/Case/product
+acceptance is inferred.
+
+The system disk then exceeds 90%. A package-scoped dry-run audit finds no
+executables among the HostRuntime/Engine removal set; the actual Run-27 worker
+and previous execution evidence remain preserved. Only those two packages are
+cleaned (2,218 disposable files, 674.6 MiB), restoring 23.003 GiB free/89.923%
+used. A sandbox-only Cargo cache-use database warning is resolved by repeating
+the preview with normal authorized cache access. No source/DB/evidence or entire
+target is removed. Recheck the guard before compilation and before native work.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted

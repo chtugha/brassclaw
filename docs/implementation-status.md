@@ -13,8 +13,12 @@ Run-26 stops at worker E0063: the pool-projection `Reply` initializer lacks
 as `0bf1eec57`. M-01's reviewed/hash-verified Use/Sempai preparation and desired
 credential status repair is integrated as `813154d33`, with three unrun native
 caller test sources. Auth/refresh owners are reused; Responses/prefix qualification
-and broader status remain open. Run-27 bundles the reviewed sources for local
-validation. N-01 prepares only the shared flow/occurrence architecture proposal.
+and broader status remain open. Run-27 builds the worker without warnings but
+the joint graph fails E0603 at the private HostRuntime error helper; no tests run.
+The source freeze is released. J's five-file fallible-error/original-custody
+correction is reviewed/hash-verified and integrated as `0deb857ae`, awaiting
+Run-28. N-01 prepares only the shared flow/occurrence architecture proposal. Scoped cache cleanup
+restores the mandatory disk guard; native acceptance remains pending.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 
