@@ -151,7 +151,7 @@ impl CaseUnavailable {
             .custody
             .phase
             .try_lock()
-            .map(|(_, state)| state.diagnostic_name())
+            .map(|guard| guard.1.diagnostic_name())
             .unwrap_or("unavailable");
         let (activity, primary) = self
             .custody
