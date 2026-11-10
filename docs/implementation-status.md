@@ -34,6 +34,13 @@ and the worker are preserved. J's reviewed eight-file correction is integrated
 as `d83b07be5`, preserving original error/custody contracts and all existing
 migrations. Run-31 is pending. N's V214 is reserved, without activation or native
 acceptance; O's Responses/prefix investigation is read-only and currently held.
+Run-31 emits the production library artifact but its joint test compilation fails
+on nine integration diagnostics/three unused imports. J's five-file test-only
+correction, including all additionally found standalone readers, is reviewed and
+integrated as `d54f0e2f6`. Root executes both strict native-reference unit cases
+from the actual successfully compiled Skills artifact: two pass, none ignored.
+This does not close the joint build or any connected runtime gate. Run-32 is
+pending; O resumes its read-only proposal only, with no source authorization.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 

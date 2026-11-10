@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional readiness and native regression sources. Use fallible error/custody
   contracts and fence missing original transport evidence. Reuse the normal
   Engine HostAPI dependency and a shared strict native component-reference wire,
-  preserving historical hex codecs. Source is integrated;
+  preserving historical hex codecs. Both native wire unit regressions pass;
+  connected Compilation/Source/Case acceptance remains pending. Source is integrated;
   compilation/native acceptance and general behavior/Q1/Q2 remain open.
 
 - **Original graph preparation (validation pending)**: Carry one acknowledged

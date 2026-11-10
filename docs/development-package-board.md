@@ -161,6 +161,22 @@ O-01, chat `01a1c639-77bd-7da1-a646-65ff8019f60b`, worktree `e60c`, has only a
 read-only Codex Responses/prefix investigation checkpoint and is held while
 J/N occupy the two source slots. No O implementation is authorized.
 
+**Run-31:** frozen `e2547a98f` builds the worker in 0.910 s and emits the
+production library artifact. Joint test compilation then fails after 341.034 s
+on nine test-only integration diagnostics and three unused imports; no connected
+runtime tests execute. Eighteen actual harnesses and the worker are preserved.
+Source identity is verified through terminal failure and the freeze released.
+J's reviewed correction `307ce01b3` is integrated as `d54f0e2f6`: five test
+files, including 21 further obsolete standalone readers discovered by the full
+call audit. Legacy fixtures retain their actual historical graph policy; test
+names/assertions and production sources are unchanged. Five before/final/commit
+hashes match. Root separately executes the two new strict native-reference unit
+cases from the successful unchanged Skills artifact: both pass, one selected
+test each, none ignored. These are not Composition/DB/Source/Case acceptance.
+Run-32 reuses those receipts only if its actual Skills executable hash matches;
+the full joint and connected runtime gates remain pending. O resumes only its
+read-only bounded proposal while J/N source ownership remains unchanged.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
