@@ -39,8 +39,24 @@ enum HostingState {
     WorkerJoined,
     ConfirmedClosed,
 }
+impl HostingState {
+    fn diagnostic_name(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::NotStarted => "not_started",
+            Self::InFlight => "in_flight",
+            Self::WorkerJoined => "worker_joined",
+            Self::ConfirmedClosed => "confirmed_closed",
+        }
+    }
+}
+struct DiagnosticActivity {
+    current: &'static str,
+    primary_failure: Option<&'static str>,
+}
 struct QualificationProgress {
     phase: std::sync::Mutex<(&'static str, HostingState)>,
+    activity: std::sync::Mutex<DiagnosticActivity>,
     original: std::sync::Mutex<Option<Arc<seed::SeedOperation>>>,
     closed: std::sync::Mutex<Option<Box<crate::bootstrap_recipe_flow::Observation>>>,
     cleanup_pending: std::sync::atomic::AtomicBool,
@@ -52,12 +68,28 @@ impl QualificationProgress {
     fn new() -> Self {
         Self {
             phase: std::sync::Mutex::new(("case_package", HostingState::NotStarted)),
+            activity: std::sync::Mutex::new(DiagnosticActivity {
+                current: "prepare_package",
+                primary_failure: None,
+            }),
             original: std::sync::Mutex::new(None),
             closed: std::sync::Mutex::new(None),
             cleanup_pending: std::sync::atomic::AtomicBool::new(false),
             cleanup_error: std::sync::Mutex::new(None),
             closed_turn: std::sync::Mutex::new(None),
             admission_reference: std::sync::Mutex::new(None),
+        }
+    }
+    // Diagnostic-only annotations: they grant no proof, change no gate and
+    // never turn an unavailable diagnostic lock into another execution error.
+    fn note(&self, activity: &'static str) {
+        if let Ok(mut trace) = self.activity.try_lock() {
+            trace.current = activity;
+        }
+    }
+    fn note_primary_failure(&self) {
+        if let Ok(mut trace) = self.activity.try_lock() {
+            trace.primary_failure = Some(trace.current);
         }
     }
     fn checkpoint(&self, phase: &'static str, state: HostingState) -> Result<(), RebornBuildError> {
@@ -114,6 +146,75 @@ impl std::error::Error for CaseUnavailable {
     }
 }
 impl CaseUnavailable {
+    fn diagnostic(&self) -> String {
+        let hosting = self
+            .custody
+            .phase
+            .try_lock()
+            .map(|(_, state)| state.diagnostic_name())
+            .unwrap_or("unavailable");
+        let (activity, primary) = self
+            .custody
+            .activity
+            .try_lock()
+            .map(|trace| {
+                (
+                    trace.current,
+                    trace.primary_failure.unwrap_or(trace.current),
+                )
+            })
+            .unwrap_or(("unavailable", "unavailable"));
+        let cause = self
+            .cause
+            .as_deref()
+            .map(|error| diagnostic_cause(error))
+            .unwrap_or_else(|| "not_recorded".into());
+        let native = self
+            .custody
+            .original
+            .try_lock()
+            .map(|operation| {
+                operation
+                    .as_ref()
+                    .map(|operation| operation.diagnostic())
+                    .unwrap_or_else(|| "not_bound".into())
+            })
+            .unwrap_or_else(|_| "custody_unavailable".into());
+        let cleanup = self
+            .custody
+            .cleanup_error
+            .try_lock()
+            .map(|error| {
+                error
+                    .as_ref()
+                    .map(|error| diagnostic_cause(error))
+                    .unwrap_or_else(|| "not_recorded".into())
+            })
+            .unwrap_or_else(|_| "custody_unavailable".into());
+        let observation = self
+            .custody
+            .closed
+            .try_lock()
+            .map(|original| original.is_some());
+        let turn = self
+            .custody
+            .closed_turn
+            .try_lock()
+            .map(|original| original.is_some());
+        format!(
+            "phase={} reason={} hosting={hosting} activity={activity} primary_activity={primary} cause={cause} cleanup_pending={} cleanup_cause={cleanup} observation_retained={} closed_turn_retained={} last_native=[{native}]",
+            self.phase,
+            self.reason,
+            self.custody
+                .cleanup_pending
+                .load(std::sync::atomic::Ordering::Acquire),
+            observation
+                .map(|value| if value { "yes" } else { "no" })
+                .unwrap_or("unknown"),
+            turn.map(|value| if value { "yes" } else { "no" })
+                .unwrap_or("unknown"),
+        )
+    }
     pub(crate) fn view(&self) -> brassclaw_product_workflow::OriginalPureCaseReadiness {
         use crate::pure_case_execution::OriginalCaseOperation;
         let native_pending = self
@@ -173,8 +274,61 @@ fn failure(
 }
 fn fatal(error: CaseUnavailable) -> RebornBuildError {
     RebornBuildError::OriginalPureCaseQualification {
+        diagnostic: error.diagnostic(),
         source: Box::new(error),
     }
+}
+
+/// A closed redaction vocabulary for error reporting only. String matching
+/// here selects no routing, approval, retry, cleanup or containment decision.
+/// Unknown/private InvalidConfig text stays in the original cause, not output.
+fn diagnostic_cause(error: &(dyn std::error::Error + 'static)) -> String {
+    if let Some(error) = error.downcast_ref::<RebornBuildError>() {
+        return match error {
+            RebornBuildError::InvalidConfig { reason } => {
+                for phase in ["admission", "completion", "settlement", "shutdown"] {
+                    for kind in [
+                        "InvalidInput",
+                        "InvalidLimits",
+                        "InvalidPortResult",
+                        "Backpressure",
+                        "Closed",
+                        "Transport",
+                        "Protocol",
+                        "Deadline",
+                        "Join",
+                        "SettingsConflict",
+                        "UnsafeHeapReduction",
+                    ] {
+                        if reason == &format!("bootstrap Recipe {phase}: {kind}") {
+                            return format!("contained_{phase}/{kind}");
+                        }
+                    }
+                }
+                match reason.as_str() {
+                    "model-free contained receipt or quiescence incomplete" => {
+                        "quiescence_incomplete"
+                    }
+                    "contained expected-stop lifecycle incomplete" => "expected_stop_incomplete",
+                    "contained transport unresolved" => "transport_unresolved",
+                    "contained worker has not been reaped" => "worker_not_reaped",
+                    "contained worker closure unacknowledged" => "worker_close_unacknowledged",
+                    "contained native worker failed" => "worker_failed",
+                    _ => "invalid_config_private",
+                }
+                .into()
+            }
+            RebornBuildError::OriginalPureCaseQualification { .. } => {
+                "nested_case_qualification".into()
+            }
+            _ => "typed_build_error".into(),
+        };
+    }
+    if let Some(error) = error.downcast_ref::<brassclaw_host_runtime::RetainedCapabilityError>() {
+        // This is a closed Copy enum, never a provider/source/SQL diagnostic.
+        return format!("native_registration/{error:?}");
+    }
+    "private_typed_cause".into()
 }
 
 pub(crate) struct PackagedCaseGraph {
@@ -467,6 +621,7 @@ impl Context {
             "selection_bytes":self.program(spec).inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes()})))
     }
     async fn run_stage(&self, spec: &Spec) -> Result<(), RebornBuildError> {
+        self.progress.note("read_stage_completion");
         self.progress.checkpoint(spec.name, HostingState::Unknown)?;
         let id = self.id(&format!("{}:intent", spec.name));
         let done = self.id(&format!("{}:complete", spec.name));
@@ -474,11 +629,13 @@ impl Context {
             .await?
             .is_some()
         {
+            self.progress.note("verify_existing_stage");
             self.verify_stage(spec).await?;
             self.progress
                 .checkpoint(spec.name, HostingState::ConfirmedClosed)?;
             return Ok(());
         }
+        self.progress.note("read_stage_intent");
         if io::read_record(&self.base.pool, self.base.storage.as_ref(), id)
             .await?
             .is_some()
@@ -490,6 +647,7 @@ impl Context {
         self.progress
             .checkpoint(spec.name, HostingState::NotStarted)?;
         let intent = self.stage_intent(spec)?;
+        self.progress.note("retain_stage_intent");
         io::retain_new_intent(&self.base.pool, self.base.storage.as_ref(), id, &intent).await?;
         let reference = format!("original-pure-seed:{}:{}", self.operation, spec.name);
         *self
@@ -505,6 +663,7 @@ impl Context {
         self.progress
             .cleanup_pending
             .store(true, std::sync::atomic::Ordering::Release);
+        self.progress.note("admit_stage");
         let admitted = io::bounded(
             self.base.storage.as_ref(),
             crate::bootstrap_validation::admit(
@@ -517,10 +676,12 @@ impl Context {
         .await?;
         let proof = std::sync::OnceLock::new();
         let run=async {
+            self.progress.note("prepare_stage_operation");
             let stage=self.id(spec.name);
             let operation=seed::SeedOperation::from_reserved_stage(self.operation,stage,intent.clone(),self.base.clone(),
                 admitted.host.clone(),self.instrument.clone(),spec.export)?;
             let program=self.program(spec);
+            self.progress.note("inspect_stage_program");
             let inspected=Arc::new(brassclaw_engine::executor::retained_source::InspectedRetainedProgram::inspect_with_limits(
                 RetainedProgram::Tools(program.clone()),&self.base.worker.path(),self.base.preparation.limits())
                 .await.map_err(|error| {
@@ -530,6 +691,7 @@ impl Context {
                     invalid(error)
                 })?);
             self.progress.checkpoint(spec.name,HostingState::InFlight)?;
+            self.progress.note("prepare_stage_native_tools");
             let tools=crate::installed_monty_catalogue::original_pure_case_tools(self.base.pool.clone(),self.kernel.clone(),
                 admitted.host.clone(),admitted.admission.clone(),program,operation.clone(),false)?;
             let source=Arc::new(seed::SeedSource {reference,inspected,operation:operation.clone(),tools,
@@ -537,13 +699,16 @@ impl Context {
                 receipt_failure:brassclaw_monty_host::service::PortFailure::new("original_pure_seed_receipt_invalid")
                     .map_err(|_|invalid("original Pure seed receipt failure classification is invalid"))?});
             *self.progress.original.lock().map_err(|_|invalid("case original custody unavailable"))?=Some(operation.clone());
+            self.progress.note("execute_contained_stage");
             let observation=crate::bootstrap_recipe_flow::execute(&admitted,
                 crate::bootstrap_recipe_flow::Request::contained(self.base.worker.path(),self.base.executor.clone(),
                     &self.base.root,source.clone())?).await?;
+            self.progress.note("verify_stage_root");
             if observation.receipt.root.source_checksum()!=self.base.root.source_checksum() {
                 *self.progress.closed.lock().map_err(|_|invalid("case closed custody unavailable"))?=Some(Box::new(observation));
                 return Err(invalid("case fixture changed the protected root"));
             }
+            self.progress.note("verify_stage_quiescence");
             let (actual,quiescence)=match observation.quiescence_proof() {
                 Ok(proof)=>proof,
                 Err(error)=>{
@@ -556,6 +721,7 @@ impl Context {
             *self.progress.closed.lock().map_err(|_|invalid("case closed custody unavailable"))?=Some(Box::new(observation));
             self.progress.checkpoint(spec.name,HostingState::WorkerJoined)?;
             proof.set(quiescence).map_err(|_|invalid("duplicate seed quiescence"))?;
+            self.progress.note("read_stage_native_observation");
             let received=operation.received()?;
             let receipt=source.received_receipt.get().ok_or_else(||invalid("closed seed receipt missing"))?;
             let header=json!({"format":"original-pure-seed-stage-observed/1","operation":self.operation,
@@ -566,6 +732,10 @@ impl Context {
                 "receipt":receipt,"quiescence":actual});
             Ok::<_,RebornBuildError>(header)
         }.await;
+        if run.is_err() {
+            self.progress.note_primary_failure();
+        }
+        self.progress.note("settle_stage_close");
         let close = match proof.get() {
             Some(proof) => {
                 crate::bootstrap_validation::settle_quiescent_closed(
@@ -579,6 +749,7 @@ impl Context {
                 .await
                 .map(|_| brassclaw_turns::TurnStatus::Completed),
         };
+        self.progress.note("read_stage_close");
         let closed = crate::bootstrap_validation::read_source_close(
             &self.base.pool,
             &admitted,
@@ -613,8 +784,11 @@ impl Context {
         let bytes = self.record(done, "behavior", true, report);
         // Original native journals, joined worker and acknowledged closed Turn
         // are checked before any qualifying completion is published.
+        self.progress.note("verify_new_stage_completion");
         self.verify_stage_bytes(spec, &bytes).await?;
+        self.progress.note("retain_stage_completion");
         io::retain_record(&self.base.pool, self.base.storage.as_ref(), done, &bytes).await?;
+        self.progress.note("verify_retained_stage_completion");
         self.verify_stage(spec).await.map(|_| ())
     }
     async fn verify_stage(
@@ -826,6 +1000,7 @@ pub(crate) async fn qualify(
 > {
     use brassclaw_host_runtime::RetainedCapabilityError as NativeError;
     let progress = Arc::new(QualificationProgress::new());
+    progress.note("resolve_native_registration");
     let capability =
         CapabilityId::new(brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID).map_err(invalid)?;
     let native = match kernel.builtin(&capability, None) {
@@ -854,6 +1029,7 @@ pub(crate) async fn qualify(
             )));
         }
     };
+    progress.note("verify_native_artifact");
     if let Err(error) = native.verify_native_artifact().await {
         return Err(fatal(failure(
             "native_artifact",
@@ -923,6 +1099,7 @@ async fn qualify_inner(
     identity: brassclaw_host_runtime::NativeImplementationRef,
     progress: Arc<QualificationProgress>,
 ) -> Result<Option<Arc<QualifiedCaseHarness>>, RebornBuildError> {
+    progress.note("retain_case_package");
     let mut graph = io::bounded(
         base.storage.as_ref(),
         retain(base.pool.clone(), identity, tenant),
@@ -930,16 +1107,19 @@ async fn qualify_inner(
     .await?;
     let draft = seed::fixture_draft()?;
     let store = PgComponentRevisionStore::new(base.pool.clone());
+    progress.note("retain_seed_fixture");
     io::bounded(
         base.storage.as_ref(),
         graph.definitions.retain(&store, &draft),
     )
     .await?;
+    progress.note("snapshot_seed_fixture");
     let instrument_snapshot = io::bounded(
         base.storage.as_ref(),
         graph.definitions.snapshot(base.pool.clone(), draft.uuid()),
     )
     .await?;
+    progress.note("inspect_seed_fixture");
     let instrument = Arc::new(
         brassclaw_engine::executor::retained_source::InspectedPureSelection::inspect(
             instrument_snapshot,
@@ -986,10 +1166,12 @@ async fn qualify_inner(
         .collect::<Vec<_>>();
     let association =
         evidence::checksum(graph.program.bindings()["0:2"].association().exact_bytes());
+    progress.note("read_seed_reservation");
     let existing = io::read_record(&base.pool, base.storage.as_ref(), slot).await?;
     let bytes = match existing {
         Some(bytes) => bytes,
         None => {
+            progress.note("read_initial_tool_policy");
             let enabled = io::bounded(base.storage.as_ref(), async {
                 Ok(base
                     .pool
@@ -1019,12 +1201,15 @@ async fn qualify_inner(
                 &components,
                 json!({"format":"original-pure-seed-reservation/1","manifest":manifest,"operation_id":Uuid::new_v4()}),
             );
+            progress.note("retain_seed_reservation");
             let _write = io::retain_record(&base.pool, base.storage.as_ref(), slot, &offered).await;
+            progress.note("read_seed_reservation_acknowledgement");
             io::read_record(&base.pool, base.storage.as_ref(), slot)
                 .await?
                 .ok_or_else(|| invalid("original Pure seed reservation remains unresolved"))?
         }
     };
+    progress.note("verify_seed_reservation");
     let offered: Value = serde_json::from_str(&bytes).map_err(invalid)?;
     let report = &offered["report"];
     let operation: Uuid =
@@ -1065,6 +1250,7 @@ async fn qualify_inner(
     let binding=context.record(binding_record,"behavior",true,json!({"format":"original-pure-tool-skill-qualification/1",
         "manifest_checksum":context.manifest_checksum,"tool":tool,"tool_skill":tool_skill,"argument_checks":context.binding_checks()?,
         "prerequisites":specs().iter().filter(|s|s.name.starts_with("primitive-")).map(|s|context.id(&format!("{}:complete",s.name))).collect::<Vec<_>>() }));
+    context.progress.note("retain_tool_skill_qualification");
     io::retain_record(
         &context.base.pool,
         context.base.storage.as_ref(),
@@ -1083,11 +1269,13 @@ async fn qualify_inner(
     context
         .progress
         .checkpoint("independent_encoder", HostingState::InFlight)?;
+    context.progress.note("qualify_independent_encoder");
     let encoder =
         crate::bootstrap_validator_approval::qualify_case_encoder(context.base.clone()).await?;
     context
         .progress
         .checkpoint("independent_encoder", HostingState::ConfirmedClosed)?;
+    context.progress.note("verify_independent_encoder");
     let encoder_ref = verify_encoder(&context, &encoder).await?;
     context
         .run_stage(
@@ -1097,6 +1285,7 @@ async fn qualify_inner(
                 .ok_or_else(|| invalid("closed consuming harness qualification Spec missing"))?,
         )
         .await?;
+    context.progress.note("verify_all_stage_completions");
     let mut completed = Vec::new();
     for spec in specs() {
         completed.push(context.verify_stage(&spec).await?);
@@ -1106,6 +1295,7 @@ async fn qualify_inner(
         "manifest":context.manifest,"reservation":{"id":slot,"checksum":evidence::checksum(&bytes)},
         "tool_skill":{"id":binding_record,"checksum":evidence::checksum(&binding)},"encoder":encoder_ref,
         "completed":completed,"scope":"private-single-case-observation-only","authored_q1":false,"human_q2":false,"activation":false}));
+    context.progress.note("retain_harness_qualification");
     io::retain_record(
         &context.base.pool,
         context.base.storage.as_ref(),
@@ -1147,4 +1337,58 @@ async fn verify_encoder(
         Ok(reference)
     })
     .await
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+    use std::error::Error;
+
+    #[test]
+    fn fatal_diagnostic_redacts_private_text_and_retains_original_cause() {
+        let private = "private SQL/source/receipt marker";
+        let progress = Arc::new(QualificationProgress::new());
+        progress.note("execute_contained_stage");
+        progress.note_primary_failure();
+        progress.note("read_stage_close");
+        let error = fatal(failure(
+            "primitive-return",
+            "case_containment_unconfirmed",
+            invalid(private),
+            progress,
+        ));
+        let display = error.to_string();
+        assert!(display.contains("activity=read_stage_close"));
+        assert!(display.contains("primary_activity=execute_contained_stage"));
+        assert!(display.contains("cause=invalid_config_private"));
+        assert!(!display.contains(private));
+        assert!(!format!("{error:?}").contains(private));
+        let original = error
+            .source()
+            .unwrap()
+            .downcast_ref::<CaseUnavailable>()
+            .unwrap();
+        let original = original
+            .source()
+            .unwrap()
+            .downcast_ref::<RebornBuildError>()
+            .unwrap();
+        assert!(
+            matches!(original, RebornBuildError::InvalidConfig { reason } if reason == private)
+        );
+    }
+
+    #[test]
+    fn contained_diagnostic_uses_only_exact_closed_service_reason() {
+        assert_eq!(
+            diagnostic_cause(&invalid("bootstrap Recipe completion: Deadline")),
+            "contained_completion/Deadline"
+        );
+        assert_eq!(
+            diagnostic_cause(&invalid(
+                "bootstrap Recipe completion: Deadline private payload"
+            )),
+            "invalid_config_private"
+        );
+    }
 }

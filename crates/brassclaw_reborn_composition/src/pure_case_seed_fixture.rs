@@ -153,6 +153,58 @@ pub(super) struct SeedOperation {
     components: Vec<Value>,
 }
 impl SeedOperation {
+    /// Passive bounded projection of already-owned evidence. This never reads
+    /// raw receipt bodies, reconciles an operation or proves worker closure.
+    pub(super) fn diagnostic(&self) -> String {
+        let Some(bound) = self.bound.get() else {
+            return "bound=false".into();
+        };
+        let failure = bound
+            .failures
+            .try_lock()
+            .map(|failures| {
+                failures
+                    .get("operation")
+                    .or_else(|| failures.values().next())
+                    .map(|failure| {
+                        let last = failure
+                            .last_error
+                            .try_lock()
+                            .map(|error| {
+                                error
+                                    .as_ref()
+                                    .map(seed_cause_kind)
+                                    .unwrap_or_else(|| "none".into())
+                            })
+                            .unwrap_or_else(|_| "custody_unavailable".into());
+                        format!(
+                            "{} acknowledged={} last={last}",
+                            seed_cause_kind(&failure.cause),
+                            failure.acknowledged.load(Ordering::Acquire)
+                        )
+                    })
+                    .unwrap_or_else(|| "none".into())
+            })
+            .unwrap_or_else(|_| "custody_unavailable".into());
+        let reconciliation = bound
+            .reconciliation_error
+            .try_lock()
+            .map(|error| {
+                error
+                    .as_ref()
+                    .map(seed_cause_kind)
+                    .unwrap_or_else(|| "none".into())
+            })
+            .unwrap_or_else(|_| "custody_unavailable".into());
+        format!(
+            "bound=true begun={} finished={} transport_pending={} supervised_reconciliation={} received={} failure=[{failure}] reconciliation={reconciliation}",
+            bound.begun.load(Ordering::Acquire),
+            bound.finished.load(Ordering::Acquire),
+            bound.transport_pending.load(Ordering::Acquire),
+            bound.context.requires_supervised_root_reconciliation(),
+            bound.received.get().is_some()
+        )
+    }
     pub(super) fn from_reserved_stage(
         operation: Uuid,
         stage: Uuid,
@@ -205,6 +257,46 @@ impl SeedOperation {
             .get()
             .and_then(|b| b.received.get())
             .ok_or_else(|| invalid("closed native original observation absent"))
+    }
+}
+
+// Closed typed error families only. In particular Dispatch JSON, host reasons,
+// source/SQL errors and native commands/answers are never formatted here.
+fn seed_cause_kind(cause: &CaseCause) -> String {
+    use crate::pure_case_evidence::CaseEncodingError as Capacity;
+    use brassclaw_engine::executor::retained_recipe::RetainedExecutionError as Engine;
+    match cause {
+        CaseCause::Engine(error) => match error {
+            Engine::Invalid(_) => "engine/invalid".into(),
+            Engine::Inputs(_) => "engine/inputs".into(),
+            Engine::Tool(_) => "engine/tool".into(),
+            Engine::Submission(error) => format!("engine/submission/{:?}", error.kind),
+            Engine::Receipt { kind, .. } => format!("engine/receipt/{kind:?}"),
+            Engine::Process(error) => format!("engine/process/{:?}", error.kind),
+        },
+        CaseCause::Metadata(_) => "metadata".into(),
+        CaseCause::Host(error) => format!("host/{}", error.kind.as_str()),
+        CaseCause::Capacity(error) => match error {
+            Capacity::PolicyCapacity => "capacity/policy",
+            Capacity::Representation => "capacity/representation",
+            Capacity::Allocation(_) => "capacity/allocation",
+            Capacity::Encoding(_) => "capacity/encoding",
+        }
+        .into(),
+        CaseCause::Bootstrap { .. } => "bootstrap_metadata".into(),
+        CaseCause::Boundary(_) => "boundary".into(),
+        CaseCause::Dispatch(_) => "native_dispatch".into(),
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn native_dispatch_diagnostic_never_formats_retained_payload() {
+        let cause = CaseCause::Dispatch(json!({"answer":"private receipt/source marker"}));
+        assert_eq!(seed_cause_kind(&cause), "native_dispatch");
     }
 }
 #[async_trait]

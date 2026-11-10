@@ -2,8 +2,9 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RebornBuildError {
-    #[error("original Pure case qualification containment/integrity is unresolved")]
+    #[error("original Pure case qualification containment/integrity is unresolved: {diagnostic}")]
     OriginalPureCaseQualification {
+        diagnostic: String,
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
