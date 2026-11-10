@@ -17,11 +17,17 @@ and broader status remain open. Run-27 builds the worker without warnings but
 the joint graph fails E0603 at the private HostRuntime error helper; no tests run.
 The source freeze is released. J's five-file fallible-error/original-custody
 correction is reviewed/hash-verified and integrated as `0deb857ae`, awaiting
-Run-28. N-01 prepares only the shared flow/occurrence architecture proposal. Scoped cache cleanup
+Run-28. N-01's reviewed shared flow/occurrence proposal now has a private connected
+source assignment; its actual qualification and native acceptance remain open. Scoped cache cleanup
 restores the mandatory disk guard; native acceptance remains pending.
 Run-28 then stops at invalid JSON-macro shorthand in J's component builder,
 without executing tests. The audited explicit-field correction is integrated
-as `16c85cbff`; Run-29 and actual native acceptance remain pending.
+as `16c85cbff`. Run-29 stops at the dev-only Engine HostAPI dependency and missing
+native component-reference Serde traits, without running tests. J's reviewed
+three-file correction is integrated as `698591fbe`: one regular dependency,
+its exact standalone lock edge and a shared strict native byte-array wire.
+Historical hex formats and existing migrations remain unchanged. Run-30 and
+actual native acceptance remain pending.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 

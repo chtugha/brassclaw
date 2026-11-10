@@ -80,11 +80,15 @@ preserved. The correction and M1/M2 await the prepared Run-27 joint local batch.
 Root owns native validation; J/M remain idle for their own concrete findings.
 
 N-01, fresh chat `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, worktree `9cb5`,
-prepares a read-only source/architecture proposal for B1's necessary shared
-qualified flow/occurrence support under the existing V35-13/14 owner. It must
-reuse the actual J single-case primitive, preserve flat `/1` and old effect
-journals, and keep sequencing in Monty. No source/migration/build/DB/Modal work
-is authorized yet. All three Bob plans remain open.
+completes its read-only architecture proposal and receives the connected source
+assignment under the existing V35-13/14/B2 selection owners. It reuses J's
+single-case primitive, one shared successor selection contract and the existing
+admission/effect journals. Monty keeps sequencing and valid Recipe state; no
+mandatory fresh context per step or generic fixed foreach count is introduced.
+Private dependent-work lineage, shared compute/cancellation and real shipped
+qualification must be connected before activation. Missing general own-approval
+records cannot be manufactured. Source work stays private pending review/native
+acceptance; migrations require reservation. All three Bob plans remain open.
 
 **Run-27:** frozen `ffb4e23b3` builds and preserves the actual worker without
 warnings in 10.945 s. The joint graph stops after 49.801 s with E0603:
@@ -117,6 +121,20 @@ The disk again exceeds 90%; a further exact Cargo dry-run checks 4,046 paths
 and finds no executables. Only disposable ProductWorkflow/Turns/WebUI package
 caches are removed (6,435 files, 2.5 GiB); source, databases and all preserved
 execution evidence remain intact.
+
+**Run-29:** frozen `dcfde8834` reuses the worker (0.849 s), then the joint graph
+fails after 41.926 s: normal Engine code references a dev-only HostAPI dependency
+and native observations require missing `ComponentRevisionRef` Serde support.
+No tests run; unchanged source is verified and the freeze released. J's complete
+three-file correction `db13816e3` is reviewed/hash-verified and integrated as
+`698591fbe`. It moves the existing dependency, adds exactly its missing standalone
+lockfile edge and shares one strict object wire with the existing 32-byte-array
+checksum. Historical explicit hex codecs and V211/V213 remain unchanged. Two
+new wire regression sources await execution with the connected consumers.
+The mandatory disk guard again requires scoped cache cleanup: the dry-run checks
+1,055 Skills/Engine paths, distinguishes object files from actual executables
+and finds no executables. Cargo removes 1,549 disposable files (606.8 MiB).
+No source, database or retained evidence is removed. Run-30 remains pending.
 
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
@@ -424,7 +442,7 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Full connected source and exact boundary follow-up reviewed/hash-verified; integrated as `f5d18f486`/`d7b4a42b9`, including V212. Acquisition adapter correction integrated as `a8ace38b6`. Compile/native acceptance unrun; idle for own corrections. Existing original capture/graph owners reused; separate evidence/historical-image limits remain open. |
 | L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Complete coherent J/I/K follow-up integrated as `3002c45c8`, including V213 and all eight productive restores. All 28 source hashes verified; old migration bytes/J guards/K adapter preserved. Compilation/native acceptance unrun; idle for own corrections. Depth above 64 and independent evidence/native-image migration remain open. |
 | M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 source reviewed, six hashes verified and integrated as `813154d33`; three native caller sources unrun. Existing provider/Auth/refresh owners reused; no build or external account action performed. Idle for own corrections. Responses/prefix qualification, broader status DTOs and real-issuer/platform gates remain open. |
-| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Read-only proposal under the shared V35-13/14 owner consumed by B1. Reuse J's sealed single-case invocation and existing admission/effect custody; preserve flat historical formats. No source, migration or execution authorization yet. |
+| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Connected source authorized after proposal review: one shared B2 successor codec, actual Monty flow/occurrences and private dependent-work consumer with real qualification. Preserve flat historical formats; no fresh-step reset/fixed foreach quota. No activation or native acceptance; migration reservation pending. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

@@ -27,7 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preserve technical failure/cancellation without replay or false approval.
   Add V211, bounded evidence encoding and streaming digests, with explicit
   optional readiness and native regression sources. Use fallible error/custody
-  contracts and fence missing original transport evidence. Source is integrated;
+  contracts and fence missing original transport evidence. Reuse the normal
+  Engine HostAPI dependency and a shared strict native component-reference wire,
+  preserving historical hex codecs. Source is integrated;
   compilation/native acceptance and general behavior/Q1/Q2 remain open.
 
 - **Original graph preparation (validation pending)**: Carry one acknowledged
