@@ -1,5 +1,7 @@
-//! Credential-free codec/transport regressions. No provider/issuer operation,
-//! token, fake JWT/session source, measured count or accepted Prefix fixture.
+//! Credential-free codec/transport and RAW-provider rejection regressions.
+//! No network model/issuer operation, token, fake JWT/session source, measured
+//! count or accepted Prefix. The raw test does not cover TokenRefreshing/native
+//! Auth; that boundary has its separate actual Composition factory regression.
 use super::*;
 use crate::config::OpenAiCodexConfig;
 use crate::provider::{CompletionRequest, ImageUrl, LlmProvider, ToolCall, ToolCompletionRequest};

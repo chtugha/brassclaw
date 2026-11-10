@@ -112,31 +112,32 @@ impl LlmProvider for TokenRefreshingProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
+        if matches!(&self.source, SessionSource::Host(_))
+            && request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission
+        {
+            crate::provider_observation::record_pre_submission_rejection();
+            return Err(LlmError::ConfigurationChanged {
+                provider: "Codex Host requires SingleSubmission".into(),
+            });
+        }
+        // Build/validate exactly once BEFORE either credential source can lease,
+        // refresh or read a file. Prepared data stays bound to this exact inner.
+        let prepared = self.inner.prepare_completion(&request)?;
         if let SessionSource::Host(source) = &self.source {
-            if request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission {
-                crate::provider_observation::record_pre_submission_rejection();
-                return Err(LlmError::ConfigurationChanged {
-                    provider: "Codex Host requires SingleSubmission".into(),
-                });
-            }
-            let snapshot = source.session().await.inspect_err(|_error| {
+            let snapshot = source.session().await.inspect_err(|_| {
                 crate::provider_observation::record_pre_submission_rejection();
             })?;
-            return self
-                .inner
-                .complete_with_host_session(request, snapshot)
-                .await;
+            return prepared.complete(Some(snapshot)).await;
         }
         self.ensure_fresh_token().await?;
-
-        match self.inner.complete(request.clone()).await {
+        match prepared.complete(None).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
                 if request.dispatch_policy.allows_resubmission() =>
             {
                 tracing::debug!("Auth failure during complete(), refreshing and retrying once");
                 self.file_session()?.handle_auth_failure().await?;
                 self.update_inner_token().await?;
-                self.inner.complete(request).await
+                prepared.complete(None).await
             }
             other => other,
         }
@@ -146,24 +147,23 @@ impl LlmProvider for TokenRefreshingProvider {
         &self,
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
+        if matches!(&self.source, SessionSource::Host(_))
+            && request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission
+        {
+            crate::provider_observation::record_pre_submission_rejection();
+            return Err(LlmError::ConfigurationChanged {
+                provider: "Codex Host requires SingleSubmission".into(),
+            });
+        }
+        let prepared = self.inner.prepare_tools(&request)?;
         if let SessionSource::Host(source) = &self.source {
-            if request.dispatch_policy != crate::ProviderDispatchPolicy::SingleSubmission {
-                crate::provider_observation::record_pre_submission_rejection();
-                return Err(LlmError::ConfigurationChanged {
-                    provider: "Codex Host requires SingleSubmission".into(),
-                });
-            }
-            let snapshot = source.session().await.inspect_err(|_error| {
+            let snapshot = source.session().await.inspect_err(|_| {
                 crate::provider_observation::record_pre_submission_rejection();
             })?;
-            return self
-                .inner
-                .complete_tools_with_host_session(request, snapshot)
-                .await;
+            return prepared.complete(Some(snapshot)).await;
         }
         self.ensure_fresh_token().await?;
-
-        match self.inner.complete_with_tools(request.clone()).await {
+        match prepared.complete(None).await {
             Err(LlmError::AuthFailed { .. } | LlmError::SessionExpired { .. })
                 if request.dispatch_policy.allows_resubmission() =>
             {
@@ -172,7 +172,7 @@ impl LlmProvider for TokenRefreshingProvider {
                 );
                 self.file_session()?.handle_auth_failure().await?;
                 self.update_inner_token().await?;
-                self.inner.complete_with_tools(request).await
+                prepared.complete(None).await
             }
             other => other,
         }

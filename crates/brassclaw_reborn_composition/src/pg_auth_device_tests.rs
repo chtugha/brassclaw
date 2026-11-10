@@ -26,6 +26,7 @@ use std::sync::{
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum IssuerMode {
     Success,
+    NearExpiry,
     Throttle,
     DisconnectToken,
     LargeStart,
@@ -159,8 +160,13 @@ async fn token(State(state): State<Arc<IssuerState>>, headers: HeaderMap, body: 
             .body(Body::from_stream(stream))
             .unwrap();
     }
+    let expires_in = if state.mode == IssuerMode::NearExpiry {
+        240
+    } else {
+        3600
+    };
     axum::Json(serde_json::json!({"access_token":"access-http-original","refresh_token":"refresh-http-original",
-        "expires_in":3600,"token_type":"Bearer"})).into_response()
+        "expires_in":expires_in,"token_type":"Bearer"})).into_response()
 }
 struct Issuer {
     endpoint: String,

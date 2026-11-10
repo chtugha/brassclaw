@@ -211,7 +211,7 @@ impl OpenAiCodexProvider {
     /// through measurement, the live barrier and transport. No shared auth write.
     async fn send_request(
         &self,
-        body: serde_json::Value,
+        body: &serde_json::Value,
         host: Option<CodexHostSession>,
         max_output_tokens: Option<u32>,
     ) -> Result<ParsedResponse, LlmError> {
@@ -237,7 +237,7 @@ impl OpenAiCodexProvider {
             }
             None => (self.build_headers().await?, original),
         };
-        let request = codex_request::build_request(&self.client, &self.endpoint, &body, headers)
+        let request = codex_request::build_request(&self.client, &self.endpoint, body, headers)
             .map_err(|error| {
                 if let Some(observer) = &observer {
                     observer.submission_rejected();
@@ -317,26 +317,75 @@ impl OpenAiCodexProvider {
     }
 }
 
-impl OpenAiCodexProvider {
-    pub(crate) async fn complete_with_host_session(
-        &self,
-        request: CompletionRequest,
-        host: CodexHostSession,
-    ) -> Result<CompletionResponse, LlmError> {
-        self.complete_inner(request, Some(host)).await
+// Private credential-free preparation stays bound to this exact provider. It
+// retains no session or CheckedFinalRequest and never leaves the execution seam
+// as a no-send observation. The existing File retry may reuse the same body
+// deliberately; each actual HTTP Request is still built and consumed once at
+// the existing send/guard boundary.
+struct PreparedCodexRequest<'a> {
+    provider: &'a OpenAiCodexProvider,
+    body: serde_json::Value,
+    max_output_tokens: Option<u32>,
+}
+pub(crate) struct PreparedCodexCompletion<'a> {
+    request: PreparedCodexRequest<'a>,
+}
+pub(crate) struct PreparedCodexTools<'a> {
+    request: PreparedCodexRequest<'a>,
+    name_map: std::collections::HashMap<String, String>,
+}
+impl PreparedCodexRequest<'_> {
+    async fn send(&self, host: Option<CodexHostSession>) -> Result<ParsedResponse, LlmError> {
+        self.provider
+            .send_request(&self.body, host, self.max_output_tokens)
+            .await
     }
-    pub(crate) async fn complete_tools_with_host_session(
+}
+impl PreparedCodexCompletion<'_> {
+    pub(crate) async fn complete(
         &self,
-        request: ToolCompletionRequest,
-        host: CodexHostSession,
-    ) -> Result<ToolCompletionResponse, LlmError> {
-        self.complete_tools_inner(request, Some(host)).await
-    }
-    async fn complete_inner(
-        &self,
-        request: CompletionRequest,
         host: Option<CodexHostSession>,
     ) -> Result<CompletionResponse, LlmError> {
+        let parsed = self.request.send(host).await?;
+        Ok(CompletionResponse {
+            content: parsed.text_content,
+            usage: parsed.usage,
+            finish_reason: parsed.finish_reason,
+            reasoning: parsed.reasoning,
+        })
+    }
+}
+impl PreparedCodexTools<'_> {
+    pub(crate) async fn complete(
+        &self,
+        host: Option<CodexHostSession>,
+    ) -> Result<ToolCompletionResponse, LlmError> {
+        let mut parsed = self.request.send(host).await?;
+        // Same original alias map through any eligible File retry; no rebuilding
+        // Tools or loss of the original request while authentication awaits.
+        for call in &mut parsed.tool_calls {
+            if let Some(original) = self.name_map.get(&call.name) {
+                call.name = original.clone();
+            }
+        }
+        Ok(ToolCompletionResponse {
+            content: if parsed.text_content.is_empty() {
+                None
+            } else {
+                Some(parsed.text_content)
+            },
+            tool_calls: parsed.tool_calls,
+            usage: parsed.usage,
+            finish_reason: parsed.finish_reason,
+            reasoning: parsed.reasoning,
+        })
+    }
+}
+impl OpenAiCodexProvider {
+    pub(crate) fn prepare_completion(
+        &self,
+        request: &CompletionRequest,
+    ) -> Result<PreparedCodexCompletion<'_>, LlmError> {
         codex_request::validate_options(
             request.model.as_deref(),
             &self.model,
@@ -348,22 +397,18 @@ impl OpenAiCodexProvider {
         .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
         let body = codex_request::body(&self.model, &request.messages, None)
             .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
-        let parsed = self.send_request(body, host, request.max_tokens).await?;
-
-        Ok(CompletionResponse {
-            content: parsed.text_content,
-            usage: parsed.usage,
-
-            finish_reason: parsed.finish_reason,
-            reasoning: parsed.reasoning,
+        Ok(PreparedCodexCompletion {
+            request: PreparedCodexRequest {
+                provider: self,
+                body,
+                max_output_tokens: request.max_tokens,
+            },
         })
     }
-
-    async fn complete_tools_inner(
+    pub(crate) fn prepare_tools(
         &self,
-        request: ToolCompletionRequest,
-        host: Option<CodexHostSession>,
-    ) -> Result<ToolCompletionResponse, LlmError> {
+        request: &ToolCompletionRequest,
+    ) -> Result<PreparedCodexTools<'_>, LlmError> {
         codex_request::validate_options(
             request.model.as_deref(),
             &self.model,
@@ -373,50 +418,23 @@ impl OpenAiCodexProvider {
             request.tool_choice.as_deref(),
         )
         .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
-
-        // Build a reverse map so we can translate sanitized names back to originals.
-        // Only needed when sanitization actually changes a name (e.g. MCP tools with dots).
-        let name_map: std::collections::HashMap<String, String> = request
-            .tools
-            .iter()
-            .filter_map(|t| {
-                let sanitized = sanitize_tool_name(&t.name);
-                if sanitized != t.name {
-                    Some((sanitized, t.name.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
         let body = codex_request::body(&self.model, &request.messages, Some(&request.tools))
             .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
-        let mut parsed = self.send_request(body, host, request.max_tokens).await?;
-
-        // Reverse-map sanitized tool names back to originals so the caller
-        // can look them up in the tool registry.
-        if !name_map.is_empty() {
-            for tc in &mut parsed.tool_calls {
-                if let Some(original) = name_map.get(&tc.name) {
-                    tc.name = original.clone();
-                }
-            }
-        }
-
-        let finish_reason = parsed.finish_reason;
-
-        Ok(ToolCompletionResponse {
-            content: if parsed.text_content.is_empty() {
-                None
-            } else {
-                Some(parsed.text_content)
+        let name_map = request
+            .tools
+            .iter()
+            .filter_map(|tool| {
+                let sanitized = sanitize_tool_name(&tool.name);
+                (sanitized != tool.name).then(|| (sanitized, tool.name.clone()))
+            })
+            .collect();
+        Ok(PreparedCodexTools {
+            request: PreparedCodexRequest {
+                provider: self,
+                body,
+                max_output_tokens: request.max_tokens,
             },
-            tool_calls: parsed.tool_calls,
-            usage: parsed.usage,
-
-            finish_reason,
-
-            reasoning: parsed.reasoning,
+            name_map,
         })
     }
 }
@@ -439,13 +457,13 @@ impl LlmProvider for OpenAiCodexProvider {
     }
 
     async fn complete(&self, request: CompletionRequest) -> Result<CompletionResponse, LlmError> {
-        self.complete_inner(request, None).await
+        self.prepare_completion(&request)?.complete(None).await
     }
     async fn complete_with_tools(
         &self,
         request: ToolCompletionRequest,
     ) -> Result<ToolCompletionResponse, LlmError> {
-        self.complete_tools_inner(request, None).await
+        self.prepare_tools(&request)?.complete(None).await
     }
 
     /// Returns empty — Codex uses subscription-based access with a fixed model,
@@ -1440,25 +1458,25 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
         .unwrap();
         assert!(matches!(
             provider
-                .send_request(serde_json::json!({}), None, None)
+                .send_request(&serde_json::json!({}), None, None)
                 .await,
             Err(LlmError::ResponseTooLarge { limit: 64, .. })
         ));
         provider.max_response_bytes = Some(4096);
         let reply = provider
-            .send_request(serde_json::json!({}), None, None)
+            .send_request(&serde_json::json!({}), None, None)
             .await
             .unwrap();
         assert_eq!(reply.text_content, "answer");
         provider.max_response_bytes = Some(64);
         assert!(matches!(
             provider
-                .send_request(serde_json::json!({}), None, None)
+                .send_request(&serde_json::json!({}), None, None)
                 .await,
             Err(LlmError::ResponseTooLarge { limit: 64, .. })
         ));
         let error = provider
-            .send_request(serde_json::json!({}), None, None)
+            .send_request(&serde_json::json!({}), None, None)
             .await
             .unwrap_err();
         assert!(matches!(error, LlmError::BadGateway { status: 503, .. }));
