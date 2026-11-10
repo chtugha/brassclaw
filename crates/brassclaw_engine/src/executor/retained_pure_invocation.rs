@@ -210,7 +210,10 @@ impl BoundPureContext {
         // On interrupted waits, pending retains the original request; no new
         // invocation or implicit replay is possible through this carrier.
         let release = if let Some(context) = state.context {
-            if state.pending.is_none() && state.received.is_none() {
+            if state.pending.is_none()
+                && state.received.is_none()
+                && !self.requires_supervised_root_reconciliation()
+            {
                 self.release(&mut state, context).await
             } else {
                 Err(invalid("Pure invocation transport outcome is unresolved"))
@@ -464,8 +467,9 @@ impl BoundPureContext {
                         if matches!(exception.class(), "MemoryError" | "TimeoutError" | "RecursionError") {
                             return Err(process_error(error));
                         }
-                        let exception=error.python_exception.take().expect("checked typed native exception");
-                        return Ok(PureCandidateOutcome::PythonException { exception });
+                        if let Some(exception)=error.python_exception.take() {
+                            return Ok(PureCandidateOutcome::PythonException { exception });
+                        }
                     }
                     return Err(process_error(error));
                 }
@@ -507,6 +511,7 @@ impl BoundPureContext {
         if state.pending.is_some()
             || state.received.is_some()
             || !self.inner.active.load(Ordering::Acquire)
+            || self.requires_supervised_root_reconciliation()
         {
             return Err(invalid(
                 "Pure command is fenced or has an unresolved predecessor",
@@ -530,7 +535,12 @@ impl BoundPureContext {
                 .try_submit(command)
                 .map_err(|error| RetainedExecutionError::Submission(Arc::new(error)))?,
         );
-        let ticket = state.pending.as_ref().expect("stored original ticket");
+        let ticket = state.pending.as_ref().ok_or_else(|| {
+            self.inner
+                .root_reconciliation_required
+                .store(true, Ordering::Release);
+            invalid("original Pure command ticket missing")
+        })?;
         #[cfg(any(test, feature = "test-support"))]
         if let Some(subject) = &state.test_subject {
             testing::after_submit(subject, state.stage, &self.inner.transport, ticket.id).await?;
@@ -548,10 +558,12 @@ impl BoundPureContext {
         state.native_failure = receipt.outcome.as_ref().err().map(|error| error.kind);
         state.received = Some(receipt);
         self.check_received(state)?;
-        Ok(state
-            .received
-            .take()
-            .expect("checked original native receipt"))
+        state.received.take().ok_or_else(|| {
+            self.inner
+                .root_reconciliation_required
+                .store(true, Ordering::Release);
+            invalid("checked original Pure receipt missing")
+        })
     }
 
     fn check_received(&self, state: &mut State) -> Result<(), RetainedExecutionError> {

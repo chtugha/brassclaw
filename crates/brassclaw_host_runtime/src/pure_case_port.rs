@@ -6,7 +6,7 @@ use std::sync::{
 };
 
 use async_trait::async_trait;
-use brassclaw_host_api::{CapabilityId, ResourceScope};
+use brassclaw_host_api::{ResourceScope, RuntimeDispatchErrorKind};
 
 use crate::{
     FirstPartyCapabilityError, FirstPartyCapabilityResult, InvocationServices,
@@ -43,7 +43,9 @@ impl PureCaseInvocationView {
         scope: &ResourceScope,
     ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
         if scope != &self.scope || self.used.swap(true, Ordering::AcqRel) {
-            return Err(crate::first_party_tools::operation_error());
+            return Err(FirstPartyCapabilityError::new(
+                RuntimeDispatchErrorKind::OperationFailed,
+            ));
         }
         self.operation.invoke_original().await
     }
@@ -70,8 +72,7 @@ impl InvocationServicesResolver for PureCaseBoundServices {
         &self,
         request: InvocationServicesResolutionRequest<'_>,
     ) -> Result<InvocationServices, InvocationServicesError> {
-        let selected = request.plan.capability
-            == CapabilityId::new(PURE_CASE_CAPABILITY_ID).expect("static capability")
+        let selected = request.plan.capability.as_str() == PURE_CASE_CAPABILITY_ID
             && request.scope == &self.view.scope;
         // The original resolver and placement/policy checks remain mandatory.
         let mut services = self.inner.resolve(request)?;
@@ -99,7 +100,9 @@ mod tests {
         ) -> Result<FirstPartyCapabilityResult, FirstPartyCapabilityError> {
             self.0.fetch_add(1, Ordering::AcqRel);
             tokio::task::yield_now().await;
-            Err(crate::first_party_tools::operation_error())
+            Err(FirstPartyCapabilityError::new(
+                RuntimeDispatchErrorKind::OperationFailed,
+            ))
         }
     }
     fn scope() -> ResourceScope {
@@ -149,10 +152,16 @@ mod tests {
                 }
                 _ => unreachable!(),
             }
-            assert!(view.invoke(&foreign).await.is_err());
+            assert_eq!(
+                view.invoke(&foreign).await.unwrap_err().kind(),
+                Some(RuntimeDispatchErrorKind::OperationFailed),
+            );
             assert_eq!(operation.0.load(Ordering::Acquire), 0);
         }
-        assert!(view.invoke(&original).await.is_err());
+        assert_eq!(
+            view.invoke(&original).await.unwrap_err().kind(),
+            Some(RuntimeDispatchErrorKind::OperationFailed),
+        );
         assert_eq!(
             operation.0.load(Ordering::Acquire),
             1,
@@ -169,8 +178,14 @@ mod tests {
         ));
         let clone = view.clone();
         let (first, second) = tokio::join!(view.invoke(&original), clone.invoke(&original));
-        assert!(first.is_err());
-        assert!(second.is_err());
+        assert_eq!(
+            first.unwrap_err().kind(),
+            Some(RuntimeDispatchErrorKind::OperationFailed),
+        );
+        assert_eq!(
+            second.unwrap_err().kind(),
+            Some(RuntimeDispatchErrorKind::OperationFailed),
+        );
         assert!(view.invoke(&original).await.is_err());
         assert_eq!(operation.0.load(Ordering::Acquire), 1);
     }

@@ -32,6 +32,7 @@ pub(crate) struct CaseSource {
     inspected: Arc<InspectedRetainedProgram>,
     operation: Arc<AuthoredCaseOperation>,
     tools: Arc<dyn RetainedToolPort>,
+    receipt_failure: PortFailure,
 }
 impl CaseSource {
     pub(crate) async fn new(
@@ -44,6 +45,8 @@ impl CaseSource {
         admission: Arc<PgMontyAdmission>,
         evidence: Arc<EvidenceStore>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let receipt_failure =
+            PortFailure::new("original_pure_case_receipt_invalid").map_err(invalid)?;
         if case.worker_checksum() != worker.checksum() {
             return Err(invalid("original Pure case worker differs"));
         }
@@ -91,13 +94,10 @@ impl CaseSource {
             inspected,
             operation,
             tools,
+            receipt_failure,
         }))
     }
 }
-fn failed() -> PortFailure {
-    PortFailure::new("original_pure_case_receipt_invalid").expect("static failure")
-}
-
 #[async_trait]
 impl InternalRecipeSource for CaseSource {
     fn name(&self) -> &str {
@@ -126,6 +126,7 @@ impl InternalRecipeSource for CaseSource {
         selected: &InspectedRetainedProgram,
         execution: &RetainedRecipeExecution,
     ) -> Result<(), PortFailure> {
+        let failed = || self.receipt_failure.clone();
         if !std::ptr::eq(selected, self.inspected.as_ref())
             || !execution.is_complete()
             || execution.transport_failure().is_some()

@@ -541,7 +541,7 @@ impl BoundSeed {
         let received = self
             .received
             .get()
-            .expect("retained native seed answer before metadata I/O");
+            .ok_or(CaseCause::Boundary("retained native seed answer missing"))?;
         let id = Uuid::new_v5(&self.stage, b"original-native-observed");
         let report = NativeObservationReport {
             format: "original-pure-seed-native-observation/1",
@@ -616,6 +616,7 @@ pub(super) struct SeedSource {
     pub(super) raw: bool,
     pub(super) expected: Value,
     pub(super) received_receipt: OnceLock<String>,
+    pub(super) receipt_failure: PortFailure,
 }
 #[async_trait]
 impl InternalRecipeSource for SeedSource {
@@ -694,9 +695,7 @@ impl InternalRecipeSource for SeedSource {
                 .map_err(|_| invalid("seed receipt repeated"))?;
             Ok(())
         };
-        verify().map_err(|_| {
-            PortFailure::new("original_pure_seed_receipt_invalid").expect("static failure")
-        })
+        verify().map_err(|_| self.receipt_failure.clone())
     }
 }
 
@@ -899,9 +898,10 @@ pub(super) async fn verify_originals(
         .ok_or_else(|| invalid("seed original export binding missing"))?;
     let source_checksum = hex::decode(evidence::checksum(&source)).map_err(invalid)?;
     let empty_inputs_checksum = hex::decode(evidence::checksum("{}")).map_err(invalid)?;
-    let terminal = &stages[manifest["terminal_stage"]
+    let terminal = manifest["terminal_stage"]
         .as_str()
-        .expect("checked terminal")];
+        .and_then(|stage| stages.get(stage))
+        .ok_or_else(|| invalid("seed original native terminal missing"))?;
     if start["command"]["command"]["operation"] != "start"
         || start["command"]["command"]["context"] != native["context"]
         || start["command"]["command"]["inputs"] != json!({})

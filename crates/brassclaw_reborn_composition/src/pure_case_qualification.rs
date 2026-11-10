@@ -534,7 +534,8 @@ impl Context {
             let tools=crate::installed_monty_catalogue::original_pure_case_tools(self.base.pool.clone(),self.kernel.clone(),
                 admitted.host.clone(),admitted.admission.clone(),program,operation.clone(),false)?;
             let source=Arc::new(seed::SeedSource {reference,inspected,operation:operation.clone(),tools,
-                raw:spec.raw,expected:spec.expected.clone(),received_receipt:std::sync::OnceLock::new()});
+                raw:spec.raw,expected:spec.expected.clone(),received_receipt:std::sync::OnceLock::new(),
+                receipt_failure:brassclaw_monty_host::service::PortFailure::new("original_pure_seed_receipt_invalid").map_err(invalid)?});
             *self.progress.original.lock().map_err(|_|invalid("case original custody unavailable"))?=Some(operation.clone());
             let observation=crate::bootstrap_recipe_flow::execute(&admitted,
                 crate::bootstrap_recipe_flow::Request::contained(self.base.worker.path(),self.base.executor.clone(),
@@ -1076,7 +1077,7 @@ async fn qualify_inner(
             &specs()
                 .into_iter()
                 .find(|s| s.name == "skill-code-function")
-                .expect("closed Spec"),
+                .ok_or_else(|| invalid("closed Skill/code qualification Spec missing"))?,
         )
         .await?;
     context
@@ -1089,7 +1090,12 @@ async fn qualify_inner(
         .checkpoint("independent_encoder", HostingState::ConfirmedClosed)?;
     let encoder_ref = verify_encoder(&context, &encoder).await?;
     context
-        .run_stage(&specs().into_iter().find(|s| !s.raw).expect("closed Spec"))
+        .run_stage(
+            &specs()
+                .into_iter()
+                .find(|s| !s.raw)
+                .ok_or_else(|| invalid("closed consuming harness qualification Spec missing"))?,
+        )
         .await?;
     let mut completed = Vec::new();
     for spec in specs() {
