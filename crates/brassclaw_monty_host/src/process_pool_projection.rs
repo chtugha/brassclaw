@@ -197,6 +197,7 @@ pub(super) fn validate(
             snapshot: projected,
             failure: None,
             diagnostic: None,
+            python_exception: None,
         },
     )
     .map_err(|_| fail())
