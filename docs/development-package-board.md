@@ -106,6 +106,18 @@ used. A sandbox-only Cargo cache-use database warning is resolved by repeating
 the preview with normal authorized cache access. No source/DB/evidence or entire
 target is removed. Recheck the guard before compilation and before native work.
 
+**Run-28:** frozen `a1aa4ebfc` reuses the successfully built worker (0.652 s)
+and stops the joint graph after 25.376 s at invalid `json!` shorthand in
+`pure_case_components.rs:69`. No tests execute; source is unchanged through
+terminal failure and the freeze is released. J-01 audits its JSON objects and
+new builder/initializer signatures; the one-file explicit-field correction
+`2d3faf9a8` is reviewed/hash-verified and integrated as `16c85cbff`.
+It awaits Run-29, with no general compilation/native acceptance inferred.
+The disk again exceeds 90%; a further exact Cargo dry-run checks 4,046 paths
+and finds no executables. Only disposable ProductWorkflow/Turns/WebUI package
+caches are removed (6,435 files, 2.5 GiB); source, databases and all preserved
+execution evidence remain intact.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
