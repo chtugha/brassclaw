@@ -183,14 +183,22 @@ fn original_revision_parser_bytes_nodes_and_depth_have_exact_separate_bounds() {
 fn association_schema_uses_its_revision_original_nodes_without_a_legacy_reparse() {
     let [id, code, binding, tool] = [41, 42, 43, 44].map(Uuid::from_u128);
     let fields: serde_json::Map<String, serde_json::Value> = (0..90_000)
-        .map(|n| (format!("field_{n}"), json!({"type":"string"})))
+        .map(|n| {
+            (
+                format!("field_{n}"),
+                json!({"type":"string","required":false}),
+            )
+        })
         .collect();
+    // Each optional field is a key plus an object with two key/value pairs.
+    assert!(fields.len() * 6 > brassclaw_skills::component_revision::REVISION_LIMITS.max_nodes);
     let association = json!({"format":"skill-association/1","skill_uuid":id,"python_code_uuid":code,
         "tool_skill_uuid":binding,"tool_uuid":tool,"callable":"host.read_file","inputs":{},"arguments":{},"code_arguments":{},
         "result":{"type":"object","allow_extra_fields":false,"fields":fields},
         "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed","idempotency_evidence_ref":null,"retryable_outcomes":[]}}).to_string();
     let bytes = json!({"format":"component-revision/1","uuid":id,"class_code":1,
         "document":{"content":"One usage"},"dependencies":[code,binding,tool],"association":association}).to_string();
+    assert!(bytes.len() < brassclaw_skills::component_revision::REVISION_LIMITS.max_bytes);
     assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
     let original = parser_preparation(32 * 1024 * 1024, 1_000_000, 48);
     let parsed =

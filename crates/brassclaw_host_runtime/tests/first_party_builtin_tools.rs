@@ -599,7 +599,15 @@ async fn builtin_first_party_surface_lists_allowed_tools_in_registry_order() {
         .iter()
         .map(|capability| capability.descriptor.id.as_str())
         .collect::<Vec<_>>();
-    assert_eq!(ids, all_builtin_capability_ids());
+    // Registration does not expose the sealed original-invocation service.
+    assert_eq!(
+        ids,
+        all_builtin_capability_ids()
+            .into_iter()
+            .filter(|id| *id != brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID)
+            .collect::<Vec<_>>()
+    );
+    assert!(!ids.contains(&brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID));
     assert!(
         surface
             .capabilities
@@ -5863,6 +5871,7 @@ fn all_builtin_capability_ids() -> Vec<&'static str> {
         TIME_CAPABILITY_ID,
         JSON_CAPABILITY_ID,
         brassclaw_host_runtime::SOURCE_INSPECTION_CAPABILITY_ID,
+        brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID,
         brassclaw_host_runtime::MODEL_ENCODING_CAPABILITY_ID,
         HTTP_CAPABILITY_ID,
         HTTP_SAVE_CAPABILITY_ID,

@@ -1112,13 +1112,22 @@ fn retained_schema_consumers_use_each_revision_original_profile_in_a_mixed_graph
     let root = Uuid::new_v4();
     let component = Uuid::new_v4();
     let fields: serde_json::Map<String, Value> = (0..90_000)
-        .map(|n| (format!("field_{n}"), json!({"type":"string"})))
+        .map(|n| {
+            (
+                format!("field_{n}"),
+                json!({"type":"string","required":false}),
+            )
+        })
         .collect();
+    // Optional object fields keep the declared {} return valid. Count keys
+    // and both schema properties: this exceeds only the old node profile.
+    assert!(fields.len() * 6 > brassclaw_skills::component_revision::REVISION_LIMITS.max_nodes);
     let document = json!({"content":"def value(inputs):\n    return {}","input_contract":{},
         "result_contract":{"type":"object","allow_extra_fields":false,"fields":fields},
         "preload":{"format":"python-preload/2","exports":{"value":{"symbol":"value","parameters":["inputs"],"mapping":true}},
             "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"value"}});
     let bytes = json!({"format":"component-revision/1","uuid":component,"class_code":22,"document":document,"dependencies":[],"association":null}).to_string();
+    assert!(bytes.len() < brassclaw_skills::component_revision::REVISION_LIMITS.max_bytes);
     assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
     let captured =
         ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&policy)).unwrap();
@@ -1126,7 +1135,7 @@ fn retained_schema_consumers_use_each_revision_original_profile_in_a_mixed_graph
         root,
         21,
         json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
-        "step_descriptions":[{"desc_idx":0,"steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"retained pure logic","content":"","type":"component","include":[component]}]}],
+        "step_descriptions":[{"desc_idx":0,"label":"Original policy schema fixture","yaml_source":"","steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"retained pure logic","content":"","type":"component","include":[component]}]}],
         "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{},"steps":{"0:1":{}}}}}),
         &[component],
     );
