@@ -1,4 +1,19 @@
-## 2026-11-09 — Current Bob integration acceptance
+## 2026-11-10 — Current Bob source integration; acceptance pending
+
+J-01's original single-Pure-case source and connected product/readiness/evidence
+corrections are integrated as `2db8822d2`/`8dc775a00`; all 71 handoff files match.
+V211/V212 source is present, without new compilation or native acceptance.
+K-01's foreign-inherent-impl correction is reviewed and integrated as `a8ace38b6`,
+using the existing Composition acquisition boundary. L-01's V213/original
+revision-policy successor is reviewed and integrated as `3002c45c8`, including
+strict provenance, all eight productive restores and EN/DE help. All 28 source
+manifest entries match; 209 prior migrations and J's domain guards are unchanged.
+Root owns the prepared local validation batch. M-01 performs only a read-only
+Bob-3 provider/Codex product audit; accepted Auth/refresh infrastructure is reused.
+See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
+The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
+
+## 2026-11-09 — Bob integration acceptance at that checkpoint
 
 Run-25 compiles the actual worker and joint graph without warnings and passes
 common global startup. Its connected 37-case batch has nine passes and 28

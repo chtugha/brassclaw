@@ -320,6 +320,16 @@ test diagnostics. These results do not close B1-05; reuse the exact evidence
 and outstanding gates in the current package board instead of rebuilding
 completed infrastructure or treating storage-blocked cases as semantic failures.
 
+**2026-11-10 source successor:** J-01's original single-case implementation and
+production/readback/readiness corrections are integrated as
+`2db8822d2`/`8dc775a00`, with all 71 final handoff files verified. This is no new
+runtime receipt: compilation, native Source/Case acceptance and complete
+behavior/Q1/Q2 remain open. K-01's transaction-client adapter correction and
+L-01's connected original revision-policy successor are source-reviewed and
+integrated as `a8ace38b6`/`3002c45c8`, awaiting the next combined native batch.
+Preserve the existing implementation owners;
+this source checkpoint does not close B1-05.
+
 **Scoped progress, 2026-11-08:** Run-20 confirms genuine common installation
 startup and five E-01 ACK/cancellation/worker-death cases on `377ad1bec`. The
 originals/settings case exposed an unsupported test request (depth 65 above the

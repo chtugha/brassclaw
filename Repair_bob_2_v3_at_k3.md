@@ -394,10 +394,18 @@ closing it. A graph-only repair does not complete this requirement. B1's evidenc
 owner retains the separate association/evidence record quotas and compatible
 proof-format work; this plan consumes its checked successor instead of adding
 another evidence writer. No fixed policy quota becomes an intrinsic wire limit
-merely by renaming it. K-01 is now source-authorized for the graph/submission/
-capture/HTTP slice after full architecture and proposal review, with V212 reserved;
-its implementation and acceptance remain pending. It does not close the separate
-per-revision/evidence or historical native-image requirements.
+merely by renaming it. K-01's graph/submission/capture/HTTP slice and V212 are
+source-reviewed and integrated as `f5d18f486`/`d7b4a42b9`; compilation and native
+acceptance remain pending. K's acquisition adapter correction is integrated as
+`a8ace38b6`. L-01's connected per-revision slice and V213 are source-reviewed and
+integrated as `3002c45c8`: immutable original row policy, exact consumers/all
+eight productive restores, strict partial-profile rejection and EN/DE help.
+All 28 source-manifest entries match; prior migration bytes remain unchanged.
+Compilation/native acceptance is still unrun. Depth above the supported 64, separate
+evidence limits and historical native-image requirements remain open. Neither
+package closes B2-06 without its required actual acceptance. Do not apply the
+V212 database successor before the connected private V211 sequence is integrated
+and validated; see the current package board for the exact validation boundary.
 
 1. Update the actual engine selection constructor/parser, selected-program
    verifier, catalogue serializer/reloader, retained review preparation reader

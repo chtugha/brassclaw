@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original component revision policy (validation pending)**: Retain each new
+  immutable revision's acknowledged parser profile alongside its exact bytes.
+  Preserve historical profiles and retries after settings changes, and verify
+  original root policy through existing private-work restoration. Add V213,
+  complete PostgreSQL wire-size checks and EN/DE settings explanations. Preserve
+  J's domain guards and the existing acquisition/custody adapter. Source reviewed
+  and integrated; compilation, actual upgrade and native acceptance remain open.
+
+- **Original single Pure invocation (validation pending)**: Connect operator
+  submission/readback to the existing private Work and global Monty path. Retain
+  the exact source, typed inputs, native outcomes and acknowledged delivery;
+  preserve technical failure/cancellation without replay or false approval.
+  Add V211, bounded evidence encoding and streaming digests, with explicit
+  optional readiness and native regression sources. Source is integrated;
+  compilation/native acceptance and general behavior/Q1/Q2 remain open.
+
 - **Original graph preparation (validation pending)**: Carry one acknowledged
   preparation through new immutable review subjects/catalogues, complete streamed
   graph reads and authenticated HTTP admission. Preserve historical profiles and

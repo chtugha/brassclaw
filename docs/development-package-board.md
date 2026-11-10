@@ -39,6 +39,35 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ### Current integration checkpoint — 2026-11-09
 
+**2026-11-10 source follow-up:** the SSDE is reconnected and Main is unchanged
+from its saved checkpoint before integration. J-01's own commits `dddb4a36a`
+and `b8f8ee725` are integrated as `2db8822d2`/`8dc775a00`; all 71 final package
+files match its handoff exactly. The duplicate K commit is not reapplied.
+V211 is now present alongside V212, but their new source has no compilation or
+native acceptance yet. No database migration or release is inferred.
+
+K-01 corrects a source-visible foreign inherent `impl EvidenceClient`
+left after moving the actual transaction-client type to PostgreSQL. The reviewed
+design uses a free Composition acquisition adapter and migrates all 31 callers,
+preserving the same pool, error mapping and uncertain-connection custody.
+Its reviewed correction is integrated as `a8ace38b6`.
+L-01 rebases its source checkpoint `3a0812bfe` against the actual J/I/K Main,
+preserving J's SQL/domain branches and every original root/profile restore.
+Its follow-up includes the missing EN/DE value help, strict partial-profile
+presence and native buffer representability checks. Older J-derived attachment
+files must never overwrite newer integrated source. The final aggregate is
+reviewed and integrated as `3002c45c8`: all 28 source-manifest entries match,
+209 existing migrations are unchanged, and the complete J V211 domain-function
+suffix and K adapter calls are preserved. Compilation/native acceptance is unrun.
+J/K/L remain available only for their own concrete validation corrections.
+
+M-01, fresh chat `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, worktree `8d0f`,
+now performs a read-only Bob-3 provider/Codex product-path audit and bounded
+proposal. It must reuse accepted A-01 Auth/refresh ownership, identify genuine
+remaining product gates and avoid a second connector. No source implementation,
+provider/account access or build is authorized for this audit. Root owns the
+prepared Run-26 joint native batch. All three Bob plans remain open.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
@@ -74,16 +103,20 @@ last WorkView, use bounded metadata-only diagnosis and discard an unacknowledged
 read transaction. Existing fault assertions/deadlines remain. No productive
 Source repair or acceptance follows from this fixture change.
 
+**Earlier Run-25 source disposition (superseded by November 10 above):**
 J-01's `dddb4a36a` is an intermediate private source snapshot; its production
 facade/HTTP connection and review corrections remain in progress. Concrete
 findings cover aggregate receipt encoding capacity, error classification,
 optional-agent SQL comparison, technical-failure projection and safely scoped
 optional readiness. V211 remains private. **Do not apply V212 to a database
 before the connected V211/V212 sequence is integrated and validated.** L-01,
-fresh chat `01a1c269-3da9-7723-92cd-55218fe0cb0f`, worktree `9bbf`, reads the
-mandatory architecture and prepares the per-revision parser/storage/original
-policy proposal under B2-06. It has no implementation/migration authorization
-yet. J-01/L-01 are the two current packages; I-01, K-01 and F-01 are idle for
+fresh chat `01a1c269-3da9-7723-92cd-55218fe0cb0f`, worktree `9bbf`, completes the
+mandatory architecture reading and source-backed per-revision parser/storage
+proposal under B2-06. Root authorizes its connected implementation with V213
+reserved: immutable original row policy, existing acknowledged settings and
+exact restore/consumer support. Historical bytes remain unchanged; depth above
+64 and separate evidence/native-image limits remain open, not silently clamped.
+J-01/L-01 are the two current packages; I-01, K-01 and F-01 are idle for
 their own concrete findings. Root owns review, native validation and integration.
 
 Before the next necessary build, 26 further closed copies matching preserved
@@ -337,7 +370,10 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 | H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
 | I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Connected 25-file source reviewed and integrated through `7152f0e0a`; V210/outer /2 and real Source observer/confirmation, metadata custody corrections and nine native test sources. Compile/native acceptance pending. Common class-21/23 authoring custody correction reviewed and integrated as `d30a5126b`/`8b83d551d`; full 28-file package awaits compilation/native acceptance. Positive future-consumer view test-only until J-01. No general Pure approval or cross-package loader. |
-| J-01 — Pure behavior and human Q2 contract | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; `/Users/ollama/.codex/worktrees/8147/brassclaw` | Reviewed registered single-invocation Tool/ToolSkill/Skill-code/encoder/private Recipe package authorized, V211 reserved. Implementing sealed same-task native context/outcome/release, real qualification and Harness delivery to technical settled Case. No general case iterator/behavior/Q1/Q2/approval/publication. |
+| J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and complete connected product/HTTP, encoding, terminal projection and optional-readiness corrections integrated as `2db8822d2`/`8dc775a00`; all 71 manifest files verified before L's reviewed connections. Compilation/native acceptance unrun; idle for own corrections. No general behavior/Q1/Q2/approval/publication. |
+| K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Full connected source and exact boundary follow-up reviewed/hash-verified; integrated as `f5d18f486`/`d7b4a42b9`, including V212. Acquisition adapter correction integrated as `a8ace38b6`. Compile/native acceptance unrun; idle for own corrections. Existing original capture/graph owners reused; separate evidence/historical-image limits remain open. |
+| L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Complete coherent J/I/K follow-up integrated as `3002c45c8`, including V213 and all eight productive restores. All 28 source hashes verified; old migration bytes/J guards/K adapter preserved. Compilation/native acceptance unrun; idle for own corrections. Depth above 64 and independent evidence/native-image migration remain open. |
+| M-01 — provider/Codex product-path audit | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | Read-only audit/proposal under Bob 3. Reuse accepted A-01 provider/Auth/refresh infrastructure; distinguish source support, product tests and real-issuer/platform gates. No implementation/build/account/provider access authorized yet. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
@@ -352,6 +388,11 @@ no allocation permits editing or reinterpreting prior migration bytes. V208 is
 reserved exclusively for H-01 delivery/confirmation; V209 exclusively for B-02
 parenthesized JSON guard repair. H-01 does not replace V207 function bodies;
 B-02 preserves their exact meaning while repairing the six precedence defects.
+V210 belongs to I-01's qualified Source prerequisite and is integrated. V211 is
+exclusive to J-01's private single-case original; V212 belongs to integrated
+K-01 capture/graph guards; V213 is reserved exclusively for L-01's original
+per-revision policy. Preserve the complete sequence and old migration bytes;
+source integration is not proof of applied-schema or upgrade acceptance.
 
 ## Current native evidence and handoff
 
