@@ -161,13 +161,6 @@ pub(crate) async fn verify_publication(
     Ok(())
 }
 
-#[cfg(test)]
-pub(crate) async fn prepare(
-    owner: &InstalledMontyCatalogue,
-    request: PrepareComponentDeploymentRequest,
-) -> Result<ComponentDeploymentPlan, RecipeStoreError> {
-    prepare_with_preparation(owner, request, None).await
-}
 pub(crate) async fn prepare_with_preparation(
     owner: &InstalledMontyCatalogue,
     request: PrepareComponentDeploymentRequest,
