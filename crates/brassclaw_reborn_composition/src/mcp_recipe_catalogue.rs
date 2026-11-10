@@ -11,10 +11,9 @@ use std::{
 use brassclaw_engine::executor::{
     retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram,
 };
-use brassclaw_skills::{
-    component_revision::REVISION_LIMITS,
-    value_contract::{InputContract, strict_json},
-};
+#[cfg(test)]
+use brassclaw_skills::component_revision::REVISION_LIMITS;
+use brassclaw_skills::value_contract::{InputContract, strict_json};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -83,14 +82,22 @@ fn identifier(name: &str) -> bool {
 }
 
 impl CommandContract {
+    #[cfg(test)]
     pub(crate) fn parse(raw: &Value, task_inputs: &Value) -> Result<Self, McpDiscoveryError> {
+        Self::parse_with_limits(raw, task_inputs, REVISION_LIMITS)
+    }
+    fn parse_with_limits(
+        raw: &Value,
+        task_inputs: &Value,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<Self, McpDiscoveryError> {
         let invalid = || McpDiscoveryError::Contract;
         // The enclosing retained revision and catalogue admission own resource
         // bounds. Discovery must not impose a second smaller declaration cap.
         // Strict parsing still validates nested values; original duplicate keys
         // were rejected by the retained revision parser.
         let bytes = raw.to_string();
-        let value = strict_json(&bytes, REVISION_LIMITS).map_err(|_| invalid())?;
+        let value = strict_json(&bytes, limits).map_err(|_| invalid())?;
         let declaration: CommandDeclaration =
             serde_json::from_value(value).map_err(|_| invalid())?;
         if declaration.format != "mcp-call-skill-recipe/1"
@@ -151,8 +158,8 @@ impl CommandContract {
         {
             return Err(invalid());
         }
-        let inputs = InputContract::from_json(&task_inputs.to_string(), REVISION_LIMITS)
-            .map_err(|_| invalid())?;
+        let inputs =
+            InputContract::from_json(&task_inputs.to_string(), limits).map_err(|_| invalid())?;
         let literals: Vec<String> = declaration.sentence.split('%').map(str::to_owned).collect();
         let count = declaration.variables.len();
         if literals.len() != count + 1
@@ -471,7 +478,8 @@ impl McpRecipeDiscovery {
                 return Err(McpDiscoveryError::Contract);
             }
             let task = &recipe.draft().document()["input_layouts"][variant_key]["task_inputs"];
-            let mut contract = CommandContract::parse(raw, task)?;
+            let mut contract =
+                CommandContract::parse_with_limits(raw, task, recipe.draft().parsing_limits())?;
             if variant_key != instruction.variant().variant_key {
                 continue; // Other approved variants remain ordinary routing entries.
             }
@@ -827,5 +835,38 @@ mod tests {
                 .is_err()
         );
         assert!(discovery.snapshot().is_err());
+    }
+    #[test]
+    fn command_metadata_uses_original_recipe_profile_without_claiming_mcp_qualification() {
+        use brassclaw_host_api::{
+            MontyExecutionLimits,
+            task_preparation::{PreparationOrigin, RetainedPreparation},
+        };
+        use brassclaw_skills::component_revision::ComponentRevisionDraft;
+        let original = RetainedPreparation::encode(
+            19,
+            PreparationOrigin::AcknowledgedLive,
+            MontyExecutionLimits {
+                max_value_bytes: 16 * 1024 * 1024,
+                ..MontyExecutionLimits::default()
+            },
+        )
+        .unwrap();
+        let mut raw = declaration();
+        raw["purpose"] = json!("x".repeat(9 * 1024 * 1024));
+        let envelope =
+            json!({"format":"component-revision/1","uuid":Uuid::new_v4(),"class_code":21,
+            "document":{"mcp_call":raw},"dependencies":[],"association":null})
+            .to_string();
+        let draft =
+            ComponentRevisionDraft::from_json_with_preparation(&envelope, Some(&original)).unwrap();
+        let raw = &draft.document()["mcp_call"];
+        assert!(CommandContract::parse(raw, &task()).is_err());
+        let parsed =
+            CommandContract::parse_with_limits(raw, &task(), draft.parsing_limits()).unwrap();
+        assert_eq!(
+            parsed.bind("read file actual-data; interval 1:4").unwrap()["path"],
+            "actual-data"
+        );
     }
 }

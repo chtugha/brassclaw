@@ -908,6 +908,34 @@ async fn native_k01_real_http_pool_one_held_begin_commit_and_unknown_ack_keep_or
                     "confirmed success must recycle normally"
                 );
             }
+            // L-01 joins policy and content to the existing actual ACK fault
+            // oracle. A committed original retains both; an aborted BEGIN has
+            // neither a candidate allocation nor a partially retained policy.
+            let retained = PgReviewSubmissionStore::new(rig.pool.clone())
+                .read(id)
+                .await
+                .unwrap();
+            let candidate_value: Value =
+                serde_json::from_str(input["candidate_bytes"].as_str().unwrap()).unwrap();
+            let candidate_id = Uuid::parse_str(candidate_value["uuid"].as_str().unwrap()).unwrap();
+            if let Some(retained) = retained {
+                assert_eq!(
+                    retained.snapshot.revisions()[&candidate_id]
+                        .draft()
+                        .preparation()
+                        .unwrap()
+                        .bytes(),
+                    retained.preparation.as_ref().unwrap().bytes()
+                );
+            } else {
+                assert!(
+                    PgComponentRevisionStore::new(rig.pool.clone())
+                        .read_allocation_head(candidate_id)
+                        .await
+                        .unwrap()
+                        .is_none()
+                );
+            }
             drop(app);
             wire.shutdown().await.unwrap();
         }
@@ -1080,4 +1108,392 @@ async fn native_k01_desired_without_ack_and_streamed_http_keep_first_effective_c
     drop(settings);
     shutdown_shared_runtime(runtime).await.unwrap();
     wire.shutdown().await.unwrap();
+}
+
+/// One actual startup for the connected L-01 size/node/pair/readback assertions.
+/// Retention remains unreviewed; this test grants no candidate approval.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_l01_acknowledged_revision_profiles_keep_bytes_nodes_pairs_after_reduction() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    let application = app(&runtime).await;
+    let original = acknowledge(&runtime, 32, 128 * 1024 * 1024, 64 * 1024 * 1024).await;
+    let envelope = |id, class, document: Value| {
+        json!({"format":"component-revision/1","uuid":id,"class_code":class,"document":document,"dependencies":[],"association":null}).to_string()
+    };
+    let padding = "é猫".repeat(2_000_000); // actual UTF-8 bytes, above eight MiB
+    let large = ComponentRevisionDraft::from_json_with_preparation(&envelope(Uuid::new_v4(),22,
+        json!({"content":"def retained_value(inputs):\n    return 'original'","includes":[],"dependency_registry":null,
+            "input_contract":{},"result_contract":{"type":"string"},"prior_knowledge_content":padding,
+            "preload":{"format":"python-preload/2","exports":{"retained_value":{"symbol":"retained_value","parameters":["inputs"],"mapping":true}},
+                "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"retained_value"}})),Some(&original)).unwrap();
+    assert!(large.exact_bytes().len() > REVISION_LIMITS.max_bytes);
+    let node_draft = ComponentRevisionDraft::from_json_with_preparation(
+        &envelope(Uuid::new_v4(), 23, json!({"items":vec![0;300_000]})),
+        Some(&original),
+    )
+    .unwrap();
+    assert!(ComponentRevisionDraft::from_json(node_draft.exact_bytes()).is_err());
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let subjects = PgReviewSubmissionStore::new(rig.pool.clone());
+    let mut originals = Vec::new();
+    for draft in [&large, &node_draft] {
+        let id = Uuid::new_v4();
+        let input = request(id, draft, &[]);
+        let (status, receipt) = send(&application, "POST", URI, Some(&input)).await;
+        assert_eq!(status, StatusCode::OK, "{receipt}");
+        assert_eq!(receipt["preparation_revision"], original.revision());
+        let saved = subjects.read(id).await.unwrap().unwrap();
+        let row = store
+            .read_revision(saved.candidate.uuid, saved.candidate.version)
+            .await
+            .unwrap();
+        assert_eq!(row.draft().exact_bytes(), draft.exact_bytes());
+        assert_eq!(row.draft().preparation().unwrap().bytes(), original.bytes());
+        originals.push((input, receipt, saved));
+    }
+    let (tool, binding) = crate::pg_review_submission::function_tests::prerequisites(&store).await;
+    let mut partner_value: Value = serde_json::from_str(large.exact_bytes()).unwrap();
+    partner_value["uuid"] = json!(Uuid::new_v4());
+    let partner = ComponentRevisionDraft::from_json_with_preparation(
+        &partner_value.to_string(),
+        Some(&original),
+    )
+    .unwrap();
+    let small_usage = crate::pg_review_submission::function_tests::skill(
+        Uuid::new_v4(),
+        partner.uuid(),
+        binding.uuid,
+        tool.uuid,
+        "one function usage",
+    );
+    let mut usage_value: Value = serde_json::from_str(small_usage.exact_bytes()).unwrap();
+    usage_value["document"]["content"] = json!("x".repeat(9 * 1024 * 1024));
+    let usage = ComponentRevisionDraft::from_json_with_preparation(
+        &usage_value.to_string(),
+        Some(&original),
+    )
+    .unwrap();
+    let pair_id = Uuid::new_v4();
+    let mut input = request(pair_id, &usage, &[tool, binding]);
+    input["function_partner"] = json!({"role":"changed","candidate_bytes":partner.exact_bytes(),"base":null,"expected_previous_version":0});
+    let (status, receipt) = send(&application, "POST", URI, Some(&input)).await;
+    assert_eq!(status, StatusCode::OK, "{receipt}");
+    let saved = subjects.read(pair_id).await.unwrap().unwrap();
+    for id in [usage.uuid(), partner.uuid()] {
+        assert_eq!(
+            saved.snapshot.revisions()[&id]
+                .draft()
+                .preparation()
+                .unwrap()
+                .bytes(),
+            original.bytes()
+        );
+    }
+    originals.push((input, receipt, saved));
+    let settings = runtime.webui_monty_settings_store();
+    let before = settings.get("default", "default").await.unwrap();
+    let mut lower = before.execution_limits;
+    lower.max_value_bytes = 8 * 1024 * 1024;
+    lower.max_value_nodes = 262_144;
+    lower.max_value_depth = 32;
+    settings
+        .upsert(
+            "default",
+            "default",
+            &serde_json::from_value(
+                json!({"expected_revision":before.revision,"execution_limits":lower}),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let acknowledged_lower = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+    assert_eq!(acknowledged_lower.policy(), lower);
+    for (input, receipt, saved) in &originals {
+        let read = subjects.read(saved.id).await.unwrap().unwrap();
+        assert_eq!(read.subject_bytes, saved.subject_bytes);
+        let exact = store
+            .read_exact(
+                &saved.snapshot.roots().iter().copied().collect::<Vec<_>>(),
+                &saved
+                    .snapshot
+                    .revisions()
+                    .values()
+                    .map(|r| r.reference())
+                    .collect::<Vec<_>>(),
+                SnapshotReadLimits::captured(&original).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(exact.revisions().len(), saved.snapshot.revisions().len());
+        for (id, revision) in exact.revisions() {
+            assert_eq!(
+                revision.draft().exact_bytes(),
+                saved.snapshot.revisions()[id].draft().exact_bytes()
+            );
+            assert!(
+                revision
+                    .draft()
+                    .same_preparation(saved.snapshot.revisions()[id].draft())
+            );
+        }
+        let again = crate::pg_review_submission::submit_with_catalogue_prepared(
+            &rig.pool,
+            runtime.actor_user_id.as_str(),
+            runtime.thread_scope.tenant_id.as_str(),
+            runtime.thread_scope.agent_id.as_str(),
+            serde_json::from_value(input.clone()).unwrap(),
+            &runtime.installed_catalogue,
+            Some(acknowledged_lower.original().clone()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(serde_json::to_value(again).unwrap(), *receipt);
+        assert_eq!(
+            subjects
+                .read(saved.id)
+                .await
+                .unwrap()
+                .unwrap()
+                .subject_bytes,
+            saved.subject_bytes
+        );
+    }
+    // Fresh admission uses the lower acknowledged parser; no partial heads.
+    for bytes in [large.exact_bytes(), node_draft.exact_bytes()] {
+        let mut value: Value = serde_json::from_str(bytes).unwrap();
+        let fresh = Uuid::new_v4();
+        value["uuid"] = json!(fresh);
+        let mut input = request(Uuid::new_v4(), &node_draft, &[]);
+        input["candidate_bytes"] = json!(value.to_string());
+        assert!(
+            !send(&application, "POST", URI, Some(&input))
+                .await
+                .0
+                .is_success()
+        );
+        assert!(store.read_allocation_head(fresh).await.unwrap().is_none());
+    }
+    // HTTP's independently live body cap still applies before a retry reaches
+    // its original-ID store. Do not pretend a too-large transport was admitted.
+    assert_eq!(
+        send(&application, "POST", URI, Some(&originals[0].0))
+            .await
+            .0,
+        StatusCode::PAYLOAD_TOO_LARGE
+    );
+    // Measure the actual eight-field metadata DataRow including the original
+    // canonical capture. Content and request are smaller than this boundary.
+    let small = revision(Uuid::new_v4(), &[], "metadata boundary");
+    let small =
+        ComponentRevisionDraft::from_json_with_preparation(small.exact_bytes(), Some(&original))
+            .unwrap();
+    let reference = store.stage(&small, 0).await.unwrap();
+    let frame = brassclaw_pg::wire_capacity::binary_data_row_bytes(&[
+        Some(16),
+        Some(2),
+        Some(8),
+        Some(4),
+        Some(64),
+        Some(1),
+        Some(original.bytes().len()),
+        Some(original.checksum().len()),
+    ])
+    .unwrap();
+    assert!(small.exact_bytes().len() + 117 < frame);
+    let narrow = acknowledge(&runtime, 32, 128 * 1024 * 1024, frame as u64 - 1).await;
+    assert!(matches!(
+        store
+            .read_exact(
+                &[small.uuid()],
+                &[reference],
+                SnapshotReadLimits::captured(&narrow).unwrap()
+            )
+            .await,
+        Err(RevisionStoreError::Capacity)
+    ));
+    let fitting = acknowledge(&runtime, 32, 128 * 1024 * 1024, frame as u64).await;
+    assert_eq!(
+        store
+            .read_exact(
+                &[small.uuid()],
+                &[reference],
+                SnapshotReadLimits::captured(&fitting).unwrap()
+            )
+            .await
+            .unwrap()
+            .revisions()[&small.uuid()]
+            .draft()
+            .exact_bytes(),
+        small.exact_bytes()
+    );
+    drop(originals);
+    drop(settings);
+    shutdown_shared_runtime(runtime).await.unwrap();
+}
+
+/// Real V212 database, followed by the actual additive upgrade. No global VM is
+/// needed to verify unchanged historical bytes and immutable row provenance.
+#[tokio::test]
+async fn native_l01_v212_upgrade_preserves_legacy_row_and_preexisting_v4_subject() {
+    use brassclaw_host_api::task_preparation::PreparationOrigin;
+    use sha2::{Digest, Sha256};
+    #[derive(serde::Serialize)]
+    struct HistoricalSubject<'a> {
+        format: &'a str,
+        submission_id: Uuid,
+        actor: &'a str,
+        candidate: brassclaw_product_workflow::ComponentRevisionSelection,
+        candidate_bytes: &'a str,
+        base: Option<Value>,
+        dependencies: Vec<Value>,
+        expected_previous_version: u64,
+        preparation_bytes: &'a str,
+        preparation_checksum: &'a str,
+    }
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start_schema(Some(212)).await;
+    let mut nested = json!("legacy depth above a captured 48");
+    for _ in 0..58 {
+        nested = json!([nested]);
+    }
+    let id = Uuid::new_v4();
+    let draft = ComponentRevisionDraft::from_json(
+        &json!({"format":"component-revision/1","uuid":id,"class_code":23,
+        "document":{"nested":nested},"dependencies":[],"association":null})
+        .to_string(),
+    )
+    .unwrap();
+    // Historical /4 carrier is not evidence that its revision used this policy.
+    let original = RetainedPreparation::encode(
+        17,
+        PreparationOrigin::AcknowledgedLive,
+        brassclaw_host_api::MontyExecutionLimits::default(),
+    )
+    .unwrap();
+    assert!(
+        ComponentRevisionDraft::from_json_with_preparation(draft.exact_bytes(), Some(&original))
+            .is_err()
+    );
+    let reference = draft.clone().at_version(1).unwrap().reference();
+    let subject_id = Uuid::new_v4();
+    let bytes = serde_json::to_string(&HistoricalSubject {
+        format: "component-review-submission/4",
+        submission_id: subject_id,
+        actor: "historical-operator",
+        candidate: crate::pg_review_submission::selection(reference),
+        candidate_bytes: draft.exact_bytes(),
+        base: None,
+        dependencies: vec![],
+        expected_previous_version: 0,
+        preparation_bytes: original.bytes(),
+        preparation_checksum: original.checksum(),
+    })
+    .unwrap();
+    let subject_checksum = hex::encode(Sha256::digest(bytes.as_bytes()));
+    let migration_checksums = {
+        let client = rig.pool.get().await.unwrap();
+        client.execute("INSERT INTO reborn_component_revision_heads(component_id,class_code,last_version) VALUES($1,23,1)",&[&id]).await.unwrap();
+        client.execute("INSERT INTO reborn_component_revisions(component_id,class_code,version,revision_bytes,checksum) VALUES($1,23,1,$2,$3)",
+            &[&id,&draft.exact_bytes(),&hex::encode(draft.checksum())]).await.unwrap();
+        client.execute("INSERT INTO reborn_component_review_submissions(submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum) VALUES($1,'historical-operator',$2,1,NULL,$3,$4)",
+            &[&subject_id,&id,&bytes,&subject_checksum]).await.unwrap();
+        client.query("SELECT version,checksum FROM refinery_schema_history WHERE version<=212 ORDER BY version",&[]).await.unwrap().into_iter().map(|row|(row.get::<_,i32>(0),row.get::<_,String>(1))).collect::<Vec<_>>()
+    };
+    brassclaw_pg::migrations::run_migrations(&rig.pool)
+        .await
+        .unwrap();
+    brassclaw_pg::migrations::run_migrations(&rig.pool)
+        .await
+        .unwrap();
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let retained = store.read_revision(id, 1).await.unwrap();
+    assert_eq!(retained.reference(), reference);
+    assert_eq!(retained.draft().exact_bytes(), draft.exact_bytes());
+    assert!(retained.draft().preparation().is_none());
+    let saved = PgReviewSubmissionStore::new(rig.pool.clone())
+        .read(subject_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.subject_bytes, bytes);
+    assert_eq!(saved.checksum, subject_checksum);
+    assert!(
+        saved.snapshot.revisions()[&id]
+            .draft()
+            .preparation()
+            .is_none()
+    );
+    // An identical package cannot retrofit a capture onto its historical row.
+    let small = revision(Uuid::new_v4(), &[], "unchanged package");
+    let before = store.retain_packaged_draft(&small).await.unwrap();
+    let offered =
+        ComponentRevisionDraft::from_json_with_preparation(small.exact_bytes(), Some(&original))
+            .unwrap();
+    assert_eq!(store.retain_packaged_draft(&offered).await.unwrap(), before);
+    assert!(
+        store
+            .read_revision(before.uuid, before.version)
+            .await
+            .unwrap()
+            .draft()
+            .preparation()
+            .is_none()
+    );
+    // Neutral store boundary: parser N is independent of PG framing, which
+    // belongs to the fixture's larger original IPC budget.
+    let exact_policy = RetainedPreparation::encode(
+        18,
+        PreparationOrigin::AcknowledgedLive,
+        brassclaw_host_api::MontyExecutionLimits {
+            max_value_bytes: small.exact_bytes().len() as u64,
+            ..brassclaw_host_api::MontyExecutionLimits::default()
+        },
+    )
+    .unwrap();
+    let exact = ComponentRevisionDraft::from_json_with_preparation(
+        small.exact_bytes(),
+        Some(&exact_policy),
+    )
+    .unwrap();
+    let next = store.stage(&exact, 1).await.unwrap();
+    let read = store.read_revision(next.uuid, next.version).await.unwrap();
+    assert_eq!(read.draft().exact_bytes(), exact.exact_bytes());
+    assert!(read.draft().same_preparation(&exact));
+    assert!(
+        store
+            .read_exact(
+                &[next.uuid],
+                &[next],
+                SnapshotReadLimits::captured(&exact_policy).unwrap()
+            )
+            .await
+            .is_err(),
+        "a new graph transfer has a separate budget from original row parsing"
+    );
+    let after = rig.pool.get().await.unwrap().query("SELECT version,checksum FROM refinery_schema_history WHERE version<=212 ORDER BY version",&[]).await.unwrap().into_iter().map(|row|(row.get::<_,i32>(0),row.get::<_,String>(1))).collect::<Vec<_>>();
+    assert_eq!(migration_checksums, after);
+    assert_eq!(store.read_allocation_head(id).await.unwrap(), Some((23, 1)));
+    // Partial/mismatched row provenance is rejected by the real DB constraint.
+    let fresh = Uuid::new_v4();
+    let candidate = revision(fresh, &[], "bad partial capture");
+    let client = rig.pool.get().await.unwrap();
+    client
+        .execute(
+            "INSERT INTO reborn_component_revision_heads(component_id,class_code) VALUES($1,23)",
+            &[&fresh],
+        )
+        .await
+        .unwrap();
+    let error = client.execute("INSERT INTO reborn_component_revisions(component_id,class_code,version,revision_bytes,checksum,revision_preparation_bytes) VALUES($1,23,1,$2,$3,$4)",
+        &[&fresh,&candidate.exact_bytes(),&hex::encode(candidate.checksum()),&original.bytes()]).await.unwrap_err();
+    assert_eq!(error.code().unwrap().code(), "23514");
+    let error = client.execute("INSERT INTO reborn_component_revisions(component_id,class_code,version,revision_bytes,checksum,revision_preparation_checksum) VALUES($1,23,1,$2,$3,'short')",
+        &[&fresh,&candidate.exact_bytes(),&hex::encode(candidate.checksum())]).await.unwrap_err();
+    assert_eq!(error.code().unwrap().code(), "23514");
 }

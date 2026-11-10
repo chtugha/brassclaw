@@ -12,7 +12,6 @@ use brassclaw_skills::{
     association_contract::{
         AssociationApprovalDeclaration, AssociationError, ComponentRevisionRef, SkillAssociation,
     },
-    component_revision::REVISION_LIMITS,
     value_contract::{ContractError, InputContract},
 };
 use serde_json::Value;
@@ -332,7 +331,7 @@ pub fn prepare_retained_tool_program(
                 .document()
                 .get("input_contract")
                 .ok_or_else(|| invalid("retained Tool input contract required"))?,
-            REVISION_LIMITS,
+            tool.draft().parsing_limits(),
         )?
         .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         association.require_tool_input_contract(&tool_inputs)?;

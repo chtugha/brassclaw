@@ -487,13 +487,15 @@ impl InstalledMontyCatalogue {
         let row=tx.query_one("SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
             &[&case_id]).await.map_err(invalid)?;
         let definition = PrivateWorkDefinition::restore(
+            &tx,
             &state.request,
             state.request_checksum,
             row.get(0),
             row.get::<_, Vec<u8>>(1)
                 .try_into()
                 .map_err(|_| invalid("original Pure definition checksum invalid"))?,
-        )?;
+        )
+        .await?;
         if state.request.original_preparation_checksum().is_none()
             || state.request.original_workflow_checksum().is_none()
             || definition.worker_checksum() != case.worker_checksum()

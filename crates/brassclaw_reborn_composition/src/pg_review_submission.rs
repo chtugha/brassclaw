@@ -11,7 +11,7 @@ use brassclaw_product_workflow::{
 };
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    component_revision::ComponentRevisionDraft,
+    component_revision::{ComponentRevisionDraft, RevisionError},
     review_submission_store::{
         FunctionReviewPartnerDraft, PgReviewSubmissionStore, RetainedReviewSubmission,
         ReviewSubmissionDraft, SubmissionStoreError,
@@ -20,6 +20,12 @@ use brassclaw_skills::{
 };
 use uuid::Uuid;
 
+fn revision_parse_error(error: RevisionError, kind: &str) -> RecipeStoreError {
+    RecipeStoreError::Invalid(match error {
+        RevisionError::UnsupportedDepth => RevisionError::UnsupportedDepth.to_string(),
+        _ => format!("invalid immutable {kind} revision"),
+    })
+}
 fn identifier(value: &str) -> Result<Uuid, RecipeStoreError> {
     Uuid::parse_str(value)
         .ok()
@@ -256,8 +262,16 @@ async fn submit_inner(
             None
         }
     };
-    let candidate = ComponentRevisionDraft::from_json(&request.candidate_bytes)
-        .map_err(|_| RecipeStoreError::Invalid("invalid immutable candidate revision".into()))?;
+    let candidate_policy = existing
+        .as_ref()
+        .and_then(|original| original.snapshot.revisions().get(&original.candidate.uuid))
+        .map(|r| r.draft().preparation())
+        .unwrap_or(preparation.as_ref());
+    let candidate = ComponentRevisionDraft::from_json_with_preparation(
+        &request.candidate_bytes,
+        candidate_policy,
+    )
+    .map_err(|error| revision_parse_error(error, "candidate"))?;
     let base = request.base.as_ref().map(reference).transpose()?;
     let dependencies = request
         .dependencies
@@ -278,9 +292,25 @@ async fn submit_inner(
                     expected_previous_version,
                 } => FunctionReviewPartnerDraft::Changed {
                     candidate: Box::new(
-                        ComponentRevisionDraft::from_json(&candidate_bytes).map_err(|_| {
-                            RecipeStoreError::Invalid("invalid immutable partner revision".into())
-                        })?,
+                        ComponentRevisionDraft::from_json_with_preparation(
+                            &candidate_bytes,
+                            existing
+                                .as_ref()
+                                .and_then(|original| {
+                                    original
+                                        .function_partner
+                                        .filter(|partner| partner.changed)
+                                        .and_then(|partner| {
+                                            original
+                                                .snapshot
+                                                .revisions()
+                                                .get(&partner.reference.uuid)
+                                        })
+                                })
+                                .map(|r| r.draft().preparation())
+                                .unwrap_or(preparation.as_ref()),
+                        )
+                        .map_err(|error| revision_parse_error(error, "partner"))?,
                     ),
                     base: base.as_ref().map(reference).transpose()?,
                     expected_previous_version,

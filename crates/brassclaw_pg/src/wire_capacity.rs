@@ -82,3 +82,147 @@ mod text_tests {
         ));
     }
 }
+
+/// Exact supported unnamed typed exchange: Parse, Bind (binary parameters and
+/// result format), Describe portal, Execute, Sync. Negative NULL lengths carry
+/// no payload. Every contained protocol message/varlena must be representable.
+pub fn unnamed_typed_request_bytes(query_bytes: usize, lengths: &[usize]) -> Option<usize> {
+    unnamed_typed_request_bytes_with_capacity(query_bytes, lengths, isize::MAX as usize)
+}
+fn unnamed_typed_request_bytes_with_capacity(
+    query_bytes: usize,
+    lengths: &[usize],
+    native_capacity: usize,
+) -> Option<usize> {
+    if lengths.len() > u16::MAX as usize {
+        return None;
+    }
+    let payload = lengths.iter().try_fold(0_usize, |total, length| {
+        if *length > maximum_text_content_bytes() {
+            return None;
+        }
+        total.checked_add(*length)
+    })?;
+    let parse = query_bytes
+        .checked_add(9)?
+        .checked_add(4_usize.checked_mul(lengths.len())?)?;
+    let bind = 15_usize
+        .checked_add(6_usize.checked_mul(lengths.len())?)?
+        .checked_add(payload)?;
+    // Each server input message owns a StringInfo payload (wire minus type and
+    // length), including its NUL terminator. The exchange itself is not one
+    // PostgreSQL message. Its contiguous native buffer still must fit isize.
+    for message in [parse, bind] {
+        if message.checked_sub(4)? > MAX_ALLOC_SIZE || message.checked_sub(1)? > i32::MAX as usize {
+            return None;
+        }
+    }
+    // Describe portal 7, Execute 10, Sync 5.
+    let exchange = parse.checked_add(bind)?.checked_add(22)?;
+    (exchange <= native_capacity).then_some(exchange)
+}
+/// Five-field exact revision DataRow: UUID16, class2, version8, checksum64,
+/// five field lengths, field-count and message header. Source text is complete.
+pub fn revision_row_bytes(content_bytes: usize) -> Option<usize> {
+    binary_data_row_bytes(&[Some(16), Some(2), Some(8), Some(content_bytes), Some(64)])
+}
+
+/// DataRow header, field count, signed lengths and complete binary payloads.
+/// PostgreSQL text payloads need their four-byte varlena header within MaxAllocSize.
+pub fn binary_data_row_bytes(lengths: &[Option<usize>]) -> Option<usize> {
+    if lengths.len() > u16::MAX as usize {
+        return None;
+    }
+    let mut payload = 2_usize.checked_add(lengths.len().checked_mul(4)?)?;
+    for length in lengths.iter().flatten() {
+        if *length > maximum_text_content_bytes() {
+            return None;
+        }
+        payload = payload.checked_add(*length)?;
+    }
+    // pq_beginmessage's StringInfo contains the field count, lengths and all
+    // fields together, plus its terminating NUL. Type/length are sent outside
+    // that buffer. The signed protocol length includes its four-byte header.
+    if payload.checked_add(1)? > MAX_ALLOC_SIZE || payload.checked_add(4)? > i32::MAX as usize {
+        return None;
+    }
+    payload.checked_add(5)
+}
+
+#[cfg(test)]
+mod revision_wire_tests {
+    use super::*;
+    #[test]
+    fn complete_unnamed_exchange_respects_native_contiguous_buffer_capacity() {
+        // Both PG messages are individually representable, yet their combined
+        // BytesMut exchange exceeds a 32-bit isize capacity. No large buffer.
+        let query = MAX_ALLOC_SIZE - 9;
+        let values = [MAX_ALLOC_SIZE - 17];
+        let exchange = 2 * MAX_ALLOC_SIZE + 30;
+        assert!(
+            unnamed_typed_request_bytes_with_capacity(query, &values, i32::MAX as usize).is_none()
+        );
+        assert_eq!(
+            unnamed_typed_request_bytes_with_capacity(query, &values, exchange),
+            Some(exchange)
+        );
+        assert!(unnamed_typed_request_bytes_with_capacity(query, &values, exchange - 1).is_none());
+        if usize::BITS == 32 {
+            assert!(unnamed_typed_request_bytes(query, &values).is_none());
+        } else {
+            assert_eq!(unnamed_typed_request_bytes(query, &values), Some(exchange));
+        }
+    }
+    #[test]
+    fn unnamed_revision_requests_and_all_row_shapes_count_complete_payloads() {
+        assert_eq!(
+            unnamed_typed_request_bytes(10, &[16, 2, 8, 100, 64, 0, 0]),
+            Some(10 + 46 + 70 + 16 + 2 + 8 + 100 + 64)
+        );
+        assert_eq!(revision_row_bytes(100), Some(217));
+        assert_eq!(binary_data_row_bytes(&[Some(100)]), Some(111));
+        assert_eq!(
+            binary_data_row_bytes(&[
+                Some(16),
+                Some(2),
+                Some(8),
+                Some(4),
+                Some(64),
+                Some(1),
+                None,
+                None
+            ]),
+            Some(134)
+        );
+        let capture = 4567;
+        assert_eq!(
+            binary_data_row_bytes(&[
+                Some(16),
+                Some(2),
+                Some(8),
+                Some(4),
+                Some(64),
+                Some(1),
+                Some(capture),
+                Some(64)
+            ]),
+            Some(198 + capture)
+        );
+        assert!(unnamed_typed_request_bytes(usize::MAX, &[1]).is_none());
+        assert!(binary_data_row_bytes(&[Some(maximum_text_content_bytes() + 1)]).is_none());
+        assert!(binary_data_row_bytes(&[Some(maximum_text_content_bytes())]).is_none());
+        let single = MAX_ALLOC_SIZE - 7; // count2 + length4 + StringInfo NUL1
+        assert_eq!(
+            binary_data_row_bytes(&[Some(single)]),
+            Some(MAX_ALLOC_SIZE + 4)
+        );
+        assert!(binary_data_row_bytes(&[Some(single + 1)]).is_none());
+        assert!(
+            binary_data_row_bytes(&[Some(MAX_ALLOC_SIZE / 2), Some(MAX_ALLOC_SIZE / 2)]).is_none()
+        );
+        assert!(binary_data_row_bytes(&vec![None; u16::MAX as usize]).is_some());
+        assert!(binary_data_row_bytes(&vec![None; u16::MAX as usize + 1]).is_none());
+        assert!(unnamed_typed_request_bytes(10, &vec![0; u16::MAX as usize]).is_some());
+        assert!(unnamed_typed_request_bytes(10, &vec![0; u16::MAX as usize + 1]).is_none());
+    }
+}

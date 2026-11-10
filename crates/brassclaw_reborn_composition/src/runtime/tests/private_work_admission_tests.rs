@@ -420,7 +420,7 @@ async fn private_ready_and_claim_lost_commit_ack_keep_original_native_reservatio
                 1,
                 vec![
                     id.as_bytes().to_vec(),
-                    b"private-work-definition/1".to_vec(),
+                    b"private-work-definition/2".to_vec(),
                 ],
                 vec![],
                 AckBoundary::Commit,
@@ -877,6 +877,81 @@ async fn private_same_id_capture_race_ready_reconstruction_and_worker_fallback_k
         .unwrap()
         .get(0);
     assert_eq!(fixture.counts(id).await, ("ready".into(), 0, 0, 0));
+    // L-01: the detached /2 includes the actual legacy root policy, distinct
+    // from this Work's acknowledged preparation. Authentic checksums alone do
+    // not allow a self-declared policy to relabel the retained root.
+    {
+        use crate::private_work_definition::{PrivateWorkDefinition, checksum};
+        let state = fixture
+            .store
+            .get_private_work_state(id)
+            .await
+            .unwrap()
+            .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&ready_bytes).unwrap();
+        assert_eq!(value["format"], "private-work-definition/2");
+        assert!(value["root_preparation_bytes"].is_null());
+        assert!(value["root_preparation_checksum"].is_null());
+        let mut client = fixture.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let detached = PrivateWorkDefinition::restore(
+            &tx,
+            &state.request,
+            state.request_checksum,
+            &ready_bytes,
+            checksum(&ready_bytes),
+        )
+        .await
+        .unwrap();
+        assert_eq!(detached.bytes(), ready_bytes);
+        let legacy = ready_bytes
+            .replace("private-work-definition/2", "private-work-definition/1")
+            .replace(
+                ",\"root_preparation_bytes\":null,\"root_preparation_checksum\":null",
+                "",
+            );
+        let old = PrivateWorkDefinition::restore(
+            &tx,
+            &state.request,
+            state.request_checksum,
+            &legacy,
+            checksum(&legacy),
+        )
+        .await
+        .unwrap();
+        assert_eq!(old.root().reference(), detached.root().reference());
+        let relabelled = ready_bytes
+            .replace(
+                "\"root_preparation_bytes\":null",
+                &format!(
+                    "\"root_preparation_bytes\":{}",
+                    serde_json::to_string(preparation_a.bytes()).unwrap()
+                ),
+            )
+            .replace(
+                "\"root_preparation_checksum\":null",
+                &format!(
+                    "\"root_preparation_checksum\":{}",
+                    serde_json::to_string(preparation_a.checksum()).unwrap()
+                ),
+            );
+        let forged = PrivateWorkDefinition::restore(
+            &tx,
+            &state.request,
+            state.request_checksum,
+            &relabelled,
+            checksum(&relabelled),
+        )
+        .await;
+        assert!(forged.is_err());
+        tx.commit().await.unwrap();
+    }
     // A changed explicit payload/owner and a Chat origin must still conflict.
     let target = &original.target;
     let input = json!({"profile":"base-prompt","revision":revision.to_string(),"snapshot_bytes":"changed explicit source"});
@@ -1274,7 +1349,7 @@ async fn private_prefix_producer_commit_ack_recovers_complete_original_with_one_
             1,
             vec![
                 id.as_bytes().to_vec(),
-                b"private-work-definition/1".to_vec(),
+                b"private-work-definition/2".to_vec(),
             ],
             vec![],
             AckBoundary::Commit,
@@ -1616,7 +1691,7 @@ fn producer_hold_rule(id: Uuid, boundary: AckBoundary) -> AckCutRule {
     } else {
         vec![
             id.as_bytes().to_vec(),
-            b"private-work-definition/1".to_vec(),
+            b"private-work-definition/2".to_vec(),
         ]
     };
     let rule = AckCutRule::after_bind(1, required, vec![], boundary).hold();

@@ -370,13 +370,27 @@ async fn retained_validator_pass(case: DeliveryCase) {
                 .unwrap();
             let second =
                 second.expect("smaller fresh preparation must return authenticated original");
-            let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
-                &second.request,
-                second.request_checksum,
-                &original.0,
-                original.1.clone().try_into().unwrap(),
-            )
-            .unwrap();
+            let definition = {
+                let mut client = rig.pool.get().await.unwrap();
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .unwrap();
+                let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
+                    &tx,
+                    &second.request,
+                    second.request_checksum,
+                    &original.0,
+                    original.1.clone().try_into().unwrap(),
+                )
+                .await
+                .unwrap();
+                tx.commit().await.unwrap();
+                restored
+            };
             let crate::private_work_definition::DomainCapture::ValidatorStructural {
                 capture_bytes,
                 ..

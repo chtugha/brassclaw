@@ -538,7 +538,7 @@ async fn native_function_subject_forward_migration_preserves_old_subjects_and_in
         .await
         .unwrap();
     client.batch_execute("INSERT INTO reborn_component_revision_heads SELECT * FROM public.reborn_component_revision_heads;
-        INSERT INTO reborn_component_revisions SELECT * FROM public.reborn_component_revisions;
+        INSERT INTO reborn_component_revisions(component_id,class_code,version,revision_bytes,checksum,recorded_at) SELECT component_id,class_code,version,revision_bytes,checksum,recorded_at FROM public.reborn_component_revisions;
         INSERT INTO reborn_component_review_submissions SELECT * FROM public.reborn_component_review_submissions
         WHERE subject_bytes::jsonb->>'format' IN ('component-review-submission/1','component-review-submission/2')").await.unwrap();
     client

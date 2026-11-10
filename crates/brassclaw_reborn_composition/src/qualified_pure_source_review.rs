@@ -392,13 +392,15 @@ impl InstalledMontyCatalogue {
         use brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier;
         self.verify_original(tx, &request).await.map_err(invalid)?;
         let definition = PrivateWorkDefinition::restore(
+            tx,
             &request,
             checksum,
             row.get(2),
             row.get::<_, Vec<u8>>(3)
                 .try_into()
                 .map_err(|_| invalid("Source definition digest invalid"))?,
-        )?;
+        )
+        .await?;
         crate::pg_review_admission_source::ValidatorInputCapture::verify_historical(
             &subject,
             &selected,

@@ -277,6 +277,50 @@ async fn native_original_pure_case_records_real_return_exception_and_contract_de
     let (submission, component) = original_source(&runtime).await;
     let text = "quotes: ' \" Ü {{vars.code}}\nresult = host.forbidden()";
     let (id, returned) = one_case(&runtime, submission, "return_value", text).await;
+    // L-01: the actual native case above traverses V213's preserved J guards.
+    // Read its real original and verify its row policy in this same snapshot;
+    // no SQL-generated Case, approval or successful effect substitutes for it.
+    {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        assert!(
+            tx.query_one(
+                "SELECT EXISTS(SELECT 1 FROM refinery_schema_history WHERE version=213)",
+                &[]
+            )
+            .await
+            .unwrap()
+            .get::<_, bool>(0)
+        );
+        let row=tx.query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1",&[&id]).await.unwrap();
+        let request: brassclaw_turns::private_work::PrivateWorkRequest =
+            serde_json::from_str(row.get(0)).unwrap();
+        let raw: Value = serde_json::from_str(row.get(2)).unwrap();
+        assert_eq!(raw["format"], "private-work-definition/2");
+        assert_eq!(raw["domain"]["purpose"], "original_pure_case/1");
+        assert!(raw.get("root_preparation_bytes").is_some());
+        assert!(raw.get("root_preparation_checksum").is_some());
+        let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
+            &tx,
+            &request,
+            row.get::<_, Vec<u8>>(1).try_into().unwrap(),
+            row.get(2),
+            row.get::<_, Vec<u8>>(3).try_into().unwrap(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            restored.root().reference().version,
+            raw["root_revision_version"].as_u64().unwrap()
+        );
+        tx.commit().await.unwrap();
+    }
     assert_eq!(returned["outcome"], json!({"kind":"return","value":text}));
     let state = submit_case(
         &runtime,

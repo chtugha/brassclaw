@@ -483,7 +483,7 @@ pub fn prepare_retained_inputs(
     if layout["format"] != "recipe-input-layout/1" {
         return Err(invalid("unsupported input layout format"));
     }
-    let task = InputContract::from_value(&layout["task_inputs"], REVISION_LIMITS)?
+    let task = InputContract::from_value(&layout["task_inputs"], recipe.draft().parsing_limits())?
         .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
     if instruction.variant().variable_patterns.len() > MAX_CAPTURES {
         return Err(invalid("capture layout exceeds technical parser capacity"));
@@ -580,14 +580,14 @@ pub fn prepare_retained_inputs(
             document
                 .get("input_contract")
                 .ok_or_else(|| invalid("retained PythonCode input contract missing"))?,
-            REVISION_LIMITS,
+            component.draft().parsing_limits(),
         )?
         .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         let result = ValueContract::result_from_value(
             document
                 .get("result_contract")
                 .ok_or_else(|| invalid("retained PythonCode result contract missing"))?,
-            REVISION_LIMITS,
+            component.draft().parsing_limits(),
         )?
         .with_data_limits(brassclaw_skills::value_contract::EXECUTION_DATA_LIMITS)?;
         components.insert(step.step_id.clone(), component.reference());

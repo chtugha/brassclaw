@@ -1091,3 +1091,65 @@ fn retained_checksums_keep_v1_bytes_and_handle_deep_borrowed_data() {
         .join()
         .unwrap();
 }
+
+#[test]
+fn retained_schema_consumers_use_each_revision_original_profile_in_a_mixed_graph() {
+    use brassclaw_host_api::{
+        MontyExecutionLimits,
+        task_preparation::{PreparationOrigin, RetainedPreparation},
+    };
+    use brassclaw_skills::component_revision::RetainedComponentSnapshot;
+    // Codec data only: no ACK/approval is inferred by this pure preparation test.
+    let policy = RetainedPreparation::encode(
+        13,
+        PreparationOrigin::AcknowledgedLive,
+        MontyExecutionLimits {
+            max_value_nodes: 2_000_000,
+            ..MontyExecutionLimits::default()
+        },
+    )
+    .unwrap();
+    let root = Uuid::new_v4();
+    let component = Uuid::new_v4();
+    let fields: serde_json::Map<String, Value> = (0..90_000)
+        .map(|n| (format!("field_{n}"), json!({"type":"string"})))
+        .collect();
+    let document = json!({"content":"def value(inputs):\n    return {}","input_contract":{},
+        "result_contract":{"type":"object","allow_extra_fields":false,"fields":fields},
+        "preload":{"format":"python-preload/2","exports":{"value":{"symbol":"value","parameters":["inputs"],"mapping":true}},
+            "private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"value"}});
+    let bytes = json!({"format":"component-revision/1","uuid":component,"class_code":22,"document":document,"dependencies":[],"association":null}).to_string();
+    assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
+    let captured =
+        ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&policy)).unwrap();
+    let recipe = draft(
+        root,
+        21,
+        json!({"variants":[{"variant_key":"selected","step_link":"0:1-0:E","intent_examples":[],"variable_patterns":[]}],
+        "step_descriptions":[{"desc_idx":0,"steps":[{"stepnumber":1,"knowledge":"orchestrator","goal":"retained pure logic","content":"","type":"component","include":[component]}]}],
+        "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":{},"steps":{"0:1":{}}}}}),
+        &[component],
+    );
+    let graph = Arc::new(
+        RetainedComponentSnapshot::new(
+            &[root],
+            vec![
+                recipe.at_version(1).unwrap(),
+                captured.at_version(1).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    assert!(graph.revisions()[&root].draft().preparation().is_none());
+    let instruction =
+        compile_retained_recipe(graph, root, "selected", WorkflowClass::Deterministic).unwrap();
+    let program = prepare_retained_unbound_program(instruction).unwrap();
+    assert_eq!(
+        program.inputs().instruction().snapshot().revisions()[&component]
+            .draft()
+            .preparation()
+            .unwrap()
+            .bytes(),
+        policy.bytes()
+    );
+}

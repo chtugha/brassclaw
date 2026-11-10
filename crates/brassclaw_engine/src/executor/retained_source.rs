@@ -11,7 +11,7 @@ use brassclaw_monty_host::{
 };
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
+    component_revision::RetainedComponentSnapshot,
     value_contract::{ContractLimits, InputContract, ValueContract},
 };
 use uuid::Uuid;
@@ -576,9 +576,9 @@ fn pure_component<'a>(
     // task values. A larger valid task-depth setting must not violate the
     // schema parser's separate storage profile; invocation still binds and
     // checks actual values under its acknowledged per-step limits.
-    InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
+    InputContract::from_value(&document["input_contract"], root.draft().parsing_limits())
         .map_err(|_| fail("pure root input contract is invalid"))?;
-    ValueContract::result_from_value(&document["result_contract"], REVISION_LIMITS)
+    ValueContract::result_from_value(&document["result_contract"], root.draft().parsing_limits())
         .map_err(|_| fail("pure root result contract is invalid"))?;
     let library = PreloadDeclaration::parse(document, root.draft().dependencies())
         .map_err(fail)?
@@ -701,14 +701,18 @@ impl InspectedPureSelection {
             .get(export)
             .ok_or_else(|| fail("unknown Pure export"))?
             .clone();
-        let document = self.snapshot.revisions()[&self.root].draft().document();
-        let inputs = InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
-            .map_err(|_| fail("invalid Pure input contract"))?
-            .bind_with_limits(supplied, limits)
-            .map_err(|_| fail("invalid Pure case input"))?;
-        let result_contract =
-            ValueContract::result_from_value(&document["result_contract"], REVISION_LIMITS)
-                .map_err(|_| fail("invalid Pure result contract"))?;
+        let root = &self.snapshot.revisions()[&self.root];
+        let document = root.draft().document();
+        let inputs =
+            InputContract::from_value(&document["input_contract"], root.draft().parsing_limits())
+                .map_err(|_| fail("invalid Pure input contract"))?
+                .bind_with_limits(supplied, limits)
+                .map_err(|_| fail("invalid Pure case input"))?;
+        let result_contract = ValueContract::result_from_value(
+            &document["result_contract"],
+            root.draft().parsing_limits(),
+        )
+        .map_err(|_| fail("invalid Pure result contract"))?;
         let definitions = self
             .preload_order
             .iter()

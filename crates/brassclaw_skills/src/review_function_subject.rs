@@ -28,6 +28,8 @@ pub(super) enum FunctionPartner {
     Changed {
         candidate: Reference,
         candidate_bytes: String,
+        #[serde(skip)]
+        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
         base: Option<Reference>,
         expected_previous_version: u64,
     },
@@ -48,6 +50,7 @@ impl FunctionPartner {
                 candidate: super::candidate_reference(&candidate, base, expected_previous_version)?
                     .into(),
                 candidate_bytes: candidate.exact_bytes().to_owned(),
+                preparation: candidate.preparation().cloned(),
                 base: base.map(Into::into),
                 expected_previous_version,
             },
@@ -72,11 +75,15 @@ impl FunctionPartner {
             Self::Changed {
                 candidate,
                 candidate_bytes,
+                preparation,
                 base,
                 expected_previous_version,
             } => {
-                let draft = ComponentRevisionDraft::from_json(candidate_bytes)
-                    .map_err(crate::revision_store::RevisionStoreError::from)?;
+                let draft = ComponentRevisionDraft::from_json_with_preparation(
+                    candidate_bytes,
+                    preparation.as_ref(),
+                )
+                .map_err(crate::revision_store::RevisionStoreError::from)?;
                 let base = base.as_ref().map(Reference::parsed).transpose()?;
                 if super::candidate_reference(&draft, base, *expected_previous_version)?
                     != candidate.parsed()?
@@ -93,6 +100,31 @@ impl FunctionPartner {
                 reference: reference.parsed()?,
             },
         })
+    }
+
+    pub(super) async fn restore_original_policy(
+        &mut self,
+        tx: &tokio_postgres::Transaction<'_>,
+    ) -> Result<(), SubmissionStoreError> {
+        if let Self::Changed {
+            candidate,
+            candidate_bytes,
+            preparation,
+            ..
+        } = self
+        {
+            let retained =
+                crate::revision_store::PgComponentRevisionStore::read_revision_in_transaction(
+                    tx,
+                    candidate.parsed()?,
+                )
+                .await?;
+            if retained.draft().exact_bytes() != candidate_bytes.as_str() {
+                return Err(SubmissionStoreError::Invalid);
+            }
+            *preparation = retained.draft().preparation().cloned();
+        }
+        Ok(())
     }
 
     pub(super) fn is_changed(&self) -> bool {

@@ -87,11 +87,20 @@ impl SnapshotReadLimits {
         }
         Ok(count)
     }
-    pub(crate) fn check_row(self, content_bytes: usize) -> Result<(), RevisionStoreError> {
-        let row = content_bytes
-            .checked_add(117)
+    pub(crate) fn check_revision_row(
+        self,
+        content_bytes: usize,
+        original: Option<&RetainedPreparation>,
+    ) -> Result<(), RevisionStoreError> {
+        let parser = crate::component_revision::revision_limits(original)?;
+        let row = brassclaw_pg::wire_capacity::revision_row_bytes(content_bytes)
             .ok_or(RevisionStoreError::Capacity)?;
-        // Exactly maximal historical revision text still fits with its framing.
+        if content_bytes > parser.max_bytes {
+            return Err(RevisionStoreError::Capacity);
+        }
+        self.check_transfer_row(row)
+    }
+    pub(crate) fn check_transfer_row(self, row: usize) -> Result<(), RevisionStoreError> {
         let bound = match self.transfer {
             Transfer::Legacy => crate::component_revision::REVISION_LIMITS
                 .max_bytes
@@ -101,10 +110,7 @@ impl SnapshotReadLimits {
                 usize::try_from(bytes).map_err(|_| RevisionStoreError::Capacity)?
             }
         };
-        if content_bytes > crate::component_revision::REVISION_LIMITS.max_bytes
-            || row > bound
-            || row > i32::MAX as usize
-        {
+        if row > bound {
             return Err(RevisionStoreError::Capacity);
         }
         Ok(())

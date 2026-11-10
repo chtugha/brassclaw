@@ -1,0 +1,684 @@
+--- a/crates/brassclaw_engine/src/executor/retained_source.rs
++++ b/crates/brassclaw_engine/src/executor/retained_source.rs
+@@ -14 +14 @@
+-    component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
++    component_revision::RetainedComponentSnapshot,
+@@ -579 +579 @@
+-    InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
++    InputContract::from_value(&document["input_contract"], root.draft().parsing_limits())
+@@ -581 +581 @@
+-    ValueContract::result_from_value(&document["result_contract"], REVISION_LIMITS)
++    ValueContract::result_from_value(&document["result_contract"], root.draft().parsing_limits())
+@@ -704,8 +704,12 @@
+-        let document = self.snapshot.revisions()[&self.root].draft().document();
+-        let inputs = InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
+-            .map_err(|_| fail("invalid Pure input contract"))?
+-            .bind_with_limits(supplied, limits)
+-            .map_err(|_| fail("invalid Pure case input"))?;
+-        let result_contract =
+-            ValueContract::result_from_value(&document["result_contract"], REVISION_LIMITS)
+-                .map_err(|_| fail("invalid Pure result contract"))?;
++        let root = &self.snapshot.revisions()[&self.root];
++        let document = root.draft().document();
++        let inputs =
++            InputContract::from_value(&document["input_contract"], root.draft().parsing_limits())
++                .map_err(|_| fail("invalid Pure input contract"))?
++                .bind_with_limits(supplied, limits)
++                .map_err(|_| fail("invalid Pure case input"))?;
++        let result_contract = ValueContract::result_from_value(
++            &document["result_contract"],
++            root.draft().parsing_limits(),
++        )
++        .map_err(|_| fail("invalid Pure result contract"))?;
+--- a/crates/brassclaw_reborn_composition/src/private_work_definition.rs
++++ b/crates/brassclaw_reborn_composition/src/private_work_definition.rs
+@@ -62,0 +63,133 @@
++    #[serde(rename = "private-work-definition/2")]
++    V2 {
++        work_id: Uuid,
++        run_id: Uuid,
++        request_checksum: [u8; 32],
++        preparation_bytes: String,
++        preparation_checksum: String,
++        worker_checksum: [u8; 32],
++        root_revision_bytes: String,
++        root_revision_version: u64,
++        root_preparation_bytes: Option<String>,
++        root_preparation_checksum: Option<String>,
++        workflow_checksum: [u8; 32],
++        input_checksum: [u8; 32],
++        domain: DomainCapture,
++    },
++}
++
++// The borrowed capture form has the exact /2 field order and encoding. Count
++// complete escaping before copying any root string or allocating an output.
++#[derive(Serialize)]
++struct CaptureWire<'a> {
++    format: &'static str,
++    work_id: Uuid,
++    run_id: Uuid,
++    request_checksum: [u8; 32],
++    preparation_bytes: &'a str,
++    preparation_checksum: &'a str,
++    worker_checksum: [u8; 32],
++    root_revision_bytes: &'a str,
++    root_revision_version: u64,
++    root_preparation_bytes: Option<&'a str>,
++    root_preparation_checksum: Option<&'a str>,
++    workflow_checksum: [u8; 32],
++    input_checksum: [u8; 32],
++    domain: &'a DomainCapture,
++}
++
++pub(crate) const PRIVATE_DEFINITION_INSERT: &str = "INSERT INTO brassclaw_monty_private_preparations(work_id,definition_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(work_id) DO NOTHING";
++fn checked_definition_size(
++    bytes: u64,
++    preparation: &PreparationCapture,
++) -> Result<usize, RebornBuildError> {
++    let policy = preparation.policy();
++    if bytes > policy.max_value_bytes {
++        return Err(invalid());
++    }
++    let size = usize::try_from(bytes).map_err(|_| invalid())?;
++    let request = brassclaw_pg::wire_capacity::unnamed_typed_request_bytes(
++        PRIVATE_DEFINITION_INSERT.len(),
++        &[16, size, 32],
++    )
++    .ok_or_else(invalid)?;
++    if u64::try_from(request).map_err(|_| invalid())? > policy.max_ipc_frame_bytes {
++        return Err(invalid());
++    }
++    brassclaw_pg::wire_capacity::binary_data_row_bytes(&[Some(size), Some(32)])
++        .ok_or_else(invalid)?;
++    Ok(size)
++}
++struct CheckedBuffer {
++    bytes: Vec<u8>,
++    expected: usize,
++}
++impl std::io::Write for CheckedBuffer {
++    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++        if self
++            .bytes
++            .len()
++            .checked_add(bytes.len())
++            .is_none_or(|next| next > self.expected)
++        {
++            return Err(std::io::Error::other("private definition capacity"));
++        }
++        self.bytes.extend_from_slice(bytes);
++        Ok(bytes.len())
++    }
++    fn flush(&mut self) -> std::io::Result<()> {
++        Ok(())
++    }
++}
++fn encode_capture(
++    wire: &CaptureWire<'_>,
++    preparation: &PreparationCapture,
++) -> Result<String, RebornBuildError> {
++    let length =
++        brassclaw_common::json::count_json_bytes(wire, Some(preparation.policy().max_value_bytes))
++            .map_err(|_| invalid())?;
++    let expected = checked_definition_size(length, preparation)?;
++    let mut buffer = CheckedBuffer {
++        bytes: Vec::new(),
++        expected,
++    };
++    buffer
++        .bytes
++        .try_reserve_exact(expected)
++        .map_err(|_| invalid())?;
++    brassclaw_common::json::write_json(&mut buffer, wire).map_err(|_| invalid())?;
++    if buffer.bytes.len() != expected {
++        return Err(invalid());
++    }
++    String::from_utf8(buffer.bytes).map_err(|_| invalid())
++}
++struct CanonicalCompare<'a> {
++    expected: &'a [u8],
++    consumed: usize,
++}
++impl std::io::Write for CanonicalCompare<'_> {
++    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
++        let end = self
++            .consumed
++            .checked_add(bytes.len())
++            .ok_or_else(|| std::io::Error::other("private definition capacity"))?;
++        if self.expected.get(self.consumed..end) != Some(bytes) {
++            return Err(std::io::Error::other("private definition encoding"));
++        }
++        self.consumed = end;
++        Ok(bytes.len())
++    }
++    fn flush(&mut self) -> std::io::Result<()> {
++        Ok(())
++    }
++}
++fn require_canonical<T: Serialize>(value: &T, bytes: &str) -> Result<(), RebornBuildError> {
++    let mut compare = CanonicalCompare {
++        expected: bytes.as_bytes(),
++        consumed: 0,
++    };
++    brassclaw_common::json::write_json(&mut compare, value).map_err(|_| invalid())?;
++    if compare.consumed != bytes.len() {
++        return Err(invalid());
++    }
++    Ok(())
+@@ -78,0 +212 @@
++    root_revision: brassclaw_skills::component_revision::RetainedComponentRevision,
+@@ -95 +229,2 @@
+-        let wire = Wire::V1 {
++        let wire = CaptureWire {
++            format: "private-work-definition/2",
+@@ -99,2 +234,2 @@
+-            preparation_bytes: preparation.bytes().to_owned(),
+-            preparation_checksum: preparation.checksum().to_owned(),
++            preparation_bytes: preparation.bytes(),
++            preparation_checksum: preparation.checksum(),
+@@ -102 +237 @@
+-            root_revision_bytes: root.draft().exact_bytes().to_owned(),
++            root_revision_bytes: root.draft().exact_bytes(),
+@@ -103,0 +239,2 @@
++            root_preparation_bytes: root.draft().preparation().map(|p| p.bytes()),
++            root_preparation_checksum: root.draft().preparation().map(|p| p.checksum()),
+@@ -106 +243 @@
+-            domain,
++            domain: &domain,
+@@ -108 +245 @@
+-        let bytes = serde_json::to_string(&wire).map_err(|_| invalid())?;
++        let bytes = encode_capture(&wire, &preparation)?;
+@@ -110,3 +247,14 @@
+-        Self::restore(request, request_checksum, &bytes, digest)
+-    }
+-    pub(crate) fn restore(
++        Self::decode(request, request_checksum, &bytes, digest)
++    }
++    pub(crate) async fn restore(
++        tx: &tokio_postgres::Transaction<'_>,
++        request: &PrivateWorkRequest,
++        expected_request_checksum: [u8; 32],
++        bytes: &str,
++        expected: [u8; 32],
++    ) -> Result<Self, RebornBuildError> {
++        let original = Self::decode(request, expected_request_checksum, bytes, expected)?;
++        original.verify_retained_root(tx).await?;
++        Ok(original)
++    }
++    fn decode(
+@@ -122 +270,21 @@
+-        let Wire::V1 {
++        if matches!(&wire, Wire::V2 { .. }) {
++            require_canonical(&wire, bytes)?;
++        }
++        let root_policy = match &wire {
++            Wire::V1 { .. } => None,
++            Wire::V2 {
++                root_preparation_bytes,
++                root_preparation_checksum,
++                ..
++            } => match (root_preparation_bytes, root_preparation_checksum) {
++                (None, None) => None,
++                (Some(bytes), Some(hash)) => Some(
++                    brassclaw_host_api::task_preparation::RetainedPreparation::restore_original(
++                        bytes, hash,
++                    )
++                    .map_err(|_| invalid())?,
++                ),
++                _ => return Err(invalid()),
++            },
++        };
++        let (Wire::V1 {
+@@ -133 +301,13 @@
+-        } = &wire;
++        }
++        | Wire::V2 {
++            work_id,
++            run_id,
++            request_checksum,
++            preparation_bytes,
++            preparation_checksum,
++            root_revision_bytes,
++            root_revision_version,
++            workflow_checksum,
++            domain,
++            ..
++        }) = &wire;
+@@ -142,0 +323,6 @@
++        if matches!(&wire, Wire::V2 { .. }) {
++            checked_definition_size(
++                u64::try_from(bytes.len()).map_err(|_| invalid())?,
++                &preparation,
++            )?;
++        }
+@@ -182,4 +368,7 @@
+-        let revision = ComponentRevisionDraft::from_json(root_revision_bytes)
+-            .map_err(|_| invalid())?
+-            .at_version(*root_revision_version)
+-            .map_err(|_| invalid())?;
++        let revision = ComponentRevisionDraft::from_json_with_preparation(
++            root_revision_bytes,
++            root_policy.as_ref(),
++        )
++        .map_err(|_| invalid())?
++        .at_version(*root_revision_version)
++        .map_err(|_| invalid())?;
+@@ -189,0 +379 @@
++            root_revision: revision,
+@@ -194,0 +385,13 @@
++    /// Detached bytes are not authority for their own parser policy. Verify the
++    /// exact historical row and its immutable policy in the caller's snapshot.
++    pub(crate) async fn verify_retained_root(
++        &self,
++        tx: &tokio_postgres::Transaction<'_>,
++    ) -> Result<(), RebornBuildError> {
++        brassclaw_skills::revision_store::PgComponentRevisionStore::verify_original_in_transaction(
++            tx,
++            &self.root_revision,
++        )
++        .await
++        .map_err(|_| invalid())
++    }
+@@ -208 +411 @@
+-        let Wire::V1 {
++        let (Wire::V1 {
+@@ -210 +413,4 @@
+-        } = &self.wire;
++        }
++        | Wire::V2 {
++            worker_checksum, ..
++        }) = &self.wire;
+@@ -214 +420 @@
+-        let Wire::V1 {
++        let (Wire::V1 {
+@@ -216 +422,4 @@
+-        } = &self.wire;
++        }
++        | Wire::V2 {
++            workflow_checksum, ..
++        }) = &self.wire;
+@@ -220 +429 @@
+-        let Wire::V1 { input_checksum, .. } = &self.wire;
++        let (Wire::V1 { input_checksum, .. } | Wire::V2 { input_checksum, .. }) = &self.wire;
+@@ -224 +433 @@
+-        let Wire::V1 { domain, .. } = &self.wire;
++        let (Wire::V1 { domain, .. } | Wire::V2 { domain, .. }) = &self.wire;
+@@ -238,0 +448,80 @@
++
++#[cfg(test)]
++mod encoding_tests {
++    use super::*;
++    fn preparation(bytes: u64) -> PreparationCapture {
++        use brassclaw_host_api::{
++            MontyExecutionLimits,
++            task_preparation::{PreparationOrigin, RetainedPreparation},
++        };
++        PreparationCapture::from_original(
++            RetainedPreparation::encode(
++                19,
++                PreparationOrigin::AcknowledgedLive,
++                MontyExecutionLimits {
++                    max_value_bytes: bytes,
++                    ..MontyExecutionLimits::default()
++                },
++            )
++            .unwrap(),
++        )
++        .unwrap()
++    }
++    fn fixture<'a>(
++        preparation: &'a PreparationCapture,
++        root: &'a str,
++        domain: &'a DomainCapture,
++    ) -> CaptureWire<'a> {
++        // Serialization mechanics only: these data are not an admitted Work or root.
++        CaptureWire {
++            format: "private-work-definition/2",
++            work_id: Uuid::from_u128(1),
++            run_id: Uuid::from_u128(2),
++            request_checksum: [3; 32],
++            preparation_bytes: preparation.bytes(),
++            preparation_checksum: preparation.checksum(),
++            worker_checksum: [4; 32],
++            root_revision_bytes: root,
++            root_revision_version: 1,
++            root_preparation_bytes: None,
++            root_preparation_checksum: None,
++            workflow_checksum: [5; 32],
++            input_checksum: [6; 32],
++            domain,
++        }
++    }
++    #[test]
++    fn private_v2_complete_encoding_counts_escaped_root_and_compares_canonical_without_second_copy()
++    {
++        let root = "\"\\\n猫".repeat(1024);
++        let domain = DomainCapture::PrefixSourceOnly {
++            job_id: Uuid::from_u128(7),
++        };
++        let mut bound = 64 * 1024;
++        // Include the decimal budget's own encoding in the complete byte count.
++        for _ in 0..8 {
++            let prep = preparation(bound);
++            let size =
++                brassclaw_common::json::count_json_bytes(&fixture(&prep, &root, &domain), None)
++                    .unwrap();
++            if size == bound {
++                break;
++            }
++            bound = size;
++        }
++        let prep = preparation(bound);
++        let wire = fixture(&prep, &root, &domain);
++        let encoded = encode_capture(&wire, &prep).unwrap();
++        assert_eq!(encoded.len() as u64, bound);
++        let owned: Wire = serde_json::from_str(&encoded).unwrap();
++        require_canonical(&owned, &encoded).unwrap();
++        assert!(require_canonical(&owned, &format!("{encoded} ")).is_err());
++        let smaller = preparation(bound - 1);
++        assert_eq!(
++            brassclaw_common::json::count_json_bytes(&fixture(&smaller, &root, &domain), None)
++                .unwrap(),
++            bound
++        );
++        assert!(encode_capture(&fixture(&smaller, &root, &domain), &smaller).is_err());
++    }
++}
+--- a/crates/brassclaw_reborn_composition/src/pg_private_delivery.rs
++++ b/crates/brassclaw_reborn_composition/src/pg_private_delivery.rs
+@@ -182,0 +183 @@
++            tx,
+@@ -187,0 +189 @@
++        .await
+--- a/crates/brassclaw_reborn_composition/src/pg_monty_private_admission.rs
++++ b/crates/brassclaw_reborn_composition/src/pg_monty_private_admission.rs
+@@ -426,0 +427 @@
++            tx,
+@@ -431,0 +433 @@
++        .await
+@@ -520,0 +523 @@
++            tx,
+@@ -525,0 +529 @@
++        .await
+--- a/crates/brassclaw_reborn_composition/src/qualified_pure_source_review.rs
++++ b/crates/brassclaw_reborn_composition/src/qualified_pure_source_review.rs
+@@ -394,0 +395 @@
++            tx,
+@@ -401 +402,2 @@
+-        )?;
++        )
++        .await?;
+--- a/crates/brassclaw_reborn_composition/src/private_task_catalogue.rs
++++ b/crates/brassclaw_reborn_composition/src/private_task_catalogue.rs
+@@ -358,0 +359 @@
++            &tx,
+@@ -365 +366,2 @@
+-        )?;
++        )
++        .await?;
+@@ -492,0 +495 @@
++            tx,
+@@ -499 +502,2 @@
+-        )?;
++        )
++        .await?;
+@@ -513,3 +516,0 @@
+-        PgComponentRevisionStore::read_revision_in_transaction(tx, captured.root().reference())
+-            .await
+-            .map_err(|_| unresolved())?;
+@@ -700,11 +701,26 @@
+-        tx.execute(
+-            "INSERT INTO brassclaw_monty_private_preparations(work_id,definition_bytes,checksum)
+-            VALUES($1,$2,$3) ON CONFLICT(work_id) DO NOTHING",
+-            &[
+-                &state.request.work_id(),
+-                &definition.bytes(),
+-                &&definition.checksum()[..],
+-            ],
+-        )
+-        .await
+-        .map_err(|_| invalid("private preparation retention failed"))?;
++        definition.verify_retained_root(tx).await?;
++        use futures::{TryStreamExt, pin_mut};
++        use tokio_postgres::types::{ToSql, Type};
++        let work_id = state.request.work_id();
++        let bytes = definition.bytes();
++        let digest = definition.checksum();
++        let digest_bytes = &digest[..];
++        let params: [(&(dyn ToSql + Sync), Type); 3] = [
++            (&work_id, Type::UUID),
++            (&bytes, Type::TEXT),
++            (&digest_bytes, Type::BYTEA),
++        ];
++        let rows = tx
++            .query_typed_raw(
++                crate::private_work_definition::PRIVATE_DEFINITION_INSERT,
++                params,
++            )
++            .await
++            .map_err(|_| invalid("private preparation retention failed"))?;
++        pin_mut!(rows);
++        while rows
++            .try_next()
++            .await
++            .map_err(|_| invalid("private preparation retention failed"))?
++            .is_some()
++        {}
+@@ -766,0 +783 @@
++                &tx,
+@@ -771,0 +789 @@
++            .await
+@@ -774,3 +792 @@
+-        if captured.worker_checksum() != self.worker_image.checksum()
+-            || captured.root().reference() != self.root_reference
+-        {
++        if captured.worker_checksum() != self.worker_image.checksum() {
+@@ -779,3 +794,0 @@
+-        PgComponentRevisionStore::read_revision_in_transaction(&tx, captured.root().reference())
+-            .await
+-            .map_err(|_| failed())?;
+--- a/crates/brassclaw_reborn_composition/src/private_pure_case_work.rs
++++ b/crates/brassclaw_reborn_composition/src/private_pure_case_work.rs
+@@ -489,0 +490 @@
++            &tx,
+@@ -496 +497,2 @@
+-        )?;
++        )
++        .await?;
+--- a/crates/brassclaw_reborn_composition/src/runtime/tests/validator_retained_q1_tests.rs
++++ b/crates/brassclaw_reborn_composition/src/runtime/tests/validator_retained_q1_tests.rs
+@@ -373,7 +373,21 @@
+-            let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+-                &second.request,
+-                second.request_checksum,
+-                &original.0,
+-                original.1.clone().try_into().unwrap(),
+-            )
+-            .unwrap();
++            let definition = {
++                let mut client = rig.pool.get().await.unwrap();
++                let tx = client
++                    .build_transaction()
++                    .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
++                    .read_only(true)
++                    .start()
++                    .await
++                    .unwrap();
++                let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
++                    &tx,
++                    &second.request,
++                    second.request_checksum,
++                    &original.0,
++                    original.1.clone().try_into().unwrap(),
++                )
++                .await
++                .unwrap();
++                tx.commit().await.unwrap();
++                restored
++            };
+--- a/crates/brassclaw_reborn_composition/src/runtime/tests/qualified_source_review_tests.rs
++++ b/crates/brassclaw_reborn_composition/src/runtime/tests/qualified_source_review_tests.rs
+@@ -735,7 +735,21 @@
+-    let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+-        &request,
+-        row.get::<_, Vec<u8>>(1).try_into().unwrap(),
+-        row.get(2),
+-        row.get::<_, Vec<u8>>(3).try_into().unwrap(),
+-    )
+-    .unwrap();
++    let definition = {
++        let mut client = rig.pool.get().await.unwrap();
++        let tx = client
++            .build_transaction()
++            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
++            .read_only(true)
++            .start()
++            .await
++            .unwrap();
++        let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
++            &tx,
++            &request,
++            row.get::<_, Vec<u8>>(1).try_into().unwrap(),
++            row.get(2),
++            row.get::<_, Vec<u8>>(3).try_into().unwrap(),
++        )
++        .await
++        .unwrap();
++        tx.commit().await.unwrap();
++        restored
++    };
+--- a/crates/brassclaw_reborn_composition/src/runtime/tests/private_work_admission_tests.rs
++++ b/crates/brassclaw_reborn_composition/src/runtime/tests/private_work_admission_tests.rs
+@@ -423 +423 @@
+-                    b"private-work-definition/1".to_vec(),
++                    b"private-work-definition/2".to_vec(),
+@@ -879,0 +880,75 @@
++    // L-01: the detached /2 includes the actual legacy root policy, distinct
++    // from this Work's acknowledged preparation. Authentic checksums alone do
++    // not allow a self-declared policy to relabel the retained root.
++    {
++        use crate::private_work_definition::{PrivateWorkDefinition, checksum};
++        let state = fixture
++            .store
++            .get_private_work_state(id)
++            .await
++            .unwrap()
++            .unwrap();
++        let value: serde_json::Value = serde_json::from_str(&ready_bytes).unwrap();
++        assert_eq!(value["format"], "private-work-definition/2");
++        assert!(value["root_preparation_bytes"].is_null());
++        assert!(value["root_preparation_checksum"].is_null());
++        let mut client = fixture.pool.get().await.unwrap();
++        let tx = client
++            .build_transaction()
++            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
++            .read_only(true)
++            .start()
++            .await
++            .unwrap();
++        let detached = PrivateWorkDefinition::restore(
++            &tx,
++            &state.request,
++            state.request_checksum,
++            &ready_bytes,
++            checksum(&ready_bytes),
++        )
++        .await
++        .unwrap();
++        assert_eq!(detached.bytes(), ready_bytes);
++        let legacy = ready_bytes
++            .replace("private-work-definition/2", "private-work-definition/1")
++            .replace(
++                ",\"root_preparation_bytes\":null,\"root_preparation_checksum\":null",
++                "",
++            );
++        let old = PrivateWorkDefinition::restore(
++            &tx,
++            &state.request,
++            state.request_checksum,
++            &legacy,
++            checksum(&legacy),
++        )
++        .await
++        .unwrap();
++        assert_eq!(old.root().reference(), detached.root().reference());
++        let relabelled = ready_bytes
++            .replace(
++                "\"root_preparation_bytes\":null",
++                &format!(
++                    "\"root_preparation_bytes\":{}",
++                    serde_json::to_string(preparation_a.bytes()).unwrap()
++                ),
++            )
++            .replace(
++                "\"root_preparation_checksum\":null",
++                &format!(
++                    "\"root_preparation_checksum\":{}",
++                    serde_json::to_string(preparation_a.checksum()).unwrap()
++                ),
++            );
++        let forged = PrivateWorkDefinition::restore(
++            &tx,
++            &state.request,
++            state.request_checksum,
++            &relabelled,
++            checksum(&relabelled),
++        )
++        .await;
++        assert!(forged.is_err());
++        tx.commit().await.unwrap();
++    }
+@@ -1277 +1352 @@
+-                b"private-work-definition/1".to_vec(),
++                b"private-work-definition/2".to_vec(),
+@@ -1619 +1694 @@
+-            b"private-work-definition/1".to_vec(),
++            b"private-work-definition/2".to_vec(),
+--- a/crates/brassclaw_reborn_composition/src/runtime/tests/original_pure_case_tests.rs
++++ b/crates/brassclaw_reborn_composition/src/runtime/tests/original_pure_case_tests.rs
+@@ -279,0 +280,44 @@
++    // L-01: actual native Case above ran through the schema's V213 private
++    // preparation trigger. Restore its real original with the caller's one
++    // snapshot, including the root row policy; no SQL case/effect fixture.
++    {
++        let mut client = rig.pool.get().await.unwrap();
++        let tx = client
++            .build_transaction()
++            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
++            .read_only(true)
++            .start()
++            .await
++            .unwrap();
++        assert!(
++            tx.query_one(
++                "SELECT EXISTS(SELECT 1 FROM refinery_schema_history WHERE version=213)",
++                &[]
++            )
++            .await
++            .unwrap()
++            .get::<_, bool>(0)
++        );
++        let row = tx.query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1",&[&id]).await.unwrap();
++        let request: brassclaw_turns::private_work::PrivateWorkRequest =
++            serde_json::from_str(row.get(0)).unwrap();
++        let raw: Value = serde_json::from_str(row.get(2)).unwrap();
++        assert_eq!(raw["format"], "private-work-definition/2");
++        assert_eq!(raw["domain"]["purpose"], "original_pure_case/1");
++        assert!(raw.get("root_preparation_bytes").is_some());
++        assert!(raw.get("root_preparation_checksum").is_some());
++        let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
++            &tx,
++            &request,
++            row.get::<_, Vec<u8>>(1).try_into().unwrap(),
++            row.get(2),
++            row.get::<_, Vec<u8>>(3).try_into().unwrap(),
++        )
++        .await
++        .unwrap();
++        assert_eq!(
++            restored.root().reference().version,
++            raw["root_revision_version"].as_u64().unwrap()
++        );
++        tx.commit().await.unwrap();
++    }

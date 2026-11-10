@@ -621,7 +621,20 @@ impl PgReviewSubmissionStore {
     ) -> Result<RetainedReviewSubmission, SubmissionStoreError> {
         require_snapshot(tx).await?;
         if let Some(existing) = read(tx, draft.id).await? {
-            if existing.subject_bytes != draft.bytes || existing.checksum != draft.checksum {
+            if existing.subject_bytes != draft.bytes
+                || existing.checksum != draft.checksum
+                || !existing.snapshot.revisions()[&draft.reference.uuid]
+                    .draft()
+                    .same_preparation(&draft.candidate)
+            {
+                return Err(SubmissionStoreError::Conflict);
+            }
+            if let Some(partner) = &draft.function_partner
+                && let FunctionReviewPartnerDraft::Changed { candidate, .. } = partner.to_draft()?
+                && !existing.snapshot.revisions()[&candidate.uuid()]
+                    .draft()
+                    .same_preparation(&candidate)
+            {
                 return Err(SubmissionStoreError::Conflict);
             }
             return Ok(existing);
@@ -632,6 +645,27 @@ impl PgReviewSubmissionStore {
         // class-10 root review and exact historical dependency/base refs intact.
         if draft.candidate.class_code() == 50 {
             return Err(SubmissionStoreError::RetiredScaffold);
+        }
+        const INSERT: &str = "INSERT INTO reborn_component_review_submissions (submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum) VALUES ($1,$2,$3,$4,$5,$6,$7)";
+        let request_bytes = brassclaw_pg::wire_capacity::unnamed_typed_request_bytes(
+            INSERT.len(),
+            &[
+                16,
+                draft.actor.len(),
+                16,
+                8,
+                if draft.base.is_some() { 8 } else { 0 },
+                draft.bytes.len(),
+                draft.checksum.len(),
+            ],
+        )
+        .ok_or(SubmissionStoreError::Capacity)?;
+        if draft
+            .preparation
+            .as_ref()
+            .is_some_and(|p| request_bytes as u64 > p.policy().max_ipc_frame_bytes)
+        {
+            return Err(SubmissionStoreError::Capacity);
         }
         let mut changes = vec![(
             &draft.candidate,
@@ -681,7 +715,12 @@ impl PgReviewSubmissionStore {
                     PgComponentRevisionStore::stage_in_transaction(tx, candidate, head).await?
                 }
                 CandidateRetention::Existing => {
-                    PgComponentRevisionStore::read_revision_in_transaction(tx, expected).await?;
+                    let original =
+                        PgComponentRevisionStore::read_revision_in_transaction(tx, expected)
+                            .await?;
+                    if !original.draft().same_preparation(candidate) {
+                        return Err(SubmissionStoreError::Conflict);
+                    }
                     expected
                 }
             };
@@ -701,8 +740,20 @@ impl PgReviewSubmissionStore {
         let function_partner = retained_partner(draft, &snapshot)?;
         let version = staged.version as i64;
         let base_version = draft.base.map(|base| base.version as i64);
-        tx.execute("INSERT INTO reborn_component_review_submissions (submission_id,actor,component_id,candidate_version,base_version,subject_bytes,checksum) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-            &[&draft.id, &draft.actor, &staged.uuid, &version, &base_version, &draft.bytes, &draft.checksum]).await.map_err(database)?;
+        use futures_util::{TryStreamExt, pin_mut};
+        use tokio_postgres::types::{ToSql, Type};
+        let params: [(&(dyn ToSql + Sync), Type); 7] = [
+            (&draft.id, Type::UUID),
+            (&draft.actor, Type::TEXT),
+            (&staged.uuid, Type::UUID),
+            (&version, Type::INT8),
+            (&base_version, Type::INT8),
+            (&draft.bytes, Type::TEXT),
+            (&draft.checksum, Type::TEXT),
+        ];
+        let rows = tx.query_typed_raw(INSERT, params).await.map_err(database)?;
+        pin_mut!(rows);
+        while rows.try_next().await.map_err(database)?.is_some() {}
         verify_request(tx, draft.id, &draft.checksum).await?;
         Ok(RetainedReviewSubmission {
             id: draft.id,
@@ -921,10 +972,25 @@ async fn read(
             max_nodes: 262144,
             max_bytes: MAX_SUBJECT_BYTES,
         });
-    let metadata = tx.query_opt("SELECT octet_length(subject_bytes) FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)?;
+    let metadata = tx.query_opt("SELECT octet_length(subject_bytes),octet_length(actor),base_version IS NOT NULL FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)?;
     if let Some(row) = metadata {
-        if usize::try_from(row.get::<_, i32>(0)).map_err(|_| SubmissionStoreError::Invalid)?
-            > limits.max_bytes
+        let length =
+            usize::try_from(row.get::<_, i32>(0)).map_err(|_| SubmissionStoreError::Invalid)?;
+        let actor_length =
+            usize::try_from(row.get::<_, i32>(1)).map_err(|_| SubmissionStoreError::Invalid)?;
+        let row_bytes = brassclaw_pg::wire_capacity::binary_data_row_bytes(&[
+            Some(actor_length),
+            Some(16),
+            Some(8),
+            if row.get::<_, bool>(2) { Some(8) } else { None },
+            Some(length),
+            Some(64),
+        ])
+        .ok_or(SubmissionStoreError::Capacity)?;
+        if length > limits.max_bytes
+            || preparation
+                .as_ref()
+                .is_some_and(|p| row_bytes as u64 > p.policy().max_ipc_frame_bytes)
         {
             return Err(SubmissionStoreError::Capacity);
         }
@@ -934,7 +1000,7 @@ async fn read(
     let Some(row) = tx.query_opt("SELECT actor,component_id,candidate_version,base_version,subject_bytes,checksum FROM reborn_component_review_submissions WHERE submission_id=$1", &[&id]).await.map_err(database)? else { return Ok(None); };
     let bytes: String = row.get(4);
     let value = strict_json(&bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
-    let subject: Subject =
+    let mut subject: Subject =
         serde_json::from_value(value).map_err(|_| SubmissionStoreError::Invalid)?;
     if !matches!(
         subject.format.as_str(),
@@ -952,8 +1018,16 @@ async fn read(
     {
         return Err(SubmissionStoreError::Invalid);
     }
-    let candidate = ComponentRevisionDraft::from_json(&subject.candidate_bytes)
-        .map_err(RevisionStoreError::from)?;
+    let retained_candidate =
+        PgComponentRevisionStore::read_revision_in_transaction(tx, subject.candidate.parsed()?)
+            .await?;
+    if retained_candidate.draft().exact_bytes() != subject.candidate_bytes {
+        return Err(SubmissionStoreError::Invalid);
+    }
+    let candidate = retained_candidate.draft().clone();
+    if let Some(partner) = &mut subject.function_partner {
+        partner.restore_original_policy(tx).await?;
+    }
     let base = subject.base.as_ref().map(Reference::parsed).transpose()?;
     let dependencies = subject
         .dependencies

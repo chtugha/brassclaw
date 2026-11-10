@@ -424,11 +424,13 @@ impl PgMontyAdmission {
             .try_into()
             .map_err(|_| invalid())?;
         let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+            tx,
             &state.request,
             state.request_checksum,
             original.get::<_, &str>(0),
             definition_checksum,
         )
+        .await
         .map_err(|_| invalid())?;
         if definition.root().source_checksum() != completion.receipt().root.source_checksum() {
             return Err(invalid());
@@ -518,11 +520,13 @@ impl PgMontyAdmission {
         let definition_checksum: [u8; 32] =
             row.get::<_, Vec<u8>>(1).try_into().map_err(|_| invalid())?;
         let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+            tx,
             &state.request,
             state.request_checksum,
             row.get(0),
             definition_checksum,
         )
+        .await
         .map_err(|_| invalid())?;
         let terminal_checksum: [u8; 32] =
             row.get::<_, Vec<u8>>(3).try_into().map_err(|_| invalid())?;

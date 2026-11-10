@@ -5,6 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use brassclaw_host_api::task_preparation::RetainedPreparation;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -24,6 +25,8 @@ pub const REVISION_LIMITS: ContractLimits = ContractLimits {
 pub enum RevisionError {
     #[error("component revision: {0}")]
     Invalid(&'static str),
+    #[error("revision depth above 64 is not supported")]
+    UnsupportedDepth,
     #[error(transparent)]
     Data(#[from] ContractError),
     #[error(transparent)]
@@ -34,6 +37,7 @@ pub enum RevisionError {
 #[derive(Clone)]
 pub struct ComponentRevisionDraft {
     bytes: String,
+    preparation: Option<RetainedPreparation>,
     uuid: Uuid,
     class_code: i32,
     checksum: [u8; 32],
@@ -53,12 +57,46 @@ fn component_uuid(value: &Value) -> Result<Uuid, RevisionError> {
         .ok_or_else(|| invalid("non-nil UUID required"))
 }
 
+/// Original per-revision parser policy, separate from graph and live task limits.
+pub fn revision_limits(
+    preparation: Option<&RetainedPreparation>,
+) -> Result<ContractLimits, RevisionError> {
+    let Some(original) = preparation else {
+        return Ok(REVISION_LIMITS);
+    };
+    original.require_canonical().map_err(invalid)?;
+    let p = original.policy();
+    let limits = ContractLimits {
+        max_depth: usize::try_from(p.max_value_depth)
+            .map_err(|_| invalid("revision depth is unrepresentable"))?,
+        max_nodes: usize::try_from(p.max_value_nodes)
+            .map_err(|_| invalid("revision nodes are unrepresentable"))?,
+        max_bytes: usize::try_from(p.max_value_bytes)
+            .map_err(|_| invalid("revision bytes are unrepresentable"))?,
+    };
+    // Schema/owned-value/worker migration beyond this supported profile is open.
+    if limits.max_depth > 64 {
+        return Err(RevisionError::UnsupportedDepth);
+    }
+    Ok(limits)
+}
+
 impl ComponentRevisionDraft {
     /// Strict parsing retains exact bytes and rejects duplicate/unknown keys.
     /// The association belongs to the Skill revision and retains its own exact
     /// reviewed bytes; it is never inferred from prose or executable examples.
     pub fn from_json(bytes: &str) -> Result<Self, RevisionError> {
-        let value = strict_json(bytes, REVISION_LIMITS)?;
+        Self::from_json_with_preparation(bytes, None)
+    }
+
+    /// Resource provenance only. The application writer must supply its actual
+    /// acknowledged capture; caller-created codec values establish no ACK.
+    pub fn from_json_with_preparation(
+        bytes: &str,
+        preparation: Option<&RetainedPreparation>,
+    ) -> Result<Self, RevisionError> {
+        let limits = revision_limits(preparation)?;
+        let value = strict_json(bytes, limits)?;
         let record = value
             .as_object()
             .ok_or_else(|| invalid("object required"))?;
@@ -109,7 +147,7 @@ impl ComponentRevisionDraft {
             let bytes = record["association"]
                 .as_str()
                 .ok_or_else(|| invalid("Skill association bytes required"))?;
-            let association = SkillAssociation::from_json(bytes, REVISION_LIMITS)?;
+            let association = SkillAssociation::from_json(bytes, limits)?;
             if association.skill_uuid() != uuid
                 || [
                     association.python_code_uuid(),
@@ -130,6 +168,7 @@ impl ComponentRevisionDraft {
         };
         Ok(Self {
             bytes: bytes.to_owned(),
+            preparation: preparation.cloned(),
             uuid,
             class_code,
             checksum: Sha256::digest(bytes.as_bytes()).into(),
@@ -137,6 +176,24 @@ impl ComponentRevisionDraft {
             dependencies,
             association,
         })
+    }
+    pub fn preparation(&self) -> Option<&RetainedPreparation> {
+        self.preparation.as_ref()
+    }
+    pub fn parsing_limits(&self) -> ContractLimits {
+        // Constructors establish native representability and supported depth.
+        match self.preparation.as_ref() {
+            None => REVISION_LIMITS,
+            Some(p) => ContractLimits {
+                max_depth: p.policy().max_value_depth as usize,
+                max_nodes: p.policy().max_value_nodes as usize,
+                max_bytes: p.policy().max_value_bytes as usize,
+            },
+        }
+    }
+    pub fn same_preparation(&self, other: &Self) -> bool {
+        self.preparation().map(|p| (p.bytes(), p.checksum()))
+            == other.preparation().map(|p| (p.bytes(), p.checksum()))
     }
     pub fn uuid(&self) -> Uuid {
         self.uuid

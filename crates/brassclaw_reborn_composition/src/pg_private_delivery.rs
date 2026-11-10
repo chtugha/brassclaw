@@ -180,11 +180,13 @@ impl PgMontyAdmission {
         let definition_checksum: [u8; 32] =
             row.get::<_, Vec<u8>>(4).try_into().map_err(|_| invalid())?;
         let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
+            tx,
             &state.request,
             state.request_checksum,
             row.get(3),
             definition_checksum,
         )
+        .await
         .map_err(|_| invalid())?;
         let report_bytes: &str = row.get::<_, Option<&str>>(6).ok_or_else(invalid)?;
         let native =

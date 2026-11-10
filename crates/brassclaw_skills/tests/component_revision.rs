@@ -109,3 +109,92 @@ fn selecting_roots_preserves_exact_versions_and_never_rereads_or_keeps_unrelated
         "selection leaves the original graph intact"
     );
 }
+
+// Codec fixtures below establish parser provenance only, never runtime ACK or
+// approval. Actual acknowledged HTTP/PG coverage lives in snapshot_policy_tests.
+fn parser_preparation(
+    bytes: u64,
+    nodes: u64,
+    depth: u32,
+) -> brassclaw_host_api::task_preparation::RetainedPreparation {
+    use brassclaw_host_api::{
+        MontyExecutionLimits,
+        task_preparation::{PreparationOrigin, RetainedPreparation},
+    };
+    let policy = MontyExecutionLimits {
+        max_value_bytes: bytes,
+        max_value_nodes: nodes,
+        max_value_depth: depth,
+        ..MontyExecutionLimits::default()
+    };
+    RetainedPreparation::encode(7, PreparationOrigin::AcknowledgedLive, policy).unwrap()
+}
+
+#[test]
+fn original_revision_parser_bytes_nodes_and_depth_have_exact_separate_bounds() {
+    use brassclaw_skills::component_revision::REVISION_LIMITS;
+    let id = Uuid::new_v4();
+    let bytes = json!({"format":"component-revision/1","uuid":id,"class_code":23,
+        "document":{"text":"x".repeat(REVISION_LIMITS.max_bytes)},"dependencies":[],"association":null}).to_string();
+    assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
+    let original = parser_preparation(bytes.len() as u64, 1_000_000, 48);
+    let parsed =
+        ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&original)).unwrap();
+    assert_eq!(parsed.exact_bytes(), bytes);
+    assert_eq!(parsed.preparation().unwrap().bytes(), original.bytes());
+    let smaller = parser_preparation(bytes.len() as u64 - 1, 1_000_000, 48);
+    assert!(ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&smaller)).is_err());
+    assert_eq!(
+        parsed.exact_bytes(),
+        bytes,
+        "new policy cannot mutate a parsed original"
+    );
+    let bytes = json!({"format":"component-revision/1","uuid":id,"class_code":23,
+        "document":{"items":vec![0; 300_000]},"dependencies":[],"association":null})
+    .to_string();
+    assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
+    let original = parser_preparation(8_388_608, 1_000_000, 48);
+    assert!(ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&original)).is_ok());
+    // Count the complete small envelope: root1 + six key/value pairs12 +
+    // the document's key/value pair2. Object names are real counted nodes.
+    let small = json!({"format":"component-revision/1","uuid":id,"class_code":23,
+        "document":{"text":"x"},"dependencies":[],"association":null})
+    .to_string();
+    let at_nodes = parser_preparation(8_388_608, 15, 48);
+    let below_nodes = parser_preparation(8_388_608, 14, 48);
+    assert!(ComponentRevisionDraft::from_json_with_preparation(&small, Some(&at_nodes)).is_ok());
+    assert!(
+        ComponentRevisionDraft::from_json_with_preparation(&small, Some(&below_nodes)).is_err()
+    );
+    let at_depth = parser_preparation(8_388_608, 100, 2);
+    let below_depth = parser_preparation(8_388_608, 100, 1);
+    assert!(ComponentRevisionDraft::from_json_with_preparation(&small, Some(&at_depth)).is_ok());
+    assert!(
+        ComponentRevisionDraft::from_json_with_preparation(&small, Some(&below_depth)).is_err()
+    );
+    let depth = parser_preparation(8_388_608, 1_000_000, 65);
+    assert!(matches!(
+        ComponentRevisionDraft::from_json_with_preparation("{}", Some(&depth)),
+        Err(brassclaw_skills::component_revision::RevisionError::UnsupportedDepth)
+    ));
+}
+
+#[test]
+fn association_schema_uses_its_revision_original_nodes_without_a_legacy_reparse() {
+    let [id, code, binding, tool] = [41, 42, 43, 44].map(Uuid::from_u128);
+    let fields: serde_json::Map<String, serde_json::Value> = (0..90_000)
+        .map(|n| (format!("field_{n}"), json!({"type":"string"})))
+        .collect();
+    let association = json!({"format":"skill-association/1","skill_uuid":id,"python_code_uuid":code,
+        "tool_skill_uuid":binding,"tool_uuid":tool,"callable":"host.read_file","inputs":{},"arguments":{},"code_arguments":{},
+        "result":{"type":"object","allow_extra_fields":false,"fields":fields},
+        "failure":{"action":"stop","max_attempts":1,"idempotency":"not_assumed","idempotency_evidence_ref":null,"retryable_outcomes":[]}}).to_string();
+    let bytes = json!({"format":"component-revision/1","uuid":id,"class_code":1,
+        "document":{"content":"One usage"},"dependencies":[code,binding,tool],"association":association}).to_string();
+    assert!(ComponentRevisionDraft::from_json(&bytes).is_err());
+    let original = parser_preparation(32 * 1024 * 1024, 1_000_000, 48);
+    let parsed =
+        ComponentRevisionDraft::from_json_with_preparation(&bytes, Some(&original)).unwrap();
+    assert!(parsed.association().is_some());
+    assert_eq!(parsed.parsing_limits().max_nodes, 1_000_000);
+}

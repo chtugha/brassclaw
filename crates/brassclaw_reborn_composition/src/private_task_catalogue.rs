@@ -356,13 +356,15 @@ impl InstalledMontyCatalogue {
         let row = tx.query_opt("SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
             &[&state.request.work_id()]).await.map_err(|_| unresolved())?.ok_or_else(unresolved)?;
         let definition = PrivateWorkDefinition::restore(
+            &tx,
             &state.request,
             state.request_checksum,
             row.get(0),
             row.get::<_, Vec<u8>>(1)
                 .try_into()
                 .map_err(|_| unresolved())?,
-        )?;
+        )
+        .await?;
         if definition.root().reference() != original.root.reference()
             || definition.worker_checksum() != self.worker_image.checksum()
             || state.request.original_preparation_checksum()
@@ -490,13 +492,15 @@ impl InstalledMontyCatalogue {
             .map_err(|_| unresolved())?
             .ok_or_else(unresolved)?;
         let captured = PrivateWorkDefinition::restore(
+            tx,
             &request,
             state.request_checksum,
             row.get(0),
             row.get::<_, Vec<u8>>(1)
                 .try_into()
                 .map_err(|_| unresolved())?,
-        )?;
+        )
+        .await?;
         let crate::prefix_job_definitions::Origin::Private { preparation, .. } = &definition.origin
         else {
             return Err(unresolved());
@@ -510,9 +514,6 @@ impl InstalledMontyCatalogue {
         }
         // Historical readback checks the retained root, never today's startup
         // root, worker image, compiler selection or effective limits.
-        PgComponentRevisionStore::read_revision_in_transaction(tx, captured.root().reference())
-            .await
-            .map_err(|_| unresolved())?;
         let coherent: bool = tx
             .query_one(
                 "SELECT COALESCE(w.private_request_checksum=$3 AND
@@ -697,17 +698,32 @@ impl InstalledMontyCatalogue {
         store: &PgTurnStateStore,
         state: &brassclaw_turns::private_work::PrivateWorkState,
     ) -> Result<(), RebornBuildError> {
-        tx.execute(
-            "INSERT INTO brassclaw_monty_private_preparations(work_id,definition_bytes,checksum)
-            VALUES($1,$2,$3) ON CONFLICT(work_id) DO NOTHING",
-            &[
-                &state.request.work_id(),
-                &definition.bytes(),
-                &&definition.checksum()[..],
-            ],
-        )
-        .await
-        .map_err(|_| invalid("private preparation retention failed"))?;
+        definition.verify_retained_root(tx).await?;
+        use futures::{TryStreamExt, pin_mut};
+        use tokio_postgres::types::{ToSql, Type};
+        let work_id = state.request.work_id();
+        let bytes = definition.bytes();
+        let digest = definition.checksum();
+        let digest_bytes = &digest[..];
+        let params: [(&(dyn ToSql + Sync), Type); 3] = [
+            (&work_id, Type::UUID),
+            (&bytes, Type::TEXT),
+            (&digest_bytes, Type::BYTEA),
+        ];
+        let rows = tx
+            .query_typed_raw(
+                crate::private_work_definition::PRIVATE_DEFINITION_INSERT,
+                params,
+            )
+            .await
+            .map_err(|_| invalid("private preparation retention failed"))?;
+        pin_mut!(rows);
+        while rows
+            .try_next()
+            .await
+            .map_err(|_| invalid("private preparation retention failed"))?
+            .is_some()
+        {}
         let row = tx
             .query_one(
                 "SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations
@@ -764,21 +780,18 @@ impl InstalledMontyCatalogue {
         }
         let captured = Arc::new(
             PrivateWorkDefinition::restore(
+                &tx,
                 claim.request(),
                 claim.request_checksum(),
                 &bytes,
                 expected,
             )
+            .await
             .map_err(|_| failed())?,
         );
-        if captured.worker_checksum() != self.worker_image.checksum()
-            || captured.root().reference() != self.root_reference
-        {
+        if captured.worker_checksum() != self.worker_image.checksum() {
             return Err(failed());
         }
-        PgComponentRevisionStore::read_revision_in_transaction(&tx, captured.root().reference())
-            .await
-            .map_err(|_| failed())?;
         match captured.domain() {
             DomainCapture::OriginalPureCaseV1 { .. } => {
                 let case = self

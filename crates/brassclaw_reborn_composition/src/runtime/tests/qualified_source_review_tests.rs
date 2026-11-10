@@ -749,13 +749,27 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
     assert_scope(&runtime, &mut review, component, true).await;
     let row = rig.pool.get().await.unwrap().query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1 AND w.record_kind='private_work'", &[&id]).await.unwrap();
     let request: PrivateWorkRequest = serde_json::from_str(row.get(0)).unwrap();
-    let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
-        &request,
-        row.get::<_, Vec<u8>>(1).try_into().unwrap(),
-        row.get(2),
-        row.get::<_, Vec<u8>>(3).try_into().unwrap(),
-    )
-    .unwrap();
+    let definition = {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let restored = crate::private_work_definition::PrivateWorkDefinition::restore(
+            &tx,
+            &request,
+            row.get::<_, Vec<u8>>(1).try_into().unwrap(),
+            row.get(2),
+            row.get::<_, Vec<u8>>(3).try_into().unwrap(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        restored
+    };
     assert_eq!(definition.preparation().bytes(), original.bytes());
     assert_ne!(
         runtime
