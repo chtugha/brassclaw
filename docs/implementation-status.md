@@ -53,6 +53,19 @@ acceptance remain open.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 
+**Latest observed result — Run-33:** the worker and all 19 joint harnesses
+compile without warnings; source/profile/link gates pass. After audited
+incremental-only maintenance, runtime resumes from those same retained artifacts
+without recompilation. Of 24 executed independent cases, 20 pass and four fail;
+two strict wire passes are reused against the identical Skills executable.
+The common startup fails on unresolved original Pure qualification containment/
+integrity, so dependent Source/Case and provider-startup cases do not run.
+The isolated three-fixture correction is reviewed and integrated as `85d93bc9c`,
+with execution pending. J investigates the actual qualification/cleanup cause;
+M corrects the authenticated commit's Codex OAuth-head reference/CAS boundary.
+N's larger Flow/V214 source and O's Responses source are held privately. No
+general Pure approval, complete Bob acceptance or serving activation is implied.
+
 ## 2026-11-09 — Bob integration acceptance at that checkpoint
 
 Run-25 compiles the actual worker and joint graph without warnings and passes

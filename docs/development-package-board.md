@@ -203,7 +203,43 @@ transport contract and connected endpoint consumers. No second Auth/provider
 owner, credentials/issuer calls, fabricated encoding proof or serving activation
 is authorized. The shared pair-specific format–Sempai–exact-prefix handoff and
 real API measurement/output qualification remain the next connected scope.
-N/O are the two implementing owners; J is idle for concrete corrections.
+That assignment is superseded by the Run-33 correction window below.
+
+**Run-33:** frozen `2b6612dbe` builds the actual worker and all 19 joint
+harnesses without warnings (0.789/308.445 s). Source/profile/link checks pass;
+the Composition executable SHA-256 is
+`bae12f6e1b25560f514c33653ed8181a8034a6f50e2364efcd032d3d3be9bddb`.
+The initial pre-native disk guard stops correctly. After preserving the original
+gate failure, an audited eight incremental-only directories (2,684 files,
+0.930 GiB) are removed under the existing Cargo lock. No compiled libraries,
+executables, source, databases or evidence are removed. The repeated gate passes
+at 23.074 GiB free/89.892% used; runtime resumes from the same retained binaries
+without another Cargo execution.
+
+Twenty of 24 executed independent cases pass; four fail. Two earlier strict
+wire passes are reused only after verifying the identical actual Skills binary.
+The failures are Codex Use's API-key/OAuth-head reference mismatch, two invalid
+schema fixtures and the private Pure capability registry expectation. N's
+isolated three-test-file correction `e5dc96627` is fully reviewed/hash-verified
+and integrated as `85d93bc9c`. It preserves the canonical array Recipe schema,
+explicit optional fields and the primitive's host-internal visibility; production
+validation is unchanged. Its corrected executions remain pending.
+
+The common global startup then fails after 365.452 s with
+`original Pure case qualification containment/integrity is unresolved`.
+No dependent Source/Case or provider-startup cases run. This identifies an
+unresolved qualification/containment boundary, not a proven leak or safe cleanup.
+All original failures and runtime-only continuation records remain under
+`target/validation/bob-native-repair-20261105/run-33-composition/`.
+Source identity is unchanged through terminal completion; the freeze is released.
+
+J and M now own the two correction slots. J traces the actual qualification,
+native receipt and cleanup cause without bypassing the containment gate. M
+corrects authenticated transaction locking/reference selection for Codex OAuth
+heads, preserving preparation/commit CAS and existing authentication ownership.
+N's larger Flow/V214 work and O's Responses Slice A are held at private
+checkpoints; neither is integrated or accepted. No new compilation starts before
+the connected correction review. All three Bob plans remain open.
 
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
@@ -507,12 +543,12 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 | H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
 | I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Connected 25-file source reviewed and integrated through `7152f0e0a`; V210/outer /2 and real Source observer/confirmation, metadata custody corrections and nine native test sources. Compile/native acceptance pending. Common class-21/23 authoring custody correction reviewed and integrated as `d30a5126b`/`8b83d551d`; full 28-file package awaits compilation/native acceptance. Positive future-consumer view test-only until J-01. No general Pure approval or cross-package loader. |
-| J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and complete connected product/HTTP, encoding, terminal projection and optional-readiness corrections integrated as `2db8822d2`/`8dc775a00`; all 71 manifest files verified before L's reviewed connections. Compilation/native acceptance unrun; idle for own corrections. No general behavior/Q1/Q2/approval/publication. |
+| J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and connected product/readiness/evidence source integrated with reviewed follow-ups. Run-33 joint compilation passes without warnings; common startup fails on unresolved original Pure qualification containment/integrity. Active own-cause correction; no general behavior/Q1/Q2/approval/publication. |
 | K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Full connected source and exact boundary follow-up reviewed/hash-verified; integrated as `f5d18f486`/`d7b4a42b9`, including V212. Acquisition adapter correction integrated as `a8ace38b6`. Compile/native acceptance unrun; idle for own corrections. Existing original capture/graph owners reused; separate evidence/historical-image limits remain open. |
 | L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Complete coherent J/I/K follow-up integrated as `3002c45c8`, including V213 and all eight productive restores. All 28 source hashes verified; old migration bytes/J guards/K adapter preserved. Compilation/native acceptance unrun; idle for own corrections. Depth above 64 and independent evidence/native-image migration remain open. |
-| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 source reviewed, six hashes verified and integrated as `813154d33`; three native caller sources unrun. Existing provider/Auth/refresh owners reused; no build or external account action performed. Idle for own corrections. Responses/prefix qualification, broader status DTOs and real-issuer/platform gates remain open. |
-| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Connected source authorized after proposal review: one shared B2 successor codec, actual Monty flow/occurrences and private dependent-work consumer with real qualification. Preserve flat historical formats; no fresh-step reset/fixed foreach quota. V214 reserved; no activation or native acceptance. |
-| O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Reviewed proposal; private Slice-A source authorized for the actual shared runtime/No-Send builder and strict protocol/endpoint contract. Reuse Auth/session/custody owners. No serving activation or fabricated encoding proof; common pair-format/Sempai/exact-prefix and actual API evidence remain open. |
+| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 integrated as `813154d33`. Run-33 C1 exposes the locked commit's wrong credential reference; C3 passes. Active OAuth-head/CAS correction using existing provider/Auth owners. Provider startup, Responses/prefix, broader status and real-issuer/platform gates remain open. |
+| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Larger connected source held privately while J/M correct actual baseline failures. Only isolated obsolete-wrapper and three fixture corrections are integrated. Shared B2 successor/Flow/occurrence/dependent-work qualification remains unaccepted; V214 stays reserved. |
+| O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Slice A and its pre-authentication validation correction are held at private checkpoint `8da214b33`, not integrated. Root review/native acceptance remain open. Reuse Auth/session/custody owners; no serving activation. Pair-format/Sempai/exact-prefix and actual API evidence remain open. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

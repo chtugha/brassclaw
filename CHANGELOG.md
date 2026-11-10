@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bob integration validation (in progress)**: The current worker and all 19
+  joint test harnesses compile without warnings. Twenty of 24 executed
+  independent cases pass; the common startup exposes unresolved original Pure
+  qualification containment/integrity. Correct two invalid schema fixtures and
+  the host-internal primitive registry expectation without weakening production
+  checks. Their reruns, the Codex OAuth commit correction and connected runtime
+  acceptance remain pending; no complete Bob plan or release is accepted.
+
 - **Codex preparation and selection status (validation pending)**: Reuse the
   existing native source for explicit Use and early Sempai restoration. Compute
   desired publication from the OAuth head, independently of API-key presence,
