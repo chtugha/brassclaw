@@ -10,6 +10,7 @@ use std::{
     fmt,
 };
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
@@ -440,12 +441,81 @@ impl SkillAssociation {
 
 /// Content/metadata/implementation checksum must be supplied by the immutable
 /// catalogue; this declaration cannot establish that an artifact exists.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+/// The native data wire uses a 32-integer checksum array. Existing formats with
+/// explicit hexadecimal codecs retain those codecs. Deserialization produces
+/// untrusted metadata, never a checked selection, approval or execution handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct ComponentRevisionRef {
     pub uuid: Uuid,
     pub class_code: i32,
     pub version: u64,
     pub checksum: [u8; 32],
+}
+
+impl<'de> Deserialize<'de> for ComponentRevisionRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "snake_case")]
+        enum Field {
+            Uuid,
+            ClassCode,
+            Version,
+            Checksum,
+        }
+        struct ReferenceVisitor;
+        impl<'de> serde::de::Visitor<'de> for ReferenceVisitor {
+            type Value = ComponentRevisionRef;
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a four-field native component revision object")
+            }
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                mut map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let (mut uuid, mut class_code, mut version, mut checksum) =
+                    (None, None, None, None);
+                while let Some(field) = map.next_key::<Field>()? {
+                    match field {
+                        Field::Uuid => {
+                            if uuid.is_some() {
+                                return Err(serde::de::Error::duplicate_field("uuid"));
+                            }
+                            uuid = Some(map.next_value()?);
+                        }
+                        Field::ClassCode => {
+                            if class_code.is_some() {
+                                return Err(serde::de::Error::duplicate_field("class_code"));
+                            }
+                            class_code = Some(map.next_value()?);
+                        }
+                        Field::Version => {
+                            if version.is_some() {
+                                return Err(serde::de::Error::duplicate_field("version"));
+                            }
+                            version = Some(map.next_value()?);
+                        }
+                        Field::Checksum => {
+                            if checksum.is_some() {
+                                return Err(serde::de::Error::duplicate_field("checksum"));
+                            }
+                            checksum = Some(map.next_value()?);
+                        }
+                    }
+                }
+                Ok(ComponentRevisionRef {
+                    uuid: uuid.ok_or_else(|| serde::de::Error::missing_field("uuid"))?,
+                    class_code: class_code
+                        .ok_or_else(|| serde::de::Error::missing_field("class_code"))?,
+                    version: version.ok_or_else(|| serde::de::Error::missing_field("version"))?,
+                    checksum: checksum
+                        .ok_or_else(|| serde::de::Error::missing_field("checksum"))?,
+                })
+            }
+        }
+        // Serde's derived struct reader also accepts positional sequences.
+        // The native wire is an object; parsing it conveys no checked authority.
+        deserializer.deserialize_map(ReferenceVisitor)
+    }
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationMode {
@@ -618,5 +688,89 @@ impl AssociationApprovalDeclaration {
             return Err(invalid("association owner is not a usage Skill"));
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod native_reference_tests {
+    use super::ComponentRevisionRef;
+    use serde_json::{Value, json};
+    use uuid::Uuid;
+
+    fn reference() -> ComponentRevisionRef {
+        ComponentRevisionRef {
+            uuid: Uuid::from_u128(0x357e698d_279a_415b_8f10_c4471da7af64),
+            class_code: 22,
+            version: 7,
+            checksum: std::array::from_fn(|index| (index as u8).wrapping_mul(17)),
+        }
+    }
+
+    #[test]
+    fn native_reference_preserves_exact_four_fields_and_byte_array() {
+        let reference = reference();
+        let expected = json!({"uuid":reference.uuid,"class_code":22,"version":7,
+            "checksum":reference.checksum.to_vec()});
+        assert_eq!(serde_json::to_value(reference).unwrap(), expected);
+        let bytes = serde_json::to_string(&reference).unwrap();
+        assert_eq!(
+            serde_json::from_str::<ComponentRevisionRef>(&bytes).unwrap(),
+            reference,
+        );
+        // Both immutable Case candidates and native observations use this one
+        // metadata type, including when nested in a larger strict record.
+        let nested = json!({"candidate":reference,"component":reference});
+        assert_eq!(nested["candidate"], expected);
+        assert_eq!(nested["component"], expected);
+    }
+
+    #[test]
+    fn native_reference_rejects_ambiguous_or_incomplete_wire_data() {
+        let wire = serde_json::to_value(reference()).unwrap();
+        for field in ["uuid", "class_code", "version", "checksum"] {
+            let mut missing = wire.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<ComponentRevisionRef>(missing).is_err());
+        }
+        let mut extra = wire.clone();
+        extra["approved"] = Value::Bool(true);
+        assert!(serde_json::from_value::<ComponentRevisionRef>(extra).is_err());
+        let encoded = serde_json::to_string(&wire).unwrap();
+        let duplicate = format!("{{\"version\":7,{}", &encoded[1..]);
+        assert!(serde_json::from_str::<ComponentRevisionRef>(&duplicate).is_err());
+        assert!(
+            serde_json::from_value::<ComponentRevisionRef>(json!([
+                wire["uuid"],
+                wire["class_code"],
+                wire["version"],
+                wire["checksum"]
+            ]))
+            .is_err()
+        );
+        assert!(serde_json::from_value::<ComponentRevisionRef>(Value::Null).is_err());
+        for (field, value) in [
+            ("uuid", json!(9)),
+            ("class_code", json!(i64::MAX)),
+            ("version", json!(-1)),
+            ("version", json!(0.5)),
+            ("version", Value::Null),
+        ] {
+            let mut invalid = wire.clone();
+            invalid[field] = value;
+            assert!(serde_json::from_value::<ComponentRevisionRef>(invalid).is_err());
+        }
+        for checksum in [
+            json!("00".repeat(32)),
+            json!(vec![0; 31]),
+            json!(vec![0; 33]),
+            json!(vec![256; 32]),
+            json!(vec![-1; 32]),
+            json!(vec![0.5; 32]),
+            Value::Null,
+        ] {
+            let mut invalid = wire.clone();
+            invalid["checksum"] = checksum;
+            assert!(serde_json::from_value::<ComponentRevisionRef>(invalid).is_err());
+        }
     }
 }

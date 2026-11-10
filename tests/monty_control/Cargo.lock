@@ -612,6 +612,7 @@ dependencies = [
  "async-trait",
  "brassclaw_capabilities",
  "brassclaw_common",
+ "brassclaw_host_api",
  "brassclaw_monty_host",
  "brassclaw_pg",
  "brassclaw_skills",

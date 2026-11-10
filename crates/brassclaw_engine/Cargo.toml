@@ -30,6 +30,7 @@ async-trait = "0.1"
 cron = "0.13"
 brassclaw_capabilities = { path = "../brassclaw_capabilities", optional = true }
 brassclaw_common = { path = "../brassclaw_common", version = "0.4.2" }
+brassclaw_host_api = { path = "../brassclaw_host_api" }
 brassclaw_skills = { path = "../brassclaw_skills", version = "0.3.0", default-features = false }
 brassclaw_pg = { path = "../brassclaw_pg", version = "0.1.0", optional = true }
 tokio-postgres = { version = "0.7", optional = true }
@@ -49,7 +50,6 @@ sha2 = "0.10"
 
 [dev-dependencies]
 brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
-brassclaw_host_api = { path = "../brassclaw_host_api" }
 pretty_assertions = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
