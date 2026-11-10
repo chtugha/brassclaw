@@ -447,6 +447,33 @@ async fn native_scoped_acceptance_retains_sources_and_guards_both_task_roles() {
     // invoke a new public Release API or fabricate a qualified design-job seal.
     let pair_original = assert_independent_pair_storage(&fixture, &rig.url, &base).await;
     let base_id = fixture.approve("base-prompt", &base).await;
+    // Actual stored /1 qualification cannot be borrowed by a Codex transport,
+    // even with exactly the accepted URL. No Codex session/provider is entered.
+    let accepted = fixture.store().record(base_id).await.unwrap();
+    let endpoint = reqwest::Url::parse(&accepted.review.contract.endpoint).unwrap();
+    let chat_transport = brassclaw_llm::final_request_transport::ResolvedFinalModelTransport {
+        protocol: brassclaw_llm::final_request_transport::FinalRequestProtocol::OpenAiChat,
+        endpoint: endpoint.clone(),
+    };
+    assert_eq!(
+        fixture
+            .store()
+            .endpoint(base_id, &chat_transport)
+            .await
+            .unwrap(),
+        endpoint
+    );
+    let codex_transport = brassclaw_llm::final_request_transport::ResolvedFinalModelTransport {
+        protocol: brassclaw_llm::final_request_transport::FinalRequestProtocol::CodexResponses,
+        endpoint,
+    };
+    assert!(
+        fixture
+            .store()
+            .endpoint(base_id, &codex_transport)
+            .await
+            .is_err()
+    );
     assert!(
         fixture.store().bindings().await.unwrap().is_empty(),
         "approval cannot activate"

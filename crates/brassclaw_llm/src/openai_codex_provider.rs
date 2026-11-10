@@ -7,6 +7,9 @@
 //! This mirrors OpenClaw's Responses API flow translated to Rust.
 
 use crate::CodexHostSession;
+use crate::codex_request::{self, sanitize_tool_name};
+#[cfg(test)]
+use crate::codex_request::{convert_message, convert_tool_definition};
 use crate::provider_observation::{ProviderObservationError, ProviderWireObserver};
 use async_trait::async_trait;
 use reqwest::Client;
@@ -18,8 +21,8 @@ use tokio::sync::RwLock;
 
 use crate::error::LlmError;
 use crate::provider::{
-    ChatMessage, CompletionRequest, CompletionResponse, ContentPart, FinishReason, LlmProvider,
-    ModelMetadata, Role, ToolCall, ToolCompletionRequest, ToolCompletionResponse, ToolDefinition,
+    CompletionRequest, CompletionResponse, FinishReason, LlmProvider, ModelMetadata, ToolCall,
+    ToolCompletionRequest, ToolCompletionResponse,
 };
 
 /// OpenAI Codex Responses API provider.
@@ -36,7 +39,7 @@ pub struct OpenAiCodexProvider {
     client: Client,
     max_response_bytes: Option<u64>,
     model: String,
-    api_base_url: String,
+    endpoint: reqwest::Url,
     auth: RwLock<Option<AuthState>>,
 }
 
@@ -138,7 +141,8 @@ impl OpenAiCodexProvider {
             client: crate::registry_http_client("openai_codex", request_timeout_secs)?,
             max_response_bytes,
             model: model.to_owned(),
-            api_base_url: api_base_url.trim_end_matches('/').to_owned(),
+            endpoint: codex_request::endpoint(api_base_url)
+                .map_err(|reason| LlmError::FinalRequestRejected { reason })?,
             auth: RwLock::new(auth),
         })
     }
@@ -178,11 +182,9 @@ impl OpenAiCodexProvider {
     }
 
     fn headers_for(auth: &AuthState) -> Result<reqwest::header::HeaderMap, LlmError> {
-        use reqwest::header::{
-            ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue, USER_AGENT,
-        };
+        use reqwest::header::{AUTHORIZATION, HeaderName, HeaderValue};
 
-        let mut headers = HeaderMap::new();
+        let mut headers = codex_request::technical_headers();
         let mut authorization =
             HeaderValue::from_str(&format!("Bearer {}", auth.token)).map_err(|error| {
                 LlmError::RequestFailed {
@@ -199,74 +201,10 @@ impl OpenAiCodexProvider {
             })?;
         account.set_sensitive(true);
         headers.insert(HeaderName::from_static("chatgpt-account-id"), account);
-        headers.insert(
-            HeaderName::from_static("openai-beta"),
-            HeaderValue::from_static("responses=experimental"),
-        );
-        headers.insert(
-            HeaderName::from_static("originator"),
-            HeaderValue::from_static("brassclaw"),
-        );
-        headers.insert(
-            USER_AGENT,
-            HeaderValue::from_static(concat!("brassclaw/", env!("CARGO_PKG_VERSION"))),
-        );
-        headers.insert(ACCEPT, HeaderValue::from_static("text/event-stream"));
-        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
 
+        codex_request::verify_runtime_headers(&headers)
+            .map_err(|reason| LlmError::FinalRequestRejected { reason })?;
         Ok(headers)
-    }
-
-    /// Build the request body for the Responses API.
-    fn build_request_body(
-        &self,
-        messages: &[ChatMessage],
-        tools: Option<&[ToolDefinition]>,
-    ) -> serde_json::Value {
-        // Separate system messages into `instructions`
-        let instructions: String = messages
-            .iter()
-            .filter(|m| m.role == Role::System)
-            .map(|m| m.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-
-        // Convert non-system messages to Responses API format
-        let input: Vec<serde_json::Value> = messages
-            .iter()
-            .filter(|m| m.role != Role::System)
-            .enumerate()
-            .flat_map(|(i, m)| convert_message(m, i))
-            .collect();
-
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "store": false,
-            "stream": true,
-            "input": input,
-            "text": { "verbosity": "medium" },
-        });
-
-        if crate::reasoning_models::supports_openai_reasoning(&self.model) {
-            body["reasoning"] = crate::responses_reasoning::summary_request();
-            body["include"] = serde_json::json!(["reasoning.encrypted_content"]);
-        }
-
-        if !instructions.is_empty() {
-            body["instructions"] = serde_json::Value::String(instructions);
-        }
-
-        if let Some(tools) = tools
-            && !tools.is_empty()
-        {
-            let tools_json: Vec<serde_json::Value> =
-                tools.iter().map(convert_tool_definition).collect();
-            body["tools"] = serde_json::Value::Array(tools_json);
-            body["tool_choice"] = serde_json::Value::String("auto".to_string());
-            body["parallel_tool_calls"] = serde_json::Value::Bool(true);
-        }
-
-        body
     }
 
     /// Build once with this invocation's token, then retain the same request
@@ -277,7 +215,6 @@ impl OpenAiCodexProvider {
         host: Option<CodexHostSession>,
         max_output_tokens: Option<u32>,
     ) -> Result<ParsedResponse, LlmError> {
-        let url = format!("{}/responses", self.api_base_url);
         let original = crate::provider_observation::current();
         let (headers, observer) = match host {
             Some(host) => {
@@ -300,17 +237,12 @@ impl OpenAiCodexProvider {
             }
             None => (self.build_headers().await?, original),
         };
-        let request = self
-            .client
-            .post(&url)
-            .headers(headers)
-            .json(&body)
-            .build()
+        let request = codex_request::build_request(&self.client, &self.endpoint, &body, headers)
             .map_err(|error| {
                 if let Some(observer) = &observer {
                     observer.submission_rejected();
                 }
-                codex_transport_error(error)
+                error
             })?;
         let response = if let Some(guard) = crate::final_request_guard::current() {
             let checked = guard.prepare(request).await.map_err(|reason| {
@@ -405,9 +337,17 @@ impl OpenAiCodexProvider {
         request: CompletionRequest,
         host: Option<CodexHostSession>,
     ) -> Result<CompletionResponse, LlmError> {
-        let mut messages = request.messages;
-        crate::provider::sanitize_tool_messages(&mut messages);
-        let body = self.build_request_body(&messages, None);
+        codex_request::validate_options(
+            request.model.as_deref(),
+            &self.model,
+            request.max_tokens,
+            request.temperature,
+            request.stop_sequences.as_deref(),
+            None,
+        )
+        .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
+        let body = codex_request::body(&self.model, &request.messages, None)
+            .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
         let parsed = self.send_request(body, host, request.max_tokens).await?;
 
         Ok(CompletionResponse {
@@ -424,8 +364,15 @@ impl OpenAiCodexProvider {
         request: ToolCompletionRequest,
         host: Option<CodexHostSession>,
     ) -> Result<ToolCompletionResponse, LlmError> {
-        let mut messages = request.messages;
-        crate::provider::sanitize_tool_messages(&mut messages);
+        codex_request::validate_options(
+            request.model.as_deref(),
+            &self.model,
+            request.max_tokens,
+            request.temperature,
+            request.stop_sequences.as_deref(),
+            request.tool_choice.as_deref(),
+        )
+        .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
 
         // Build a reverse map so we can translate sanitized names back to originals.
         // Only needed when sanitization actually changes a name (e.g. MCP tools with dots).
@@ -442,7 +389,8 @@ impl OpenAiCodexProvider {
             })
             .collect();
 
-        let body = self.build_request_body(&messages, Some(&request.tools));
+        let body = codex_request::body(&self.model, &request.messages, Some(&request.tools))
+            .inspect_err(|_| crate::provider_observation::record_pre_submission_rejection())?;
         let mut parsed = self.send_request(body, host, request.max_tokens).await?;
 
         // Reverse-map sanitized tool names back to originals so the caller
@@ -570,125 +518,6 @@ fn extract_account_id(token: &str) -> Result<String, LlmError> {
         })?;
 
     Ok(account_id.to_string())
-}
-
-// ---------------------------------------------------------------------------
-// Message conversion (matching OpenClaw's convertResponsesMessages)
-// ---------------------------------------------------------------------------
-
-/// Convert a single `ChatMessage` to Responses API `input` items.
-///
-/// Returns a Vec because assistant messages with tool_calls produce
-/// one `function_call` item per tool call.
-fn convert_message(msg: &ChatMessage, index: usize) -> Vec<serde_json::Value> {
-    match msg.role {
-        Role::System => {
-            // System messages are handled separately as `instructions`
-            vec![]
-        }
-        Role::User => {
-            let image_count = msg
-                .content_parts
-                .iter()
-                .filter(|p| matches!(p, ContentPart::ImageUrl { .. }))
-                .count();
-            if image_count > 0 {
-                tracing::debug!(
-                    "OpenAI Codex: {} image attachment(s) dropped — Responses API image support not yet implemented",
-                    image_count
-                );
-            }
-            vec![serde_json::json!({
-                "role": "user",
-                "content": [{
-                    "type": "input_text",
-                    "text": msg.content,
-                }],
-            })]
-        }
-        Role::Assistant => {
-            // Check if this message has tool calls
-            if let Some(ref tool_calls) = msg.tool_calls {
-                // Emit one function_call item per tool call
-                tool_calls
-                    .iter()
-                    .map(|tc| {
-                        let args_str = if tc.arguments.is_string() {
-                            tc.arguments.as_str().unwrap_or("{}").to_string()
-                        } else {
-                            tc.arguments.to_string()
-                        };
-                        serde_json::json!({
-                            "type": "function_call",
-                            "call_id": tc.id,
-                            "name": sanitize_tool_name(&tc.name),
-                            "arguments": args_str,
-                        })
-                    })
-                    .collect()
-            } else {
-                // Plain text assistant message
-                vec![serde_json::json!({
-                    "type": "message",
-                    "role": "assistant",
-                    "id": format!("msg_{index}"),
-                    "status": "completed",
-                    "content": [{
-                        "type": "output_text",
-                        "text": msg.content,
-                        "annotations": [],
-                    }],
-                })]
-            }
-        }
-        Role::Tool => {
-            let call_id = msg.tool_call_id.as_deref().unwrap_or("unknown");
-            vec![serde_json::json!({
-                "type": "function_call_output",
-                "call_id": call_id,
-                "output": msg.content,
-            })]
-        }
-    }
-}
-
-/// Sanitize a tool name to match the OpenAI Responses API pattern `^[a-zA-Z0-9_-]+$`.
-/// Replaces any invalid character (e.g. dots in MCP tool names) with underscores.
-fn sanitize_tool_name(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
-}
-
-/// Convert a `ToolDefinition` to Responses API tool format.
-///
-/// Applies the shared `tool_schema.rs` shaping entrypoint with the
-/// `StrictOpenAi` policy, which performs strict-mode object normalization and
-/// the top-level union flatten that the Responses API requires. The flatten
-/// can append a hint to the tool description, so we pass an owned clone
-/// through and read it back.
-fn convert_tool_definition(tool: &ToolDefinition) -> serde_json::Value {
-    use crate::tool_schema::{ToolSchemaPolicy, shape_tool_schema};
-
-    let mut description = tool.description.clone();
-    let parameters = shape_tool_schema(
-        ToolSchemaPolicy::StrictOpenAi,
-        &tool.parameters,
-        &mut description,
-    );
-
-    serde_json::json!({
-        "type": "function",
-        "name": sanitize_tool_name(&tool.name),
-        "description": description,
-        "parameters": parameters,
-    })
 }
 
 // ---------------------------------------------------------------------------
@@ -994,6 +823,7 @@ fn parse_sse_response(body: &str) -> Result<ParsedResponse, LlmError> {
 mod tests {
     use super::*;
     use crate::codex_test_helpers::make_test_jwt;
+    use crate::provider::{ChatMessage, Role, ToolDefinition};
 
     #[test]
     fn test_extract_account_id_success() {
@@ -1071,12 +901,13 @@ mod tests {
         let msg =
             ChatMessage::assistant_with_tool_calls(Some("Let me check".to_string()), tool_calls);
         let items = convert_message(&msg, 0);
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0]["type"], "function_call");
-        assert_eq!(items[0]["call_id"], "call_1");
-        assert_eq!(items[0]["name"], "search");
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0]["content"][0]["text"], "Let me check");
         assert_eq!(items[1]["type"], "function_call");
-        assert_eq!(items[1]["call_id"], "call_2");
+        assert_eq!(items[1]["call_id"], "call_1");
+        assert_eq!(items[1]["name"], "search");
+        assert_eq!(items[2]["type"], "function_call");
+        assert_eq!(items[2]["call_id"], "call_2");
     }
 
     #[test]
@@ -1361,13 +1192,12 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
 
     #[test]
     fn test_build_request_body_structure() {
-        let jwt = make_test_jwt("acct_test");
         const CODEX_KEEPALIVE_SECS: u64 = 300;
-        let provider = OpenAiCodexProvider::new(
+        let provider = OpenAiCodexProvider::new_host_with_response_limit(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
-            &jwt,
             CODEX_KEEPALIVE_SECS,
+            None,
         )
         .unwrap();
 
@@ -1376,7 +1206,7 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
             ChatMessage::user("Hello"),
         ];
 
-        let body = provider.build_request_body(&messages, None);
+        let body = codex_request::body(&provider.model, &messages, None).unwrap();
 
         assert_eq!(body["model"], "gpt-5.3-codex");
         assert_eq!(body["store"], false);
@@ -1394,12 +1224,11 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
     fn test_build_request_body_with_tools() {
         // 300 = 5-minute keepalive timeout in seconds for the Codex provider.
         const CODEX_KEEPALIVE_SECS: u64 = 300;
-        let jwt = make_test_jwt("acct_test");
-        let provider = OpenAiCodexProvider::new(
+        let provider = OpenAiCodexProvider::new_host_with_response_limit(
             "gpt-5.3-codex",
             "https://chatgpt.com/backend-api/codex",
-            &jwt,
             CODEX_KEEPALIVE_SECS,
+            None,
         )
         .unwrap();
 
@@ -1410,7 +1239,7 @@ data: {"type":"response.output_text.delta","delta":" ignored"}
             parameters: serde_json::json!({"type": "object"}),
         }];
 
-        let body = provider.build_request_body(&messages, Some(&tools));
+        let body = codex_request::body(&provider.model, &messages, Some(&tools)).unwrap();
 
         assert!(body.get("tools").is_some());
         let tools_arr = body["tools"].as_array().unwrap();
@@ -1541,61 +1370,20 @@ data: {"type":"response.completed","response":{"status":"completed","usage":{"in
         assert_eq!(tc.name, "mcp.server.search");
     }
 
-    /// Regression test for #1969: orphaned tool results must be sanitized
-    /// before building the request body, otherwise the Responses API returns
-    /// HTTP 400 because function_call_output references a non-existent call_id.
+    /// Orphaned results are rejected locally without rewriting provider protocol
+    /// as user-authored text or submitting an invalid call_id to the endpoint.
     #[test]
-    fn test_build_request_sanitizes_orphaned_tool_results() {
-        use crate::provider::sanitize_tool_messages;
-
-        // An orphaned tool result: no preceding assistant message with a
-        // matching tool_call for "call_orphan".
-        let mut messages = vec![
+    fn test_codex_body_rejects_orphaned_results_without_rewriting() {
+        let messages = vec![
             ChatMessage::system("You are helpful"),
             ChatMessage::user("hello"),
             ChatMessage::assistant("I'll use a tool"),
             ChatMessage::tool_result("call_orphan", "search", "found 3 results"),
         ];
-
-        // Before sanitization the message is Role::Tool with a tool_call_id.
+        assert!(codex_request::body("gpt-5.5", &messages, None).is_err());
         assert_eq!(messages[3].role, Role::Tool);
-        assert_eq!(messages[3].tool_call_id, Some("call_orphan".to_string()));
-
-        sanitize_tool_messages(&mut messages);
-
-        // After sanitization it must be rewritten to a user message.
-        assert_eq!(messages[3].role, Role::User);
-        assert!(messages[3].content.contains("[Tool `search` returned:"));
-        assert!(messages[3].content.contains("found 3 results"));
-        assert!(messages[3].tool_call_id.is_none());
-        assert!(messages[3].name.is_none());
-
-        // Verify the rewritten message converts to a user input item (not
-        // a function_call_output that would cause HTTP 400).
-        // 300 = 5-minute keepalive timeout in seconds for the Codex provider.
-        const CODEX_KEEPALIVE_SECS: u64 = 300;
-        let jwt = make_test_jwt("acct_test");
-        let provider = OpenAiCodexProvider::new(
-            "gpt-5.3-codex",
-            "https://chatgpt.com/backend-api/codex",
-            &jwt,
-            CODEX_KEEPALIVE_SECS,
-        )
-        .unwrap();
-
-        let body = provider.build_request_body(&messages, None);
-        let input = body["input"].as_array().unwrap();
-
-        // Should have 3 non-system items: user, assistant, rewritten-user
-        assert_eq!(input.len(), 3);
-        // The last item must be a user message, not a function_call_output
-        assert_eq!(input[2]["role"], "user");
-        assert!(
-            input[2]["content"][0]["text"]
-                .as_str()
-                .unwrap()
-                .contains("[Tool `search` returned:")
-        );
+        assert_eq!(messages[3].tool_call_id.as_deref(), Some("call_orphan"));
+        assert_eq!(messages[3].content, "found 3 results");
     }
     #[tokio::test]
     async fn actual_codex_http_applies_selected_response_capacity() {

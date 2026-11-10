@@ -153,9 +153,22 @@ impl PgPrefixAcceptances {
     pub(crate) fn new(pool: Arc<PgPool>, namespace: String) -> Self {
         Self { pool, namespace }
     }
-    pub(crate) async fn endpoint(&self, id: Uuid) -> Result<reqwest::Url, Error> {
-        reqwest::Url::parse(&self.record(id).await?.review.contract.endpoint)
-            .map_err(|_| Error::Unavailable)
+    pub(crate) async fn endpoint(
+        &self,
+        id: Uuid,
+        transport: &brassclaw_llm::final_request_transport::ResolvedFinalModelTransport,
+    ) -> Result<reqwest::Url, Error> {
+        let contract = self.record(id).await?.review.contract;
+        // /1 remains the exact existing Chat qualification. A native Responses
+        // codec/endpoint alone cannot turn it into a Codex Prefix acceptance.
+        if !transport.matches_contract(&contract.transport, &contract.transport_checksum) {
+            return Err(Error::Unavailable);
+        }
+        let endpoint = reqwest::Url::parse(&contract.endpoint).map_err(|_| Error::Unavailable)?;
+        if transport.endpoint != endpoint {
+            return Err(Error::Unavailable);
+        }
+        Ok(endpoint)
     }
     pub(crate) async fn request_output_tokens(&self, id: Uuid) -> Result<u32, Error> {
         let n = self.record(id).await?.review.contract.request_output_tokens;

@@ -443,7 +443,7 @@ struct PreparedModel {
     #[cfg(feature = "skills-db")]
     guard: Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
     #[cfg(feature = "skills-db")]
-    endpoint: Option<reqwest::Url>,
+    transport: Option<brassclaw_llm::final_request_transport::ResolvedFinalModelTransport>,
 }
 
 #[cfg(feature = "skills-db")]
@@ -845,11 +845,7 @@ impl TaskModelProviderSource for TaskRoleSource {
         .map_err(|_| unavailable())?;
         let model = resolved.revision.model.clone();
         #[cfg(feature = "skills-db")]
-        let endpoint = resolved
-            .config
-            .provider
-            .as_ref()
-            .and_then(|config| brassclaw_llm::final_chat_endpoint(config).ok());
+        let transport = brassclaw_llm::final_request_transport::resolve(&resolved.config).ok();
         #[cfg(feature = "skills-db")]
         let final_policy = resolved.guard.clone();
         let publication = brassclaw_llm::ProviderPublication::Configured {
@@ -902,7 +898,7 @@ impl TaskModelProviderSource for TaskRoleSource {
                 #[cfg(feature = "skills-db")]
                 guard: final_policy,
                 #[cfg(feature = "skills-db")]
-                endpoint,
+                transport,
             },
         );
         Ok(retained)
@@ -1019,8 +1015,16 @@ impl TaskModelProviderSource for TaskRoleSource {
             .resolve(id, prepared.revision)
             .await
             .map_err(|_| binding_unavailable("prefix-acceptance-resolution"))?;
+        let transport = {
+            let prepared = selected.prepared.lock().await;
+            prepared
+                .roles
+                .get(role)
+                .and_then(|model| model.transport.clone())
+                .ok_or_else(|| binding_unavailable("prefix-client-transport"))?
+        };
         let endpoint = owner
-            .endpoint(id)
+            .endpoint(id, &transport)
             .await
             .map_err(|_| binding_unavailable("prefix-accepted-endpoint"))?;
         let reference = owner
@@ -1106,7 +1110,7 @@ impl TaskModelProviderSource for TaskRoleSource {
         };
         let model = selected.prepared.lock().await;
         let model = model.roles.get(role).ok_or_else(unavailable)?;
-        if model.endpoint.as_ref() != Some(&endpoint) {
+        if transport.endpoint != endpoint {
             return Err(binding_unavailable("prefix-client-endpoint"));
         }
         let policy: Arc<dyn brassclaw_llm::ProviderDispatchGuard> = match &self.review {

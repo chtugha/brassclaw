@@ -1,6 +1,7 @@
-//! Native SDK serialization for draft Prefix qualification. Every operation is
-//! rejected at the immutable-body barrier, before HTTP submission. These are
-//! protocol observations, never token measurements, approvals or model results.
+//! Native SDK serialization observations for draft Prefix qualification. Chat
+//! calls reject at the immutable-body barrier; Codex observes the shared codec
+//! without entering a provider and drops its unauthenticated request locally.
+//! Neither path supplies token measurements, approvals or dispatch authority.
 use crate::final_request_guard::{
     FinalRequestError, FinalRequestGuard, FinalRequestInput, FinalRequestMeasurement,
     FinalRequestMeasurer,
@@ -72,8 +73,58 @@ pub async fn prefix_bodies(
     let endpoint = crate::final_chat_endpoint(config)?;
     let provider = crate::create_registry_provider(config, timeout_secs)
         .map_err(|_| FinalRequestError::UnsupportedTransport)?;
+    let samples = qualification_samples();
+    let mut observed = Vec::new();
+    let mut retained_bytes = 0usize;
+    for (id, mut messages, with_tools) in samples {
+        if with_tools && !tools {
+            continue;
+        }
+        messages.insert(0, ChatMessage::system(reference));
+        let capture = Arc::new(Capture {
+            body: Mutex::new(None),
+            max_bytes,
+        });
+        let guard = Arc::new(FinalRequestGuard::new(
+            config.provider_id.clone(),
+            config.model.clone(),
+            endpoint.clone(),
+            Arc::new(NoSubmission),
+            capture.clone(),
+        )?);
+        let mut request = CompletionRequest::new(messages);
+        request.model = Some(config.model.clone());
+        request.max_tokens = Some(output_tokens);
+        request.dispatch_policy = ProviderDispatchPolicy::SingleSubmission;
+        let rejected = if with_tools {
+            guard.complete_with_tools(provider.as_ref(),ToolCompletionRequest::from_completion_request(request,vec![ToolDefinition {
+                name:"prefix_qualification_schema".into(),description:"Schema serialization only; never invoke this Tool.".into(),
+                parameters:serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+            }])).await.is_err()
+        } else {
+            guard.complete(provider.as_ref(), request).await.is_err()
+        };
+        if !rejected {
+            return Err(FinalRequestError::Measurement);
+        }
+        let body = capture
+            .body
+            .lock()
+            .map_err(|_| FinalRequestError::Body)?
+            .take()
+            .ok_or(FinalRequestError::Body)?;
+        retained_bytes = retained_bytes
+            .checked_add(body.len())
+            .filter(|size| *size <= max_bytes)
+            .ok_or(FinalRequestError::Body)?;
+        observed.push(QualificationBody { id, body });
+    }
+    Ok(observed)
+}
+
+fn qualification_samples() -> [(&'static str, Vec<ChatMessage>, bool); 5] {
     let dynamic = "Qualification instruction: retain the supplied reference and answer the current user request.";
-    let samples = [
+    [
         (
             "single-system",
             vec![ChatMessage::user("Current qualification request")],
@@ -131,51 +182,157 @@ pub async fn prefix_bodies(
             ],
             true,
         ),
-    ];
-    let mut observed = Vec::new();
-    let mut retained_bytes = 0usize;
-    for (id, mut messages, with_tools) in samples {
+    ]
+}
+
+/// Unauthenticated observation of the actual Codex request builder. No Debug or
+/// Serialize: the body may contain private prompt/history. This owns NO Request,
+/// client, credential, measurement, CheckedFinalRequest or dispatch authority.
+pub struct CodexRequestObservation {
+    pub transport: &'static str,
+    pub transport_checksum: String,
+    pub endpoint: reqwest::Url,
+    pub body: String,
+    pub technical_headers: reqwest::header::HeaderMap,
+    /// Original caller setting only. The actual Codex body currently carries no
+    /// output limit; this must never be interpreted as an effective reservation.
+    pub requested_output_tokens: Option<u32>,
+}
+
+fn observe_codex(
+    config: &crate::config::OpenAiCodexConfig,
+    timeout_secs: u64,
+    body: serde_json::Value,
+    requested_output_tokens: Option<u32>,
+    max_bytes: usize,
+) -> Result<CodexRequestObservation, crate::LlmError> {
+    let reject = |reason| crate::LlmError::FinalRequestRejected { reason };
+    if max_bytes == 0 {
+        return Err(reject(FinalRequestError::Body));
+    }
+    brassclaw_common::json::count_json_bytes(&body, Some(max_bytes as u64))
+        .map_err(|_| reject(FinalRequestError::Body))?;
+    let endpoint = crate::codex_request::endpoint(&config.api_base_url).map_err(reject)?;
+    let client = crate::registry_http_client("openai_codex", timeout_secs)?;
+    let request = crate::codex_request::build_request(
+        &client,
+        &endpoint,
+        &body,
+        crate::codex_request::technical_headers(),
+    )?;
+    crate::codex_request::verify_technical_headers(request.headers()).map_err(reject)?;
+    let body = request
+        .body()
+        .and_then(reqwest::Body::as_bytes)
+        .filter(|body| body.len() <= max_bytes)
+        .ok_or_else(|| reject(FinalRequestError::Body))?;
+    let body = std::str::from_utf8(body)
+        .map_err(|_| reject(FinalRequestError::Body))?
+        .to_owned();
+    // Consume the observation only; the locally owned request/client are dropped
+    // here, with no call to a provider/session, final guard, execute or send.
+    Ok(CodexRequestObservation {
+        transport: crate::codex_request::TRANSPORT,
+        transport_checksum: crate::codex_request::contract_checksum(),
+        endpoint,
+        body,
+        technical_headers: request.headers().clone(),
+        requested_output_tokens,
+    })
+}
+
+/// Production codec/options and actual HTTP serialization, without entering a
+/// provider or fabricating a JWT/host session. This is NOT a token measurement.
+pub fn codex_completion(
+    config: &crate::config::OpenAiCodexConfig,
+    timeout_secs: u64,
+    request: &CompletionRequest,
+    max_bytes: usize,
+) -> Result<CodexRequestObservation, crate::LlmError> {
+    crate::codex_request::validate_options(
+        request.model.as_deref(),
+        &config.model,
+        request.max_tokens,
+        request.temperature,
+        request.stop_sequences.as_deref(),
+        None,
+    )?;
+    let body = crate::codex_request::body(&config.model, &request.messages, None)?;
+    observe_codex(config, timeout_secs, body, request.max_tokens, max_bytes)
+}
+
+pub fn codex_tools(
+    config: &crate::config::OpenAiCodexConfig,
+    timeout_secs: u64,
+    request: &ToolCompletionRequest,
+    max_bytes: usize,
+) -> Result<CodexRequestObservation, crate::LlmError> {
+    crate::codex_request::validate_options(
+        request.model.as_deref(),
+        &config.model,
+        request.max_tokens,
+        request.temperature,
+        request.stop_sequences.as_deref(),
+        request.tool_choice.as_deref(),
+    )?;
+    let body = crate::codex_request::body(&config.model, &request.messages, Some(&request.tools))?;
+    observe_codex(config, timeout_secs, body, request.max_tokens, max_bytes)
+}
+
+pub const CODEX_CORPUS: &str = "brassclaw-native-codex-request-corpus/1";
+pub struct CodexQualificationBody {
+    pub id: &'static str,
+    pub observation: CodexRequestObservation,
+}
+/// Same complete case families as Chat, with a distinct observation type and
+/// contract. Cannot be consumed as old Chat corpus/token/approval evidence.
+pub fn codex_prefix_bodies(
+    config: &crate::config::OpenAiCodexConfig,
+    timeout_secs: u64,
+    reference: &str,
+    requested_output_tokens: Option<u32>,
+    tools: bool,
+    max_bytes: usize,
+) -> Result<Vec<CodexQualificationBody>, crate::LlmError> {
+    if reference.is_empty() || max_bytes == 0 {
+        return Err(crate::LlmError::FinalRequestRejected {
+            reason: FinalRequestError::Body,
+        });
+    }
+    let mut observations = Vec::new();
+    let mut remaining = max_bytes;
+    for (id, mut messages, with_tools) in qualification_samples() {
         if with_tools && !tools {
             continue;
         }
         messages.insert(0, ChatMessage::system(reference));
-        let capture = Arc::new(Capture {
-            body: Mutex::new(None),
-            max_bytes,
-        });
-        let guard = Arc::new(FinalRequestGuard::new(
-            config.provider_id.clone(),
-            config.model.clone(),
-            endpoint.clone(),
-            Arc::new(NoSubmission),
-            capture.clone(),
-        )?);
         let mut request = CompletionRequest::new(messages);
         request.model = Some(config.model.clone());
-        request.max_tokens = Some(output_tokens);
+        request.max_tokens = requested_output_tokens;
         request.dispatch_policy = ProviderDispatchPolicy::SingleSubmission;
-        let rejected = if with_tools {
-            guard.complete_with_tools(provider.as_ref(),ToolCompletionRequest::from_completion_request(request,vec![ToolDefinition {
-                name:"prefix_qualification_schema".into(),description:"Schema serialization only; never invoke this Tool.".into(),
-                parameters:serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
-            }])).await.is_err()
+        let observation = if with_tools {
+            codex_tools(
+                config,
+                timeout_secs,
+                &ToolCompletionRequest::from_completion_request(
+                    request,
+                    vec![ToolDefinition {
+                        name: "prefix_qualification_schema".into(),
+                        description: "Schema serialization only; never invoke this Tool.".into(),
+                        parameters: serde_json::json!({"type":"object","properties":{},"additionalProperties":false}),
+                    }],
+                ),
+                remaining,
+            )?
         } else {
-            guard.complete(provider.as_ref(), request).await.is_err()
+            codex_completion(config, timeout_secs, &request, remaining)?
         };
-        if !rejected {
-            return Err(FinalRequestError::Measurement);
-        }
-        let body = capture
-            .body
-            .lock()
-            .map_err(|_| FinalRequestError::Body)?
-            .take()
-            .ok_or(FinalRequestError::Body)?;
-        retained_bytes = retained_bytes
-            .checked_add(body.len())
-            .filter(|size| *size <= max_bytes)
-            .ok_or(FinalRequestError::Body)?;
-        observed.push(QualificationBody { id, body });
+        remaining = remaining.checked_sub(observation.body.len()).ok_or(
+            crate::LlmError::FinalRequestRejected {
+                reason: FinalRequestError::Body,
+            },
+        )?;
+        observations.push(CodexQualificationBody { id, observation });
     }
-    Ok(observed)
+    Ok(observations)
 }
