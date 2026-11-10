@@ -63,8 +63,19 @@ integrity, so dependent Source/Case and provider-startup cases do not run.
 The isolated three-fixture correction is reviewed and integrated as `85d93bc9c`,
 with execution pending. J investigates the actual qualification/cleanup cause;
 M corrects the authenticated commit's Codex OAuth-head reference/CAS boundary.
-N's larger Flow/V214 source and O's Responses source are held privately. No
+M's reviewed correction is now integrated as `d06e9c2f9`, preserving native
+provider/config/head lock order; its expanded real C1 regression remains unrun.
+N's larger Flow/V214 source is held; O finishes its private A-slice self-review. No
 general Pure approval, complete Bob acceptance or serving activation is implied.
+J's bounded diagnostic-only follow-up is integrated as `1cab94f04`; it leaves
+all containment gates unchanged and still does not establish the Run-33 cause.
+O's reviewed fourteen-file A source is integrated through `ee95c2746`: one actual
+Codex runtime/No-Send codec, credential-free preparation before native auth and
+strict captured transport/old Chat qualification separation. All new A callers
+and redaction tests await the bundled local Run-34. Native output/encoding,
+pair-format–Sempai–exact-prefix and technical upgrade qualification remain open;
+the changed native checksum does not rewrite historical approvals or old pins.
+N resumes only its existing private connected assignment.
 
 ## 2026-11-09 — Bob integration acceptance at that checkpoint
 

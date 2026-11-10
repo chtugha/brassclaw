@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native Codex request boundary (validation pending)**: Share actual Responses
+  construction with credential-free observations, preserve supported original
+  history/tool data and reject lossy profiles before authentication. Keep native
+  OAuth custody and one-submission behavior; distinguish Codex from old Chat
+  qualifications. Source is reviewed/integrated. Native tests, effective
+  output/encoding, final Prefix handoff and technical upgrade qualification remain
+  open; no new serving support is claimed.
+
 - **Bob integration validation (in progress)**: The current worker and all 19
   joint test harnesses compile without warnings. Twenty of 24 executed
   independent cases pass; the common startup exposes unresolved original Pure
@@ -19,7 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existing native source for explicit Use and early Sempai restoration. Compute
   desired publication from the OAuth head, independently of API-key presence,
   without duplicate non-Codex metadata reads. Add three native caller test
-  sources. Responses/prefix serving and real-issuer acceptance remain open.
+  sources. Correct the authenticated Use commit to compare the OAuth head,
+  preserve native login's lock order and reject changed/deleted heads without
+  altering role selection or receipts. The expanded native regression is unrun.
+  Responses/prefix serving and real-issuer acceptance remain open.
 
 - **Original component revision policy (validation pending)**: Retain each new
   immutable revision's acknowledged parser profile alongside its exact bytes.

@@ -233,13 +233,50 @@ All original failures and runtime-only continuation records remain under
 `target/validation/bob-native-repair-20261105/run-33-composition/`.
 Source identity is unchanged through terminal completion; the freeze is released.
 
-J and M now own the two correction slots. J traces the actual qualification,
+J and M initially own the two correction slots. J traces the actual qualification,
 native receipt and cleanup cause without bypassing the containment gate. M
 corrects authenticated transaction locking/reference selection for Codex OAuth
 heads, preserving preparation/commit CAS and existing authentication ownership.
 N's larger Flow/V214 work and O's Responses Slice A are held at private
 checkpoints; neither is integrated or accepted. No new compilation starts before
 the connected correction review. All three Bob plans remain open.
+
+M's complete four-file correction `4ddc8c193` is reviewed against native login,
+configuration and authenticated SecretStore writers; all basis/final/commit hashes
+match. It is integrated as `d06e9c2f9`. Native Codex Use now rechecks its OAuth
+head and follows the existing provider → config → head lock order, avoiding a
+new inversion with login publication. Failed identity comparison rolls back the
+provisional role selection. API-key protocols retain their original path. C1
+adds actual head-replacement/deletion, unused API-key and receipt-retention
+regression sources; execution remains pending. M is idle for own corrections.
+O resumes only the final connected self-review/corrections of its existing A
+slice, with no new Prefix/upgrade scope. J/O are the two implementing owners;
+N's larger source remains held. O's source remains private and unaccepted.
+
+**Run-34 source batch:** J's three-file diagnostic correction `adbc78a8f` is
+fully reviewed/hash-verified and integrated as `1cab94f04`. It preserves every
+existing containment/optional/cleanup decision and the original boxed cause;
+only bounded closed phase/error/native-state facts reach the fatal message.
+Nonblocking diagnostic locks cannot hang qualification. The original Run-33
+cause is still unknown; this is not a startup repair. Three redaction regression
+sources and the unchanged actual common caller require execution.
+
+O's final fourteen-file A handoff is completely reviewed, including the
+pre-authentication body preparation, actual factory/PG failure-injection cases,
+all SDK callers and the corrected early endpoint rejection. Its three own
+commits are integrated as `f52888e6f`/`8a4b72ede`/`ee95c2746`; all fourteen final
+hashes match, and M is not imported twice. No-Send remains observation only;
+old Chat qualifications cannot authorize Codex. The legitimate native source
+checksum change still needs the existing Prefix/upgrade owner's technical
+requalification/verified old-pin compatibility before deployment; historical
+records and human approvals are not rewritten. Output/encoding, pair-specific
+format–Sempai–exact-prefix, serving and M4 remain open. O is idle for corrections.
+
+The next local batch includes 20 actual harnesses, 57 exact independent selectors
+(two old wire receipts reusable only for an identical executable), the actual
+common prerequisite, provider startup and Source foundation/dependents behind
+their existing gates. No new result is claimed. N resumes its same unfinished
+private connected Flow assignment while Root validates frozen integration inputs.
 
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
@@ -546,9 +583,9 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and connected product/readiness/evidence source integrated with reviewed follow-ups. Run-33 joint compilation passes without warnings; common startup fails on unresolved original Pure qualification containment/integrity. Active own-cause correction; no general behavior/Q1/Q2/approval/publication. |
 | K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Full connected source and exact boundary follow-up reviewed/hash-verified; integrated as `f5d18f486`/`d7b4a42b9`, including V212. Acquisition adapter correction integrated as `a8ace38b6`. Compile/native acceptance unrun; idle for own corrections. Existing original capture/graph owners reused; separate evidence/historical-image limits remain open. |
 | L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Complete coherent J/I/K follow-up integrated as `3002c45c8`, including V213 and all eight productive restores. All 28 source hashes verified; old migration bytes/J guards/K adapter preserved. Compilation/native acceptance unrun; idle for own corrections. Depth above 64 and independent evidence/native-image migration remain open. |
-| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 integrated as `813154d33`. Run-33 C1 exposes the locked commit's wrong credential reference; C3 passes. Active OAuth-head/CAS correction using existing provider/Auth owners. Provider startup, Responses/prefix, broader status and real-issuer/platform gates remain open. |
-| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Larger connected source held privately while J/M correct actual baseline failures. Only isolated obsolete-wrapper and three fixture corrections are integrated. Shared B2 successor/Flow/occurrence/dependent-work qualification remains unaccepted; V214 stays reserved. |
-| O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Slice A and its pre-authentication validation correction are held at private checkpoint `8da214b33`, not integrated. Root review/native acceptance remain open. Reuse Auth/session/custody owners; no serving activation. Pair-format/Sempai/exact-prefix and actual API evidence remain open. |
+| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 integrated as `813154d33`; Run-33 C3 passes. The reviewed C1 OAuth-head/CAS and lock-order correction is integrated as `d06e9c2f9`, with native rerun pending. Idle for own corrections. Provider startup, Responses/prefix, broader status and real-issuer/platform gates remain open. |
+| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Resumed same unfinished private connected assignment while Root validates integration inputs. Only isolated obsolete-wrapper and three fixture corrections are integrated. Shared B2 successor/Flow/occurrence/dependent-work qualification remains unaccepted; V214 stays reserved. |
+| O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Fourteen-file A source reviewed/hash-verified and integrated as `f52888e6f`/`8a4b72ede`/`ee95c2746`; native/SDK/prefix caller tests unrun. Idle for corrections. No serving activation; technical upgrade compatibility, pair-format/Sempai/exact-prefix and actual API evidence remain open. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
