@@ -66,8 +66,8 @@ pub fn drafts() -> Result<Vec<ComponentRevisionDraft>, RevisionError> {
                 dependencies: Vec<Uuid>,
                 association: Value| {
         ComponentRevisionDraft::from_json(
-            &json!({"format":"component-revision/1",uuid,class_code,
-            document,dependencies,association})
+            &json!({"format":"component-revision/1","uuid":uuid,"class_code":class_code,
+            "document":document,"dependencies":dependencies,"association":association})
             .to_string(),
         )
     };
