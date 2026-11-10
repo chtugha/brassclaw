@@ -155,11 +155,16 @@ confirms that version is unused. If intervening work already allocated it, reuse
 that actual compatible owner contract or allocate the next explicitly versioned
 successor once; do not create two meanings for `/2`.
 
-Keep the eight existing base fields with their exact current field schemas. Keep
-existing optional `association_approvals` and `model_input_binding` with their
-actual meanings. Add one required nonempty `functional_approvals` object for
-the new profile, keyed by exact executable step IDs. A `/1` record cannot contain
-this field; a new profile cannot omit it. This is a **proposed strict successor
+Keep the eight existing base fields and their meanings. Explicitly version the
+input-layout schema when the shared structured-flow owner requires it; do not
+silently reinterpret a historical field. Keep existing optional
+`association_approvals` and `model_input_binding` with their actual meanings.
+Add `functional_approvals`, keyed by exact static executable step IDs, exactly
+when the verified selection contains steps using the new own-approval profile.
+Then it is nonempty and covers exactly those steps. With no such steps it must
+be absent, never empty or null. A `/1` record cannot contain this field. Execution
+shape and evidence provenance are independent: a structured shipped workflow
+does not manufacture authored own approvals. This is a **proposed strict successor
 retained-selection contract**, not a new Recipe/association field or an API
 already implemented in current source. Complete the corresponding B1 writer and
 all readers before emitting it. Each occurrence value has exactly:
@@ -211,6 +216,25 @@ every ordinary pure occurrence resolves its applicable pure approval. Continue r
 Skill/ToolSkill/Tool association and live kernel policy for authored-functional
 steps. Removing the old approval-count assumption must not remove binding,
 artifact, identity or dispatch checks. Old `/1` retains its original invariant.
+
+The shared V35-13/14 flow/occurrence owner, currently package N-01, extends this
+same planned `/2` rather than allocating an incompatible second format. Its
+explicit `execution_profile` distinguishes flat stop-only from structured
+sequential stop-only execution. Structured selections pin their actual flow,
+canonical checksum and original workflow qualification; flat selections forbid
+those structured-only fields. Static step order never becomes an expanded list
+of runtime occurrences. Each occurrence retains the one original static export
+and evidence pin plus its distinct execution identity in the existing journals.
+
+All executable declarations must be covered exactly once by disjoint applicable
+own-functional, exact legacy/S-usage or independently qualified pure pin sets.
+Any additional pure/workflow qualification references need their actual checked
+installation/approval record owner, original bytes and strict shared readers
+before emission or activation. No parsed metadata, closure membership or caller
+label establishes qualification. N-01 owns the connected flow implementation;
+B1 retains sole ownership of general own-approval evidence. Source-only codec
+support neither supplies missing B1 records nor activates a workflow. Keep
+complete `/1` compatibility and all connected B2 publication gates.
 
 The existing canonical-generation exception remains exact and does not require
 manufactured new pure approval records. New ordinary pure/functional subjects use

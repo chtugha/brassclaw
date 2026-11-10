@@ -28,6 +28,12 @@ three-file correction is integrated as `698591fbe`: one regular dependency,
 its exact standalone lock edge and a shared strict native byte-array wire.
 Historical hex formats and existing migrations remain unchanged. Run-30 and
 actual native acceptance remain pending.
+Run-30 then reaches Composition and fails with 62 mostly shared error-conversion
+diagnostics and one unused import; no tests execute. Sixteen compiled harnesses
+and the worker are preserved. J's reviewed eight-file correction is integrated
+as `d83b07be5`, preserving original error/custody contracts and all existing
+migrations. Run-31 is pending. N's V214 is reserved, without activation or native
+acceptance; O's Responses/prefix investigation is read-only and currently held.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 

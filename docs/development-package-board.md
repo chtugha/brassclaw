@@ -136,6 +136,31 @@ The mandatory disk guard again requires scoped cache cleanup: the dry-run checks
 and finds no executables. Cargo removes 1,549 disposable files (606.8 MiB).
 No source, database or retained evidence is removed. Run-30 remains pending.
 
+**Run-30:** frozen `c4c92fede` builds the worker in 0.555 s and reaches
+Composition, where the joint compile fails after 104.807 s with 62 diagnostics
+and one unused-import warning. Most diagnostics share the wrong `invalid`
+helper bound; the remaining issues are a private terminal-type export, method
+visibility, non-Display service failures and owned JSON map keys. No tests run.
+Sixteen successfully produced test programs and the worker are retained with
+verified hashes. J's eight-file correction `855fa7ab4` is completely reviewed,
+all eight before/final/commit hashes verified and integrated as `d83b07be5`.
+It reuses the existing fallible helper in the correct scope and the existing
+delivery validator with minimum parent visibility, preserving classifications,
+original custody and all seven V207–V213 migration hashes. Validation is pending.
+
+The post-build disk guard fails again. Scoped cache removal frees 1.7 GiB;
+then an immutable manifest audits 230 older incremental-only directories
+(36,471 files, 9.913 GiB), with no executables. Under the Cargo lock, unchanged
+file identities, no compiler and no open files are verified before removal.
+Compiled libraries, every retained executable, source, databases and evidence
+remain intact; free space is 30.280 GiB/86.735% used. Run-31 is prepared next.
+
+V214 is reserved exclusively for N-01's connected selection/flow/occurrence and
+private-lineage migration. Its private source and qualification remain unaccepted.
+O-01, chat `01a1c639-77bd-7da1-a646-65ff8019f60b`, worktree `e60c`, has only a
+read-only Codex Responses/prefix investigation checkpoint and is held while
+J/N occupy the two source slots. No O implementation is authorized.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
