@@ -407,6 +407,21 @@ package closes B2-06 without its required actual acceptance. Do not apply the
 V212 database successor before the connected private V211 sequence is integrated
 and validated; see the current package board for the exact validation boundary.
 
+**Additional source inventory, 2026-11-10:** `retained_inputs.rs` still applies
+fixed `MAX_CAPTURES = 64`, compiled-regex `size_limit = 32_768` and
+`dfa_size_limit = 8_192`. These are configurable policy candidates, not proven
+intrinsic wire bounds, and neither K-01 nor L-01 removes them. In this same
+B2-06 resource follow-up, trace their real matcher/preparation/restore consumers,
+then reuse applicable acknowledged settings or introduce necessary settings
+through the existing DB/API/WebUI/live-ACK owner, with units and EN/DE help.
+Pin the actual original compilation policy where restoration requires it;
+later reductions must not relabel historical selections. Keep explicit regex
+compilation/cache protection and native representability checks. Accept actual
+above-old-limit capture/regex cases and exact rejection boundaries, alongside
+old selection restoration and later settings changes. Do not simply remove
+the checks, call these constants technical invariants, or close B2-06 before
+this consumer path is resolved.
+
 1. Update the actual engine selection constructor/parser, selected-program
    verifier, catalogue serializer/reloader, retained review preparation reader
    and DB format checks identified in B2-01. Keep parsing version-dispatched and

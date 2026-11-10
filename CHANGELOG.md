@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Codex preparation and selection status (validation pending)**: Reuse the
+  existing native source for explicit Use and early Sempai restoration. Compute
+  desired publication from the OAuth head, independently of API-key presence,
+  without duplicate non-Codex metadata reads. Add three native caller test
+  sources. Responses/prefix serving and real-issuer acceptance remain open.
+
 - **Original component revision policy (validation pending)**: Retain each new
   immutable revision's acknowledged parser profile alongside its exact bytes.
   Preserve historical profiles and retries after settings changes, and verify

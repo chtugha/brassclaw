@@ -155,6 +155,15 @@ transport work; a test that manually calls the builder does not establish this.
 
 - [ ] **B3-03 — Thread the same owner through every model/configuration consumer.**
 
+**2026-11-10 source checkpoint:** M-01's M1/M2 source is reviewed, all six
+manifest files verified and integrated as `813154d33`. Explicit Use and Sempai
+preparation now reuse the existing canonical Codex source; early startup retains
+the same Auth facade. Desired publication uses the OAuth head while API-key
+presence remains separate. Three actual Factory/PG/Auth/local-issuer regression
+sources await local execution. This does not close B3-03: the actual Responses
+endpoint/body/final-prefix qualification, connected serving and real-issuer
+acceptance remain open; no unguarded Codex route is enabled by this repair.
+
 Inventory startup construction, reload/reconnect, runtime active-provider
 selection, ordinary Kohai, Sempai/preparation and selected task/child providers.
 Each consumes the original captured provider/account/head selection through the

@@ -62,11 +62,29 @@ suffix and K adapter calls are preserved. Compilation/native acceptance is unrun
 J/K/L remain available only for their own concrete validation corrections.
 
 M-01, fresh chat `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, worktree `8d0f`,
-now performs a read-only Bob-3 provider/Codex product-path audit and bounded
-proposal. It must reuse accepted A-01 Auth/refresh ownership, identify genuine
-remaining product gates and avoid a second connector. No source implementation,
-provider/account access or build is authorized for this audit. Root owns the
-prepared Run-26 joint native batch. All three Bob plans remain open.
+completed its read-only Bob-3 audit and source-authorized M1/M2 slice. Root
+reviews the complete six-file commit `eaa2a292e`, verifies every manifest hash
+and integrates it as `813154d33`. Explicit Use/Sempai preparation reuses the
+canonical native source; desired status uses the protocol's credential identity,
+while `api_key_set` remains separate. Non-Codex metadata is not queried twice.
+Three real Factory/PG/Auth/local-issuer test sources are unrun. M3 Responses/
+prefix qualification, M4 broader status and real-issuer acceptance remain open.
+
+**Run-26:** the worker compile stops after 11.494 s with E0063 in
+`process_pool_projection.rs:193`: the projected `Reply` initializer omits J's
+new `python_exception` field. No joint test compilation or native tests run.
+Source freeze is released. J-01 audits all six constructors and the worker/
+frame consumers; its one-line correction `a951445ae` is reviewed/hash-verified
+and integrated as `0bf1eec57`. Existing Serde omission and exact size checks are
+preserved. The correction and M1/M2 await the prepared Run-27 joint local batch.
+Root owns native validation; J/M remain idle for their own concrete findings.
+
+N-01, fresh chat `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, worktree `9cb5`,
+prepares a read-only source/architecture proposal for B1's necessary shared
+qualified flow/occurrence support under the existing V35-13/14 owner. It must
+reuse the actual J single-case primitive, preserve flat `/1` and old effect
+journals, and keep sequencing in Monty. No source/migration/build/DB/Modal work
+is authorized yet. All three Bob plans remain open.
 
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
@@ -373,7 +391,8 @@ removed. Recheck actual space before the next compilation; cleanup is not routin
 | J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and complete connected product/HTTP, encoding, terminal projection and optional-readiness corrections integrated as `2db8822d2`/`8dc775a00`; all 71 manifest files verified before L's reviewed connections. Compilation/native acceptance unrun; idle for own corrections. No general behavior/Q1/Q2/approval/publication. |
 | K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Full connected source and exact boundary follow-up reviewed/hash-verified; integrated as `f5d18f486`/`d7b4a42b9`, including V212. Acquisition adapter correction integrated as `a8ace38b6`. Compile/native acceptance unrun; idle for own corrections. Existing original capture/graph owners reused; separate evidence/historical-image limits remain open. |
 | L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Complete coherent J/I/K follow-up integrated as `3002c45c8`, including V213 and all eight productive restores. All 28 source hashes verified; old migration bytes/J guards/K adapter preserved. Compilation/native acceptance unrun; idle for own corrections. Depth above 64 and independent evidence/native-image migration remain open. |
-| M-01 — provider/Codex product-path audit | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | Read-only audit/proposal under Bob 3. Reuse accepted A-01 provider/Auth/refresh infrastructure; distinguish source support, product tests and real-issuer/platform gates. No implementation/build/account/provider access authorized yet. |
+| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 source reviewed, six hashes verified and integrated as `813154d33`; three native caller sources unrun. Existing provider/Auth/refresh owners reused; no build or external account action performed. Idle for own corrections. Responses/prefix qualification, broader status DTOs and real-issuer/platform gates remain open. |
+| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Read-only proposal under the shared V35-13/14 owner consumed by B1. Reuse J's sealed single-case invocation and existing admission/effect custody; preserve flat historical formats. No source, migration or execution authorization yet. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
