@@ -4,7 +4,8 @@ use brassclaw_engine::memory::{
     retained_tools::{RetainedToolProgram, prepare_retained_tool_program},
 };
 use brassclaw_skills::{
-    component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
+    component_revision::ComponentRevisionDraft,
+    revision_store::{PgComponentRevisionStore, SnapshotReadLimits},
 };
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -148,7 +149,14 @@ pub(super) async fn build_program(
     ] {
         refs.push(store.stage(&d, 0).await.unwrap());
     }
-    let retained = Arc::new(store.read_exact(&[root], &refs).await.unwrap());
+    // These fixture drafts use from_json without an original preparation, so
+    // their graph retains the same historical profile as their stored rows.
+    let retained = Arc::new(
+        store
+            .read_exact(&[root], &refs, SnapshotReadLimits::legacy_graph())
+            .await
+            .unwrap(),
+    );
     Arc::new(
         prepare_retained_tool_program(
             compile_retained_recipe(retained, root, "selected", WorkflowClass::Deterministic)

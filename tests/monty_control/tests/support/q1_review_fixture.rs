@@ -25,7 +25,8 @@ use brassclaw_monty_host::{
     transport_actor::{ActorLimits, TransportClient, TransportOwner},
 };
 use brassclaw_skills::{
-    component_revision::ComponentRevisionDraft, revision_store::PgComponentRevisionStore,
+    component_revision::ComponentRevisionDraft,
+    revision_store::{PgComponentRevisionStore, SnapshotReadLimits},
 };
 use brassclaw_turns::{GetRunStateRequest, TurnStateStore};
 use serde_json::{Value, json};
@@ -553,7 +554,12 @@ async fn retained_workflow_review_uses_each_steps_accepted_limits_for_complete_h
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
     let selected = compile_retained_recipe(
-        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        Arc::new(
+            store
+                .read_exact(&[recipe], &refs, SnapshotReadLimits::legacy_graph())
+                .await
+                .unwrap(),
+        ),
         recipe,
         "selected",
         WorkflowClass::Deterministic,
@@ -868,7 +874,12 @@ async fn pure_logic_workflow_evidence_observes_values_and_rejects_reordered_step
         refs.push(store.stage(&draft, 0).await.unwrap());
     }
     let selected = compile_retained_recipe(
-        Arc::new(store.read_exact(&[recipe], &refs).await.unwrap()),
+        Arc::new(
+            store
+                .read_exact(&[recipe], &refs, SnapshotReadLimits::legacy_graph())
+                .await
+                .unwrap(),
+        ),
         recipe,
         "selected",
         WorkflowClass::Deterministic,

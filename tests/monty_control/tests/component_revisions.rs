@@ -2,7 +2,7 @@
 //! components, activation evidence or a replacement for production IBS tests.
 use brassclaw_skills::{
     component_revision::{ComponentRevisionDraft, RevisionError},
-    revision_store::{PgComponentRevisionStore, RevisionStoreError},
+    revision_store::{PgComponentRevisionStore, RevisionStoreError, SnapshotReadLimits},
 };
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -10,6 +10,8 @@ use uuid::Uuid;
 #[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
 
+// These contained fixtures use legacy from_json rows, without a captured
+// preparation. Every exact graph read keeps that same legacy profile.
 fn draft(id: Uuid, class: i32, document: Value, dependencies: &[Uuid]) -> ComponentRevisionDraft {
     ComponentRevisionDraft::from_json(
         &json!({
@@ -49,7 +51,10 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
     let code_ref = store.stage(&code_draft, 0).await.unwrap();
     let recipe_ref = store.stage(&recipe_draft, 0).await.unwrap();
     let refs = [recipe_ref, code_ref, helper_ref];
-    let first = store.read_exact(&[recipe], &refs).await.unwrap();
+    let first = store
+        .read_exact(&[recipe], &refs, SnapshotReadLimits::legacy_graph())
+        .await
+        .unwrap();
     let replacement = draft(
         code,
         22,
@@ -59,7 +64,10 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
     let newer_code = store.stage(&replacement, 1).await.unwrap();
     assert_eq!(newer_code.version, 2);
     assert_ne!(newer_code.checksum, code_ref.checksum);
-    let resumed = store.read_exact(&[recipe], &refs).await.unwrap();
+    let resumed = store
+        .read_exact(&[recipe], &refs, SnapshotReadLimits::legacy_graph())
+        .await
+        .unwrap();
     for snapshot in [&first, &resumed] {
         assert_eq!(
             snapshot.revisions()[&code].draft().exact_bytes(),
@@ -72,7 +80,11 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
         assert_eq!(snapshot.revisions()[&helper].reference(), helper_ref);
     }
     let new_selection = store
-        .read_exact(&[recipe], &[recipe_ref, newer_code, helper_ref])
+        .read_exact(
+            &[recipe],
+            &[recipe_ref, newer_code, helper_ref],
+            SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -100,13 +112,20 @@ async fn replacement_retains_exact_recipe_layout_and_transitive_code_bytes() {
             .await
             .unwrap_err();
         assert_eq!(error.code().unwrap().code(), expected_code);
-        let retained = store.read_exact(&[recipe], &refs).await.unwrap();
+        let retained = store
+            .read_exact(&[recipe], &refs, SnapshotReadLimits::legacy_graph())
+            .await
+            .unwrap();
         assert_eq!(
             retained.revisions()[&code].draft().exact_bytes(),
             code_draft.exact_bytes()
         );
         let retained_new = store
-            .read_exact(&[recipe], &[recipe_ref, newer_code, helper_ref])
+            .read_exact(
+                &[recipe],
+                &[recipe_ref, newer_code, helper_ref],
+                SnapshotReadLimits::legacy_graph(),
+            )
             .await
             .unwrap();
         assert_eq!(
@@ -132,8 +151,18 @@ async fn simultaneous_edits_conflict_and_failed_transaction_does_not_consume_a_v
         _ => panic!("exactly one edit must win"),
     };
     assert_eq!(winner.version, 2);
-    assert!(store.read_exact(&[id], &[first]).await.is_ok());
-    assert!(store.read_exact(&[id], &[winner]).await.is_ok());
+    assert!(
+        store
+            .read_exact(&[id], &[first], SnapshotReadLimits::legacy_graph())
+            .await
+            .is_ok()
+    );
+    assert!(
+        store
+            .read_exact(&[id], &[winner], SnapshotReadLimits::legacy_graph())
+            .await
+            .is_ok()
+    );
     let mut client = rig.pool.get().await.unwrap();
     let tx = client.transaction().await.unwrap();
     let rolled_back = PgComponentRevisionStore::stage_in_transaction(&tx, &initial, 2)
@@ -142,7 +171,9 @@ async fn simultaneous_edits_conflict_and_failed_transaction_does_not_consume_a_v
     assert_eq!(rolled_back.version, 3);
     tx.rollback().await.unwrap();
     assert!(matches!(
-        store.read_exact(&[id], &[rolled_back]).await,
+        store
+            .read_exact(&[id], &[rolled_back], SnapshotReadLimits::legacy_graph())
+            .await,
         Err(RevisionStoreError::Integrity)
     ));
     let next = store.stage(&right, 2).await.unwrap();
@@ -175,27 +206,45 @@ async fn exact_snapshot_rejects_missing_extra_cycles_and_wrong_checksums() {
         .await
         .unwrap();
     assert!(matches!(
-        store.read_exact(&[root], &[root_ref]).await,
+        store
+            .read_exact(&[root], &[root_ref], SnapshotReadLimits::legacy_graph())
+            .await,
         Err(RevisionStoreError::Invalid(RevisionError::Invalid(
             "missing dependency revision"
         )))
     ));
     assert!(
         store
-            .read_exact(&[root], &[root_ref, dep_ref, extra_ref])
+            .read_exact(
+                &[root],
+                &[root_ref, dep_ref, extra_ref],
+                SnapshotReadLimits::legacy_graph()
+            )
             .await
             .is_err()
     );
     let mut corrupt = dep_ref;
     corrupt.checksum[0] ^= 1;
     assert!(matches!(
-        store.read_exact(&[root], &[root_ref, corrupt]).await,
+        store
+            .read_exact(
+                &[root],
+                &[root_ref, corrupt],
+                SnapshotReadLimits::legacy_graph()
+            )
+            .await,
         Err(RevisionStoreError::Integrity)
     ));
     corrupt = dep_ref;
     corrupt.class_code = 0;
     assert!(matches!(
-        store.read_exact(&[root], &[root_ref, corrupt]).await,
+        store
+            .read_exact(
+                &[root],
+                &[root_ref, corrupt],
+                SnapshotReadLimits::legacy_graph()
+            )
+            .await,
         Err(RevisionStoreError::Integrity)
     ));
     let cycle = store
@@ -206,7 +255,13 @@ async fn exact_snapshot_rejects_missing_extra_cycles_and_wrong_checksums() {
         .await
         .unwrap();
     assert!(matches!(
-        store.read_exact(&[root], &[root_ref, cycle]).await,
+        store
+            .read_exact(
+                &[root],
+                &[root_ref, cycle],
+                SnapshotReadLimits::legacy_graph()
+            )
+            .await,
         Err(RevisionStoreError::Invalid(RevisionError::Invalid(
             "cyclic dependency graph"
         )))
@@ -214,7 +269,11 @@ async fn exact_snapshot_rejects_missing_extra_cycles_and_wrong_checksums() {
     // The original pinned graph remains intact after the incompatible draft.
     assert!(
         store
-            .read_exact(&[root], &[root_ref, dep_ref])
+            .read_exact(
+                &[root],
+                &[root_ref, dep_ref],
+                SnapshotReadLimits::legacy_graph()
+            )
             .await
             .is_ok()
     );
@@ -269,7 +328,11 @@ async fn skill_revision_retains_exact_association_and_requires_correct_component
         .await
         .unwrap();
     let snapshot = store
-        .read_exact(&[skill], &[skill_ref, python_ref, binding_ref, tool_ref])
+        .read_exact(
+            &[skill],
+            &[skill_ref, python_ref, binding_ref, tool_ref],
+            SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     assert_eq!(
@@ -308,7 +371,11 @@ async fn skill_revision_retains_exact_association_and_requires_correct_component
         .unwrap();
     assert!(
         store
-            .read_exact(&[skill], &[bad_ref, wrong_ref, binding_ref, tool_ref])
+            .read_exact(
+                &[skill],
+                &[bad_ref, wrong_ref, binding_ref, tool_ref],
+                SnapshotReadLimits::legacy_graph()
+            )
             .await
             .is_err()
     );
@@ -339,8 +406,13 @@ async fn exact_revision_reads_share_the_callers_consistent_selection_snapshot() 
     let mut client = rig.pool.get().await.unwrap();
     let weak = client.transaction().await.unwrap();
     assert!(matches!(
-        PgComponentRevisionStore::read_exact_in_transaction(&weak, &[root], &[recipe, original])
-            .await,
+        PgComponentRevisionStore::read_exact_in_transaction(
+            &weak,
+            &[root],
+            &[recipe, original],
+            SnapshotReadLimits::legacy_graph()
+        )
+        .await,
         Err(RevisionStoreError::SnapshotIsolation)
     ));
     weak.rollback().await.unwrap();
@@ -367,6 +439,7 @@ async fn exact_revision_reads_share_the_callers_consistent_selection_snapshot() 
         &selected,
         &[root],
         &[recipe, original],
+        SnapshotReadLimits::legacy_graph(),
     )
     .await
     .unwrap();
@@ -379,7 +452,8 @@ async fn exact_revision_reads_share_the_callers_consistent_selection_snapshot() 
         PgComponentRevisionStore::read_exact_in_transaction(
             &selected,
             &[root],
-            &[recipe, replacement]
+            &[recipe, replacement],
+            SnapshotReadLimits::legacy_graph()
         )
         .await,
         Err(RevisionStoreError::Integrity)
@@ -394,10 +468,23 @@ async fn exact_revision_reads_share_the_callers_consistent_selection_snapshot() 
     assert_eq!(head.get::<_, i64>(0), 1);
     selected.commit().await.unwrap();
     let next = store
-        .read_exact(&[root], &[recipe, replacement])
+        .read_exact(
+            &[root],
+            &[recipe, replacement],
+            SnapshotReadLimits::legacy_graph(),
+        )
         .await
         .unwrap();
     assert_eq!(next.revisions()[&code].reference(), replacement);
     // A retained old selection remains readable after the selecting transaction ends.
-    assert!(store.read_exact(&[root], &[recipe, original]).await.is_ok());
+    assert!(
+        store
+            .read_exact(
+                &[root],
+                &[recipe, original],
+                SnapshotReadLimits::legacy_graph()
+            )
+            .await
+            .is_ok()
+    );
 }

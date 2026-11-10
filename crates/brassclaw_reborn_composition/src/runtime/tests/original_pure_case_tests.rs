@@ -1330,7 +1330,7 @@ async fn native_original_pure_case_cancellation_fences_begun_case_without_poison
         assert!(driven.internal_completion.is_none());
         assert!(matches!(
             driven.exit,
-            brassclaw_turns::run_profile::LoopExit::Cancelled(_)
+            brassclaw_turns::LoopExit::Cancelled(_)
         ));
     }
     // The unending candidate cannot finish normally. Do not let expiry of the
@@ -1492,7 +1492,6 @@ async fn native_original_pure_case_operator_http_uses_original_capture_and_real_
         body::{Body, to_bytes},
         http::{Request, StatusCode},
     };
-    use brassclaw_product_workflow::MontyVmSettingsStore as _;
     use sha2::Digest as _;
     use tower::ServiceExt as _;
     struct Operator(brassclaw_host_api::UserId);
@@ -1783,7 +1782,6 @@ async fn native_original_pure_case_operator_http_uses_original_capture_and_real_
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_original_pure_case_actual_compute_tracker_limit_is_not_a_python_outcome() {
-    use brassclaw_product_workflow::MontyVmSettingsStore as _;
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
@@ -1880,7 +1878,6 @@ async fn native_original_pure_case_actual_compute_tracker_limit_is_not_a_python_
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_original_pure_case_actual_receipt_envelope_obeys_acknowledged_byte_boundary() {
-    use brassclaw_product_workflow::MontyVmSettingsStore as _;
     use serde::Serialize;
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
