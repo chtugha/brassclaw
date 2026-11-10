@@ -41,6 +41,15 @@ integrated as `d54f0e2f6`. Root executes both strict native-reference unit cases
 from the actual successfully compiled Skills artifact: two pass, none ignored.
 This does not close the joint build or any connected runtime gate. Run-32 is
 pending; O resumes its read-only proposal only, with no source authorization.
+Run-32 successfully compiles the actual worker and all 19 joint harnesses;
+source/profile/link checks pass. Its pre-native gate stops on one dead test-helper
+warning and disk usage above 90%; no connected runtime cases run. N's separately
+reviewed seven-line cleanup is integrated as `2969ec276`, preserving production
+preparation. Only obsolete non-current library variants are removed after a
+manifest/lock/open-handle audit, preserving all actual current artifacts.
+Run-33 is pending. O now has a bounded private Codex transport/No-Send Slice-A
+source assignment; serving, pair-specific handoff/measurement and complete Bob
+acceptance remain open.
 See the [current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09).
 The three Bob plans and the failed Run-25 Source/lifecycle gates remain open.
 
