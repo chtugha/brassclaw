@@ -41,17 +41,33 @@ async fn published_login_on_pool(
         .revision;
     let mut connection = pool.get().await.unwrap();
     let tx = connection.transaction().await.unwrap();
+    repo.lock_active_revision(&tx, "openai_codex")
+        .await
+        .unwrap()
+        .unwrap();
+    let (head, account) = publish_login_in_transaction(auth, &tx, &original, revision, None).await;
+    tx.commit().await.unwrap();
+    (transport, head, account)
+}
+
+async fn publish_login_in_transaction(
+    auth: &PgAuthProductServices,
+    tx: &tokio_postgres::Transaction<'_>,
+    original: &NativeDeviceLoginOriginal,
+    revision: u64,
+    expected_head: Option<&str>,
+) -> (String, CredentialAccount) {
     let ready = auth
-        .native_device_ready_in_transaction(&tx, &original)
+        .native_device_ready_in_transaction(tx, original)
         .await
         .unwrap();
     let published = auth
         .publish_codex_account_and_head_in_transaction(
-            &tx,
+            tx,
             &ready,
             "native-device-test",
             "openai_codex",
-            None,
+            expected_head,
         )
         .await
         .unwrap();
@@ -59,7 +75,7 @@ async fn published_login_on_pool(
         serde_json::json!({"kind":crate::provider_codex_credentials::LOGIN_KIND,"credential_binding":published.binding}),None).unwrap();
     mutation
         .record_with_links(
-            &tx,
+            tx,
             "native-device-test",
             "actual-test-installer",
             Some(("openai_codex", revision)),
@@ -71,11 +87,10 @@ async fn published_login_on_pool(
         )
         .await
         .unwrap();
-    auth.finish_native_device_in_transaction(&tx, &ready, &published.account)
+    auth.finish_native_device_in_transaction(tx, &ready, &published.account)
         .await
         .unwrap();
-    tx.commit().await.unwrap();
-    (transport, published.head_reference, published.account)
+    (published.head_reference, published.account)
 }
 
 #[cfg(feature = "skills-db")]
