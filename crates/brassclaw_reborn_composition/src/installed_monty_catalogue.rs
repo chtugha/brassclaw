@@ -1933,6 +1933,8 @@ pub(crate) fn original_pure_case_tools(
     operation: Arc<dyn crate::pure_case_execution::OriginalCaseOperation>,
     denied: bool,
 ) -> Result<Arc<dyn RetainedToolPort>, RebornBuildError> {
+    use crate::bootstrap_reply_validation::invalid;
+
     let ids = brassclaw_skills::pure_case_components::usage_ids();
     let binding = program
         .bindings()

@@ -3,6 +3,7 @@
 //! candidate Python. Actual execution stays on the already running global VM.
 use super::*;
 use crate::{
+    bootstrap_reply_validation::invalid,
     pg_transaction_client::TransactionClient,
     private_work_definition::{
         DefinitionCapture, DomainCapture, PrivateWorkDefinition, checksum, decode_checksum,

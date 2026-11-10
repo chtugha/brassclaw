@@ -17,8 +17,7 @@ use brassclaw_engine::{
 use brassclaw_host_api::CapabilityId;
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
-    component_revision::{ComponentRevisionDraft, REVISION_LIMITS},
-    pure_case_components,
+    component_revision::ComponentRevisionDraft, pure_case_components,
     revision_store::PgComponentRevisionStore,
 };
 use serde_json::{Value, json};
@@ -535,7 +534,8 @@ impl Context {
                 admitted.host.clone(),admitted.admission.clone(),program,operation.clone(),false)?;
             let source=Arc::new(seed::SeedSource {reference,inspected,operation:operation.clone(),tools,
                 raw:spec.raw,expected:spec.expected.clone(),received_receipt:std::sync::OnceLock::new(),
-                receipt_failure:brassclaw_monty_host::service::PortFailure::new("original_pure_seed_receipt_invalid").map_err(invalid)?});
+                receipt_failure:brassclaw_monty_host::service::PortFailure::new("original_pure_seed_receipt_invalid")
+                    .map_err(|_|invalid("original Pure seed receipt failure classification is invalid"))?});
             *self.progress.original.lock().map_err(|_|invalid("case original custody unavailable"))?=Some(operation.clone());
             let observation=crate::bootstrap_recipe_flow::execute(&admitted,
                 crate::bootstrap_recipe_flow::Request::contained(self.base.worker.path(),self.base.executor.clone(),

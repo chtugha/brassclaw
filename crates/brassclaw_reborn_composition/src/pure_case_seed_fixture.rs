@@ -118,7 +118,7 @@ pub(super) fn fixture_draft() -> Result<ComponentRevisionDraft, RebornBuildError
     .into_iter()
     .map(|name| {
         (
-            name,
+            name.to_owned(),
             json!({"symbol":name,"parameters":["inputs"],"mapping":true}),
         )
     })

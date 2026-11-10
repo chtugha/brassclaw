@@ -246,7 +246,7 @@ impl PgMontyAdmission {
             report,
         }))
     }
-    fn validate_private_result_reference(
+    pub(super) fn validate_private_result_reference(
         outcome: &Value,
         run: brassclaw_turns::TurnRunId,
     ) -> Result<(), AgentLoopDriverError> {
