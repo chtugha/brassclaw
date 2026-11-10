@@ -162,7 +162,7 @@ pub(crate) async fn confirm_original_with_source(
     source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let write = async {
-        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+        let mut client = crate::bootstrap_evidence::io::acquire(pool)
             .await
             .map_err(|_| database_unavailable())?;
         let tx = client
@@ -182,7 +182,7 @@ pub(crate) async fn confirm_original_with_source(
         Err(primary) => {
             // The uncertain/failed transaction connection is already dropped.
             // Fresh snapshot, no queue mutation, no repeat write or task replay.
-            let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+            let mut client = crate::bootstrap_evidence::io::acquire(pool)
                 .await
                 .map_err(|_| database_unavailable())?;
             let tx = client

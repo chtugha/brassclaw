@@ -542,7 +542,7 @@ pub(crate) async fn qualify(
         "pure_checker_prerequisites",
         fixtures::receipt_id(),
         async {
-            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+            let mut client = io::acquire(&base.pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)

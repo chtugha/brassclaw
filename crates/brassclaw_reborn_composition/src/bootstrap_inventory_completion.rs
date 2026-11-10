@@ -100,7 +100,7 @@ impl Subject {
         self: &Arc<Self>,
         pool: &Arc<PgPool>,
     ) -> Result<Option<InventoryQualification>, RebornBuildError> {
-        let mut client = primitives::EvidenceClient::acquire(pool).await?;
+        let mut client = primitives::acquire(pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -135,7 +135,7 @@ impl Subject {
                 .ok_or_else(|| invalid("qualification original Turn missing before completion"))?,
         };
         verify_turn_record(&run_record, run, &scope)?;
-        let mut client = primitives::EvidenceClient::acquire(pool).await?;
+        let mut client = primitives::acquire(pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)

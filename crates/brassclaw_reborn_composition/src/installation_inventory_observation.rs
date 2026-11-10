@@ -431,7 +431,7 @@ async fn observe_installation_inner(
         store::subject_record(&subject_graph, candidate, package, limits).map_err(invalid)?;
     retain_draft(&pool, storage.as_ref(), &subject_draft).await?;
     let subject = io::bounded(storage.as_ref(), async {
-        let mut client = io::EvidenceClient::acquire(&pool).await?;
+        let mut client = io::acquire(&pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -466,7 +466,7 @@ async fn observe_installation_inner(
         .map_err(invalid)?;
         retain_draft(&pool, storage.as_ref(), &selection_draft).await?;
         let selection = io::bounded(storage.as_ref(), async {
-            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let mut client = io::acquire(&pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
@@ -577,7 +577,7 @@ impl Context {
             "installation_source_original",
             self.operation,
             async {
-                let mut client = io::EvidenceClient::acquire(&self.pool).await?;
+                let mut client = io::acquire(&self.pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)
@@ -1175,7 +1175,7 @@ impl Context {
             "installation_source_terminal_custody",
             self.operation,
             async {
-                let mut client = io::EvidenceClient::acquire(&self.pool).await?;
+                let mut client = io::acquire(&self.pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)
@@ -1278,7 +1278,7 @@ impl InternalRecipeSource for InstallationSource {
                 "installation_source_journal",
                 self.context.operation,
                 async {
-                    let mut client = io::EvidenceClient::acquire(&self.context.pool).await?;
+                    let mut client = io::acquire(&self.context.pool).await?;
                     let tx = client
                         .build_transaction()
                         .isolation_level(IsolationLevel::RepeatableRead)

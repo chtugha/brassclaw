@@ -156,7 +156,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
             let id: Uuid = row.get(1);
             *cursor = Some((row.get(0), id));
             let result=tokio::time::timeout(deadline,async {
-                let mut client=crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool).await.map_err(|_|unavailable())?;
+                let mut client=crate::bootstrap_evidence::io::acquire(&self.pool).await.map_err(|_|unavailable())?;
                 let tx=client.build_transaction()
                     .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
                     .read_only(true).start().await.map_err(|_|unavailable())?;

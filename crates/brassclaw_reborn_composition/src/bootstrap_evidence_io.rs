@@ -8,10 +8,12 @@ use crate::{RebornBuildError, bootstrap_reply_validation::invalid};
 use brassclaw_pg::PgPool;
 use tokio_postgres::IsolationLevel;
 use uuid::Uuid;
-impl EvidenceClient {
-    pub(crate) async fn acquire(pool: &PgPool) -> Result<Self, RebornBuildError> {
-        Ok(Self::from_client(pool.get().await.map_err(invalid)?))
-    }
+/// Acquire the shared PG custody type with this owner's build-error mapping.
+/// This adapter adds no transaction, pool, retry or authority.
+pub(crate) async fn acquire(pool: &PgPool) -> Result<EvidenceClient, RebornBuildError> {
+    Ok(EvidenceClient::from_client(
+        pool.get().await.map_err(invalid)?,
+    ))
 }
 
 pub(crate) async fn retain_new_intent(
@@ -21,7 +23,7 @@ pub(crate) async fn retain_new_intent(
     bytes: &str,
 ) -> Result<(), RebornBuildError> {
     let write = bounded_for(storage, "evidence_intent_write", id, async {
-        let mut client = EvidenceClient::acquire(pool).await?;
+        let mut client = acquire(pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -50,7 +52,7 @@ pub(crate) async fn read_record(
     id: Uuid,
 ) -> Result<Option<String>, RebornBuildError> {
     bounded_for(storage, "evidence_record_read", id, async {
-        let mut client = EvidenceClient::acquire(pool).await?;
+        let mut client = acquire(pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(IsolationLevel::RepeatableRead)
@@ -83,7 +85,7 @@ pub(crate) async fn retain_record(
     bytes: &str,
 ) -> Result<(), RebornBuildError> {
     let write = bounded_for(storage, "evidence_record_write", id, async {
-    let mut client = EvidenceClient::acquire(pool).await?;
+    let mut client = acquire(pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)

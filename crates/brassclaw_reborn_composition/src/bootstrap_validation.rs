@@ -197,7 +197,7 @@ async fn require_source_admission_closed(
     admitted: &Admitted,
 ) -> Result<(), RebornBuildError> {
     use sha2::{Digest, Sha256};
-    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool).await?;
+    let mut client = crate::bootstrap_evidence::io::acquire(pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)

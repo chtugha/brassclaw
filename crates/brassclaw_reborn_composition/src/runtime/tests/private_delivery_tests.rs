@@ -630,7 +630,7 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     .await
     .unwrap();
     transport.arm(1).unwrap();
-    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&transport.pool)
+    let mut client = crate::bootstrap_evidence::io::acquire(&transport.pool)
         .await
         .unwrap();
     let tx = client

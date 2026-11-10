@@ -225,7 +225,7 @@ impl RebornRuntime {
                 );
                 // The driver's BEGIN-abort guard queues rollback; this owner
                 // still recycles only after an acknowledged COMMIT.
-                let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(
+                let mut client = crate::bootstrap_evidence::io::acquire(
                     &self.installed_catalogue.pool,
                 ).await.map_err(|_| unavailable())?;
                 let tx = client.build_transaction()

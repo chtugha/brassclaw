@@ -450,7 +450,7 @@ pub(crate) async fn run_q1_validation_retained(
     )
     .await
     .map_err(|error| Q1Error::Admission(error.to_string()))?;
-    let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+    let mut client = crate::bootstrap_evidence::io::acquire(pool)
         .await
         .map_err(|_| Q1Error::Admission("review confirmation unavailable".into()))?;
     let tx = client

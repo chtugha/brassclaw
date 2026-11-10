@@ -353,7 +353,7 @@ pub(crate) async fn qualify_pure_workflow(
         "pure_workflow_prerequisites",
         base.program.inputs().instruction().recipe().uuid,
         async {
-            let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+            let mut client = io::acquire(&base.pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
@@ -419,7 +419,7 @@ pub(crate) async fn qualify_pure_workflow(
             "pure_workflow_subject_read",
             subject_draft.reference().id,
             async {
-                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let mut client = io::acquire(&base.pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)
@@ -454,7 +454,7 @@ pub(crate) async fn qualify_pure_workflow(
             "pure_workflow_selection_read",
             selection.reference().id,
             async {
-                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let mut client = io::acquire(&base.pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)
@@ -543,7 +543,7 @@ pub(crate) async fn qualify_pure_workflow(
             "pure_workflow_case_report",
             checked.context.subject.candidate().uuid,
             async {
-                let mut client = io::EvidenceClient::acquire(&base.pool).await?;
+                let mut client = io::acquire(&base.pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)

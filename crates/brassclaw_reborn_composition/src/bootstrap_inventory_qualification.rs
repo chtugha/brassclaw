@@ -52,7 +52,7 @@ impl InventoryObservation {
     }
     pub(super) async fn verify(&self, pool: &PgPool) -> Result<(), RebornBuildError> {
         primitives::bounded(self.storage.as_ref(), async {
-            let mut client = primitives::EvidenceClient::acquire(pool).await?;
+            let mut client = primitives::acquire(pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)

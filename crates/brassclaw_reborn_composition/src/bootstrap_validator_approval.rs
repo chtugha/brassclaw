@@ -866,7 +866,7 @@ async fn qualify_specs(
     {
         if let Some(selected) = &mut profile {
             let mut next = (**selected).clone();
-            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let mut client = io::acquire(&pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
@@ -1112,7 +1112,7 @@ async fn qualify_specs(
         let context = Arc::new(context);
         if existing.is_some() {
             let original = io::bounded_for(storage.as_ref(), "checker_published_original", context.claim.root.uuid, async {
-                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let mut client = io::acquire(&pool).await?;
                 let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
                     .read_only(true).start().await.map_err(invalid)?;
                 let present = tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_pure_component_approvals WHERE approval_id=$1)", &[&context.id("approval")]).await.map_err(invalid)?.get::<_,bool>(0);
@@ -1146,7 +1146,7 @@ async fn qualify_specs(
             "checker_complete_original",
             context.claim.root.uuid,
             async {
-                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let mut client = io::acquire(&pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)
@@ -1179,7 +1179,7 @@ async fn qualify_specs(
             .as_ref()
             .is_some_and(|p| !p.approves_function())
         {
-            let mut client = io::EvidenceClient::acquire(&pool).await?;
+            let mut client = io::acquire(&pool).await?;
             let tx = client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
@@ -1215,7 +1215,7 @@ async fn qualify_specs(
             "checker_approval_readback",
             context.claim.root.uuid,
             async {
-                let mut client = io::EvidenceClient::acquire(&pool).await?;
+                let mut client = io::acquire(&pool).await?;
                 let tx = client
                     .build_transaction()
                     .isolation_level(IsolationLevel::RepeatableRead)

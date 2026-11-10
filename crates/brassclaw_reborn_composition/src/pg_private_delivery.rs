@@ -72,7 +72,7 @@ impl PgMontyAdmission {
         completion: &crate::global_monty_driver::SettledInternalCompletion,
         write: bool,
     ) -> Result<(), AgentLoopDriverError> {
-        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(pool)
+        let mut client = crate::bootstrap_evidence::io::acquire(pool)
             .await
             .map_err(|_| failed("private_delivery_database_failed"))?;
         let tx = client

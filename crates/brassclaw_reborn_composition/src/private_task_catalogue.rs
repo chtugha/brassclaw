@@ -436,7 +436,7 @@ impl InstalledMontyCatalogue {
         &self,
         definition: &crate::prefix_job_definitions::Definition,
     ) -> Result<(), RebornBuildError> {
-        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool)
+        let mut client = crate::bootstrap_evidence::io::acquire(&self.pool)
             .await
             .map_err(|_| invalid("private prefix original unavailable"))?;
         let tx = client
@@ -584,7 +584,7 @@ impl InstalledMontyCatalogue {
         &self,
         definition: crate::prefix_job_definitions::Definition,
     ) -> Result<(), RebornBuildError> {
-        let mut client = crate::bootstrap_evidence::io::EvidenceClient::acquire(&self.pool)
+        let mut client = crate::bootstrap_evidence::io::acquire(&self.pool)
             .await
             .map_err(|_| invalid("private prefix preparation unavailable"))?;
         let tx = client
