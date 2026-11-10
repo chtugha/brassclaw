@@ -27,6 +27,36 @@ pub struct LlmKeyStore {
 }
 
 impl LlmKeyStore {
+    /// Recheck the prepared usage under the existing authenticated secret-row
+    /// lock before committing its selection. Codex selects its OAuth head;
+    /// API-key protocols keep the original transactional reader unchanged.
+    /// This does not acquire tokens, accounts or leases, or refresh a session.
+    #[cfg(feature = "postgres")]
+    pub(crate) async fn record_usage_credential_reference_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        definition: &brassclaw_llm::ProviderDefinition,
+    ) -> Result<Option<String>, LlmKeyStoreError> {
+        if definition.protocol != brassclaw_llm::ProviderProtocol::OpenAiCodex {
+            return self
+                .record_reference_in_transaction(transaction, &definition.id)
+                .await;
+        }
+        let store = self.postgres.as_ref().ok_or_else(|| {
+            LlmKeyStoreError::Store(SecretStoreError::BackendMisconfigured {
+                reason: "native credential metadata requires its PostgreSQL secret owner".into(),
+            })
+        })?;
+        store
+            .authenticated_record_reference_in_transaction(
+                transaction,
+                &scope(),
+                &oauth_handle_for(&definition.id)?,
+            )
+            .await
+            .map_err(LlmKeyStoreError::Store)
+    }
+
     /// Identity of the credential selected by the actual retained protocol.
     /// Codex selects its authenticated native login head, never an API-key row
     /// or decrypted session JSON. This read has no lease or refresh effect.

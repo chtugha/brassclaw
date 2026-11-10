@@ -38,6 +38,20 @@ async fn select(
     brassclaw_product_workflow::LlmConfigSnapshot,
     brassclaw_product_workflow::LlmConfigServiceError,
 > {
+    service
+        .set_active(
+            caller(),
+            selection_request(service, provider_id, role, model).await,
+        )
+        .await
+}
+
+async fn selection_request(
+    service: &crate::RebornLlmConfigService,
+    provider_id: &str,
+    role: ProviderRole,
+    model: &str,
+) -> SetActiveLlmRequest {
     let snapshot = service.snapshot(caller()).await.unwrap();
     let revision = snapshot
         .providers
@@ -50,19 +64,14 @@ async fn select(
         ProviderRole::Sempai => "sempai",
         ProviderRole::Embedding => "embedding",
     };
-    service
-        .set_active(
-            caller(),
-            SetActiveLlmRequest {
-                mutation_id: uuid::Uuid::new_v4(),
-                expected_revision: Some(revision),
-                expected_selection_ref: Some(snapshot.role_selection_refs[name].clone()),
-                provider_id: provider_id.into(),
-                model: Some(model.into()),
-                role: Some(role),
-            },
-        )
-        .await
+    SetActiveLlmRequest {
+        mutation_id: uuid::Uuid::new_v4(),
+        expected_revision: Some(revision),
+        expected_selection_ref: Some(snapshot.role_selection_refs[name].clone()),
+        provider_id: provider_id.into(),
+        model: Some(model.into()),
+        role: Some(role),
+    }
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -74,7 +83,7 @@ async fn native_codex_product_use_and_snapshot_share_original_oauth_head_without
     let owner = auth.native_codex_session_owner().unwrap();
     let issuer = Issuer::start(IssuerMode::Success).await;
     let (_, head, _) = published_login_on_pool(&rig.pool, &owner.auth, &issuer).await;
-    let calls = issuer.state.calls.load(Ordering::SeqCst);
+    let mut calls = issuer.state.calls.load(Ordering::SeqCst);
     let repo = Arc::new(crate::PgProviderRepo::new(
         rig.pool.as_ref().clone(),
         TENANT,
@@ -116,11 +125,14 @@ async fn native_codex_product_use_and_snapshot_share_original_oauth_head_without
         .with_native_product_auth(auth)
         .with_reload_trigger(reload)
         .with_sempai_swappable(sempai.clone());
+    let mut originals = Vec::new();
     for (role, name, model) in [
         (ProviderRole::Kohai, "kohai", "codex-primary"),
         (ProviderRole::Sempai, "sempai", "codex-review"),
     ] {
         let snapshot = select(&service, "openai_codex", role, model).await.unwrap();
+        let receipt = snapshot.mutation_receipt.as_ref().unwrap();
+        originals.push((receipt.mutation_id, serde_json::to_value(receipt).unwrap()));
         let captured = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
             .capture_selection(
                 crate::provider_admin::ProviderSelectionSource::Role(role),
@@ -162,8 +174,168 @@ async fn native_codex_product_use_and_snapshot_share_original_oauth_head_without
     );
     assert_eq!(after.desired_publications, before.desired_publications);
     assert_eq!(after.runtime_publications, before.runtime_publications);
+    for (role, name, model) in [
+        (ProviderRole::Kohai, "kohai", "codex-primary-with-api-key"),
+        (ProviderRole::Sempai, "sempai", "codex-review-with-api-key"),
+    ] {
+        let snapshot = select(&service, "openai_codex", role, model).await.unwrap();
+        let captured = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
+            .capture_selection(
+                crate::provider_admin::ProviderSelectionSource::Role(role),
+                &keys,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(captured.credential_ref.as_deref(), Some(head.as_str()));
+        assert_eq!(
+            snapshot.runtime_publications[name],
+            ProviderPublication::Configured {
+                selection: captured.revision
+            }
+        );
+    }
+    assert_eq!(issuer.state.calls.load(Ordering::SeqCst), calls);
+
+    // Obtain a second real issuer result before the commit barrier. Publishing
+    // it later uses the actual native Account/Head/receipt transaction, without
+    // crossing HTTP while a provider or credential lock is held.
+    let transport = transport(
+        &rig.pool,
+        &auth.native_codex_owner().unwrap(),
+        &issuer,
+        None,
+        None,
+    )
+    .await;
+    let original = prepare(&auth.native_codex_owner().unwrap(), &transport, 60)
+        .await
+        .original;
+    let challenge = step(&auth.native_codex_owner().unwrap(), &transport, &original).await;
+    wait_until_due(&challenge).await;
+    step(&auth.native_codex_owner().unwrap(), &transport, &original).await;
+    step(&auth.native_codex_owner().unwrap(), &transport, &original).await;
+    calls = issuer.state.calls.load(Ordering::SeqCst);
+    let native = auth.native_codex_owner().unwrap();
+    let mut current_head = head;
+    for remove_head in [false, true] {
+        let before = service.snapshot(caller()).await.unwrap();
+        let request = selection_request(
+            &service,
+            "openai_codex",
+            ProviderRole::Sempai,
+            "codex-stale-preparation",
+        )
+        .await;
+        let mutation_id = request.mutation_id;
+        let revision = request.expected_revision.unwrap();
+        let mut connection = rig.pool.get().await.unwrap();
+        let pid: i32 = connection
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get(0);
+        let tx = connection.transaction().await.unwrap();
+        tx.query_one("SELECT id FROM brassclaw_llm_providers WHERE tenant_id=$1 AND id='openai_codex' FOR SHARE", &[&TENANT]).await.unwrap();
+        tx.batch_execute("LOCK TABLE brassclaw_config IN SHARE ROW EXCLUSIVE MODE")
+            .await
+            .unwrap();
+        let pending = {
+            let service = service.clone();
+            tokio::spawn(async move { service.set_active(caller(), request).await })
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            while !rig.pool.get().await.unwrap().query_one(
+                "SELECT EXISTS(SELECT 1 FROM pg_stat_activity a WHERE a.query LIKE 'LOCK TABLE brassclaw_config IN SHARE ROW EXCLUSIVE MODE%' AND $1=ANY(pg_blocking_pids(a.pid)))",
+                &[&pid],
+            ).await.unwrap().get::<_, bool>(0) {
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+        }).await.expect("actual Use finished preparation and waits on the native writer's role config lock");
+        if remove_head {
+            // Actual operator secret deletion, not a forged replacement head.
+            assert!(
+                native
+                    .secret_store
+                    .delete(
+                        &ResourceScope::system(),
+                        &crate::llm_key_store::oauth_handle_for("openai_codex").unwrap(),
+                    )
+                    .await
+                    .unwrap()
+            );
+        } else {
+            // If Use had taken the head row before the config lock, this
+            // actual native writer would deadlock on that row. Both writers
+            // must follow provider -> config -> head and then recheck identity.
+            let (next_head, _) = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                publish_login_in_transaction(
+                    &native,
+                    &tx,
+                    &original,
+                    revision,
+                    Some(&current_head),
+                ),
+            )
+            .await
+            .expect("native writer can publish its head while Use waits for config");
+            assert_ne!(next_head, current_head);
+            current_head = next_head;
+        }
+        tx.commit().await.unwrap();
+        drop(connection);
+        assert!(
+            matches!(pending.await.unwrap(), Err(brassclaw_product_workflow::LlmConfigServiceError::Conflict { reason })
+            if reason == "Provider or authentication changed during preparation; reload before retrying.")
+        );
+        assert!(matches!(
+            service.provider_mutation(caller(), mutation_id).await,
+            Err(brassclaw_product_workflow::LlmConfigServiceError::NotFound)
+        ));
+        let after = service.snapshot(caller()).await.unwrap();
+        assert_eq!(after.role_selection_refs, before.role_selection_refs);
+        assert_eq!(after.runtime_publications, before.runtime_publications);
+        if !remove_head {
+            assert_ne!(after.desired_publications, before.desired_publications);
+            for role in [ProviderRole::Kohai, ProviderRole::Sempai] {
+                let snapshot = select(&service, "openai_codex", role, "codex-current-head")
+                    .await
+                    .unwrap();
+                let captured = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
+                    .capture_selection(
+                        crate::provider_admin::ProviderSelectionSource::Role(role),
+                        &keys,
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(
+                    captured.credential_ref.as_deref(),
+                    Some(current_head.as_str())
+                );
+                let name = if role == ProviderRole::Kohai {
+                    "kohai"
+                } else {
+                    "sempai"
+                };
+                assert_eq!(
+                    snapshot.runtime_publications[name],
+                    ProviderPublication::Configured {
+                        selection: captured.revision
+                    }
+                );
+            }
+        }
+    }
+    for (id, receipt) in originals {
+        assert_eq!(
+            serde_json::to_value(service.provider_mutation(caller(), id).await.unwrap()).unwrap(),
+            receipt
+        );
+    }
     // Preparation never asks the native source for a token/refresh or invokes
-    // the model. The only HTTP traffic above is the original login fixture.
+    // the model. HTTP above is limited to the two explicit login exchanges.
     for _ in 0..2 {
         service.snapshot(caller()).await.unwrap();
     }

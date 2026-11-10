@@ -2054,6 +2054,39 @@ impl RebornLlmConfigService {
                 });
             }
         }
+        let role_name = match role {
+            ProviderRole::Kohai => "kohai",
+            ProviderRole::Sempai => "sempai",
+            ProviderRole::Embedding => "embedding",
+        };
+        let provider = selected.as_ref().map(|row| row.definition.id.as_str());
+        let model = prepared
+            .as_ref()
+            .map(|p| p.config.active_model_name())
+            .or_else(|| {
+                provider
+                    .and(request.model.as_deref())
+                    .filter(|model| !model.is_empty())
+                    .map(str::to_owned)
+            });
+        let uses_native_codex = selected
+            .as_ref()
+            .is_some_and(|row| row.definition.protocol == ProviderProtocol::OpenAiCodex);
+        if uses_native_codex {
+            // Match native login's provider -> role config -> OAuth head lock
+            // order. The provisional selection remains in this transaction:
+            // any failed credential/prepared comparison below rolls it back.
+            crate::db_config::save_model_selection_in_transaction(
+                &transaction,
+                &self.db_tenant_id,
+                role_name,
+                expected_selection_ref,
+                provider,
+                model.as_deref(),
+            )
+            .await
+            .map_err(map_selection_edit)?;
+        }
         if let Some(prepared) = &prepared {
             let crate::llm_catalog::PreparedProviderOrigin::Retained {
                 definition,
@@ -2069,7 +2102,7 @@ impl RebornLlmConfigService {
                 .ok_or(LlmConfigServiceError::Unavailable)?;
             let actual_credential = self
                 .keys
-                .record_reference_in_transaction(&transaction, &definition.id)
+                .record_usage_credential_reference_in_transaction(&transaction, definition)
                 .await
                 .map_err(|_| LlmConfigServiceError::Unavailable)?;
             if revision.definition_revision != selected.revision
@@ -2086,31 +2119,18 @@ impl RebornLlmConfigService {
                 return Err(LlmConfigServiceError::Conflict{reason:"Provider or authentication changed during preparation; reload before retrying.".into()});
             }
         }
-        let role_name = match role {
-            ProviderRole::Kohai => "kohai",
-            ProviderRole::Sempai => "sempai",
-            ProviderRole::Embedding => "embedding",
-        };
-        let provider = selected.as_ref().map(|row| row.definition.id.as_str());
-        let model = prepared
-            .as_ref()
-            .map(|p| p.config.active_model_name())
-            .or_else(|| {
-                provider
-                    .and(request.model.as_deref())
-                    .filter(|model| !model.is_empty())
-                    .map(str::to_owned)
-            });
-        crate::db_config::save_model_selection_in_transaction(
-            &transaction,
-            &self.db_tenant_id,
-            role_name,
-            expected_selection_ref,
-            provider,
-            model.as_deref(),
-        )
-        .await
-        .map_err(map_selection_edit)?;
+        if !uses_native_codex {
+            crate::db_config::save_model_selection_in_transaction(
+                &transaction,
+                &self.db_tenant_id,
+                role_name,
+                expected_selection_ref,
+                provider,
+                model.as_deref(),
+            )
+            .await
+            .map_err(map_selection_edit)?;
+        }
         #[cfg(feature = "skills-db")]
         let bootstrap_job_id =
             if let (Some(runtime), Some(bootstrap), Some(selected), Some(_prepared)) = (
