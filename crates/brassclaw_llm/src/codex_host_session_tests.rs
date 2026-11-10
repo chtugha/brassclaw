@@ -482,23 +482,22 @@ async fn host_connect_error_preserves_reqwest_cause_without_endpoint_url() {
     }
 }
 
-#[tokio::test]
-async fn host_request_build_error_remains_distinct_and_unsubmitted() {
-    let p = provider("http://[invalid-host", source());
-    let observer = Arc::new(Observer::default());
-    let result = crate::provider_observation::observe_chat_completion(
-        observer.clone(),
-        p.complete(request()),
-    )
-    .await;
-    match result {
-        Err(LlmError::Http(error)) => {
-            assert!(error.is_builder());
-            assert!(error.url().is_none());
-        }
-        other => panic!("expected actual builder error, got {other:?}"),
-    }
-    assert_eq!(*observer.events.lock().unwrap(), vec!["rejected"]);
+#[test]
+fn invalid_codex_endpoint_is_rejected_before_constructing_host_provider() {
+    // The explicit endpoint resolver now rejects this configuration before an
+    // operation exists. Do not fabricate a Host source or claim a later HTTP
+    // builder/observer event for an object that cannot be constructed.
+    assert!(matches!(
+        OpenAiCodexProvider::new_host_with_response_limit(
+            "fixture-model",
+            "http://[invalid-host",
+            5,
+            None
+        ),
+        Err(LlmError::FinalRequestRejected {
+            reason: FinalRequestError::Target
+        })
+    ));
 }
 
 /// Successor of old File+HostManaged refresh-failure case: the actual Host
