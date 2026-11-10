@@ -2730,6 +2730,9 @@ pub async fn build_reborn_runtime(
             tenant,
         )
         .with_sempai_swappable(swappable.clone());
+        if let Some(auth) = services.product_auth.as_ref() {
+            configuration = configuration.with_native_product_auth(auth);
+        }
         if let Some(mode) = &interceptor_mode {
             configuration = configuration.with_interceptor_mode(mode.clone());
         }

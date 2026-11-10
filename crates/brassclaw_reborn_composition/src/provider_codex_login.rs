@@ -1,5 +1,6 @@
 //! PRIVATE036: native login publication in the existing provider/Auth owners.
-//! Not mounted/compiled. Issuer protocol/custody remains in PgAuthDevice.
+//! Mounted by the LLM-config service with its composed native Auth facade.
+//! Issuer protocol/custody remains in PgAuthDevice.
 use super::*;
 use brassclaw_auth::{
     AuthFlowId, AuthProductScope, AuthSurface, CredentialAccountId, CredentialAccountLabel,

@@ -504,36 +504,51 @@ impl RebornLlmConfigService {
         ),
         String,
     > {
-        let guard = crate::provider_dispatch::PgProviderDispatchGuard::from_capture(
-            self.pg_pool.as_ref().clone(),
+        let selection = captured.selection.clone();
+        let credential_ref = captured.credential_ref.clone();
+        let codex_native_owner = self
+            .native_auth
+            .upgrade()
+            .and_then(|auth| auth.native_codex_session_owner().ok());
+        let resolved = crate::llm_catalog::resolve_captured_provider_selection(
+            &self.pg_pool,
             &self.db_tenant_id,
-            self.keys.clone(),
-            &captured,
-        )
-        .map_err(|_| "stored Sempai compatibility could not be captured".to_string())?;
-        let registry = ProviderRegistry::new(vec![captured.definition.clone()]);
-        let config = resolve_against_registry_with_credentials(
-            &captured.selection,
-            &registry,
-            captured.credential,
+            &self.keys,
+            captured,
+            codex_native_owner,
         )
         .map_err(|_| "stored Sempai configuration is invalid".to_string())?;
-        let mut revision = captured.revision;
-        revision.model = config.active_model_name();
+        let config = resolved.config;
         let session = brassclaw_llm::create_session_manager(config.session.clone()).await;
-        let provider =
-            brassclaw_llm::build_static_provider_chain_with_guard(&config, session, guard)
+        let provider = match resolved.codex_host_source {
+            Some(source) => {
+                brassclaw_llm::build_static_provider_chain_with_codex_host_session(
+                    &config,
+                    session,
+                    resolved.guard,
+                    source,
+                )
                 .await
-                .map_err(|_| "stored Sempai provider could not be constructed".to_string())?;
+            }
+            None => {
+                brassclaw_llm::build_static_provider_chain_with_guard(
+                    &config,
+                    session,
+                    resolved.guard,
+                )
+                .await
+            }
+        }
+        .map_err(|_| "stored Sempai provider could not be constructed".to_string())?;
         Ok((
             provider,
             crate::llm_catalog::PreparedProviderSelection {
                 config,
                 origin: crate::llm_catalog::PreparedProviderOrigin::Retained {
-                    definition: captured.definition,
-                    selection: captured.selection,
-                    revision,
-                    credential_ref: captured.credential_ref,
+                    definition: resolved.definition,
+                    selection,
+                    revision: resolved.revision,
+                    credential_ref,
                 },
             },
         ))
@@ -683,6 +698,23 @@ impl RebornLlmConfigService {
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        // Desired publication uses the protocol's usage identity (the OAuth
+        // head for Codex). API-key presence remains a separate UI property.
+        // Non-Codex usage reads the same API-key reference, so reuse it rather
+        // than authenticating that metadata twice in this snapshot.
+        let mut credential_refs = key_refs.clone();
+        for (index, row) in all_defs.iter().enumerate() {
+            if row.definition.protocol == ProviderProtocol::OpenAiCodex {
+                credential_refs[index] = self
+                    .keys
+                    .inspect_usage_credential_reference_in_transaction(
+                        &transaction,
+                        &row.definition,
+                    )
+                    .await
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            }
+        }
         let mut desired_publications = std::collections::BTreeMap::new();
         let mut selections = std::collections::BTreeMap::new();
         for (name, role) in [
@@ -719,7 +751,7 @@ impl RebornLlmConfigService {
                                 slot,
                                 definition,
                                 all_defs[index].revision,
-                                key_refs[index].as_deref(),
+                                credential_refs[index].as_deref(),
                             )
                             .map_err(|_| LlmConfigServiceError::Unavailable)?;
                             brassclaw_llm::ProviderPublication::Configured {

@@ -110,7 +110,7 @@ pub(crate) struct ResolvedProviderSelection {
     pub guard: std::sync::Arc<dyn brassclaw_llm::ProviderDispatchGuard>,
     /// Non-serializable installed Codex credential source, threaded from the
     /// authenticated host bridge to the SDK builder. `None` for all non-Codex
-    /// protocols and until the PG bridge supplies a confirmed lineage holder.
+    /// protocols; Codex resolution requires the composed owner and selected head.
     pub codex_host_source: Option<std::sync::Arc<dyn brassclaw_llm::CodexHostSessionSource>>,
 }
 

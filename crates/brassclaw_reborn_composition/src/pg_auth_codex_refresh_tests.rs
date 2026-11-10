@@ -13,13 +13,25 @@ async fn published_login(
     String,
     CredentialAccount,
 ) {
-    let transport = transport(&rig.pool, auth, issuer, None, None).await;
+    published_login_on_pool(&rig.pool, auth, issuer).await
+}
+
+async fn published_login_on_pool(
+    pool: &Arc<brassclaw_pg::PgPool>,
+    auth: &PgAuthProductServices,
+    issuer: &Issuer,
+) -> (
+    crate::oauth_provider_client::HostOAuthProviderClient,
+    String,
+    CredentialAccount,
+) {
+    let transport = transport(pool, auth, issuer, None, None).await;
     let original = prepare(auth, &transport, 60).await.original;
     let challenge = step(auth, &transport, &original).await;
     wait_until_due(&challenge).await;
     step(auth, &transport, &original).await;
     step(auth, &transport, &original).await;
-    let repo = crate::PgProviderRepo::new(rig.pool.as_ref().clone(), "native-device-test");
+    let repo = crate::PgProviderRepo::new(pool.as_ref().clone(), "native-device-test");
     repo.initialize().await.unwrap();
     let revision = repo
         .get_revision("openai_codex", false)
@@ -27,7 +39,7 @@ async fn published_login(
         .unwrap()
         .unwrap()
         .revision;
-    let mut connection = rig.pool.get().await.unwrap();
+    let mut connection = pool.get().await.unwrap();
     let tx = connection.transaction().await.unwrap();
     let ready = auth
         .native_device_ready_in_transaction(&tx, &original)
@@ -65,6 +77,10 @@ async fn published_login(
     tx.commit().await.unwrap();
     (transport, published.head_reference, published.account)
 }
+
+#[cfg(feature = "skills-db")]
+#[path = "pg_auth_codex_product_tests.rs"]
+mod product_tests;
 
 #[tokio::test]
 async fn native_codex_refresh_two_owners_share_one_generation_and_omitted_refresh_is_retained() {
