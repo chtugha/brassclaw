@@ -314,6 +314,114 @@ async fn configured_frames_above_64_mib_round_trip_without_an_independent_ceilin
 }
 
 #[tokio::test]
+async fn original_pure_case_encoder_defers_json_import_until_invocation() {
+    use brassclaw_engine::executor::{
+        retained_preload::PreloadDeclaration, retained_profile::builtin,
+    };
+
+    // Inspect the shipped bytes with the actual contained parser. A declaration
+    // or a Python-only evaluation cannot establish an effect-free preload.
+    let id = brassclaw_skills::pure_case_components::encoder_id();
+    let draft = brassclaw_skills::pure_case_components::drafts()
+        .unwrap()
+        .into_iter()
+        .find(|draft| draft.uuid() == id)
+        .expect("shipped encoder draft");
+    let declaration = PreloadDeclaration::parse(draft.document(), draft.dependencies())
+        .unwrap()
+        .expect("shipped encoder preload declaration");
+    let source = draft.document()["content"].as_str().unwrap();
+    assert_eq!(
+        source,
+        brassclaw_skills::pure_case_components::ENCODE_SOURCE
+    );
+    let UtilityOutput::Inspected { structure } = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: source.into(),
+            bounds: boot(SOURCE).bounds.values,
+        },
+        limits(),
+    )
+    .await
+    .unwrap() else {
+        panic!("actual encoder source observations required")
+    };
+    assert_eq!(
+        structure.source_checksum,
+        format!("{:x}", Sha256::digest(source.as_bytes()))
+    );
+    assert_eq!(declaration.imports, vec!["json".to_owned()]);
+    assert_eq!(
+        structure.imports,
+        declaration
+            .imports
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+    assert!(structure.direct_host_calls.is_empty());
+    assert!(!structure.relative_imports);
+    assert!(structure.reserved_name_references.is_empty());
+    assert_eq!(structure.host_value_references, 0);
+    let library = structure
+        .preload
+        .expect("shipped encoder must be preloadable");
+    assert_eq!(
+        library.functions,
+        declaration
+            .exports
+            .values()
+            .map(|export| (export.symbol.clone(), export.parameters.clone()))
+            .chain(
+                declaration
+                    .private_functions
+                    .iter()
+                    .map(|(name, parameters)| (name.clone(), parameters.clone()))
+            )
+            .collect::<BTreeMap<_, _>>()
+    );
+    assert_eq!(
+        library.constants,
+        declaration
+            .constants
+            .iter()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+    assert!(library.references.iter().all(|name| builtin(name)));
+    assert!(
+        !library.references.contains("json"),
+        "json must be local to the invocation"
+    );
+    assert_eq!(
+        declaration
+            .invocation(
+                "encode_original_pure_case_receipt",
+                &draft.document()["input_contract"]
+            )
+            .unwrap(),
+        "result = encode_original_pure_case_receipt(inputs=inputs)"
+    );
+
+    // The original defect remains rejected even though json is an allowed
+    // import: loading definitions must not perform the module-level import.
+    let UtilityOutput::Inspected { structure } = execute(
+        worker(),
+        UtilityRequest::InspectSource {
+            source: format!("import json\n{source}"),
+            bounds: boot(SOURCE).bounds.values,
+        },
+        limits(),
+    )
+    .await
+    .unwrap() else {
+        panic!("actual rejected module-import observations required")
+    };
+    assert!(structure.preload.is_none());
+}
+
+#[tokio::test]
 async fn preload_inspection_preserves_function_scopes_and_rejects_initializers() {
     let source = "LIMIT = (1, 'literal')\ndef first(inputs):\n    def inner(secret):\n        return secret\n    return absent + inner(inputs['text'])\ndef second(inputs):\n    return host.json(data=inputs['text'])";
     let UtilityOutput::Inspected { structure } = execute(

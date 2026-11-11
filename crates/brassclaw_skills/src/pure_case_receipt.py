@@ -1,7 +1,6 @@
-import json
-
-
 def encode_original_pure_case_receipt(inputs):
+    import json
+
     observation = json.loads(inputs["case_outcome_json"])
     if type(observation) is not dict:
         raise ValueError("original Pure observation must be an object")
