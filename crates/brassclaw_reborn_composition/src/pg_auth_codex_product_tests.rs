@@ -365,7 +365,8 @@ async fn native_codex_product_startup_restores_sempai_without_webui_or_dispatch(
     let services = factory(&rig, home.path()).await;
     let auth = services.product_auth.as_ref().unwrap();
     let issuer = Issuer::start(IssuerMode::Success).await;
-    published_login_on_pool(&rig.pool, &auth.native_codex_owner().unwrap(), &issuer).await;
+    let (_, head, _) =
+        published_login_on_pool(&rig.pool, &auth.native_codex_owner().unwrap(), &issuer).await;
     let calls = issuer.state.calls.load(Ordering::SeqCst);
     crate::db_config::save_config_changes(
         &rig.pool,
@@ -395,6 +396,7 @@ async fn native_codex_product_startup_restores_sempai_without_webui_or_dispatch(
     let runtime = crate::build_reborn_runtime(
         crate::RebornRuntimeInput::from_services(
             rig.build_input("native-device-operator", home.path())
+                .with_tenant_id(TENANT)
                 .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
         )
         .with_identity(crate::RebornRuntimeIdentity {
@@ -406,6 +408,16 @@ async fn native_codex_product_startup_restores_sempai_without_webui_or_dispatch(
     )
     .await
     .unwrap();
+    let restored = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
+        .capture_selection(
+            crate::provider_admin::ProviderSelectionSource::Role(ProviderRole::Sempai),
+            &runtime.services().llm_key_store(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.credential_ref.as_deref(), Some(head.as_str()));
+    assert_eq!(restored.revision, selected.revision);
     let sempai = runtime.sempai_swappable().unwrap();
     assert_eq!(
         sempai.pinned_provider().1,
