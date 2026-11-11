@@ -380,6 +380,7 @@ impl RetainedRecipeInputs {
     /// Authenticate complete recorded typed input edges against this original
     /// selection. Shared by authored/installation observations and closed fixture
     /// review; this checks data custody and neither schedules nor approves.
+    #[cfg(feature = "skills-db")]
     pub fn verify_recorded_input_fingerprints(
         &self,
         task_inputs: &Value,
