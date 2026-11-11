@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original Queue custody and Source diagnostics**: Correct test selectors to
+  target the real Queue transaction and retain authentic test observation limits
+  across service failure. Run-39 compiles all 21 harnesses warning-free; both
+  real PostgreSQL Queue fault cases pass. Source diagnostics expose a private
+  worker-envelope rejection and a separate unresolved size-one-pool projection
+  failure. Their production repairs and full Bob acceptance remain pending.
+  Capture/Regex settings govern new preparations; existing programs retain their
+  original policy, without an automatic recompilation service.
+
 - **Bob Run-38 scoped acceptance**: Compile all 21 joint harnesses warning-free
   and reuse the verified images for runtime checks. The contained common
   prerequisite and corrected Codex/Sempai startup pass. Of 68 selected independent

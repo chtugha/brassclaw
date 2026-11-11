@@ -1,3 +1,50 @@
+## 2026-11-11 — Run-39: Queue custody passes; private worker rejection identified
+
+At frozen source `a40aee8d6317f14bc3d0f41061d0f0a93f5be3a8`, the worker and
+all 21 joint harnesses compile without warnings. The complete compilation stage
+takes 692.169 seconds; actual profile/link checks pass with `__eh_frame` at
+13,598,892 bytes. Runtime uses these exact images after audited recovery of
+superseded cache files, without another compilation. All canonical/retained
+images, worker and captured source are verified at terminal; owned processes
+are absent and the source freeze is released.
+
+Both corrected real PostgreSQL Queue cases pass (3.311 and 3.337 seconds), one
+test each/none ignored. Their selectors now reach the actual queue transaction,
+including existing-original ACK loss and cancelled held-ACK connection custody.
+The original no-replay, backend identity and physical-disposal assertions remain.
+
+Both Source cases fail with useful original diagnostics. The first (395.356
+seconds) has a claimed/reserved admission, no terminal/delivery and zero Tool
+invocations. The actual joined service reports a first `Vm(InvalidInputs)`
+exchange while admission is pending. Source inspection identifies a missing
+private-envelope branch in WorkerRecipes: Service and GlobalVm already validate
+that exact private envelope. N owns the minimal shared correction, including a
+separately reviewable Main backport. This is not an approval or routing failure.
+
+The other case (434.677 seconds) fails during original projection with the
+size-one pool exhausted, admission awaiting, and no observed owner exit. Its
+original author-commit cut has already been passed. Intent transaction custody
+and later service-capacity waiting remain to be distinguished by actual
+observations; the worker-envelope defect is not asserted as its cause. J's
+integrated test frame retains authentic original observation limits and no
+longer masks these failures by rereading unavailable live settings.
+
+Evidence: `target/validation/bob-native-repair-20261105/run-39-composition/`,
+including `terminal-disposition.json` and
+`focused-corrections-1/queue-accepted.json`. The Source prerequisites remain
+unaccepted; dependent execution is not advanced on these failures.
+
+The Capture/Regex policy re-audit rejects an unnecessary automatic recompile:
+already prepared immutable programs retain original R for later tasks; genuinely
+new preparations take acknowledged current policy. T and live Tool policy still
+apply independently. Exact catalogue reuse, actual original S retention and
+Reply/History/base restoration need their connected existing-owner work; no
+refresh service or new authority is authorized. N/R sources remain private and
+unaccepted, including R's confirmed original record/graph-policy correction.
+Run-38's scoped Codex/Sempai startup pass remains recorded, without full serving
+or issuer qualification. Feature-off CLI validation and all three Bob plans stay
+open. Earlier entries below are historical where superseded by this checkpoint.
+
 ## 2026-11-11 — Run-38 terminal; Codex startup passes, Source diagnosis remains open
 
 At frozen source `731f58545016089ed228d9142196c41d625ed99f`, the actual worker
