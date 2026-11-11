@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bob Run-38 scoped acceptance**: Compile all 21 joint harnesses warning-free
+  and reuse the verified images for runtime checks. The contained common
+  prerequisite and corrected Codex/Sempai startup pass. Of 68 selected independent
+  cases, 67 pass; correct the held-ACK selector and its neighboring coverage scope.
+  Both Source foundation cases still fail in the test watchdog's repeated live
+  settings read, masking original service diagnostics. Preserve those failures;
+  connected execution, complete Pure approval and full Bob acceptance remain open.
+  Private Capture/Regex and independent shipped-qualification work is not activated.
+
 - **Original review phase custody (validation pending)**: Separate bounded
   PostgreSQL authoring/readback from native source preparation using one captured
   policy. Preserve original-only reconciliation after uncertain COMMIT, and keep

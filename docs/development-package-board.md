@@ -37,44 +37,58 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current supervisor checkpoint — 2026-11-11, after Run-37
+### Current supervisor checkpoint — 2026-11-11, after Run-38
 
-**Subsequent reviewed integration:** `b906d4f96` adds original-completion/phase
-corrections and actual-owner diagnostic facts; `b93fa1870` repairs the genuine
-feature-off fingerprint reference. Both are uncompiled/unaccepted. The actual
-default CLI DB-reader test passes at `da84ed997`; the subsequent feature-off
-build fails before its test. Full original receipts remain in `run-37-cli/`
-and `run-37-cli-off/`. J is idle for concrete validation findings.
+Run-38 is terminal at `731f58545016089ed228d9142196c41d625ed99f`. The worker
+and all 21 joint harnesses compile warning-free; the same verified images run
+after necessary audited cache recovery, without recompilation. Of 68 independent
+cases, 43 execute (42 pass/one failure) and 25 pass by identical-LLM-image reuse; the held-ACK
+case fails on a selector that stops the preceding original-ID read. Its neighbor's
+second passing ACK-loss rule has the same scope error. Actual common prerequisite
+passes in 403.973 s. Corrected Codex/Sempai startup passes in 371.441 s, one test,
+none ignored, with accepted original artifact/source receipts. Source foundation
+fails twice in the test deadline helper's repeated live settings read; Runtime
+construction did return. Actual service-stop cause remains unknown and dependent
+cases are not run. All 21 origins/copies, worker and captured source are verified;
+owned compiler/native/PostgreSQL processes are absent. The freeze is released.
+Evidence: `target/validation/bob-native-repair-20261105/run-38-composition/`.
 
-**Current two source owners:** Q continues its connected Capture/Regex and
-historical-codec assignment; only the existing exact generation-owner canonical
-exception may receive matching carriage, never a general Pure approval. N now
-implements the returned cold Spec-inspection lockscope correction and three
-real native fault-test groups. Its prior private source is still unaccepted;
-V214/N and V215/Q remain distinct. Both consume the reviewed J owner/feature
-corrections through real private three-way integration. Root does not implement
-product code and retains sole native acceptance/integration authority.
+**Current two source owners: N and J.** N corrects its concrete private compiler,
+original-error custody and Plan/Spec fault-oracle findings, plus stored result
+schemas incorrectly reparsed under later execution bounds. Its one authorized
+Modal product build at `7c55abe05` actually fails (22 diagnoses, no artifacts);
+terminal app is stopped with zero tasks. No second paid build is authorized.
+J owns the bounded Run-38 queue-selector and original-watchdog/diagnostic repair.
+It changes neither production deadlines nor actual ACK/settlement/approval gates.
+Root retains sole local validation and Main integration authority.
 
-Run-37 is terminal at frozen source `2d8873965`; all 21 images and source inputs
-are verified, and the freeze is released. Warning-free joint compilation,
-63 independent regressions (38 executed / 25 identical-image reuse) and actual
-common startup pass. Codex startup fails in a physical SecretStore namespace
-fixture; reviewed correction is integrated as `57e97cb8d`, unrun. Both actual
-Source foundation cases fail; connected cases do not run. Original logs and
-terminal disposition remain under `target/validation/bob-native-repair-20261105/run-37-composition/`.
+R-01, chat `01a1ca84-a21f-7590-8e6d-90fc5e43981c`, isolated worktree `5fa8`,
+reads the complete architecture and all 78 Q inventory rows. Its first approved
+scope is eight genuine independent shipped Pure roots (Generation revision,
+History and six compiler roots), necessary independently qualified typed result
+instruments, original-record restoration and connected consumers. It reuses
+existing Spec/Suite/Context and evidence owners, with no general authored grant,
+canonical-exception expansion or invented evidence. Its private Main/N/Q basis
+is a true merge. Source work is temporarily held unchanged while J uses the second
+slot; R reviews the exact consuming-workflow successor contract meanwhile and
+resumes after J's bounded handoff. No R build or native acceptance is claimed.
+
+Q-01, chat `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, worktree `bad8`, has a
+49-file private source handoff at `1bc781a9e`, without compile/native acceptance.
+The acknowledged host settings path and original Regex policy carrier do not yet
+update programs used by new captures of an unchanged active catalogue. Its
+read-only connected follow-up covers technical preparation/publication, actual
+Reply/History/private/MCP/Prefix consumers and honest effective status. Original
+S/workflow records must be authenticated without rewriting their old subjects.
+Q has no source/build grant during N/J work. V214 remains N's exclusive migration;
+V215 remains Q's. R has no new proven migration need or SQL reservation.
+
+The earlier default CLI DB-reader pass remains recorded at `da84ed997`;
+no-default compilation originally fails E0425. `b93fa1870` consistently gates the
+actual fingerprint method, but that CLI variant still needs execution. M/P/O are
+idle for their own concrete findings. All three Bob plans and full serving,
+authored Pure approval, compatibility/migration and release acceptance remain open.
 Earlier checkpoints below are historical where superseded by this paragraph.
-
-Q-01, chat `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, isolated worktree `bad8`,
-implements the three Capture/Regex settings through existing live ACK, parser,
-retained preparation and UI owners. V215 is reserved exclusively to Q; frozen
-historical codecs and original selection/parser/compile policy remain distinct.
-N's private V214 prerequisite is not native acceptance. N's connected source is
-under review; its committed original parser-bound correction `7c7efe1ef` is
-source-reviewed/hash-verified, uncompiled/unaccepted. N now supplies read-only
-fault-instrument analysis. J supplies read-only diagnosis of the two actual Source
-failures. M/P/O are idle for their own concrete corrections. Root retains sole
-local Cargo/test/integration authority; at most two source implementers remain
-allowed. All three Bob plans remain open.
 
 ### Current integration checkpoint — 2026-11-09
 
@@ -751,13 +765,15 @@ remain untouched. Do not copy the old tree or infer full Bob completion.
 | G-01 — actual held transaction acknowledgements | `01a1bac3-1f9a-77e3-86ac-e2ee132fb953`, host `local`, title “Paket G-01 — Echte Transaktionsabbruch-Abnahme”; `/Users/ollama/.codex/worktrees/d159/brassclaw`, branch `codex/g01-held-transaction-acks` | Complete two-file source `dc19b6397` reviewed, independently hash-verified and integrated as `6ad115a0b`. Extends existing Cut transport with real Hold/Release and adds actual producer cancellation/reuse/shutdown/native-completion test sources. No production policy or schema change. Native and strict affected lint acceptance pending; idle for own corrections. |
 | H-01 — durable original review discovery and native delivery | `01a1bbf8-4da9-7e50-b16e-22adaea2a83a`, host `local`; `/Users/ollama/.codex/worktrees/527f/brassclaw`, branch `codex/h01-original-work-custody` | Complete connected source and transaction/actor review corrections integrated through `103b3a444`. V208 delivery/confirmation, historical readers, Prefix/validator consumers and existing Worker reconciliation are source-reviewed. Native compilation/acceptance pending. Positive structural result remains State 1; no full qualified Q1 producer. Idle for own concrete corrections. |
 | I-01 — qualified original Pure Source review | `01a1bef8-0c72-74f1-899c-a7e4b84b0633`, host `local`; `/Users/ollama/.codex/worktrees/5b8c/brassclaw` | Connected 25-file source reviewed and integrated through `7152f0e0a`; V210/outer /2 and real Source observer/confirmation, metadata custody corrections and nine native test sources. Compile/native acceptance pending. Common class-21/23 authoring custody correction reviewed and integrated as `d30a5126b`/`8b83d551d`; full 28-file package awaits compilation/native acceptance. Positive future-consumer view test-only until J-01. No general Pure approval or cross-package loader. |
-| J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 source integrated; Run-37 actual encoder/common startup pass. Source foundation failures remain. Reviewed original-completion/PG-phase/owner-facts and feature-off corrections integrated as b906d4f96/b93fa1870, uncompiled/unaccepted. Idle for concrete findings; general approval remains open. |
+| J-01 — original single Pure case | `01a1bfbb-8d29-75b1-9946-9c2cb8ad14ac`, host `local`; actual implementation `/private/tmp/brassclaw-j01-implementation` (the initial app worktree `8147` is obsolete) | V211 and corrections integrated. Run-38 compiles warning-free; contained common prerequisite passes. Source failures now occur in the test deadline helper and still hide the actual service-stop cause. Owns the bounded queue-COMMIT selector and original-watchdog diagnostic correction; N/J are the current source owners. General approval remains open. |
 | K-01 — acknowledged graph/submission/HTTP budgets | `01a1c10c-3ba1-7a22-be23-4e8885c3f645`, host `local`; `/Users/ollama/.codex/worktrees/24b2/brassclaw` | Connected source/V212 and adapter correction integrated; Run-35 combined compilation passes. Scoped PG capacity/preparation/held-ACK/descriptor cases pass; remaining connected runtime acceptance is blocked by common startup. Idle for own corrections; separate evidence/historical-image limits remain open. |
 | L-01 — original per-revision parser/storage policy | `01a1c269-3da9-7723-92cd-55218fe0cb0f`, host `local`; `/Users/ollama/.codex/worktrees/9bbf/brassclaw` | Coherent V213 source/eight restores integrated as `3002c45c8`. Run-35 compilation and original parser/association/mixed-graph regression cases pass after isolated fixture repairs. Full runtime settings/snapshot gates remain blocked by common startup. Idle for corrections; depth above 64 and independent evidence/native-image migration remain open. |
-| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 and OAuth-head/CAS/lock-order correction integrated; actual C1/C3 pass. First actual Sempai startup fails at mismatched test SecretStore namespace. Reviewed fixture correction integrated as 57e97cb8d, unrun; idle. Responses/prefix and real issuer/platform gates remain open. |
-| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Private connected V214 source remains unaccepted. S-bound restore source reviewed/hash-verified. Now corrects proven cold Spec inspection while holding parent locks and adds real Plan lifecycle/ACK/installer-closure fault-test sources, consuming current Main/J through true three-way merge. No native acceptance. |
+| M-01 — provider/Codex preparation and status | `01a1c4f6-1b64-75b2-a7a7-771c7f7bb3b6`, host `local`; `/Users/ollama/.codex/worktrees/8d0f/brassclaw` | M1/M2 and OAuth-head/CAS/lock-order correction integrated; actual C1/C3 pass. Reviewed fixture 57e97cb8d now passes actual Codex/Sempai startup in Run-38 (one executed, none ignored, 371.441 s). Idle; Responses/prefix, real issuer and platform gates remain open. |
+| N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Private V214 source remains unaccepted. Single authorized Modal product build at 7c55abe05 fails with 22 diagnoses, no artifacts; app stopped. Corrects concrete compiler/cause-custody and native Plan/Spec fault-oracle findings, plus originally parsed schema contracts incorrectly reinterpreted under later T. No new build/native acceptance. |
 | O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Fourteen-file A source integrated; 25 codec/isolated SDK cases and actual factory pre-authentication case pass. Complete Prefix caller passes in Run-36 after reviewed `95a9f01c7` fixture repair. Idle. No serving activation; technical upgrade compatibility, pair-format/Sempai/exact-prefix and actual API evidence remain open. |
 | P-01 — native Provider/Auth status projection | `01a1c8aa-04ef-7323-a41d-a4a4d738dff5`, host `local`; `/Users/ollama/.codex/worktrees/41f5/brassclaw` | All 32 source identities integrated. JS 33, Run-37 real PG/native status cases and HTTP facade contract pass. Actual CLI-default DB-reader passes; no-default build reveals an Engine feature mismatch, reviewed fix integrated but unrun. Browser/serving/issuer acceptance remains open; idle. |
+| Q-01 — original Capture/Regex policy | `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, host `local`; `/Users/ollama/.codex/worktrees/bad8/brassclaw` | Private 49-file source at 1bc781a9e, uncompiled/unaccepted. Read-only technical-refresh review proves that host ACK alone leaves active Regex programs unchanged. Existing catalogue/publication, Reply/History/private/MCP/Prefix and exact qualification reuse require a connected correction. V215 reserved; no current source/build grant. |
+| R-01 — independent shipped Pure subjects/readers | `01a1ca84-a21f-7590-8e6d-90fc5e43981c`, host `local`; `/Users/ollama/.codex/worktrees/5fa8/brassclaw` | Architecture/inventory/contracts reviewed; initial eight-root connected scope authorized through existing B1/B2 owners. Private true-merged basis and partial source are held unchanged while J uses the second source slot; readonly consuming-workflow successor review continues. No SQL reservation, build/native or general authored approval claim. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

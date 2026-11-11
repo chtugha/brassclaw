@@ -1,3 +1,51 @@
+## 2026-11-11 — Run-38 terminal; Codex startup passes, Source diagnosis remains open
+
+At frozen source `731f58545016089ed228d9142196c41d625ed99f`, the actual worker
+and all 21 joint harnesses compile without warnings. The joint build takes
+854.641 seconds; link/profile checks pass with `__eh_frame` at 13,593,160 bytes.
+Runtime resumes from those same images after audited obsolete-cache recovery;
+no compilation is repeated. All retained images, canonical executable origins,
+worker and complete captured source are verified through terminal completion.
+Owned native/compiler/PostgreSQL processes are absent and the freeze is released.
+
+Of 68 selected independent regressions, 43 actually execute (42 pass/one failure)
+and 25 LLM passes reuse the identical executable: 67 passes in total. The held-COMMIT cancellation case fails:
+its ID-only selector holds a preceding original-ID read before fresh authoring,
+while its oracle already requires the later created original. The neighboring
+passing ACK-loss test's second rule likewise reaches that preliminary read,
+not its intended existing-queue transaction. J owns the precise selector repair;
+the original custody, backend-PID and physical-disposal assertions stay required.
+
+The actual contained common prerequisite passes in 403.973 seconds. The corrected
+Codex Sempai startup passes, one executed/none ignored, in 371.441 seconds. This
+accepts original OAuth-head/selection restoration and early Sempai preparation;
+it does not qualify Responses/Prefix serving, a real issuer or other platforms.
+Both Source foundation tests still fail, now in the test `deadline` helper at
+`qualified_source_review_tests.rs:32`. Runtime construction has returned; repeated
+live settings reads in the watchdog/diagnostic can mask the original producer
+failure after service closure or an acknowledgement failure. The actual global service-stop cause remains
+unknown, and Source/ACK progress cannot be inferred from this bare panic.
+Connected cases are not run. J corrects observation without weakening production
+ACK, dispatch, settlement or approval checks. Evidence:
+`target/validation/bob-native-repair-20261105/run-38-composition/`, including
+`terminal-disposition.json` and `provider-startup-1/accepted.json`.
+
+N's one authorized private Modal product build at `7c55abe05` terminates with
+exit 101, 22 compiler diagnostics and no artifacts; the cloud app is stopped
+with zero tasks. Its source corrections preserve actual private error custody.
+Further review identifies result-schema reparsing under later execution bounds;
+N keeps originally prepared contracts separate from current value validation.
+No private N source is natively accepted or integrated by this receipt.
+Q's 49-file Capture/Regex source remains private: settings ACK alone does not
+refresh active Regex programs. Its technical catalogue/publication/status bridge
+and exact original qualification reuse remain open. R owns genuine independent
+shipped Pure qualification through existing B1/B2 owners, initially eight roots
+and their connected readers; it is not general authored approval or a complete
+Q cutover. All three Bob plans remain open. The default CLI reader pass remains
+applicable at its recorded tree; the corrected no-default variant is still unrun.
+
+Earlier dated entries below are historical where superseded by this checkpoint.
+
 ## 2026-11-11 — Source completion corrections integrated; CLI variants remain open
 
 The actual CLI database-reader case passes from the warning-free default build
