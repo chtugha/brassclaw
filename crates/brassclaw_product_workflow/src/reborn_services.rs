@@ -128,12 +128,14 @@ pub use interceptor_config::{
     map_interceptor_config_error,
 };
 pub use llm_config::{
-    CodexLoginStart, CodexLoginStatus, LlmActiveSelection, LlmConfigService, LlmConfigServiceError,
-    LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult, LlmProviderView,
-    NearAiAuthProvider, NearAiLoginRequest, NearAiLoginStart, NearAiWalletLoginRequest,
-    NearAiWalletLoginResult, NearAiWalletLoginStart, NearAiWalletLoginStartRequest,
-    ProviderMutationReceipt, ProviderTokenBudgetView, SetActiveLlmRequest,
-    UpsertLlmProviderRequest,
+    CodexLoginDisposition, CodexLoginStart, CodexLoginStatus, LlmActiveSelection, LlmConfigService,
+    LlmConfigServiceError, LlmConfigSnapshot, LlmModelsResult, LlmProbeRequest, LlmProbeResult,
+    LlmProviderView, NativeAccessLifetime, NativeAccessStatus, NativeAccountStatus,
+    NativeAuthCapability, NativeProviderAuthStatus, NativeRefreshOriginalStatus,
+    NativeRefreshStatus, NativeRegistrationStatus, NearAiAuthProvider, NearAiLoginRequest,
+    NearAiLoginStart, NearAiWalletLoginRequest, NearAiWalletLoginResult, NearAiWalletLoginStart,
+    NearAiWalletLoginStartRequest, ProviderMutationReceipt, ProviderTokenBudgetView,
+    SetActiveLlmRequest, UpsertLlmProviderRequest,
 };
 pub use types::{
     AutomationStateAction, RebornAutomationInfo, RebornAutomationRunHistoryResponse,

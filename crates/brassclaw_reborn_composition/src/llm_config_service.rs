@@ -715,6 +715,49 @@ impl RebornLlmConfigService {
                     .map_err(|_| LlmConfigServiceError::Unavailable)?;
             }
         }
+        let mut native_statuses = std::collections::BTreeMap::new();
+        let observed_at = chrono::Utc::now();
+        for (index, row) in all_defs.iter().enumerate() {
+            if row.definition.protocol != ProviderProtocol::OpenAiCodex {
+                continue;
+            }
+            use brassclaw_product_workflow::{NativeAuthCapability, NativeProviderAuthStatus};
+            let auth = self.native_auth.upgrade();
+            let capability = match auth.as_ref().map(|auth| auth.custody_status()) {
+                Some(custody) if custody.retry_cutover_on_next_start => {
+                    NativeAuthCapability::CustodyRecoveryPending
+                }
+                Some(custody) if custody.native_codex_available => NativeAuthCapability::Available,
+                Some(_) => NativeAuthCapability::Unsupported,
+                None => NativeAuthCapability::Unavailable,
+            };
+            let mut status = NativeProviderAuthStatus::unobserved(
+                capability,
+                cfg!(feature = "skills-db"),
+                observed_at,
+            );
+            if capability == NativeAuthCapability::Available {
+                let owner = auth
+                    .as_ref()
+                    .ok_or(LlmConfigServiceError::Unavailable)?
+                    .native_codex_owner()
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                status = owner
+                    .inspect_native_codex_status(
+                        &transaction,
+                        &self.db_tenant_id,
+                        &row.definition.id,
+                        row.definition
+                            .default_base_url
+                            .as_deref()
+                            .unwrap_or_default(),
+                        credential_refs[index].as_deref(),
+                        status,
+                    )
+                    .await?;
+            }
+            native_statuses.insert(row.definition.id.clone(), status);
+        }
         let mut desired_publications = std::collections::BTreeMap::new();
         let mut selections = std::collections::BTreeMap::new();
         for (name, role) in [
@@ -812,6 +855,7 @@ impl RebornLlmConfigService {
             });
 
             let view = LlmProviderView {
+                native_auth: native_statuses.remove(&def.id),
                 embedding_models: def.embedding_models.clone(),
                 model_token_limits: def.model_token_limits.clone(),
                 model_discovery: def.model_discovery,

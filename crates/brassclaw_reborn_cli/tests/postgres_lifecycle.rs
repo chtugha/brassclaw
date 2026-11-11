@@ -487,6 +487,9 @@ async fn models_readers_use_database_selection_and_never_hide_database_failure()
     successful(&output);
     let status: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(status["routes"], "configured");
+    assert_eq!(status["native_auth"], "not_observed");
+    assert_eq!(status["client_uptake"], "not_observed");
+    assert_eq!(status["serving"], "not_observed");
     assert_eq!(status["default"]["provider_id"], "db-only-provider");
     assert_eq!(status["default"]["provider_known"], true);
     assert_eq!(status["default"]["model"], "db-selected");

@@ -322,6 +322,9 @@ impl RebornProviderAdmin {
         let (config, registry) = self.snapshot().await?;
         let active = active_llm_selection(Some(&config), &registry);
         Ok(RebornProviderStatus {
+            native_auth: ProviderLiveObservation::NotObserved,
+            client_uptake: ProviderLiveObservation::NotObserved,
+            serving: ProviderLiveObservation::NotObserved,
             routes: if active.is_some() {
                 RebornModelRoutesState::Configured
             } else {
@@ -373,8 +376,25 @@ pub struct RebornProviderMetadata {
     pub can_list_models: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderLiveObservation {
+    NotObserved,
+}
+
+impl fmt::Display for ProviderLiveObservation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NotObserved => formatter.write_str("not_observed"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RebornProviderStatus {
+    pub native_auth: ProviderLiveObservation,
+    pub client_uptake: ProviderLiveObservation,
+    pub serving: ProviderLiveObservation,
     pub routes: RebornModelRoutesState,
     pub default: Option<RebornProviderSelection>,
     pub v1_state: RebornV1State,

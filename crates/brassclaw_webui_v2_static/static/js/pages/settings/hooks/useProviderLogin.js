@@ -5,7 +5,7 @@ import { waitForProviderLogin, codexLoginSelection, findCodexLoginOriginal,
   codexLoginIsTerminal, runCodexLogin } from "../lib/provider-login.js";
 import { readStoredToken, readOriginalAuthContext, originalAuthContextIsCurrent } from "../../../lib/api.js";
 import {
-  startNearaiLogin,
+  startNearaiLogin, fetchLlmProviders,
 } from "../lib/settings-api.js";
 
 // NEAR's separate legacy observation contract is unchanged by Codex036.
@@ -31,11 +31,29 @@ export function useProviderLogin({ onSuccess } = {}) {
   const [codexCanRetry, setCodexCanRetry] = React.useState(false);
   const [codexTarget, setCodexTarget] = React.useState(null);
 
-  const finishActive = React.useCallback(async (isCurrent = () => true) => {
-    await queryClient.invalidateQueries({ queryKey: ["llm-providers"] });
-    if (onSuccess && isCurrent()) {
-      onSuccess();
+  const finishActive = React.useCallback(async (isCurrent = () => true, original = null) => {
+    if (!isCurrent()) return;
+    if (original) {
+      // fetchQuery otherwise deduplicates against a pre-commit GET, even with
+      // staleTime: 0. Cancel and await that exact key before starting a new GET.
+      await queryClient.cancelQueries({ queryKey: ["llm-providers"], exact: true });
+      if (!isCurrent()) return;
     }
+    await queryClient.invalidateQueries({ queryKey: ["llm-providers"], exact: true,
+      ...(original ? { refetchType: "none" } : {}) });
+    if (!isCurrent()) return;
+    if (original) {
+      const snapshot = await queryClient.fetchQuery({ queryKey: ["llm-providers"], queryFn: fetchLlmProviders, staleTime: 0 });
+      if (!isCurrent()) return;
+      const selection = snapshot[original.role === "kohai" ? "kohai_active" : "sempai_active"];
+      const provider = snapshot.providers?.find(provider => provider.id === original.provider_id);
+      // The old receipt confirms only its original. A newer head or role must
+      // remain visible and cannot trigger success navigation for that original.
+      if (selection?.provider_id !== original.provider_id || selection?.model !== original.model ||
+          provider?.native_auth?.login_mutation_id !== original.mutation_id ||
+          provider.native_auth.registration !== "bound" || provider.native_auth.access !== "current") return;
+    }
+    if (onSuccess && isCurrent()) onSuccess();
   }, [queryClient, onSuccess]);
 
   const startNearai = React.useCallback(
@@ -123,7 +141,7 @@ export function useProviderLogin({ onSuccess } = {}) {
         });
         if (!current()) return;
         terminal = Boolean(result.status && ["completed", "failed", "expired", "canceled"].includes(result.status.status));
-        if (result.completed) await finishActive(current);
+        if (result.completed) await finishActive(current, { ...selection, mutation_id: result.status.mutation_id });
       } catch {
         if (current()) setCodexError(t("onboarding.codexFailed"));
       } finally {

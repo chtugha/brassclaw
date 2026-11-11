@@ -266,12 +266,122 @@ impl std::fmt::Debug for CodexLoginStart {
 /// observable after the setup deadline when the issuer return is known.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CodexLoginStatus {
+    pub disposition: CodexLoginDisposition,
     pub mutation_id: uuid::Uuid,
     pub status: brassclaw_auth::AuthFlowStatus,
     pub expires_at: brassclaw_auth::Timestamp,
     pub error: Option<brassclaw_auth::AuthErrorCode>,
     pub mutation_receipt: Option<ProviderMutationReceipt>,
     pub poll_interval_millis: u32,
+}
+
+/// Safe disposition of the exact login original, independent of current selection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexLoginDisposition {
+    NoRequest,
+    ProtocolPending,
+    AuthorizationReceived,
+    OutcomeUnconfirmed,
+    TokensReceivedPublicationPending,
+    Published,
+    Rejected,
+}
+
+/// Local observation only. No field grants permission or acknowledges serving.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeProviderAuthStatus {
+    pub observed_at: brassclaw_auth::Timestamp,
+    pub capability: NativeAuthCapability,
+    pub login_supported: bool,
+    pub registration: NativeRegistrationStatus,
+    pub login_mutation_id: Option<uuid::Uuid>,
+    pub account: Option<NativeAccountStatus>,
+    pub access: NativeAccessStatus,
+    pub lifetime: NativeAccessLifetime,
+    pub account_expires_at: Option<brassclaw_auth::Timestamp>,
+    pub secret_expires_at: Option<brassclaw_auth::Timestamp>,
+    pub refresh: NativeRefreshStatus,
+    pub blocking_refresh: Option<NativeRefreshOriginalStatus>,
+    pub recovery: Option<brassclaw_auth::CredentialRecoveryReason>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeAccountStatus {
+    pub id: brassclaw_auth::CredentialAccountId,
+    pub status: brassclaw_auth::CredentialAccountStatus,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NativeRefreshOriginalStatus {
+    pub id: brassclaw_auth::CredentialRefreshId,
+    pub outcome: brassclaw_auth::CredentialRefreshOutcomeKind,
+    pub publication: brassclaw_auth::CredentialRefreshPublication,
+    pub error: Option<brassclaw_auth::AuthErrorCode>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeAuthCapability {
+    Available,
+    Unsupported,
+    CustodyRecoveryPending,
+    Unavailable,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeRegistrationStatus {
+    Absent,
+    Bound,
+    AccountMissing,
+    InvalidBinding,
+    Unavailable,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeAccessStatus {
+    Absent,
+    Current,
+    Expired,
+    UnknownLifetime,
+    Ineligible,
+    Unavailable,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeAccessLifetime {
+    FiniteDeadline,
+    /// Reserved for explicit authenticated evidence; missing dates never imply this.
+    KnownUnlimited,
+    Unknown,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NativeRefreshStatus {
+    Absent,
+    Present,
+    BlockedOriginal,
+    Unavailable,
+}
+impl NativeProviderAuthStatus {
+    pub fn unobserved(
+        capability: NativeAuthCapability,
+        login_supported: bool,
+        observed_at: brassclaw_auth::Timestamp,
+    ) -> Self {
+        Self {
+            observed_at,
+            capability,
+            login_supported,
+            registration: NativeRegistrationStatus::Unavailable,
+            login_mutation_id: None,
+            account: None,
+            access: NativeAccessStatus::Unavailable,
+            lifetime: NativeAccessLifetime::Unknown,
+            account_expires_at: None,
+            secret_expires_at: None,
+            refresh: NativeRefreshStatus::Unavailable,
+            blocking_refresh: None,
+            recovery: None,
+        }
+    }
 }
 
 /// Merged catalog plus the active selection. Keys are masked.
@@ -348,6 +458,9 @@ pub struct ProviderMutationReceipt {
 /// One provider in the merged catalog, annotated for the settings UI.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LlmProviderView {
+    /// Present only for native Codex; observed against the current desired head.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub native_auth: Option<NativeProviderAuthStatus>,
     #[serde(default)]
     pub embedding_models: brassclaw_llm::EmbeddingModelContracts,
     #[serde(default)]

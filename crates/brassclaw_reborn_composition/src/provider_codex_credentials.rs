@@ -24,8 +24,8 @@ pub(crate) struct CodexCredentialBinding {
     format: String,
     namespace: String,
     provider_id: String,
-    login_id: Uuid,
-    account_id: CredentialAccountId,
+    pub(crate) login_id: Uuid,
+    pub(crate) account_id: CredentialAccountId,
     account_scope: AuthProductScope,
     pub(crate) client: CodexOAuthClient,
 }
@@ -251,6 +251,34 @@ pub(crate) async fn original_registration(
     provider_id: &str,
     expected_head_reference: &str,
 ) -> Result<BoundCodexRegistration, LlmConfigServiceError> {
+    match inspect_registration(
+        transaction,
+        secrets,
+        namespace,
+        provider_id,
+        expected_head_reference,
+    )
+    .await?
+    {
+        RegistrationInspection::Bound(registration) => Ok(registration),
+        RegistrationInspection::Invalid => Err(LlmConfigServiceError::Unavailable),
+    }
+}
+
+pub(crate) enum RegistrationInspection {
+    Bound(BoundCodexRegistration),
+    Invalid,
+}
+
+/// Storage errors propagate before any further SQL; malformed local binding is
+/// a separate disposition. A present head without its original is invalid.
+pub(crate) async fn inspect_registration(
+    transaction: &tokio_postgres::Transaction<'_>,
+    secrets: &PgSecretStore,
+    namespace: &str,
+    provider_id: &str,
+    expected_head_reference: &str,
+) -> Result<RegistrationInspection, LlmConfigServiceError> {
     let row = transaction
         .query_opt(
             "SELECT mutation_id,request FROM brassclaw_llm_provider_mutations
@@ -265,25 +293,34 @@ pub(crate) async fn original_registration(
             ],
         )
         .await
-        .map_err(|_| LlmConfigServiceError::Unavailable)?
-        .ok_or(LlmConfigServiceError::Unavailable)?;
-    let original_id: Uuid = row
-        .try_get(0)
         .map_err(|_| LlmConfigServiceError::Unavailable)?;
-    let request: serde_json::Value = row
-        .try_get(1)
+    let Some(row) = row else {
+        return Ok(RegistrationInspection::Invalid);
+    };
+    let decode = || -> Result<CodexCredentialBinding, LlmConfigServiceError> {
+        let original_id: Uuid = row
+            .try_get(0)
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let request: serde_json::Value = row
+            .try_get(1)
+            .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        let binding: CodexCredentialBinding = serde_json::from_value(
+            request
+                .get("credential_binding")
+                .cloned()
+                .ok_or(LlmConfigServiceError::Unavailable)?,
+        )
         .map_err(|_| LlmConfigServiceError::Unavailable)?;
-    let binding: CodexCredentialBinding = serde_json::from_value(
-        request
-            .get("credential_binding")
-            .cloned()
-            .ok_or(LlmConfigServiceError::Unavailable)?,
-    )
-    .map_err(|_| LlmConfigServiceError::Unavailable)?;
-    binding.validate(namespace, provider_id)?;
-    if binding.login_id != original_id {
-        return Err(LlmConfigServiceError::Unavailable);
-    }
+        binding.validate(namespace, provider_id)?;
+        if binding.login_id != original_id {
+            return Err(LlmConfigServiceError::Unavailable);
+        }
+        Ok(binding)
+    };
+    let binding = match decode() {
+        Ok(binding) => binding,
+        Err(_) => return Ok(RegistrationInspection::Invalid),
+    };
     if !secrets
         .inspect_matches_if_record_reference_in_transaction(
             transaction,
@@ -295,10 +332,10 @@ pub(crate) async fn original_registration(
         .await
         .map_err(|_| LlmConfigServiceError::Unavailable)?
     {
-        return Err(LlmConfigServiceError::Unavailable);
+        return Ok(RegistrationInspection::Invalid);
     }
-    Ok(BoundCodexRegistration {
+    Ok(RegistrationInspection::Bound(BoundCodexRegistration {
         binding,
         head_reference: expected_head_reference.into(),
-    })
+    }))
 }

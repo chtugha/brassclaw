@@ -1,5 +1,5 @@
 import { submitProviderMutation } from "./provider-mutations.js";
-import { apiFetch } from "../../../lib/api.js";
+import { readStoredToken, readOriginalAuthContext, originalAuthContextIsCurrent, apiFetch } from "../../../lib/api.js";
 
 // Settings endpoints depend on v1 `/api/settings/*`, `/api/llm/*`,
 // `/api/tools/*`, `/api/skills/*`, etc. Extension reads use the v2
@@ -29,8 +29,15 @@ export function importSettings(_payload) {
 // source of truth: a unified provider list (built-in + operator-defined) plus
 // the active selection. API-key values are write-only; the snapshot only ever
 // reports `api_key_set`.
-export function fetchLlmProviders() {
-  return apiFetch("/api/webchat/v2/llm/providers");
+export async function fetchLlmProviders({ signal } = {}) {
+  const token = readStoredToken(), context = readOriginalAuthContext();
+  const snapshot = await apiFetch("/api/webchat/v2/llm/providers", { signal });
+  if (signal?.aborted || !originalAuthContextIsCurrent(context, token)) {
+    const error = new Error("Provider observation superseded");
+    error.name = "AbortError";
+    throw error;
+  }
+  return snapshot;
 }
 export function upsertLlmProvider(payload) {
   return submitProviderMutation("upsert", payload.id, "/api/webchat/v2/llm/providers", payload);

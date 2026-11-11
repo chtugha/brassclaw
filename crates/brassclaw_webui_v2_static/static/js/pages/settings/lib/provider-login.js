@@ -113,7 +113,9 @@ function codexReceipt(receipt, request) {
 }
 export function checkedCodexLoginStatus(reply, original) {
   const request = codexRequest(JSON.parse(original.bytes));
-  if (!codexObject(reply, ["mutation_id", "status", "expires_at", "error", "mutation_receipt", "poll_interval_millis"]) ||
+  if (!codexObject(reply, ["mutation_id", "status", "disposition", "expires_at", "error", "mutation_receipt", "poll_interval_millis"]) ||
+      !["no_request", "protocol_pending", "authorization_received", "outcome_unconfirmed", "tokens_received_publication_pending", "published", "rejected"].includes(reply.disposition) ||
+      (reply.status === "completed") !== (reply.disposition === "published") ||
       reply.mutation_id !== request.mutation_id || !CODEX_STATES.has(reply.status) ||
       typeof reply.expires_at !== "string" || !Number.isFinite(Date.parse(reply.expires_at)) || !codexInterval(reply.poll_interval_millis) ||
       (reply.error !== null && !CODEX_ERRORS.has(reply.error)) ||

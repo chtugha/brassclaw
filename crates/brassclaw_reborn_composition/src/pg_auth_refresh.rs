@@ -62,6 +62,91 @@ async fn update_account(
     Ok(())
 }
 impl PgAuthProductServices {
+    #[cfg(feature = "root-llm-provider")]
+    pub(super) async fn inspect_blocking_refresh_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        account: &CredentialAccount,
+        handle: &SecretHandle,
+    ) -> Result<
+        Option<brassclaw_product_workflow::NativeRefreshOriginalStatus>,
+        brassclaw_product_workflow::LlmConfigServiceError,
+    > {
+        use brassclaw_product_workflow::{LlmConfigServiceError, NativeRefreshOriginalStatus};
+        use futures::TryStreamExt;
+        // Stream the complete exact-source history, including false flags.
+        // Keep only one original and the minimal blocking projection in memory;
+        // no arbitrary history cap or truncated-absence assertion.
+        let tenant = account.scope.resource.tenant_id.as_str();
+        let account_id = account.id.to_string();
+        let handle_name = handle.as_str();
+        let parameters: [&(dyn tokio_postgres::types::ToSql + Sync); 3] =
+            [&tenant, &account_id, &handle_name];
+        let rows = transaction.query_raw(
+            "SELECT data,id,scope_ref,account_id,refresh_handle,blocks_refresh FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1 AND account_id=$2 AND refresh_handle=$3",
+            parameters,
+        ).await.map_err(|_| LlmConfigServiceError::Unavailable)?;
+        futures::pin_mut!(rows);
+        let mut blocked = None;
+        while let Some(row) = rows
+            .try_next()
+            .await
+            .map_err(|_| LlmConfigServiceError::Unavailable)?
+        {
+            let action = decode_action(&row).map_err(|_| LlmConfigServiceError::Unavailable)?;
+            let original = &action.original;
+            let (_, scope_ref, id) =
+                key(original).map_err(|_| LlmConfigServiceError::Unavailable)?;
+            let blocking = action.blocks_credential(handle);
+            if id != row.get::<_, String>(1)
+                || scope_ref != row.get::<_, String>(2)
+                || account.id.to_string() != row.get::<_, String>(3)
+                || row.get::<_, Option<String>>(4).as_deref() != Some(handle.as_str())
+                || row.get::<_, bool>(5) != blocking
+                || original.account_id != account.id
+                || original.provider != account.provider
+                || original.scope != account.scope
+                || original.requester_extension.is_some()
+                || action.expected_account.scope != account.scope
+                || action.expected_account.id != account.id
+                || action.expected_account.provider != account.provider
+                || action.expected_account.ownership != account.ownership
+                || action.expected_account.owner_extension != account.owner_extension
+                || action.expected_account.granted_extensions != account.granted_extensions
+                || action.expected_account.refresh_secret.as_ref() != Some(handle)
+            {
+                return Err(LlmConfigServiceError::Unavailable);
+            }
+            if let Some(source) = &action.source {
+                source
+                    .verify(&brassclaw_auth::OAuthProviderRefreshRequest {
+                        refresh_id: original.id,
+                        provider: original.provider.clone(),
+                        scope: original.scope.clone(),
+                        account_id: original.account_id,
+                        refresh_secret: handle.clone(),
+                        scopes: action.expected_account.scopes.clone(),
+                    })
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+            }
+            if blocking {
+                if blocked.is_some() {
+                    return Err(LlmConfigServiceError::Unavailable);
+                }
+                let receipt = action
+                    .receipt()
+                    .map_err(|_| LlmConfigServiceError::Unavailable)?;
+                blocked = Some(NativeRefreshOriginalStatus {
+                    id: receipt.id,
+                    outcome: receipt.outcome,
+                    publication: receipt.publication,
+                    error: receipt.error,
+                });
+            }
+        }
+        Ok(blocked)
+    }
+
     pub(super) async fn read_refresh_action(
         &self,
         request: &CredentialRefreshRequest,

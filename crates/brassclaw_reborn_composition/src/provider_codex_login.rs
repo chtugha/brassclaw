@@ -411,7 +411,28 @@ impl RebornLlmConfigService {
             .native_codex_limits()
             .await
             .map_err(|_| LlmConfigServiceError::Unavailable)?;
+        use brassclaw_auth::NativeDeviceOutcome;
+        use brassclaw_product_workflow::CodexLoginDisposition as Disposition;
+        let disposition = if state.flow.status == AuthFlowStatus::Completed {
+            Disposition::Published
+        } else {
+            match state.action.requests.last().map(|request| &request.outcome) {
+                None => Disposition::NoRequest,
+                Some(NativeDeviceOutcome::Submitted | NativeDeviceOutcome::Unknown { .. }) => {
+                    Disposition::OutcomeUnconfirmed
+                }
+                Some(
+                    NativeDeviceOutcome::Challenge { .. } | NativeDeviceOutcome::Pending { .. },
+                ) => Disposition::ProtocolPending,
+                Some(NativeDeviceOutcome::Authorized { .. }) => Disposition::AuthorizationReceived,
+                Some(NativeDeviceOutcome::Tokens { .. }) => {
+                    Disposition::TokensReceivedPublicationPending
+                }
+                Some(NativeDeviceOutcome::Rejected { .. }) => Disposition::Rejected,
+            }
+        };
         Ok(brassclaw_product_workflow::CodexLoginStatus {
+            disposition,
             mutation_id: id,
             status: state.flow.status,
             expires_at: state.action.expiry(),

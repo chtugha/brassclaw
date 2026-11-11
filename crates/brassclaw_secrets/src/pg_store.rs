@@ -268,6 +268,14 @@ pub struct PgSecretStore {
     tenant_id: String,
 }
 
+/// Authenticated local facts, without material, handles or custody context.
+/// An absent deadline means unknown lifetime, not issuer-guaranteed unlimited validity.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SecretRuntimeMetadata {
+    pub expires_at: Option<Timestamp>,
+    pub runtime_eligible: bool,
+}
+
 // Authenticated bytes stay private to this storage owner. Never derive Debug.
 struct AuthenticatedSecretRecord {
     key: String,
@@ -1158,6 +1166,23 @@ impl PgSecretStore {
             &record.ciphertext,
             record.version,
         )))
+    }
+
+    /// Effect-free metadata in the caller's existing transaction. Does not lock,
+    /// upgrade legacy rows, issue leases or claim issuer validity.
+    pub async fn inspect_runtime_metadata_in_transaction(
+        &self,
+        transaction: &tokio_postgres::Transaction<'_>,
+        scope: &ResourceScope,
+        handle: &SecretHandle,
+    ) -> Result<Option<SecretRuntimeMetadata>, SecretStoreError> {
+        Ok(self
+            .inspect_secret_in_transaction(transaction, scope, handle)
+            .await?
+            .map(|record| SecretRuntimeMetadata {
+                expires_at: record.value.secret_expires_at(),
+                runtime_eligible: record.value.runtime_eligible(),
+            }))
     }
 
     /// Read/authenticate the selected bytes without locking or legacy migration.

@@ -29,7 +29,7 @@ function receipt(request, changes={}) {
     role_selections:{[`${prefix}.provider_id`]:request.provider_id,[`${prefix}.model`]:request.model},...changes};
 }
 function reply(request,status="completed",changes={}) {
-  return {mutation_id:request.mutation_id,status,expires_at:expiry,error:null,poll_interval_millis:5001,
+  return {mutation_id:request.mutation_id,status,disposition:status==="completed"?"published":"outcome_unconfirmed",expires_at:expiry,error:null,poll_interval_millis:5001,
     mutation_receipt:status==="completed"?receipt(request):null,...changes};
 }
 function fixture() {
@@ -149,7 +149,10 @@ test("foreign status/receipt or missing receipt never becomes success/reconcilia
     r=>reply(r,"completed",{mutation_receipt:receipt(r,{role_selections:{"llm.sempai.provider_id":r.provider_id,"llm.sempai.model":"foreign"}})}),
     r=>reply(r,"completed",{mutation_receipt:receipt(r,{provider_revision:{bad:"revision"}})}),
     r=>reply(r,"completed",{mutation_receipt:receipt(r,{provider_revision:0})}),
-    r=>reply(r,"completing",{poll_interval_millis:0})]) {
+    r=>reply(r,"completing",{poll_interval_millis:0}),
+    r=>reply(r,"completed",{disposition:"outcome_unconfirmed"}),
+    r=>reply(r,"failed",{disposition:"published"}),
+    r=>reply(r,"failed",{disposition:"raw-issuer-body"})]) {
     const f=fixture();f.statuses(bad);await assert.rejects(f.run());assert(!f.events.includes("reconcile"));
   }
   const f=fixture();f.foreignReconcile({mutation_id:randomUUID()});await assert.rejects(f.run());

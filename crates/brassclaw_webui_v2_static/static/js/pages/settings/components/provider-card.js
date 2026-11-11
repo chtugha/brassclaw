@@ -1,3 +1,4 @@
+import { ProviderAuthStatus } from "./provider-auth-status.js";
 import { Button } from "../../../design-system/button.js";
 import { ModelTokenLimits } from "./model-token-limits.js";
 import { Badge } from "../../../design-system/badge.js";
@@ -217,6 +218,7 @@ export function ProviderCard({
         </div>
       </div>
 
+      <${ProviderAuthStatus} provider=${provider} />
       ${expanded &&
       html`
         <div data-testid="llm-provider-details" className="border-t border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-4 sm:px-5">

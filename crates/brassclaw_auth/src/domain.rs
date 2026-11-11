@@ -379,7 +379,15 @@ pub fn recovery_projection_for_single_account(
     provider: crate::AuthProviderId,
     account: &CredentialAccount,
 ) -> CredentialRecoveryProjection {
-    let now = chrono::Utc::now();
+    recovery_projection_for_single_account_at(provider, account, chrono::Utc::now())
+}
+
+/// Same pure recovery contract at the caller's captured observation time.
+pub fn recovery_projection_for_single_account_at(
+    provider: crate::AuthProviderId,
+    account: &CredentialAccount,
+    now: crate::Timestamp,
+) -> CredentialRecoveryProjection {
     let (kind, reason) = recovery_kind_and_reason_for_status(account.effective_status_at(now));
     match kind {
         CredentialRecoveryKind::Configured => {

@@ -339,9 +339,9 @@ pub use product_live_adapters::{
 pub use production_runtime_policy::RebornProductionRuntimePolicy;
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use provider_admin::{
-    RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError, RebornProviderInfo,
-    RebornProviderList, RebornProviderMetadata, RebornProviderSelection, RebornProviderStatus,
-    RebornV1State,
+    ProviderLiveObservation, RebornModelRoutesState, RebornProviderAdmin, RebornProviderAdminError,
+    RebornProviderInfo, RebornProviderList, RebornProviderMetadata, RebornProviderSelection,
+    RebornProviderStatus, RebornV1State,
 };
 #[cfg(all(feature = "root-llm-provider", feature = "postgres"))]
 pub use provider_admin_product_command::RebornProviderAdminProductCommandService;

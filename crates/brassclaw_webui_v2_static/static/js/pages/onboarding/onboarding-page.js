@@ -6,6 +6,7 @@ import { Button } from "../../design-system/button.js";
 import { Card } from "../../design-system/card.js";
 import { Icon } from "../../design-system/icons.js";
 import { ProviderDialog } from "../settings/components/provider-dialog.js";
+import { ProviderAuthStatus } from "../settings/components/provider-auth-status.js";
 import { ProviderLoginStatus } from "../settings/components/provider-login-status.js";
 import { useProviderManagementActions } from "../settings/hooks/useProviderManagementActions.js";
 import { useProviderLogin } from "../settings/hooks/useProviderLogin.js";
@@ -157,6 +158,7 @@ function FeaturedProviderRow({ entry, provider, configured, isBusy, login, t, on
           <div className="mt-0.5 truncate text-xs text-[var(--v2-text-muted)]">${t(entry.descKey)}</div>
         </div>
       </div>
+      <${ProviderAuthStatus} provider=${provider} />
       <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">${actions}</div>
     <//>
   `;
@@ -180,8 +182,8 @@ export function OnboardingPage() {
   })).filter((row) => row.provider);
 
   // NEAR AI + Codex login share the same backend flows as the Inference tab; on
-  // success here we head straight to chat (the snapshot refresh swaps in the
-  // now-active provider).
+  // completion we inspect the fresh current selection before navigation.
+  // A historical login receipt cannot replace a newer head or role.
   const navigateToChat = React.useCallback(() => navigate("/chat"), [navigate]);
   const login = useProviderLogin({ onSuccess: navigateToChat });
 

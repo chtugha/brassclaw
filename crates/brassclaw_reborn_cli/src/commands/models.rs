@@ -238,6 +238,9 @@ impl ModelsStatusCommand {
         }
 
         println!("BrassClaw Reborn model status");
+        println!("native_auth: {}", status.native_auth);
+        println!("client_uptake: {}", status.client_uptake);
+        println!("serving: {}", status.serving);
         println!("routes: not-configured");
         for slot in slots {
             println!("{}: not-configured", slot);

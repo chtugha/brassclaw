@@ -63,6 +63,9 @@ pub(crate) mod codex_publication;
 #[cfg(feature = "root-llm-provider")]
 #[path = "pg_auth_codex_refresh.rs"]
 pub(crate) mod codex_refresh;
+#[cfg(feature = "root-llm-provider")]
+#[path = "pg_auth_codex_status.rs"]
+mod codex_status;
 #[path = "pg_auth_dcr.rs"]
 mod dcr;
 #[cfg(feature = "root-llm-provider")]

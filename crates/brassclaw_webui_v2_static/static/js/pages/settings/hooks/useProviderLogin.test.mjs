@@ -14,7 +14,8 @@ function fixture(overrides = {}) {
   const updates = [], opened = [], waits = [], refresh = []; let cleanup; let success = 0, next = 0;
   const context = { React: { useCallback: fn => fn, useRef: initial => ({ current: initial }),
     useEffect: effect => { cleanup = effect(); }, useState: initial => [initial, value => updates.push(value)] },
-    useQueryClient: () => ({ invalidateQueries: () => new Promise(resolve => refresh.push(resolve)) }),
+    useQueryClient: () => ({ cancelQueries: async () => {}, invalidateQueries: () => new Promise(resolve => refresh.push(resolve)),
+      fetchQuery: ({ queryFn }) => queryFn() }),
     useT: () => value => value, window: { location: { origin: "http://operator.local" }, open: (...args) => opened.push(args) },
     startNearaiLogin: async () => ({ auth_url: "http://issuer.local/authorize", mutation_id: `original-${++next}` }),
     waitForProviderLogin: async (...args) => { waits.push(args); return true; },
@@ -61,7 +62,7 @@ function codexFixture() {
   const window = {location:{origin:"http://operator.example"},confirm:()=>true,
     open:()=>{events.push("open");const p={closed:false,location:{href:"about:blank"},close(){this.closed=true;}};popups.push(p);return p;}};
   globalThis.window=window;storeToken("controlled-hook-token");
-  let pendingPost = null, request, phases = null, starts = 0;
+  let pendingPost = null, request, phases = null, starts = 0, newerHead = false;
   globalThis.fetch=async(path,options)=>{
     if(path.endsWith("/codex/login")) {
       events.push("post");request=JSON.parse(options.body);starts++;
@@ -77,15 +78,18 @@ function codexFixture() {
     if(path.includes("/codex/login/")) {
       const status=phases?.shift()??"completed";
       return Response.json({mutation_id:request.mutation_id,status,expires_at:"2000-01-01T00:00:00Z",
-        error:null,mutation_receipt:status==="completed"?receipt:null,poll_interval_millis:17});
+        disposition:status==="completed"?"published":"outcome_unconfirmed",error:null,mutation_receipt:status==="completed"?receipt:null,poll_interval_millis:17});
     }
     if(path.endsWith("/reconcile"))return Response.json({mutation_receipt:receipt});
     throw Error("unexpected route");
   };
   const f=fixture({window,AbortController,readStoredToken,readOriginalAuthContext,originalAuthContextIsCurrent,
-    codexLoginSelection,findCodexLoginOriginal,codexLoginIsTerminal,runCodexLogin});
+    codexLoginSelection,findCodexLoginOriginal,codexLoginIsTerminal,runCodexLogin,
+    fetchLlmProviders: async () => ({ kohai_active: {provider_id:request.provider_id,model:request.model},
+      providers:[{id:request.provider_id,native_auth:{registration:"bound",access:"current",
+        login_mutation_id:newerHead?"different-original":request.mutation_id}}] }) });
   const provider={id:"clicked-codex",adapter:"openai_codex",revision:7,default_model:"clicked-model",selection_refs:{kohai:"a".repeat(64),sempai:"b".repeat(64)}};
-  return {...f,events,popups,provider,request:()=>request,hold:promise=>{pendingPost=promise;},phases:value=>{phases=value;}};
+  return {...f,events,popups,provider,request:()=>request,newerHead:()=>{newerHead=true;},hold:promise=>{pendingPost=promise;},phases:value=>{phases=value;}};
 }
 test("Codex opens synchronously, persists before POST and freezes clicked data across awaits",async()=>{
   const f=codexFixture();let release;f.hold(new Promise(resolve=>{release=resolve;}));
@@ -139,4 +143,11 @@ test("explicit resume supersedes only observation and reattaches the identical o
   await tick();assert.equal(f.request().mutation_id,original);assert.deepEqual(f.events,["open","post","open","post"]);
   f.refresh[0]();await resumed;release();await first;
   assert.equal(f.successes(),1);assert.equal(f.popups[1].location.href,"about:blank");assert.equal(f.popups[1].closed,true);
+});
+
+test("Codex completed old original cannot navigate after a newer canonical head",async()=>{
+  const f=codexFixture(); const pending=f.hook.startCodex(f.provider);
+  await tick(); f.newerHead(); f.refresh[0](); await pending;
+  assert.equal(f.successes(),0);
+  assert.equal(f.events.filter(event=>event==="post").length,1);
 });

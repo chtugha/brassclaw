@@ -499,3 +499,6 @@ async fn native_codex_product_missing_head_or_owner_fails_before_selection_other
 
 #[path = "pg_auth_codex_request_tests.rs"]
 mod request_tests;
+
+#[path = "pg_auth_codex_status_tests.rs"]
+mod status_tests;

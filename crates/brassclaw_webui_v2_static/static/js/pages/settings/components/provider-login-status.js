@@ -23,6 +23,7 @@ export function ProviderLoginStatus({ login }) {
     </p>`}
     ${codexStatus && html`<p role="status" className="text-center text-xs text-[var(--v2-text-muted)]">
       ${t(`onboarding.codexStatus.${codexStatus.status}`)}
+      · ${t(`onboarding.codexDisposition.${codexStatus.disposition}`)}
       ${codexStatus.error && html` · ${t("onboarding.codexStatusError", { code: codexStatus.error })}`}
     </p>`}
     ${codexCanRetry && html`<div className="text-center">

@@ -703,6 +703,7 @@ impl RebornServicesApi for StubServices {
         Ok(serde_json::from_value(serde_json::json!({
             "mutation_id":id,
             "status":"completed",
+            "disposition":"published",
             "expires_at":"2026-10-31T12:00:00Z",
             "error":null,
             "poll_interval_millis":713,
@@ -1447,6 +1448,7 @@ fn llm_snapshot(provider_id: &str) -> LlmConfigSnapshot {
         inactive_providers: Vec::new(),
         response_cache_defaults: Default::default(),
         providers: vec![LlmProviderView {
+            native_auth: None,
             embedding_models: Default::default(),
             model_token_limits: Default::default(),
             model_discovery: Default::default(),
@@ -4484,6 +4486,7 @@ async fn codex_login_http_retains_original_set_active_payload_and_reads_only_req
     assert_eq!(response.status(), StatusCode::OK);
     let body = read_json(response).await;
     assert_eq!(body["mutation_id"], id.to_string());
+    assert_eq!(body["disposition"], "published");
     assert_eq!(body["mutation_receipt"]["mutation_id"], id.to_string());
     assert_eq!(
         body["mutation_receipt"]["bootstrap_target"]["setup_revision"],
