@@ -21,13 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualification still blocks common startup; the Prefix fault-fixture repair
   awaits rerun. These scoped results do not enable serving.
 
-- **Bob integration validation (in progress)**: The current worker and all 19
-  joint test harnesses compile without warnings. Twenty of 24 executed
-  independent cases pass; the common startup exposes unresolved original Pure
-  qualification containment/integrity. Correct two invalid schema fixtures and
-  the host-internal primitive registry expectation without weakening production
-  checks. Their reruns, the Codex OAuth commit correction and connected runtime
-  acceptance remain pending; no complete Bob plan or release is accepted.
+- **Bob integration validation (in progress)**: Run-35 compiles the worker and
+  all 20 joint test harnesses without warnings. Of 30 executed independent
+  cases, 29 pass; 27 earlier passes are reused only for identical executables.
+  The schema/registry fixtures and actual Codex OAuth commit regressions pass.
+  Common startup fails at independent receipt-encoder qualification. Add safe
+  phase/suite/rejection diagnostics while preserving original private causes and
+  every qualification gate. The diagnostic patch, corrected Prefix storage
+  fixture and connected runtime acceptance await Run-36; no complete Bob plan
+  or release is accepted.
 
 - **Codex preparation and selection status (validation pending)**: Reuse the
   existing native source for explicit Use and early Sempai restoration. Compute
@@ -35,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without duplicate non-Codex metadata reads. Add three native caller test
   sources. Correct the authenticated Use commit to compare the OAuth head,
   preserve native login's lock order and reject changed/deleted heads without
-  altering role selection or receipts. The expanded native regression is unrun.
+  altering role selection or receipts. The expanded native Use/head-change/deletion regression passes in Run-35; early startup remains unrun behind common qualification.
   Responses/prefix serving and real-issuer acceptance remain open.
 
 - **Original component revision policy (validation pending)**: Retain each new

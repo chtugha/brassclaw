@@ -1,3 +1,15 @@
+## 2026-11-11 — Encoder diagnostics integrated; Run-36 prepared
+
+The reviewed five-file diagnostic correction is integrated as `1c7e66111`
+(original J commit `f97e60895`). It records closed phase/suite/rejection facts
+at their existing owners before error conversion and retains the private original
+cause. No qualification, fixture, cleanup or approval gate changes. The actual
+encoder failure is still unresolved; its three diagnostic regressions and the
+Prefix fixture repair await the bundled Run-36 local batch. N continues the
+private connected Flow assignment; P now owns the second implementation slot
+for the reviewed read-only Provider/Auth product projection. No new serving,
+Pure-approval or Bob-completion claim follows from source integration.
+
 ## 2026-11-11 — Warning-free combined build; encoder qualification remains open
 
 Run-35 on `351f63fc3` compiles the worker and all 20 harnesses without warnings;
