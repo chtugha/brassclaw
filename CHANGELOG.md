@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   open; no new serving support is claimed.
   All 25 targeted codec/isolated SDK regressions pass from the actual retained
   LLM executable. Native Auth/Factory/Prefix and global startup gates remain open.
+  The subsequent warning-free 20-harness build also passes the real Use/OAuth
+  identity and factory pre-authentication cases. Independent encoder
+  qualification still blocks common startup; the Prefix fault-fixture repair
+  awaits rerun. These scoped results do not enable serving.
 
 - **Bob integration validation (in progress)**: The current worker and all 19
   joint test harnesses compile without warnings. Twenty of 24 executed

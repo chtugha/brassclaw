@@ -1,3 +1,23 @@
+## 2026-11-11 — Warning-free combined build; encoder qualification remains open
+
+Run-35 on `351f63fc3` compiles the worker and all 20 harnesses without warnings;
+source/profile/link checks pass. After audited obsolete-cache removal, runtime
+continues from the same retained images without recompilation. The independent
+57-case block has 29 actual passes, one actual failure and 27 strictly reused
+passes. The real M Use/OAuth identity and O factory pre-authentication cases
+pass; the old Prefix corruption fixture fails on its genuine database CHECK.
+The reviewed fixture correction is integrated as `95a9f01c7`, with rerun pending.
+
+Common startup still fails, now safely located at independent receipt-encoder
+qualification. Earlier native-stage facts do not establish that encoder's
+closure. J investigates the shared Spec/Instrument path; no gate is bypassed.
+Provider startup, Source foundation and dependent cases are not run. Complete
+source identity is verified through terminal completion and the freeze released.
+Use [the current package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09)
+for exact artifact IDs, scoped passing-subset evidence and N/J/P ownership.
+All three Bob plans, general Pure approval, final serving/Prefix/upgrade and
+deployment/platform gates remain open.
+
 ## 2026-11-11 — Scoped LLM acceptance; connected Bob gates remain open
 
 Run-34 on `34e4bcfa3` preserves a successful worker and 17 actual harnesses but
