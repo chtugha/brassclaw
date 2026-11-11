@@ -276,7 +276,7 @@ pub mod content_integrity;
 pub mod q1_orchestrator;
 #[cfg(feature = "postgres")]
 mod queue_original_projection;
-#[cfg(feature = "postgres")]
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod queued_review_submission;
 #[cfg(feature = "postgres")]
 pub mod repair;

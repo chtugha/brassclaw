@@ -10,6 +10,7 @@
 
 use std::path::PathBuf;
 
+#[cfg(feature = "postgres")]
 use anyhow::Context as _;
 use clap::{Args, Subcommand};
 
@@ -79,6 +80,7 @@ struct RewrapCommand {
 }
 
 /// Parsed strategy variant.
+#[cfg(feature = "postgres")]
 #[derive(Debug)]
 enum RewrapStrategy {
     PassphraseFile(PathBuf),
@@ -86,6 +88,7 @@ enum RewrapStrategy {
     RawKey,
 }
 
+#[cfg(feature = "postgres")]
 impl RewrapStrategy {
     fn parse(s: &str) -> anyhow::Result<Self> {
         if let Some(path) = s.strip_prefix("passphrase-file=") {
@@ -518,6 +521,7 @@ fn write_raw_master_key(path: &std::path::Path, key: &[u8]) -> anyhow::Result<()
 /// A replaced public pathname is never zeroed or unlinked. Cleanup is called
 /// only after committing/rechecking the wrapped ceremony under its owner lock.
 /// This does not promise physical erasure on SSDs, snapshots or copy-on-write FS.
+#[cfg(feature = "postgres")]
 fn zero_and_remove(path: &std::path::Path, expected: &[u8]) -> anyhow::Result<()> {
     let parent = path
         .parent()
@@ -540,6 +544,7 @@ fn zero_and_remove(path: &std::path::Path, expected: &[u8]) -> anyhow::Result<()
 
 /// Finish cleanup of an already captured file. Keeping capture separate lets
 /// acceptance cover a public pathname recreated before validation or erasure.
+#[cfg(feature = "postgres")]
 fn finish_captured_key_cleanup(
     path: &std::path::Path,
     retained: &std::path::Path,

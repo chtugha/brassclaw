@@ -71,8 +71,6 @@ pub(crate) fn execute(
         #[cfg(feature = "postgres")]
         let (runtime_input, managed_pg) =
             start_postgres_for_run(runtime_input, &boot_config).await?;
-        #[cfg(not(feature = "postgres"))]
-        let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
 
         // The `run` / `repl` path has no WebUI-authenticated user identity, so
         // the trigger-fire access checker is not wired here (it requires an

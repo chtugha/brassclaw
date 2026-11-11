@@ -88,6 +88,7 @@ impl MigrateCommand {
     }
 }
 
+#[cfg(feature = "migrate-from-libsql")]
 fn status(migrated: bool) -> &'static str {
     if migrated {
         "migrated"
@@ -99,6 +100,7 @@ fn status(migrated: bool) -> &'static str {
 /// Build a Postgres pool for the migrate command. Uses `BRASSCLAW_PG_URL` if
 /// set, otherwise reports an error asking the user to start `brassclaw serve`
 /// first (which starts embedded PG automatically).
+#[cfg(feature = "migrate-from-libsql")]
 async fn build_pg_pool(_context: &RebornCliContext) -> anyhow::Result<deadpool_postgres::Pool> {
     let url = std::env::var("BRASSCLAW_PG_URL")
         .or_else(|_| std::env::var("DATABASE_URL"))
