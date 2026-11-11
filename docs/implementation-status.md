@@ -1,3 +1,32 @@
+## 2026-11-11 — Source completion corrections integrated; CLI variants remain open
+
+The actual CLI database-reader case passes from the warning-free default build
+at `da84ed997`: one executed, none ignored, original CLI image verified before
+and after execution. It exercises DB selection, honest unobserved runtime status
+and invalid-DB failure without file/environment fallback. Evidence:
+`target/validation/bob-native-repair-20261105/run-37-cli/default/`.
+The subsequent genuine no-default-features build fails with E0425 because a
+recorded-input verifier references a `skills-db`-gated fingerprint type. The
+test has not run. Reviewed correction `b93fa1870` gates that method consistently
+with its genuine type and all consumers; no stub, dependency enabling or test skip.
+
+Reviewed source correction `b906d4f96` keeps the original test completion
+subscription across admission closure and reports only safe facts from the
+existing owner's actual service join. It separates the captured PostgreSQL
+phase deadlines from native source preparation, retains uncertain-connection
+disposal and original-only COMMIT readback, and updates all three queue-authoring
+callers. Original failure outcomes and approval requirements remain intact.
+The actual Run-37 service-stop cause is still unknown; these integrated sources
+have no new compilation/native acceptance.
+
+N now corrects the proven cold Spec-inspection-under-parent-lock path and adds
+the missing real Plan/Spec lifecycle, ACK and closure regression sources. Q
+continues Capture/Regex policy and frozen-codec migration. Its canonical Pure
+carriage is confined to the already supported exact protected generation owner;
+missing independent S prerequisites remain with their qualification owner.
+No broad closure approval or legacy new-writer bypass is authorized.
+Root continues scoped validation; all three Bob plans remain open.
+
 ## 2026-11-11 — Run-37 common startup passes; Source review remains open
 
 The frozen integration source `2d8873965` compiles the worker and all 21 joint

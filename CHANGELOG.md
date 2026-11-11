@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original review phase custody (validation pending)**: Separate bounded
+  PostgreSQL authoring/readback from native source preparation using one captured
+  policy. Preserve original-only reconciliation after uncertain COMMIT, and keep
+  test completion tied to the actual producer through admission closure. Add
+  safe actual-owner diagnostics. The CLI database-reader regression passes;
+  correct a separate feature-off validator-type gate, awaiting revalidation.
+
 - **Bob Run-37 scoped validation**: All 21 joint harnesses compile without
   warnings. Common Monty startup and 63 selected independent regressions pass,
   including real native Provider status. Defer the receipt encoder's JSON import
