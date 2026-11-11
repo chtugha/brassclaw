@@ -3,6 +3,90 @@ use super::*;
 use brassclaw_turns::private_work::ClaimedPrivateWork;
 use uuid::Uuid;
 
+/// Passive facts about one original intent exchange. Each bit is published only
+/// at the actual boundary; inspection neither polls nor holds the exchange.
+#[cfg(test)]
+#[derive(Default)]
+pub(super) struct IntentObservation {
+    reached: std::sync::atomic::AtomicU16,
+    backend_pid: std::sync::atomic::AtomicI32,
+}
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum IntentBoundary {
+    AcquireStarted,
+    AcquireAcknowledged,
+    BeginStarted,
+    BeginAcknowledged,
+    ClaimStarted,
+    ClaimAcknowledged,
+    UpdateStarted,
+    UpdateAcknowledged,
+    CommitStarted,
+    CommitAcknowledged,
+    ClientScopeEnded,
+}
+#[cfg(test)]
+struct IntentClientScope<'a> {
+    observation: &'a IntentObservation,
+    acquired: bool,
+}
+#[cfg(test)]
+impl Drop for IntentClientScope<'_> {
+    fn drop(&mut self) {
+        if self.acquired {
+            // Declared before the client, hence dropped after it. This observes
+            // Rust disposal only, never PostgreSQL rollback/disconnection ACK.
+            self.observation.note(IntentBoundary::ClientScopeEnded);
+        }
+    }
+}
+#[cfg(test)]
+impl IntentObservation {
+    fn note(&self, boundary: IntentBoundary) {
+        self.reached
+            .fetch_or(1 << boundary as u16, std::sync::atomic::Ordering::Release);
+    }
+    fn claim_backend(&self, pid: i32) {
+        let reached = self.reached.load(std::sync::atomic::Ordering::Acquire);
+        if reached & (1 << IntentBoundary::ClaimStarted as u16) != 0
+            && reached & (1 << IntentBoundary::ClaimAcknowledged as u16) == 0
+        {
+            self.backend_pid
+                .store(pid, std::sync::atomic::Ordering::Release);
+        }
+    }
+    fn snapshot(&self) -> Value {
+        let reached = self.reached.load(std::sync::atomic::Ordering::Acquire);
+        let names = [
+            "acquire_started",
+            "acquire_acknowledged",
+            "begin_started",
+            "begin_acknowledged",
+            "claim_started",
+            "claim_acknowledged",
+            "update_started",
+            "update_acknowledged",
+            "commit_started",
+            "commit_acknowledged",
+            "client_scope_ended",
+        ];
+        let boundaries: Vec<_> = names
+            .into_iter()
+            .enumerate()
+            .filter_map(|(bit, name)| (reached & (1 << bit) != 0).then_some(name))
+            .collect();
+        let pid = self.backend_pid.load(std::sync::atomic::Ordering::Acquire);
+        serde_json::json!({
+            "last_io_boundary": boundaries.iter().rev().copied()
+                .find(|boundary| *boundary != "client_scope_ended").unwrap_or("not_started"),
+            "boundaries": boundaries,
+            "client_scope_ended": reached & (1 << IntentBoundary::ClientScopeEnded as u16) != 0,
+            "claim_query_backend_pid": (pid > 0).then_some(pid),
+        })
+    }
+}
+
 impl PgMontyAdmission {
     pub(super) async fn inspect_private_claim(
         &self,
@@ -14,7 +98,12 @@ impl PgMontyAdmission {
             "SELECT private_request_checksum,private_definition_checksum,
             private_claim_checksum,private_runner_id,private_claim_generation,
             private_cancel_revision,private_lease_deadline>clock_timestamp() AS live,
-            execution_run_id,private_admission_run FROM brassclaw_turns
+            execution_run_id,private_admission_run",
+        );
+        #[cfg(test)]
+        query.push_str(",pg_backend_pid() AS observer_backend_pid");
+        query.push_str(
+            " FROM brassclaw_turns
             WHERE record_kind='private_work' AND tenant_id=$1 AND work_id=$2 AND status='claimed'",
         );
         if retain_lock {
@@ -31,6 +120,9 @@ impl PgMontyAdmission {
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?
             .ok_or_else(|| failed("monty_admission_fenced"))?;
+        #[cfg(test)]
+        self.intent_observation
+            .claim_backend(row.get("observer_backend_pid"));
         if row.get::<_, Vec<u8>>(0).as_slice() != claimed.request_checksum()
             || row.get::<_, Vec<u8>>(1).as_slice() != claimed.definition_checksum()
             || row.get::<_, Vec<u8>>(2).as_slice() != self.checksum
@@ -55,29 +147,71 @@ impl PgMontyAdmission {
         let AdmissionOrigin::Private(_) = &self.origin else {
             return Ok(());
         };
+        #[cfg(test)]
+        self.intent_observation.note(IntentBoundary::AcquireStarted);
+        #[cfg(test)]
+        let mut client_scope = IntentClientScope {
+            observation: &self.intent_observation,
+            acquired: false,
+        };
         let mut client = self
             .pool
             .get()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        {
+            client_scope.acquired = true;
+        }
+        #[cfg(test)]
+        self.intent_observation
+            .note(IntentBoundary::AcquireAcknowledged);
+        #[cfg(test)]
+        self.intent_observation.note(IntentBoundary::BeginStarted);
         let transaction = client
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        self.intent_observation
+            .note(IntentBoundary::BeginAcknowledged);
+        #[cfg(test)]
+        self.intent_observation.note(IntentBoundary::ClaimStarted);
         self.verify_claim(&transaction).await?;
+        #[cfg(test)]
+        self.intent_observation
+            .note(IntentBoundary::ClaimAcknowledged);
+        #[cfg(test)]
+        self.intent_observation.note(IntentBoundary::UpdateStarted);
         let changed=transaction.execute("UPDATE brassclaw_monty_task_admissions
             SET private_submission_intent_at=clock_timestamp()
             WHERE run_id=$1 AND admission_key=$2 AND claim_checksum=$3
             AND origin_kind='private_work' AND phase='reserved' AND private_submission_intent_at IS NULL",
             &[&self.attempt.run_id.as_uuid(),&&self.key[..],&&self.checksum[..]])
             .await.map_err(|_|failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        self.intent_observation
+            .note(IntentBoundary::UpdateAcknowledged);
         if changed != 1 {
             return Err(failed("monty_admission_replay_requires_recovery"));
         }
-        transaction
+        #[cfg(test)]
+        self.intent_observation.note(IntentBoundary::CommitStarted);
+        let committed = transaction
             .commit()
             .await
-            .map_err(|_| failed("monty_admission_database_failed"))
+            .map_err(|_| failed("monty_admission_database_failed"));
+        #[cfg(test)]
+        if committed.is_ok() {
+            self.intent_observation
+                .note(IntentBoundary::CommitAcknowledged);
+        }
+        committed
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_private_intent_observation(&self) -> Value {
+        self.intent_observation.snapshot()
     }
 }
 

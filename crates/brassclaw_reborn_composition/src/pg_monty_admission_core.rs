@@ -38,6 +38,8 @@ pub(crate) struct PgMontyAdmission {
     checksum: [u8; 32],
     catalogue: OnceLock<Option<CatalogueReference>>,
     task_models: OnceLock<Option<Value>>,
+    #[cfg(test)]
+    intent_observation: private_origin::IntentObservation,
 }
 struct ChatAdmissionOrigin {
     scope: TurnScope,
@@ -107,6 +109,8 @@ impl PgMontyAdmission {
             checksum: Sha256::digest(claim).into(),
             catalogue: OnceLock::new(),
             task_models: OnceLock::new(),
+            #[cfg(test)]
+            intent_observation: Default::default(),
         })
     }
 
@@ -127,6 +131,8 @@ impl PgMontyAdmission {
             checksum: Sha256::digest(claim).into(),
             catalogue: OnceLock::new(),
             task_models: OnceLock::new(),
+            #[cfg(test)]
+            intent_observation: Default::default(),
         })
     }
     fn chat_origin(&self) -> Result<&ChatAdmissionOrigin, AgentLoopDriverError> {

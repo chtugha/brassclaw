@@ -458,7 +458,9 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     )))
     .await
     .unwrap();
-    let frame = TestObservationFrame::capture(&runtime).await;
+    let frame = TestObservationFrame::capture(&runtime)
+        .await
+        .with_independent_diagnostic_pool(rig.pool.clone());
     // Bootstrap is unchanged; the actual author/evidence/Worker operations
     // below share exactly one ordinary pooled connection.
     transport.pool.resize(1);

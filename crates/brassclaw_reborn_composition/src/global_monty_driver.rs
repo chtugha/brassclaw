@@ -93,6 +93,14 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         Ok(false)
     }
 
+    #[cfg(test)]
+    fn test_private_intent_observation(
+        &self,
+        _attempt: MontyTaskAttempt,
+    ) -> Result<Option<serde_json::Value>, AgentLoopDriverError> {
+        Ok(None)
+    }
+
     fn private_host(
         &self,
         _claimed: &brassclaw_turns::private_work::ClaimedPrivateWork,
@@ -179,6 +187,28 @@ struct AttemptState {
     cancelled: bool,
     phase: Phase,
 }
+#[cfg(test)]
+#[derive(Clone, Copy)]
+enum SubmissionBoundary {
+    NotPolled,
+    BeforeSubmitStarted,
+    ServiceSubmitStarted,
+    ServicePreEnqueueRejectionStarted,
+    ServiceSubmitReturned,
+}
+#[cfg(test)]
+impl SubmissionBoundary {
+    fn name(value: u8) -> &'static str {
+        match value {
+            0 => "not_polled",
+            1 => "before_submit_started",
+            2 => "service_submit_started",
+            3 => "service_pre_enqueue_rejection_started",
+            4 => "service_submit_returned",
+            _ => "observation_invalid",
+        }
+    }
+}
 type Acknowledgement = Shared<BoxFuture<'static, Result<(), AgentLoopDriverError>>>;
 enum AdmissionOutcome {
     Accepted(Arc<TaskTicket>),
@@ -194,6 +224,28 @@ struct Attempt {
     settlement: Mutex<Option<Settlement>>,
     unsubmitted_ack: Mutex<Option<Acknowledgement>>,
     submission: Mutex<Option<AdmissionFuture>>,
+    #[cfg(test)]
+    submission_boundary: std::sync::atomic::AtomicU8,
+}
+#[cfg(test)]
+impl Attempt {
+    fn submission_observation(&self) -> serde_json::Value {
+        let boundary = SubmissionBoundary::name(
+            self.submission_boundary
+                .load(std::sync::atomic::Ordering::Acquire),
+        );
+        let future = match self.submission.try_lock() {
+            Ok(submission) => serde_json::json!({"observed":true,
+                "ready":submission.as_ref().map(|submission|submission.peek().is_some())}),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                serde_json::json!({"observed":false,"reason":"submission_registry_busy"})
+            }
+            Err(std::sync::TryLockError::Poisoned(_)) => {
+                serde_json::json!({"observed":false,"reason":"submission_registry_poisoned"})
+            }
+        };
+        serde_json::json!({"boundary":boundary,"future":future})
+    }
 }
 
 struct Settlement {
@@ -271,12 +323,14 @@ impl GlobalMontyDriver {
         };
         let mut observations = Vec::with_capacity(entries.len());
         for (attempt, entry) in entries {
-            let (phase, receipt) = {
+            let submission = entry.submission_observation();
+            let intent = self.ports.test_private_intent_observation(attempt)?;
+            let (phase, receipt, cancelled) = {
                 let state = entry
                     .state
                     .lock()
                     .map_err(|_| failed("monty_attempt_state_failed"))?;
-                match &state.phase {
+                let (phase, receipt) = match &state.phase {
                     Phase::Preparing => ("preparing", None),
                     Phase::AwaitingAdmission => ("awaiting_admission", None),
                     Phase::PreparationStopped => ("preparation_stopped", None),
@@ -301,7 +355,8 @@ impl GlobalMontyDriver {
                                 .map_err(|error| format!("{error:?}"))
                         }),
                     ),
-                }
+                };
+                (phase, receipt, state.cancelled)
             };
             let (settlement_started, acknowledgement) = {
                 let retained = entry
@@ -322,6 +377,10 @@ impl GlobalMontyDriver {
             observations.push(serde_json::json!({
                 "attempt": format!("{attempt:?}"),
                 "phase": phase,
+                "submission_boundary": submission["boundary"],
+                "submission_future": submission["future"],
+                "cancelled": cancelled,
+                "private_intent": intent,
                 "service_receipt": receipt,
                 "settlement_started": settlement_started,
                 "acknowledgement": acknowledgement,
@@ -403,6 +462,10 @@ impl GlobalMontyDriver {
             settlement: Mutex::new(None),
             unsubmitted_ack: Mutex::new(None),
             submission: Mutex::new(None),
+            #[cfg(test)]
+            submission_boundary: std::sync::atomic::AtomicU8::new(
+                SubmissionBoundary::NotPolled as u8,
+            ),
         });
         attempts.insert(entry.host.attempt(), entry.clone());
         Ok(entry)
@@ -503,11 +566,20 @@ impl GlobalMontyDriver {
             if let Some(pause) = pause {
                 pause.wait().await;
             }
+            #[cfg(test)]
+            note_submission_boundary(&owner, SubmissionBoundary::BeforeSubmitStarted);
             let result = if factory.before_submit(&host).await.is_ok() {
+                #[cfg(test)]
+                note_submission_boundary(&owner, SubmissionBoundary::ServiceSubmitStarted);
                 service
                     .submit_unless_cancelled(input, ports, host.cancellation_requested())
                     .await
             } else {
+                #[cfg(test)]
+                note_submission_boundary(
+                    &owner,
+                    SubmissionBoundary::ServicePreEnqueueRejectionStarted,
+                );
                 // This branch precedes the first service submit call. Ask the
                 // real service to seal its own biased pre-enqueue rejection;
                 // no missing receipt/intent/Tool row is used as no-effect proof.
@@ -516,6 +588,8 @@ impl GlobalMontyDriver {
                     .submit_unless_cancelled(input, ports, std::future::ready(()))
                     .await
             };
+            #[cfg(test)]
+            note_submission_boundary(&owner, SubmissionBoundary::ServiceSubmitReturned);
             let entry = owner
                 .upgrade()
                 .ok_or_else(|| failed("monty_attempt_state_failed"))?;
@@ -1092,6 +1166,15 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
         .map_err(|_| AgentLoopDriverError::Unavailable {
             reason: "Monty attempt did not acknowledge settlement before deadline".into(),
         })?
+    }
+}
+
+#[cfg(test)]
+fn note_submission_boundary(owner: &std::sync::Weak<Attempt>, boundary: SubmissionBoundary) {
+    if let Some(entry) = owner.upgrade() {
+        entry
+            .submission_boundary
+            .store(boundary as u8, std::sync::atomic::Ordering::Release);
     }
 }
 

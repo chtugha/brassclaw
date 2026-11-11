@@ -530,6 +530,29 @@ impl OwnedGlobalTaskFactory {
 #[async_trait]
 impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
     #[cfg(test)]
+    fn test_private_intent_observation(
+        &self,
+        attempt: MontyTaskAttempt,
+    ) -> Result<Option<Value>, AgentLoopDriverError> {
+        let admission = {
+            let tasks = match self.tasks.try_lock() {
+                Ok(tasks) => tasks,
+                Err(std::sync::TryLockError::WouldBlock) => {
+                    return Ok(Some(json!({"observation":"factory_registry_busy"})));
+                }
+                Err(std::sync::TryLockError::Poisoned(_)) => {
+                    return Err(failed("monty_task_registry_failed"));
+                }
+            };
+            tasks
+                .get(&attempt)
+                .filter(|task| task.host.private_claim().is_some())
+                .map(|task| task.admission.clone())
+        };
+        Ok(admission.map(|admission| admission.test_private_intent_observation()))
+    }
+
+    #[cfg(test)]
     async fn prepare_private_validator(
         &self,
         submission_id: uuid::Uuid,
