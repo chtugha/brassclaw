@@ -1110,18 +1110,90 @@ async fn assert_independent_pair_storage(
         serde_json::to_value(store.pair_original(&selection.pair).await.unwrap().unwrap()).unwrap(),
         value
     );
-    // Retained corruption is an error, never "no design". Test-only rollback
-    // temporarily bypasses the immutable trigger to exercise the real reader.
+    // The immutable trigger is bypassed only inside rolled-back fault fixtures.
+    // The real checksum CHECK stays active: malformed outer integrity must be
+    // rejected by PostgreSQL, not mistaken for an exercised semantic reader.
+    let trigger_query = "SELECT tgenabled::text FROM pg_trigger WHERE tgrelid='reborn_prefix_design_acceptances'::regclass AND tgname='protect_prefix_design_acceptance'";
+    let trigger_before: String = client.query_one(trigger_query, &[]).await.unwrap().get(0);
+    assert_eq!(trigger_before, "O");
     let tx = client.transaction().await.unwrap();
     tx.batch_execute("ALTER TABLE reborn_prefix_design_acceptances DISABLE TRIGGER protect_prefix_design_acceptance").await.unwrap();
-    tx.execute(
-        "UPDATE reborn_prefix_design_acceptances SET checksum=$2 WHERE acceptance_id=$1",
-        &[&id, &"0".repeat(64)],
-    )
-    .await
-    .unwrap();
-    assert!(store.record_on(&*tx, id).await.is_err());
+    let rejected = tx
+        .execute(
+            "UPDATE reborn_prefix_design_acceptances SET checksum=$2 WHERE acceptance_id=$1",
+            &[&id, &"0".repeat(64)],
+        )
+        .await
+        .unwrap_err();
+    assert_eq!(
+        rejected.code(),
+        Some(&tokio_postgres::error::SqlState::CHECK_VIOLATION)
+    );
+    assert_eq!(
+        rejected.as_db_error().and_then(|error| error.table()),
+        Some("reborn_prefix_design_acceptances")
+    );
+    let aborted = tx.batch_execute("SELECT 1").await.unwrap_err();
+    assert_eq!(
+        aborted.code(),
+        Some(&tokio_postgres::error::SqlState::IN_FAILED_SQL_TRANSACTION)
+    );
     tx.rollback().await.unwrap();
+    assert_eq!(
+        client
+            .query_one(trigger_query, &[])
+            .await
+            .unwrap()
+            .get::<_, String>(0),
+        trigger_before
+    );
+    assert_eq!(
+        serde_json::to_value(store.pair_original(&selection.pair).await.unwrap().unwrap()).unwrap(),
+        value
+    );
+
+    // Exercise the real semantic reader in a NEW healthy transaction. Copy the
+    // genuine stored original, change only its document ID, and recompute its
+    // valid outer checksum. All table constraints/FKs remain active; the reader
+    // must reject the mismatch against the unchanged relational acceptance ID.
+    let tx = client.transaction().await.unwrap();
+    tx.batch_execute("ALTER TABLE reborn_prefix_design_acceptances DISABLE TRIGGER protect_prefix_design_acceptance").await.unwrap();
+    assert_eq!(store.record_on(&*tx, id).await.unwrap().id, id);
+    let row = tx.query_one("SELECT evidence_bytes,checksum FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1", &[&id]).await.unwrap();
+    let original_bytes: String = row.get(0);
+    let original_checksum: String = row.get(1);
+    assert_eq!(
+        super::checksum(original_bytes.as_bytes()),
+        original_checksum
+    );
+    let mut damaged: Value = serde_json::from_str(&original_bytes).unwrap();
+    assert_eq!(damaged["id"], json!(id));
+    let different_id = Uuid::new_v4();
+    assert_ne!(different_id, id);
+    damaged["id"] = json!(different_id);
+    let damaged_bytes = serde_json::to_string(&damaged).unwrap();
+    let valid_checksum = super::checksum(damaged_bytes.as_bytes());
+    assert_eq!(tx.execute(
+        "UPDATE reborn_prefix_design_acceptances SET evidence_bytes=$2,checksum=$3 WHERE acceptance_id=$1",
+        &[&id, &damaged_bytes, &valid_checksum],
+    ).await.unwrap(), 1);
+    assert!(matches!(
+        store.record_on(&*tx, id).await,
+        Err(Error::Unavailable)
+    ));
+    tx.batch_execute("SELECT 1").await.unwrap();
+    tx.rollback().await.unwrap();
+    let restored = client.query_one("SELECT evidence_bytes,checksum FROM reborn_prefix_design_acceptances WHERE acceptance_id=$1", &[&id]).await.unwrap();
+    assert_eq!(restored.get::<_, String>(0), original_bytes);
+    assert_eq!(restored.get::<_, String>(1), original_checksum);
+    assert_eq!(
+        client
+            .query_one(trigger_query, &[])
+            .await
+            .unwrap()
+            .get::<_, String>(0),
+        trigger_before
+    );
     drop(client);
     assert_eq!(
         serde_json::to_value(store.pair_original(&selection.pair).await.unwrap().unwrap()).unwrap(),
