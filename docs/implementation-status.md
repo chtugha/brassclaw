@@ -1,3 +1,22 @@
+## 2026-11-11 — Scoped LLM acceptance; connected Bob gates remain open
+
+Run-34 on `34e4bcfa3` preserves a successful worker and 17 actual harnesses but
+joint compilation stops on one diagnostic-only MutexGuard type error, without
+warnings. No Composition/native startup tests run. The complete source is
+unchanged through terminal failure. J's reviewed one-line correction is
+integrated as `a7b1a31bb`; its next compilation remains pending.
+
+Root executes all 25 targeted LLM codec/isolated SDK regressions from the
+successfully compiled original LLM executable: all pass, no cases ignored,
+source identity unchanged. See the exact scope in
+[the package checkpoint](development-package-board.md#current-integration-checkpoint--2026-11-09)
+and `target/validation/bob-native-repair-20261105/run-34-composition/partial-llm-2/accepted.json`.
+This does not establish real native Auth/Factory/Prefix or global startup support.
+The earlier incorrect selector resolution stopped before any tests and remains
+a separate failed record. Run-35 is prepared; common qualification cause,
+Source/Case, M startup, technical Prefix upgrade qualification and full Bob
+completion remain open. N continues only its private connected Flow assignment.
+
 ## 2026-11-10 — Current Bob source integration; acceptance pending
 
 J-01's original single-Pure-case source and connected product/readiness/evidence

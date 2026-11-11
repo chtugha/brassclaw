@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qualifications. Source is reviewed/integrated. Native tests, effective
   output/encoding, final Prefix handoff and technical upgrade qualification remain
   open; no new serving support is claimed.
+  All 25 targeted codec/isolated SDK regressions pass from the actual retained
+  LLM executable. Native Auth/Factory/Prefix and global startup gates remain open.
 
 - **Bob integration validation (in progress)**: The current worker and all 19
   joint test harnesses compile without warnings. Twenty of 24 executed

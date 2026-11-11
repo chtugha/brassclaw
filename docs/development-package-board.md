@@ -278,6 +278,36 @@ common prerequisite, provider startup and Source foundation/dependents behind
 their existing gates. No new result is claimed. N resumes its same unfinished
 private connected Flow assignment while Root validates frozen integration inputs.
 
+**Run-34 terminal / November 11 follow-up:** frozen `34e4bcfa3` builds the
+worker in 0.951 s. Joint compilation stops after 125.038 s on one E0308 in the
+new diagnostic: a closure destructures a `MutexGuard` as a tuple. No warnings
+occur and 17 emitted harnesses plus the actual worker are retained/hash-verified.
+No Composition/native startup cases execute. Source identity remains unchanged
+through terminal failure and the freeze is released. J audits all eleven new
+diagnostic lock closures; its exact one-line fix `758423515` is fully reviewed/
+hash-verified and integrated as `a7b1a31bb`. Gate/redaction behavior is unchanged.
+
+The disk guard requires maintenance again. Only 21 audited incremental-only
+directories (7,985 files, 2.875 GiB of logical file bytes) are removed under the
+Cargo lock after original-stat/type/open-handle checks. Current libraries, every
+executable, source, databases and evidence remain; free space becomes 24.590 GiB,
+89.228% used. Monty/Composition/LLM/Engine incremental state is preserved.
+
+Root then executes the 25 relevant LLM codec/isolated SDK cases directly from
+the retained Run-34 LLM executable, without Cargo. All 25 pass, one selected
+case each and none ignored; the complete source remains unchanged. An initial
+inventory guard correctly stops with zero tests because one handoff names the
+wrong redaction submodule; that failed resolution is preserved separately.
+The actual unique selector is used in the successful run. The scoped acceptance
+is `run-34-composition/partial-llm-2/accepted.json`, executable SHA-256
+`816ca307d7d8911a2257d4a81b1cdfb10415dd172b1fb7c81131313534957ae2`.
+This is not native Auth/Factory/Prefix/global-startup or full O acceptance.
+
+Run-35 is prepared with the reviewed one-line fix, the same 20-harness/57-case
+scope and reuse of the 25 LLM/two wire receipts only for identical respective
+actual executables. All other gates stay mandatory. N continues the same
+unfinished private source package; J/M/O are idle for concrete own corrections.
+
 **Run-25 — 2026-11-09:** frozen Main `4a6f07c8d` builds the worker and
 joint graph without warnings (14.435/676.992 s). Profile/source/link gates pass;
 `__eh_frame` is 13,062,052 bytes and all 1,389 Composition names are accounted
