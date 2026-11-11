@@ -315,9 +315,7 @@ async fn configured_frames_above_64_mib_round_trip_without_an_independent_ceilin
 
 #[tokio::test]
 async fn original_pure_case_encoder_defers_json_import_until_invocation() {
-    use brassclaw_engine::executor::{
-        retained_preload::PreloadDeclaration, retained_profile::builtin,
-    };
+    use brassclaw_engine::executor::retained_preload::PreloadDeclaration;
 
     // Inspect the shipped bytes with the actual contained parser. A declaration
     // or a Python-only evaluation cannot establish an effect-free preload.
@@ -389,7 +387,14 @@ async fn original_pure_case_encoder_defers_json_import_until_invocation() {
             .cloned()
             .collect::<std::collections::BTreeSet<_>>()
     );
-    assert!(library.references.iter().all(|name| builtin(name)));
+    let profile =
+        serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).unwrap();
+    let builtin_names = profile["builtin_names"].as_array().unwrap();
+    assert!(library.references.iter().all(|name| {
+        builtin_names
+            .iter()
+            .any(|value| value.as_str() == Some(name.as_str()))
+    }));
     assert!(
         !library.references.contains("json"),
         "json must be local to the invocation"
