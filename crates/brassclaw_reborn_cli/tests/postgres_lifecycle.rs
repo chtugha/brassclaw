@@ -493,6 +493,21 @@ async fn models_readers_use_database_selection_and_never_hide_database_failure()
     assert_eq!(status["default"]["provider_id"], "db-only-provider");
     assert_eq!(status["default"]["provider_known"], true);
     assert_eq!(status["default"]["model"], "db-selected");
+    let output = command(&home, port, &["models", "status"])
+        .output()
+        .unwrap();
+    successful(&output);
+    let text = String::from_utf8_lossy(&output.stdout);
+    for field in ["native_auth", "client_uptake", "serving"] {
+        assert!(
+            text.contains(&format!("{field}: not_observed")),
+            "stdout: {text}"
+        );
+    }
+    assert!(
+        text.contains("default.provider: db-only-provider"),
+        "stdout: {text}"
+    );
 
     client
         .execute(

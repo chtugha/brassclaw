@@ -218,10 +218,11 @@ export function ProviderCard({
         </div>
       </div>
 
-      <${ProviderAuthStatus} provider=${provider} />
+      <${ProviderAuthStatus} provider=${provider} compact=${true} />
       ${expanded &&
       html`
         <div data-testid="llm-provider-details" className="border-t border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-4 py-4 sm:px-5">
+          ${provider.native_auth && html`<div className="mb-3"><${ProviderAuthStatus} provider=${provider} /></div>`}
           ${model && html`<${ModelTokenLimits} key=${JSON.stringify([provider.id, model])} providerId=${provider.id} model=${model} t=${t} />`}
           <div className="grid gap-3 text-xs text-[var(--v2-text-muted)] sm:grid-cols-3">
             <div>

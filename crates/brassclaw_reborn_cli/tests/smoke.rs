@@ -460,6 +460,28 @@ fn models_status_no_default_features_does_not_resolve_reborn_home() {
     let json: serde_json::Value = serde_json::from_str(stdout.trim()).expect("valid JSON");
     assert_eq!(json["routes"], "not-configured");
     assert_eq!(json["v1_state"], "not-used");
+    for field in ["native_auth", "client_uptake", "serving"] {
+        assert_eq!(json[field], "not_observed");
+    }
+    let output = Command::new(reborn_bin())
+        .args(["models", "status"])
+        .env_clear()
+        .output()
+        .expect("feature-off text status should not resolve a home or backend");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let text = String::from_utf8_lossy(&output.stdout);
+    for field in ["native_auth", "client_uptake", "serving"] {
+        assert!(
+            text.contains(&format!("{field}: not_observed")),
+            "stdout: {text}"
+        );
+    }
+    assert!(text.contains("routes: not-configured"), "stdout: {text}");
+    assert!(text.contains("v1_state: not-used"), "stdout: {text}");
 }
 
 #[cfg(not(feature = "root-llm-provider"))]

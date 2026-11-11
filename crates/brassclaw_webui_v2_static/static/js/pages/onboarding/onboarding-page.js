@@ -146,20 +146,22 @@ function FeaturedProviderRow({ entry, provider, configured, isBusy, login, t, on
   }
 
   return html`
-    <${Card} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:gap-4">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <${ProviderLogo} id=${entry.id} name=${name} />
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-semibold text-[var(--v2-text-strong)]">${name}</span>
-            ${configured &&
-            html`<${Badge} tone="positive" label=${t("onboarding.ready")} size="sm" />`}
+    <${Card} className="space-y-3 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <${ProviderLogo} id=${entry.id} name=${name} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="truncate text-sm font-semibold text-[var(--v2-text-strong)]">${name}</span>
+              ${configured &&
+              html`<${Badge} tone="positive" label=${t("onboarding.ready")} size="sm" />`}
+            </div>
+            <div className="mt-0.5 truncate text-xs text-[var(--v2-text-muted)]">${t(entry.descKey)}</div>
           </div>
-          <div className="mt-0.5 truncate text-xs text-[var(--v2-text-muted)]">${t(entry.descKey)}</div>
         </div>
+        <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">${actions}</div>
       </div>
       <${ProviderAuthStatus} provider=${provider} />
-      <div className="flex shrink-0 flex-wrap gap-2 sm:justify-end">${actions}</div>
     <//>
   `;
 }

@@ -1,10 +1,19 @@
 import { html } from "../../../lib/html.js";
 import { useT } from "../../../lib/i18n.js";
 
-export function ProviderAuthStatus({ provider }) {
+export function ProviderAuthStatus({ provider, compact = false }) {
   const t = useT(), status = provider?.native_auth;
   if (!status) return null;
-  return html`<div className="space-y-1 px-4 py-2 text-xs" role="status">
+  const registrationLabel = status.account
+    ? `${t("llm.nativeAuth.account")}: ${t(`llm.nativeAuth.account.${status.account.status}`)}`
+    : `${t("llm.nativeAuth.registration")}: ${t(`llm.nativeAuth.registration.${status.registration}`)}`;
+  if (compact) return html`<div className="min-w-0 space-y-1 break-words px-4 py-2 text-xs" role="status">
+    <p>${t("llm.nativeAuth.access")}: ${t(`llm.nativeAuth.access.${status.access}`)} · ${registrationLabel}</p>
+    <p>${t("llm.nativeAuth.refresh")}: ${t(`llm.nativeAuth.refresh.${status.refresh}`)}${status.blocking_refresh?.error && html` · ${t("onboarding.codexStatusError", { code: status.blocking_refresh.error })}`}</p>
+    ${status.capability !== "available" && html`<p>${t(`llm.nativeAuth.capability.${status.capability}`)}</p>`}
+    ${!status.login_supported && html`<p>${t("llm.nativeAuth.loginUnsupported")}</p>`}
+  </div>`;
+  return html`<div className="min-w-0 space-y-1 break-words text-xs" role="status">
     <p>${t("llm.nativeAuth.title")} · ${t(`llm.nativeAuth.capability.${status.capability}`)}</p>
     <p>${t("llm.nativeAuth.registration")}: ${t(`llm.nativeAuth.registration.${status.registration}`)}</p>
     ${status.account && html`<p>${t("llm.nativeAuth.account")}: ${t(`llm.nativeAuth.account.${status.account.status}`)}</p>`}

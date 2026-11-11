@@ -229,6 +229,9 @@ impl ModelsStatusCommand {
             println!(
                 "{}",
                 serde_json::json!({
+                    "native_auth": "not_observed",
+                    "client_uptake": "not_observed",
+                    "serving": "not_observed",
                     "routes": "not-configured",
                     "slots": slot_status,
                     "v1_state": "not-used",
@@ -238,9 +241,9 @@ impl ModelsStatusCommand {
         }
 
         println!("BrassClaw Reborn model status");
-        println!("native_auth: {}", status.native_auth);
-        println!("client_uptake: {}", status.client_uptake);
-        println!("serving: {}", status.serving);
+        println!("native_auth: not_observed");
+        println!("client_uptake: not_observed");
+        println!("serving: not_observed");
         println!("routes: not-configured");
         for slot in slots {
             println!("{}: not-configured", slot);
@@ -352,6 +355,9 @@ fn print_provider_detail(list: &brassclaw_reborn_composition::RebornProviderList
 #[cfg(feature = "root-llm-provider")]
 fn print_status(status: &brassclaw_reborn_composition::RebornProviderStatus) {
     println!("BrassClaw Reborn model status");
+    println!("native_auth: {}", status.native_auth);
+    println!("client_uptake: {}", status.client_uptake);
+    println!("serving: {}", status.serving);
     match status.default.as_ref() {
         Some(selection) => {
             println!(
