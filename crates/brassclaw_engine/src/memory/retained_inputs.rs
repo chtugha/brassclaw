@@ -211,7 +211,7 @@ impl RetainedRecipeInputs {
                 continue; // Rust-channel availability is prepared separately.
             };
             for source in bindings.values() {
-                if let super::typed_bindings::PreparedReference::Result { path, .. } = source
+                if let PreparedReference::Result { path, .. } = source
                     && path.iter().any(String::is_empty)
                 {
                     return Err(invalid("prepared field path contains an empty field"));
