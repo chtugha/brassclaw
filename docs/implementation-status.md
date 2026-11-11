@@ -1,3 +1,24 @@
+## 2026-11-11 — Run-36 independent regressions pass; encoder inspection still fails
+
+Run-36 on `f44f5c895` compiles the worker and 20 harnesses without warnings.
+All 60 independent cases pass: 33 execute and 27 reuse identical original
+executables. This includes the complete repaired Prefix caller and all three
+encoder diagnostic cases. Common startup fails after 356.805 seconds at
+`independent_encoder/inspect_encoder_source`, before any encoder fixture runs;
+provider startup, Source foundation and dependent cases do not run. Source and
+all retained artifacts are verified through terminal completion. The runtime
+continuation uses the original build after audited obsolete-session cleanup.
+
+P's reviewed status source and correction are integrated as `f56afc065` and
+`f9ef0cd63`. All 32 final source identities match. Root separately executes all
+33 JavaScript regressions on the exact unchanged private source, including the
+real shipped QueryClient/QueryObserver: all pass, none skipped, no warnings.
+Rust/Auth/HTTP/CLI/browser acceptance remains pending; CLI live observation and
+positive Prefix serving are not implemented by this status projection. N's
+119-file connected source handoff is hash-verified but still undergoing complete
+review and private alignment with current Main. J owns the actual encoder cause.
+All three Bob plans remain open; no release or deployment acceptance is implied.
+
 ## 2026-11-11 — Encoder diagnostics integrated; Run-36 prepared
 
 The reviewed five-file diagnostic correction is integrated as `1c7e66111`

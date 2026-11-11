@@ -18,18 +18,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   LLM executable. Native Auth/Factory/Prefix and global startup gates remain open.
   The subsequent warning-free 20-harness build also passes the real Use/OAuth
   identity and factory pre-authentication cases. Independent encoder
-  qualification still blocks common startup; the Prefix fault-fixture repair
-  awaits rerun. These scoped results do not enable serving.
+  inspection still blocks common startup. Run-36 passes the complete corrected
+  Prefix caller and all selected independent cases. These scoped results do not
+  enable serving.
 
 - **Bob integration validation (in progress)**: Run-35 compiles the worker and
-  all 20 joint test harnesses without warnings. Of 30 executed independent
-  cases, 29 pass; 27 earlier passes are reused only for identical executables.
+  all 20 joint test harnesses without warnings. Run-36 passes all 33 executed
+  independent cases and reuses 27 earlier passes only for identical executables.
   The schema/registry fixtures and actual Codex OAuth commit regressions pass.
   Common startup fails at independent receipt-encoder qualification. Add safe
   phase/suite/rejection diagnostics while preserving original private causes and
-  every qualification gate. The diagnostic patch, corrected Prefix storage
-  fixture and connected runtime acceptance await Run-36; no complete Bob plan
-  or release is accepted.
+  every qualification gate. Diagnostic units and corrected Prefix caller pass;
+  common startup fails during native encoder source inspection. Connected
+  runtime acceptance remains open; no complete Bob plan or release is accepted.
+
+- **Native provider status (backend acceptance pending)**: Project current
+  authenticated account/expiry/refresh facts through the existing read-only
+  Provider snapshot, separately from original login receipts and client uptake.
+  Stream complete matching refresh history without a fixed history cap. Reject
+  stale browser replies and cancel pre-commit QueryClient requests before fresh
+  login readback. Add concise EN/DE status/details and honest CLI observation
+  limits. All 33 targeted JavaScript cases pass; Rust/backend/CLI/browser checks
+  and actual Prefix serving remain open.
 
 - **Codex preparation and selection status (validation pending)**: Reuse the
   existing native source for explicit Use and early Sempai restoration. Compute
