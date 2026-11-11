@@ -1,3 +1,22 @@
+## 2026-11-12 — Strict private admission repaired in source; native acceptance pending
+
+The minimal reviewed worker correction is integrated as `2061a7e75`.
+WorkerRecipes now accepts the same strict six-field private envelope already
+supported by Service and GlobalVm, then generates its own task token. Existing
+chat validation, run deduplication, accounting and claim fences are preserved.
+A real-worker regression covers private admission, invalid envelopes, duplicate
+runs and legacy/current chat inputs. It is not yet compiled or executed; Run-39
+failure receipts below are not replaced by a source-only success claim.
+
+The separate size-one-pool Source2 failure remains unproven as to its holder.
+Fresh package S-01 traces actual intent transaction/capacity progress and existing
+connection custody before proposing a repair. R's private original-policy/graph
+correction at `c3a15f13d` is reviewed but uncompiled; actual cause preservation
+through its new approval writer remains a connected review correction. N is
+source-idle. Root retains local validation and integration ownership, with R/S
+as the two current package owners. No new paid build, native acceptance, serving
+activation or completion of any Bob plan is claimed.
+
 ## 2026-11-11 — Run-39: Queue custody passes; private worker rejection identified
 
 At frozen source `a40aee8d6317f14bc3d0f41061d0f0a93f5be3a8`, the worker and

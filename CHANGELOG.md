@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Private task admission (validation pending)**: Reuse the existing strict
+  message-free envelope validator in WorkerRecipes, preserving chat validation,
+  run deduplication and host-generated tokens. Add real-worker regression source;
+  compilation and native acceptance remain pending. Investigate the separate
+  size-one-pool Source failure independently.
+
 - **Original Queue custody and Source diagnostics**: Correct test selectors to
   target the real Queue transaction and retain authentic test observation limits
   across service failure. Run-39 compiles all 21 harnesses warning-free; both
