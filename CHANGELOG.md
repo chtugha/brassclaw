@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bob Run-37 scoped validation**: All 21 joint harnesses compile without
+  warnings. Common Monty startup and 63 selected independent regressions pass,
+  including real native Provider status. Defer the receipt encoder's JSON import
+  until invocation and retain executable-initializer rejection. Correct the
+  Codex startup fixture to retain its original SecretStore namespace and verify
+  the original OAuth head; this correction awaits execution. Both Source review
+  foundation cases fail and retain their actual diagnostics. Connected runtime,
+  CLI/browser, general Pure approval and complete Bob acceptance remain open.
+
 - **Native Codex request boundary (validation pending)**: Share actual Responses
   construction with credential-free observations, preserve supported original
   history/tool data and reject lossy profiles before authentication. Keep native

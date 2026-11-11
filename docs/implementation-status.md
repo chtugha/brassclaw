@@ -1,3 +1,40 @@
+## 2026-11-11 — Run-37 common startup passes; Source review remains open
+
+The frozen integration source `2d8873965` compiles the worker and all 21 joint
+harnesses without warnings. Actual profile/link checks pass; `__eh_frame` is
+13,576,400 bytes. Runtime reuses those exact images without recompilation after
+audited removal of obsolete finalized incremental sessions. All 63 selected
+independent regressions pass: 38 execute, and 25 earlier LLM passes are reused
+only for the identical executable. These include both real PostgreSQL/native
+Provider status cases and the existing HTTP facade contract; they do not certify
+CLI/browser or real-issuer acceptance.
+
+The actual common native startup test now passes in 387.683 seconds. The shipped
+pure receipt encoder imports JSON inside its exported function, preserving the
+preload inspection rule. Its standalone actual-worker inspection regression also
+passes; executable module initialization remains rejected. This closes the
+specific encoder startup failure, not general Pure approval.
+
+The subsequent Codex Sempai startup test fails with model `unconfigured` instead
+of the selected default. Source review identifies mismatched physical SecretStore
+namespaces in the test fixture. Reviewed correction `57e97cb8d` uses the original
+namespace and additionally verifies the actual OAuth head and selection revision;
+all original assertions remain. The corrected test has not yet run.
+
+Both Source foundation cases fail: original Worker completion reports
+`private_completion_service_closed`; atomic authoring reports unavailable storage
+after the deliberately lost COMMIT acknowledgement. Their original diagnostics
+are preserved. Connected cases are not executed. Sources and all 21 retained
+harnesses are verified through terminal; the source freeze is released.
+Evidence: `target/validation/bob-native-repair-20261105/run-37-composition/`,
+including `terminal-disposition.json` and the independent `accepted.json`.
+
+N's connected Flow/selection/private-work source and original parser-bound
+correction remain private and unaccepted. Q owns the connected Capture/Regex
+policy and historical-codec migration. J investigates the actual Source failures.
+All three Bob plans, full Pure approval, remaining serving/scheduling and
+platform/release acceptance remain open.
+
 ## 2026-11-11 — Run-36 independent regressions pass; encoder inspection still fails
 
 Run-36 on `f44f5c895` compiles the worker and 20 harnesses without warnings.
