@@ -14,25 +14,21 @@ use brassclaw_turns::{PgTurnStateStore, private_work::PrivateWorkRequest};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-async fn start(rig: &crate::runtime::test_pg::PgRig, home: &std::path::Path) -> RebornRuntime {
+async fn start(
+    rig: &crate::runtime::test_pg::PgRig,
+    home: &std::path::Path,
+) -> (RebornRuntime, TestObservationFrame) {
     rig.configure_runtime_memory(MontyMemoryMode::Manual).await;
-    Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
+    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
         rig.build_input("i01-qualified-source", home)
             .with_runtime_policy(local_dev_runtime_policy()),
     )))
     .await
-    .unwrap()
+    .unwrap();
+    let frame = TestObservationFrame::capture(&runtime).await;
+    (runtime, frame)
 }
-async fn deadline(runtime: &RebornRuntime) -> Duration {
-    Duration::from_millis(
-        runtime
-            .installed_catalogue
-            .preparation_policy()
-            .await
-            .unwrap()
-            .response_timeout_millis,
-    )
-}
+
 fn candidate(id: Uuid, hidden_host: bool) -> String {
     let mut value = json!({"format":"component-revision/1","uuid":id,"class_code":22,
         "document":{"name":"Authored pure source","description":"Source data; never invoked by this review",
@@ -67,6 +63,7 @@ fn request(id: Uuid, component: Uuid, hidden_host: bool) -> SubmitComponentRevie
 }
 async fn submit(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     request: SubmitComponentReviewRequest,
 ) -> Result<
     brassclaw_product_workflow::ComponentReviewSubmissionReceipt,
@@ -75,6 +72,7 @@ async fn submit(
     let id = Uuid::parse_str(&request.submission_id).unwrap();
     watchdog(
         runtime,
+        frame,
         id,
         "original submit/readback",
         crate::pg_review_submission::submit_with_catalogue(
@@ -88,17 +86,23 @@ async fn submit(
     )
     .await
 }
-async fn selection_bytes(runtime: &RebornRuntime, id: Uuid) -> String {
-    watchdog(runtime, id, "original selection read", async { runtime.installed_catalogue.pool.get().await.unwrap().query_one(
+async fn selection_bytes(
+    runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
+    id: Uuid,
+) -> String {
+    watchdog(runtime,frame, id, "original selection read", async { runtime.installed_catalogue.pool.get().await.unwrap().query_one(
         "SELECT selection_bytes FROM reborn_component_validator_selections WHERE submission_id=$1", &[&id]
     ).await.unwrap().get(0) }).await
 }
 async fn read_positive(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     id: Uuid,
 ) -> Option<crate::validator_inventory_review::CheckedPureSourceOriginal> {
     watchdog(
         runtime,
+        frame,
         id,
         "positive original read",
         async {
@@ -170,10 +174,11 @@ async fn read_positive(
 }
 #[path = "qualified_source_progress.rs"]
 mod progress;
-use progress::{OriginalReview, watchdog};
+use progress::{OriginalReview, TestObservationFrame, watchdog};
 
 async fn assert_scope(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     review: &mut OriginalReview,
     component: Uuid,
     pass: bool,
@@ -182,6 +187,7 @@ async fn assert_scope(
     let record = review.confirmation(runtime).await;
     watchdog(
         runtime,
+        frame,
         id,
         "confirmed scope metadata read",
         async {
@@ -190,7 +196,7 @@ async fn assert_scope(
         assert_eq!(record["q1_qualified"], false);
         assert_eq!(record["human_q2"], false);
         assert_eq!(record["activation"], false);
-        let envelope: Value = serde_json::from_str(&selection_bytes(runtime, id).await).unwrap();
+        let envelope: Value = serde_json::from_str(&selection_bytes(runtime,frame, id).await).unwrap();
         assert_eq!(envelope["format"], "component-validator-selection/2");
         let inner: Value =
             serde_json::from_str(envelope["validator_selection_bytes"].as_str().unwrap()).unwrap();
@@ -241,12 +247,12 @@ async fn native_qualified_pure_source_original_reaches_existing_worker() {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
     let mut queued = request(id, component, false);
     queued.create_queue_project = Some("i01-review".into());
-    let receipt = submit(&runtime, queued).await.unwrap();
+    let receipt = submit(&runtime, &frame, queued).await.unwrap();
     assert_eq!(
         receipt.queue_ids.len(),
         1,
@@ -254,8 +260,8 @@ async fn native_qualified_pure_source_original_reaches_existing_worker() {
     );
     assert!(!receipt.catalogue_activated);
     assert_eq!(receipt.review_status, "unreviewed");
-    assert_scope(&runtime, &mut review, component, true).await;
-    assert!(read_positive(&runtime, id).await.is_some());
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
+    assert!(read_positive(&runtime, &frame, id).await.is_some());
     runtime
         .installed_catalogue
         .read_source_submission(id)
@@ -269,15 +275,15 @@ async fn native_qualified_pure_source_rejects_hidden_host_in_unused_export() {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
-    submit(&runtime, request(id, component, true))
+    let mut review = OriginalReview::new(&runtime, &frame, id);
+    submit(&runtime, &frame, request(id, component, true))
         .await
         .unwrap();
-    assert_scope(&runtime, &mut review, component, false).await;
+    assert_scope(&runtime, &frame, &mut review, component, false).await;
     assert!(
-        read_positive(&runtime, id).await.is_none(),
+        read_positive(&runtime, &frame, id).await.is_none(),
         "a genuine negative source confirmation supplies no positive prerequisite"
     );
     let record = review.confirmation(&runtime).await;
@@ -290,15 +296,15 @@ async fn native_qualified_pure_source_ignores_draft_heads_and_keeps_original_pin
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
     let captured = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
     *runtime.installed_catalogue.capture_gate.lock().await =
         Some((captured.clone(), release.clone()));
     let edit = async {
-        tokio::time::timeout(deadline(&runtime).await, captured.notified())
+        tokio::time::timeout(frame.duration(), captured.notified())
             .await
             .unwrap();
         let store = PgComponentRevisionStore::new(rig.pool.clone());
@@ -318,14 +324,17 @@ async fn native_qualified_pure_source_ignores_draft_heads_and_keeps_original_pin
             .unwrap();
         release.notify_one();
     };
-    let (result, ()) = tokio::join!(submit(&runtime, request(id, component, false)), edit);
+    let (result, ()) = tokio::join!(
+        submit(&runtime, &frame, request(id, component, false)),
+        edit
+    );
     result.unwrap();
-    let original = selection_bytes(&runtime, id).await;
-    assert_scope(&runtime, &mut review, component, true).await;
-    submit(&runtime, request(id, component, false))
+    let original = selection_bytes(&runtime, &frame, id).await;
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
+    submit(&runtime, &frame, request(id, component, false))
         .await
         .unwrap();
-    assert_eq!(selection_bytes(&runtime, id).await, original);
+    assert_eq!(selection_bytes(&runtime, &frame, id).await, original);
     runtime.shutdown().await.unwrap();
 }
 
@@ -334,9 +343,9 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
     let store = PgComponentRevisionStore::new(rig.pool.clone());
     let old_root = ComponentRevisionDraft::from_json(&candidate(component, false)).unwrap();
     let base_a = store.stage(&old_root, 0).await.unwrap();
@@ -360,30 +369,32 @@ async fn native_qualified_pure_source_rejects_swapped_subject_base_and_dependenc
     original_request.expected_previous_version = Some(2);
     original_request.base = Some(crate::pg_review_submission::selection(base_a));
     original_request.dependencies = vec![crate::pg_review_submission::selection(dependency_a)];
-    submit(&runtime, original_request.clone()).await.unwrap();
-    assert_scope(&runtime, &mut review, component, true).await;
-    let original = selection_bytes(&runtime, id).await;
+    submit(&runtime, &frame, original_request.clone())
+        .await
+        .unwrap();
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
+    let original = selection_bytes(&runtime, &frame, id).await;
     let mut changed = original_request.clone();
     root["document"]["description"] = json!("Changed complete source subject");
     changed.candidate_bytes = root.to_string();
     assert!(matches!(
-        submit(&runtime, changed.clone()).await,
+        submit(&runtime, &frame, changed.clone()).await,
         Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
     ));
     changed = original_request.clone();
     changed.base = Some(crate::pg_review_submission::selection(base_b));
     assert!(matches!(
-        submit(&runtime, changed.clone()).await,
+        submit(&runtime, &frame, changed.clone()).await,
         Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
     ));
     changed = original_request;
     changed.dependencies = vec![crate::pg_review_submission::selection(dependency_b)];
     assert!(matches!(
-        submit(&runtime, changed).await,
+        submit(&runtime, &frame, changed).await,
         Err(brassclaw_product_workflow::RecipeStoreError::Conflict(_))
     ));
-    assert_eq!(selection_bytes(&runtime, id).await, original);
-    assert_scope(&runtime, &mut review, component, true).await;
+    assert_eq!(selection_bytes(&runtime, &frame, id).await, original);
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
     runtime.shutdown().await.unwrap();
 }
 
@@ -447,15 +458,17 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     )))
     .await
     .unwrap();
+    let frame = TestObservationFrame::capture(&runtime).await;
     // Bootstrap is unchanged; the actual author/evidence/Worker operations
     // below share exactly one ordinary pooled connection.
     transport.pool.resize(1);
     assert_eq!(transport.pool.status().max_size, 1);
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
     faults::install_write_counter(&rig).await;
     transport.arm(1).unwrap();
     let (submitted, io_facts) = crate::pg_review_submission::observe_submission_io(submit(
         &runtime,
+        &frame,
         request(id, component, false),
     ))
     .await;
@@ -466,7 +479,7 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
                 "actual_cut_count": transport.cut_count(), "io": io_facts,
             })
         );
-        progress::diagnose(&runtime, id, "original_authoring_failed", None).await;
+        progress::diagnose(&runtime, &frame, id, "original_authoring_failed", None).await;
     }
     submitted.unwrap();
     assert_eq!(
@@ -474,12 +487,12 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
         1,
         "the actual authoring COMMIT acknowledgement was lost"
     );
-    let original = selection_bytes(&runtime, id).await;
-    submit(&runtime, request(id, component, false))
+    let original = selection_bytes(&runtime, &frame, id).await;
+    submit(&runtime, &frame, request(id, component, false))
         .await
         .unwrap();
-    assert_eq!(selection_bytes(&runtime, id).await, original);
-    assert_scope(&runtime, &mut review, component, true).await;
+    assert_eq!(selection_bytes(&runtime, &frame, id).await, original);
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
     assert_eq!(faults::writes(&rig).await, 1);
     let row = rig
         .pool
@@ -502,11 +515,11 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     // terminal ACK. Original readback must compare its entire evidence/index.
     transport.arm(2).unwrap();
     let code = Uuid::new_v4();
-    let mut evidence_review = OriginalReview::new(&runtime, evidence_cut);
-    submit(&runtime, request(evidence_cut, code, false))
+    let mut evidence_review = OriginalReview::new(&runtime, &frame, evidence_cut);
+    submit(&runtime, &frame, request(evidence_cut, code, false))
         .await
         .unwrap();
-    assert_scope(&runtime, &mut evidence_review, code, true).await;
+    assert_scope(&runtime, &frame, &mut evidence_review, code, true).await;
     assert_eq!(transport.cut_count(), 2);
     assert_eq!(
         faults::writes(&rig).await,
@@ -515,28 +528,36 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     );
     faults::cancelled_author_commit(
         &runtime,
+        &frame,
         &rig,
         &transport,
         3,
-        author_held,
-        Uuid::new_v4(),
+        (author_held, Uuid::new_v4()),
         false,
     )
     .await;
     assert_eq!(faults::writes(&rig).await, 3);
     faults::cancelled_author_commit(
         &runtime,
+        &frame,
         &rig,
         &transport,
         4,
-        queue_held,
-        Uuid::new_v4(),
+        (queue_held, Uuid::new_v4()),
         true,
     )
     .await;
     assert_eq!(faults::writes(&rig).await, 4);
-    faults::timed_out_evidence_commit(&runtime, &rig, &transport, 5, evidence_held, Uuid::new_v4())
-        .await;
+    faults::timed_out_evidence_commit(
+        &runtime,
+        &frame,
+        &rig,
+        &transport,
+        5,
+        evidence_held,
+        Uuid::new_v4(),
+    )
+    .await;
     assert_eq!(
         faults::writes(&rig).await,
         5,
@@ -544,15 +565,15 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     );
     transport.arm(6).unwrap();
     let code = Uuid::new_v4();
-    let mut queue_review = OriginalReview::new(&runtime, queue_cut);
+    let mut queue_review = OriginalReview::new(&runtime, &frame, queue_cut);
     let mut queued = request(queue_cut, code, false);
     queued.create_queue_project = Some("i01-cut-queue".into());
-    let receipt = submit(&runtime, queued).await.unwrap();
+    let receipt = submit(&runtime, &frame, queued).await.unwrap();
     assert_eq!(receipt.queue_ids.len(), 1);
-    assert_scope(&runtime, &mut queue_review, code, true).await;
+    assert_scope(&runtime, &frame, &mut queue_review, code, true).await;
     assert_eq!(transport.cut_count(), 3);
     assert_eq!(faults::writes(&rig).await, 6);
-    faults::corrupt_run_index(&runtime, &rig, Uuid::new_v4(), Uuid::new_v4()).await;
+    faults::corrupt_run_index(&runtime, &frame, &rig, Uuid::new_v4(), Uuid::new_v4()).await;
     assert_eq!(
         faults::writes(&rig).await,
         7,
@@ -567,12 +588,12 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (pending, pending_component) = (Uuid::new_v4(), Uuid::new_v4());
     let run = brassclaw_turns::TurnRunId::from_uuid(pending);
     let pause = runtime.monty_test_controls.1.pause_private_settlement(run);
-    let mut pending_review = OriginalReview::new(&runtime, pending);
-    submit(&runtime, request(pending, pending_component, false))
+    let mut pending_review = OriginalReview::new(&runtime, &frame, pending);
+    submit(&runtime, &frame, request(pending, pending_component, false))
         .await
         .unwrap();
     pending_review
@@ -610,15 +631,22 @@ async fn native_qualified_pure_source_cancel_or_lost_native_delivery_never_passe
         "actual source observations already exist but cannot replace native delivery"
     );
     assert!(
-        read_positive(&runtime, pending).await.is_none(),
+        read_positive(&runtime, &frame, pending).await.is_none(),
         "a native terminal without the actual Factory ACK supplies no positive prerequisite"
     );
     pause.release.notify_one();
     pending_review.settled(&runtime).await;
-    assert_scope(&runtime, &mut pending_review, pending_component, true).await;
+    assert_scope(
+        &runtime,
+        &frame,
+        &mut pending_review,
+        pending_component,
+        true,
+    )
+    .await;
     crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    submit(&runtime, request(id, component, false))
+    submit(&runtime, &frame, request(id, component, false))
         .await
         .unwrap();
     let store = PgTurnStateStore::new(rig.pool.clone(), runtime.thread_scope.tenant_id.as_str());
@@ -655,9 +683,9 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
 
     let captured = Arc::new(tokio::sync::Notify::new());
     let release = Arc::new(tokio::sync::Notify::new());
@@ -671,7 +699,7 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
         .validate()
         .unwrap();
     let block = async {
-        tokio::time::timeout(deadline(&runtime).await, captured.notified())
+        tokio::time::timeout(frame.duration(), captured.notified())
             .await
             .unwrap();
         // This is native preparation, after the real inspection and with no
@@ -684,7 +712,10 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
         assert_eq!(rig.pool.get().await.unwrap().execute("UPDATE brassclaw_instance_tool_settings SET enabled=false,revision=revision+1 WHERE tool_id=$1", &[&tool]).await.unwrap(),1);
         release.notify_one();
     };
-    let (result, ()) = tokio::join!(submit(&runtime, request(id, component, false)), block);
+    let (result, ()) = tokio::join!(
+        submit(&runtime, &frame, request(id, component, false)),
+        block
+    );
     result.unwrap();
     review
         .failed(&runtime, Some("recipe_execution_failed"))
@@ -715,15 +746,18 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let original = runtime
         .installed_catalogue
         .capture_task_preparation()
         .await
         .unwrap();
+    let original_test_frame = frame.facts();
+    assert_eq!(original_test_frame["revision"], original.revision());
+    assert_eq!(original_test_frame["capture_checksum"], original.checksum());
     let settings = runtime.monty_settings_owner.store();
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
+    let mut review = OriginalReview::new(&runtime, &frame, id);
     let support = PgComponentRevisionStore::new(rig.pool.clone())
         .read_revision(
             brassclaw_skills::global_bootstrap_components::packaged_component_id(
@@ -751,7 +785,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
     *runtime.installed_catalogue.capture_gate.lock().await =
         Some((captured.clone(), release.clone()));
     let edit = async {
-        tokio::time::timeout(deadline(&runtime).await, captured.notified())
+        tokio::time::timeout(frame.duration(), captured.notified())
             .await
             .unwrap();
         let before = settings.get("default", "default").await.unwrap();
@@ -767,9 +801,9 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
             .unwrap();
         release.notify_one();
     };
-    let (result, ()) = tokio::join!(submit(&runtime, authored), edit);
+    let (result, ()) = tokio::join!(submit(&runtime, &frame, authored), edit);
     result.unwrap();
-    assert_scope(&runtime, &mut review, component, true).await;
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
     let row = rig.pool.get().await.unwrap().query_one("SELECT w.private_request_bytes,w.private_request_checksum,p.definition_bytes,p.checksum FROM brassclaw_turns w JOIN brassclaw_monty_private_preparations p USING(work_id) WHERE w.work_id=$1 AND w.record_kind='private_work'", &[&id]).await.unwrap();
     let request: PrivateWorkRequest = serde_json::from_str(row.get(0)).unwrap();
     let definition = {
@@ -808,7 +842,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .read_source_submission(id)
         .await
         .unwrap();
-    let checked = read_positive(&runtime, id).await.unwrap();
+    let checked = read_positive(&runtime, &frame, id).await.unwrap();
     let crate::private_work_definition::DomainCapture::ValidatorStructural {
         capture_bytes, ..
     } = definition.domain()
@@ -917,6 +951,16 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .await
         .unwrap();
     assert_eq!(current.revision(), changed.revision);
+    assert_eq!(
+        frame.facts(),
+        original_test_frame,
+        "the test observation frame retains its authentic original across live ACK changes"
+    );
+    assert_ne!(original_test_frame["revision"], current.revision());
+    assert_eq!(
+        frame.duration(),
+        Duration::from_millis(original.policy().response_timeout_millis)
+    );
     let bounds = current.limits().bounds;
     let current_limits = brassclaw_skills::value_contract::ContractLimits {
         max_depth: bounds.max_value_depth,
@@ -950,7 +994,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
         .await
         .unwrap();
     assert!(
-        read_positive(&runtime, id).await.is_some(),
+        read_positive(&runtime, &frame, id).await.is_some(),
         "historical source evidence uses its original acknowledged data profile"
     );
     let stored: String = rig
@@ -977,14 +1021,14 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
     let _db = rig.lock_db().await;
     let (legacy, old) = legacy_fixture::retain_before_upgrade(&rig.pool).await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = start(&rig, home.path()).await;
+    let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
-    let mut review = OriginalReview::new(&runtime, id);
-    submit(&runtime, request(id, component, false))
+    let mut review = OriginalReview::new(&runtime, &frame, id);
+    submit(&runtime, &frame, request(id, component, false))
         .await
         .unwrap();
-    assert_scope(&runtime, &mut review, component, true).await;
-    let outer: Value = serde_json::from_str(&selection_bytes(&runtime, id).await).unwrap();
+    assert_scope(&runtime, &frame, &mut review, component, true).await;
+    let outer: Value = serde_json::from_str(&selection_bytes(&runtime, &frame, id).await).unwrap();
     let mut client = rig.pool.get().await.unwrap();
     let tx = client
         .build_transaction()

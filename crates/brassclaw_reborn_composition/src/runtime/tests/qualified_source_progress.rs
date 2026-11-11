@@ -7,15 +7,81 @@ use std::{future::Future, pin::Pin};
 
 type Completion = Result<crate::global_monty_driver::DrivenMontyTask, AgentLoopDriverError>;
 
+/// Historical test observation only. Captured from the real acknowledged
+/// catalogue once, never evidence of today's ACK, admission or dispatch policy.
+#[derive(Clone)]
+pub(super) struct TestObservationFrame {
+    original: brassclaw_host_api::task_preparation::RetainedPreparation,
+    origin: brassclaw_host_api::task_preparation::PreparationOrigin,
+}
+impl TestObservationFrame {
+    pub(super) async fn capture(runtime: &RebornRuntime) -> Self {
+        let captured = match runtime.installed_catalogue.capture_task_preparation().await {
+            Ok(original) => original,
+            Err(error) => Self::capture_failed(runtime, &error),
+        };
+        #[derive(serde::Deserialize)]
+        struct Provenance {
+            origin: brassclaw_host_api::task_preparation::PreparationOrigin,
+        }
+        let provenance: Provenance = match serde_json::from_str(captured.bytes()) {
+            Ok(original) => original,
+            Err(_) => Self::capture_failed(
+                runtime,
+                &crate::RebornBuildError::InvalidConfig {
+                    reason: "original test observation provenance invalid".into(),
+                },
+            ),
+        };
+        Self {
+            original: captured.original().clone(),
+            origin: provenance.origin,
+        }
+    }
+    fn capture_failed(runtime: &RebornRuntime, error: &crate::RebornBuildError) -> ! {
+        let owner = runtime.global_monty_owner.ownership_check();
+        // capture_task_preparation maps its sources to fixed configuration
+        // reasons; no raw settings-store errors, commands or payloads enter here.
+        let reason = match error {
+            crate::RebornBuildError::InvalidConfig { reason } => Some(reason.as_str()),
+            _ => None,
+        };
+        eprintln!(
+            "SourceReview observation capture diagnostic {}",
+            json!({
+                "stage":"initial_test_observation_capture", "original_capture_reason":reason,
+                "observation_frame":"not_captured", "ownership_closed":owner.is_closed(),
+                "capture_error_kind":if reason.is_some() {"invalid_config"} else {"unexpected_capture_error"},
+                "owner":owner.test_terminal_facts().unwrap_or_else(||json!({"phase":"no_owner_exit_observed"})),
+            })
+        );
+        // No invented deadline or second service join on first-capture failure.
+        panic!(
+            "SourceReview initial test observation capture failed: {}",
+            reason.unwrap_or("unexpected_capture_error")
+        );
+    }
+    pub(super) fn duration(&self) -> Duration {
+        Duration::from_millis(self.original.policy().response_timeout_millis)
+    }
+    pub(super) fn facts(&self) -> Value {
+        json!({"scope":"historical_test_observation_only", "current_ack_asserted":false,
+            "revision":self.original.revision(), "origin":self.origin,
+            "response_timeout_millis":self.original.policy().response_timeout_millis,
+            "capture_checksum":self.original.checksum()})
+    }
+}
+
 pub(super) struct OriginalReview {
     id: Uuid,
+    frame: TestObservationFrame,
     // Construct exactly once, before authoring; never replace with a late waiter.
     completion: Pin<Box<dyn Future<Output = Completion> + Send>>,
     completed: bool,
     last_work: Option<ReviewWorkView>,
 }
 impl OriginalReview {
-    pub(super) fn new(runtime: &RebornRuntime, id: Uuid) -> Self {
+    pub(super) fn new(runtime: &RebornRuntime, frame: &TestObservationFrame, id: Uuid) -> Self {
         let waiter = runtime
             .monty_test_controls
             .0
@@ -23,6 +89,7 @@ impl OriginalReview {
             .unwrap();
         Self {
             id,
+            frame: frame.clone(),
             completion: Box::pin(waiter.wait()),
             completed: false,
             last_work: None,
@@ -33,7 +100,14 @@ impl OriginalReview {
     }
 
     async fn fail(&self, runtime: &RebornRuntime, stage: &str) -> ! {
-        diagnose(runtime, self.id, stage, self.last_work.as_ref()).await;
+        diagnose(
+            runtime,
+            &self.frame,
+            self.id,
+            stage,
+            self.last_work.as_ref(),
+        )
+        .await;
         panic!("SourceReview test failed at {stage}; original={}", self.id);
     }
 
@@ -49,6 +123,7 @@ impl OriginalReview {
     }
 
     pub(super) async fn confirmation(&mut self, runtime: &RebornRuntime) -> Value {
+        let duration = self.frame.duration();
         let id = self.id;
         let submission_id = id.to_string();
         let wait = async {
@@ -96,7 +171,7 @@ impl OriginalReview {
                 tokio::task::yield_now().await;
             }
         };
-        match tokio::time::timeout(deadline(runtime).await, wait).await {
+        match tokio::time::timeout(duration, wait).await {
             Ok(Ok(record)) => record,
             Ok(Err(reason)) => self.fail(runtime, &reason).await,
             Err(_) => self.fail(runtime, "confirmation_test_watchdog").await,
@@ -108,6 +183,7 @@ impl OriginalReview {
         runtime: &RebornRuntime,
         gate: impl Future<Output = ()>,
     ) {
+        let duration = self.frame.duration();
         let reached = async {
             tokio::select! {
                 biased;
@@ -121,7 +197,7 @@ impl OriginalReview {
                 }
             }
         };
-        match tokio::time::timeout(deadline(runtime).await, reached).await {
+        match tokio::time::timeout(duration, reached).await {
             Ok(Ok(())) => (),
             Ok(Err(reason)) => self.fail(runtime, &reason).await,
             Err(_) => self.fail(runtime, "settlement_pause_test_watchdog").await,
@@ -130,7 +206,7 @@ impl OriginalReview {
 
     pub(super) async fn settled(&mut self, runtime: &RebornRuntime) {
         assert!(!self.completed, "the original future is consumed once");
-        match tokio::time::timeout(deadline(runtime).await, self.completion.as_mut()).await {
+        match tokio::time::timeout(self.frame.duration(), self.completion.as_mut()).await {
             Ok(result) => {
                 if let Err(reason) = self.accept_success(result) {
                     self.fail(runtime, &reason).await;
@@ -143,7 +219,7 @@ impl OriginalReview {
     pub(super) async fn failed(&mut self, runtime: &RebornRuntime, expected: Option<&str>) {
         assert!(!self.completed, "the original future is consumed once");
         let result =
-            match tokio::time::timeout(deadline(runtime).await, self.completion.as_mut()).await {
+            match tokio::time::timeout(self.frame.duration(), self.completion.as_mut()).await {
                 Ok(result) => result,
                 Err(_) => self.fail(runtime, "expected_failure_test_watchdog").await,
             };
@@ -154,6 +230,7 @@ impl OriginalReview {
             {
                 diagnose(
                     runtime,
+                    &self.frame,
                     self.id,
                     &safe_reason(&reason_kind),
                     self.last_work.as_ref(),
@@ -189,16 +266,17 @@ fn safe_reason(reason: &str) -> String {
 
 pub(super) async fn watchdog<T>(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     id: Uuid,
     stage: &str,
     future: impl Future<Output = T>,
 ) -> T {
-    // This is a fixture watchdog using the existing captured execution deadline,
-    // not a claim that an entire workflow must fit one IPC response deadline.
-    match tokio::time::timeout(deadline(runtime).await, future).await {
+    // Use the original fixture observation frame through failures and settings
+    // edits. It asserts neither a current ACK nor a production workflow budget.
+    match tokio::time::timeout(frame.duration(), future).await {
         Ok(value) => value,
         Err(_) => {
-            diagnose(runtime, id, stage, None).await;
+            diagnose(runtime, frame, id, stage, None).await;
             panic!("SourceReview test watchdog at {stage}; original={id}");
         }
     }
@@ -206,6 +284,7 @@ pub(super) async fn watchdog<T>(
 
 pub(super) async fn diagnose(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     id: Uuid,
     stage: &str,
     last_work: Option<&ReviewWorkView>,
@@ -230,7 +309,7 @@ pub(super) async fn diagnose(
                 .collect::<Vec<_>>()
         })
         .ok();
-    let snapshot = tokio::time::timeout(deadline(runtime).await, async {
+    let snapshot = tokio::time::timeout(frame.duration(), async {
         let mut client = crate::pg_transaction_client::TransactionClient::from_client(
             runtime.installed_catalogue.pool.get().await.map_err(|_| ())?);
         let tx = client.build_transaction().isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -268,7 +347,7 @@ pub(super) async fn diagnose(
     // this owner's already-running join to publish its closed projection.
     let owner_facts = tokio::select! {
         biased;
-        () = service.closed() => match tokio::time::timeout(deadline(runtime).await, owner.wait_test_terminal_facts()).await {
+        () = service.closed() => match tokio::time::timeout(frame.duration(), owner.wait_test_terminal_facts()).await {
             Ok(Some(facts)) => facts,
             Ok(None) => json!({"phase":"owner_observer_closed"}),
             Err(_) => json!({"phase":"actual_owner_exit_pending"}),
@@ -277,7 +356,7 @@ pub(super) async fn diagnose(
     };
     eprintln!(
         "SourceReview diagnostic {}",
-        json!({"original":id,"stage":stage,
+        json!({"original":id,"stage":stage,"test_observation_frame":frame.facts(),
         "last_successful_work_view":last_work,"settlement":settlement,"metadata":metadata,"owner":owner_facts,
         "pool":{"max_size":pool.max_size,"size":pool.size,"available":pool.available}})
     );

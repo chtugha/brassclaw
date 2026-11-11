@@ -31,6 +31,7 @@ async fn require_live(rig: &crate::runtime::test_pg::PgRig, pid: i32) {
 }
 async fn require_discarded(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     id: Uuid,
     rig: &crate::runtime::test_pg::PgRig,
     wire: &AckCutTransport,
@@ -38,15 +39,22 @@ async fn require_discarded(
     pid: i32,
 ) {
     assert_eq!(
-        watchdog(runtime, id, "held connection closure", ticket.wait_closed())
-            .await
-            .unwrap(),
+        watchdog(
+            runtime,
+            frame,
+            id,
+            "held connection closure",
+            ticket.wait_closed()
+        )
+        .await
+        .unwrap(),
         AckHoldEnd::PeerClosed,
         "caller custody, not wire release/shutdown/cut, must close the held connection"
     );
     assert!(ticket.release().await.is_err());
     let replacement = watchdog(
         runtime,
+        frame,
         id,
         "max-one replacement backend",
         backend(&wire.pool),
@@ -56,26 +64,32 @@ async fn require_discarded(
         replacement, pid,
         "an unacknowledged backend must not return to the pool"
     );
-    watchdog(runtime, id, "old physical backend termination", async {
-        loop {
-            let exists: bool = rig
-                .pool
-                .get()
-                .await
-                .unwrap()
-                .query_one(
-                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1)",
-                    &[&pid],
-                )
-                .await
-                .unwrap()
-                .get(0);
-            if !exists {
-                break;
+    watchdog(
+        runtime,
+        frame,
+        id,
+        "old physical backend termination",
+        async {
+            loop {
+                let exists: bool = rig
+                    .pool
+                    .get()
+                    .await
+                    .unwrap()
+                    .query_one(
+                        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1)",
+                        &[&pid],
+                    )
+                    .await
+                    .unwrap()
+                    .get(0);
+                if !exists {
+                    break;
+                }
+                tokio::task::yield_now().await;
             }
-            tokio::task::yield_now().await;
-        }
-    })
+        },
+    )
     .await;
 }
 pub(super) async fn install_write_counter(rig: &crate::runtime::test_pg::PgRig) {
@@ -100,15 +114,23 @@ pub(super) async fn writes(rig: &crate::runtime::test_pg::PgRig) -> i64 {
 }
 pub(super) async fn cancelled_author_commit(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     rig: &crate::runtime::test_pg::PgRig,
     wire: &AckCutTransport,
     rule: u8,
-    id: Uuid,
-    component: Uuid,
+    subject: (Uuid, Uuid),
     queued: bool,
 ) {
-    let mut review = OriginalReview::new(runtime, id);
-    let pid = watchdog(runtime, id, "fault backend selection", backend(&wire.pool)).await;
+    let (id, component) = subject;
+    let mut review = OriginalReview::new(runtime, frame, id);
+    let pid = watchdog(
+        runtime,
+        frame,
+        id,
+        "fault backend selection",
+        backend(&wire.pool),
+    )
+    .await;
     let mut ticket = wire.arm_hold(rule, pid).unwrap();
     let mut original = request(id, component, false);
     if queued {
@@ -132,6 +154,7 @@ pub(super) async fn cancelled_author_commit(
     }));
     let held = watchdog(
         runtime,
+        frame,
         id,
         "author COMMIT acknowledgement hold",
         ticket.wait_held(),
@@ -158,27 +181,36 @@ pub(super) async fn cancelled_author_commit(
     );
     producer.abort();
     assert!(producer.await.unwrap_err().is_cancelled());
-    require_discarded(runtime, id, rig, wire, &mut ticket, pid).await;
-    let receipt = submit(runtime, retry).await.unwrap();
+    require_discarded(runtime, frame, id, rig, wire, &mut ticket, pid).await;
+    let receipt = submit(runtime, frame, retry).await.unwrap();
     assert_eq!(receipt.queue_ids.len(), usize::from(queued));
-    assert_scope(runtime, &mut review, component, true).await;
+    assert_scope(runtime, frame, &mut review, component, true).await;
 }
 pub(super) async fn timed_out_evidence_commit(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     rig: &crate::runtime::test_pg::PgRig,
     wire: &AckCutTransport,
     rule: u8,
     id: Uuid,
     component: Uuid,
 ) {
-    let mut review = OriginalReview::new(runtime, id);
-    let pid = watchdog(runtime, id, "fault backend selection", backend(&wire.pool)).await;
+    let mut review = OriginalReview::new(runtime, frame, id);
+    let pid = watchdog(
+        runtime,
+        frame,
+        id,
+        "fault backend selection",
+        backend(&wire.pool),
+    )
+    .await;
     let mut ticket = wire.arm_hold(rule, pid).unwrap();
-    submit(runtime, request(id, component, false))
+    submit(runtime, frame, request(id, component, false))
         .await
         .unwrap();
     let held = watchdog(
         runtime,
+        frame,
         id,
         "source evidence COMMIT acknowledgement hold",
         ticket.wait_held(),
@@ -205,11 +237,12 @@ pub(super) async fn timed_out_evidence_commit(
     );
     // No test abort or wire release: the writer's actual acknowledged resource
     // store deadline cancels its write future and disposes of that connection.
-    require_discarded(runtime, id, rig, wire, &mut ticket, pid).await;
-    assert_scope(runtime, &mut review, component, true).await;
+    require_discarded(runtime, frame, id, rig, wire, &mut ticket, pid).await;
+    assert_scope(runtime, frame, &mut review, component, true).await;
 }
 pub(super) async fn corrupt_run_index(
     runtime: &RebornRuntime,
+    frame: &TestObservationFrame,
     rig: &crate::runtime::test_pg::PgRig,
     id: Uuid,
     component: Uuid,
@@ -226,8 +259,8 @@ pub(super) async fn corrupt_run_index(
         .batch_execute(&sql)
         .await
         .unwrap();
-    let mut review = OriginalReview::new(runtime, id);
-    submit(runtime, request(id, component, false))
+    let mut review = OriginalReview::new(runtime, frame, id);
+    submit(runtime, frame, request(id, component, false))
         .await
         .unwrap();
     // Finish-observation failure may surface as the retained service failure;

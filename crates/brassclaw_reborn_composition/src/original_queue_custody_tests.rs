@@ -97,7 +97,10 @@ async fn native_original_queue_recipe_and_catalogue_commit_ack_loss_uses_exact_o
                 ),
                 AckCutRule::after_bind(
                     2,
-                    vec![id.as_bytes().to_vec()],
+                    vec![
+                        b"brassclaw.validation-queue".to_vec(),
+                        component.to_string().into_bytes(),
+                    ],
                     vec![],
                     AckBoundary::Commit,
                 ),
@@ -125,8 +128,9 @@ async fn native_original_queue_recipe_and_catalogue_commit_ack_loss_uses_exact_o
         assert!(status.is_success());
         assert_eq!(replay, receipt);
         assert_eq!(backend(&wire.pool).await, pid);
-        // A lost COMMIT response on this read-only existing-original branch is
-        // unavailable, never a second create. Its next same-ID read is exact.
+        // Match the queue lock Bind after identity preflight. A lost COMMIT
+        // response on that existing-original queue branch is unavailable,
+        // never a second create. Its next same-ID read is exact.
         wire.arm(2).unwrap();
         let (status, _) = submit(&app, &input, timeout).await;
         assert_eq!(status, axum::http::StatusCode::SERVICE_UNAVAILABLE);
@@ -151,7 +155,10 @@ async fn native_original_queue_recipe_and_catalogue_held_ack_discards_cancelled_
                 vec![
                     AckCutRule::after_bind(
                         1,
-                        vec![id.as_bytes().to_vec()],
+                        vec![
+                            b"brassclaw.validation-queue".to_vec(),
+                            component.to_string().into_bytes(),
+                        ],
                         vec![],
                         AckBoundary::Commit,
                     )
@@ -173,6 +180,8 @@ async fn native_original_queue_recipe_and_catalogue_held_ack_discards_cancelled_
                 );
             }
             let pid = backend(&wire.pool).await;
+            // Match the queue lock Bind in the actual create/existing
+            // transaction; the earlier identity-only read must pass normally.
             let mut ticket = wire.arm_hold(1, pid).unwrap();
             let caller_app = app.clone();
             let caller_input = input.clone();
