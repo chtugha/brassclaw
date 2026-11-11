@@ -11,6 +11,14 @@ impl Context {
         suite: &Suite,
         observed: &Observed,
     ) -> Result<(), RebornBuildError> {
+        self.verify_observed_traced(suite, observed, None)
+    }
+    fn verify_observed_traced(
+        &self,
+        suite: &Suite,
+        observed: &Observed,
+        trace: Option<&pure::case_encoder::QualificationTrace>,
+    ) -> Result<(), RebornBuildError> {
         if suite.python_stop != suite.expected_python_line.is_some() {
             return Err(invalid("checker failure expectation is incomplete"));
         }
@@ -98,6 +106,9 @@ impl Context {
                     .as_deref()
                     .and_then(|d| d.lines().last());
                 if actual_final_exception != suite.expected_python_line.as_deref() {
+                    if let Some(trace) = trace {
+                        trace.python_stop_mismatch(actual_final_exception);
+                    }
                     // These are closed shipped fixtures with fixed inputs, no
                     // host calls or secrets. Expose only their final exception
                     // line, never the native traceback or executable source.
@@ -193,7 +204,16 @@ impl Context {
             .map_err(invalid)?;
         Ok(())
     }
-    pub(super) async fn execute(self: &Arc<Self>) -> Result<(), RebornBuildError> {
+    pub(super) async fn execute(
+        self: &Arc<Self>,
+        trace: Option<&pure::case_encoder::QualificationTrace>,
+    ) -> Result<(), RebornBuildError> {
+        let note = |phase| {
+            if let Some(trace) = trace {
+                trace.note(phase, None);
+            }
+        };
+        note("verify_encoder_worker");
         let preparation = self.preparation()?;
         let worker = crate::pg_review_admission_source::verified_worker(
             &self.worker,
@@ -201,6 +221,7 @@ impl Context {
         )
         .await?;
         let first = self.program(&self.claim.suites[0].variant)?;
+        note("inspect_encoder_source");
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect_with_limits(
                 RetainedProgram::Tools(first.clone()),
@@ -246,10 +267,11 @@ impl Context {
         {
             inspected.pure_component(id).map_err(invalid)?;
         }
+        note("retain_encoder_source");
         let bytes = self.retain(self.id("source"), &source).await?;
         let source_ref = reference(self.id("source"), &bytes);
         for suite in &self.claim.suites {
-            self.execute_suite(suite, &source_ref).await?;
+            self.execute_suite(suite, &source_ref, trace).await?;
         }
         Ok(())
     }
@@ -257,12 +279,19 @@ impl Context {
         self: &Arc<Self>,
         suite: &Suite,
         source_ref: &RecordRef,
+        trace: Option<&pure::case_encoder::QualificationTrace>,
     ) -> Result<(), RebornBuildError> {
+        let note = |phase| {
+            if let Some(trace) = trace {
+                trace.note(phase, Some(&suite.variant));
+            }
+        };
         let stage = |name: &str| self.id(&format!("{}:{name}", suite.variant));
         let reference_string = format!(
             "structural-checker-fixture:{}:{}",
             self.operation_id, suite.variant
         );
+        note("admit_encoder_suite");
         let admitted = io::bounded_for(
             self.storage.as_ref(),
             "checker_fixture_admission",
@@ -288,6 +317,7 @@ impl Context {
         };
         let proof = OnceLock::new();
         let run = async {
+            note("retain_suite_admission");
             let binding_bytes = self.retain(stage("admission"), &binding).await?;
             let program = self.program(&suite.variant)?;
             let preparation = self.preparation()?;
@@ -296,6 +326,7 @@ impl Context {
                 preparation.limits().max_native_artifact_bytes,
             )
             .await?;
+            note("inspect_encoder_suite");
             let inspected = Arc::new(
                 InspectedRetainedProgram::inspect_with_limits(
                     RetainedProgram::Tools(program.clone()),
@@ -317,6 +348,7 @@ impl Context {
                 source: source_ref.clone(),
                 received: OnceLock::new(),
                 receipt_rejection: OnceLock::new(),
+                trace: trace.cloned(),
             });
             let request = crate::bootstrap_recipe_flow::Request::contained(
                 worker.path(),
@@ -330,15 +362,20 @@ impl Context {
             } else {
                 request
             };
+            note("execute_encoder_suite");
             let observation = crate::bootstrap_recipe_flow::execute(&admitted, request)
                 .await
                 .map_err(|error| {
+                    if let Some(trace) = trace {
+                        trace.contained_failure(&error, source.receipt_rejection.get().copied());
+                    }
                     invalid(format!(
                         "checker fixture {}: {error}",
                         json!({"root":self.claim.root.uuid,"variant":suite.variant,
                         "receipt_rejection":source.receipt_rejection.get().copied()})
                     ))
                 })?;
+            note("capture_encoder_suite_observation");
             let observed = if suite.python_stop {
                 observation
                     .ports
@@ -354,6 +391,7 @@ impl Context {
                     .ok_or_else(|| invalid("checker preterminal observation absent"))?
                     .clone()
             };
+            note("verify_encoder_suite_quiescence");
             let actual = if suite.python_stop {
                 observation.ended_failure_projection()?
             } else {
@@ -363,6 +401,7 @@ impl Context {
                     .map_err(|_| invalid("duplicate checker quiescence"))?;
                 actual
             };
+            note("retain_encoder_suite_observation");
             let observed_bytes = self.retain(stage("observed"), &observed).await?;
             let quiescence = Quiescence {
                 format: self.format("quiescence"),
@@ -371,6 +410,7 @@ impl Context {
                 observed: reference(stage("observed"), &observed_bytes),
                 actual,
             };
+            note("retain_encoder_suite_quiescence");
             let quiescence_bytes = self.retain(stage("quiescence"), &quiescence).await?;
             Ok::<_, RebornBuildError>((binding_bytes, observed_bytes, quiescence_bytes))
         }
@@ -384,6 +424,12 @@ impl Context {
                 .map(|_| records),
             Err(error) => Err(error),
         };
+        if let Err(error) = &run {
+            if let Some(trace) = trace {
+                trace.primary_failure(error);
+            }
+        }
+        note("close_encoder_suite");
         let close = match proof.get() {
             Some(proof) => {
                 io::bounded_for(
@@ -405,6 +451,7 @@ impl Context {
             .await
             .map(|_| brassclaw_turns::TurnStatus::Completed),
         };
+        note("read_encoder_suite_close");
         let close = crate::bootstrap_validation::read_source_close(
             &self.pool,
             &admitted,
@@ -413,6 +460,11 @@ impl Context {
             self.storage.as_ref(),
         )
         .await;
+        if let Err(error) = &close {
+            if let Some(trace) = trace {
+                trace.cleanup_failure(error);
+            }
+        }
         let (binding_bytes, observed_bytes, quiescence_bytes) = match run {
             Ok(records) => records,
             Err(error) => {
@@ -425,6 +477,7 @@ impl Context {
             }
         };
         let turn = close?;
+        note("verify_encoder_suite_closed_turn");
         if turn.status != brassclaw_turns::TurnStatus::Completed {
             return Err(invalid("cancelled checker fixture cannot qualify"));
         }
@@ -436,6 +489,7 @@ impl Context {
             quiescence: reference(stage("quiescence"), &quiescence_bytes),
             turn: serde_json::to_value(turn).map_err(invalid)?,
         };
+        note("retain_encoder_suite_completion");
         self.retain(stage("completed"), &completed).await?;
         Ok(())
     }
@@ -449,6 +503,7 @@ struct CheckerSource {
     source: RecordRef,
     received: OnceLock<Observed>,
     receipt_rejection: OnceLock<&'static str>,
+    trace: Option<pure::case_encoder::QualificationTrace>,
 }
 impl CheckerSource {
     fn capture(
@@ -547,7 +602,8 @@ impl CheckerSource {
             receipt: receipt.map(str::to_owned),
             steps,
         };
-        self.context.verify_observed(&self.suite, &observed)?;
+        self.context
+            .verify_observed_traced(&self.suite, &observed, self.trace.as_ref())?;
         Ok(observed)
     }
 }
@@ -623,6 +679,9 @@ impl InternalRecipeSource for CheckerSource {
                 _ => "receipt_verification",
             };
             let _ = self.receipt_rejection.set(cause);
+            if let Some(trace) = &self.trace {
+                trace.receipt_failure(&error, cause);
+            }
             PortFailure::new("checker_native_observation_invalid").expect("constant classification")
         })
     }

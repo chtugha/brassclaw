@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum RebornBuildError {
+    #[error("original Pure receipt encoder qualification failed: {diagnostic}")]
+    OriginalPureEncoderQualification {
+        diagnostic: String,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("original Pure case qualification containment/integrity is unresolved: {diagnostic}")]
     OriginalPureCaseQualification {
         diagnostic: String,

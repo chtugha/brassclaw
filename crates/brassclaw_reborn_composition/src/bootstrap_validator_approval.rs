@@ -540,6 +540,13 @@ impl Context {
         Ok(reference(stage("completed"), &completed_bytes))
     }
     async fn qualified(&self, tx: &Transaction<'_>) -> Result<Qualified, RebornBuildError> {
+        self.qualified_traced(tx, None).await
+    }
+    async fn qualified_traced(
+        &self,
+        tx: &Transaction<'_>,
+        trace: Option<&pure::case_encoder::QualificationTrace>,
+    ) -> Result<Qualified, RebornBuildError> {
         #[cfg(test)]
         tests::record_original_walk(self.operation_id);
         if let Some(profile) = &self.profile {
@@ -612,9 +619,15 @@ impl Context {
         PgComponentRevisionStore::read_revision_in_transaction(tx, self.root.reference())
             .await
             .map_err(invalid)?;
+        if let Some(trace) = trace {
+            trace.note("verify_encoder_source_original", None);
+        }
         let (source, exports) = self.verify_source(tx).await?;
         let mut completed = Vec::new();
         for suite in &self.claim.suites {
+            if let Some(trace) = trace {
+                trace.note("verify_encoder_completed_original", Some(&suite.variant));
+            }
             completed.push(self.verify_completed(tx, suite, &source).await?);
         }
         let qualified = Qualified {
@@ -844,6 +857,19 @@ async fn qualify_specs(
     base: SessionInput,
     specs: Vec<Spec>,
 ) -> Result<Vec<Arc<Context>>, RebornBuildError> {
+    qualify_specs_traced(base, specs, None).await
+}
+
+async fn qualify_specs_traced(
+    base: SessionInput,
+    specs: Vec<Spec>,
+    trace: Option<&pure::case_encoder::QualificationTrace>,
+) -> Result<Vec<Arc<Context>>, RebornBuildError> {
+    let note = |phase| {
+        if let Some(trace) = trace {
+            trace.note(phase, None);
+        }
+    };
     let SessionInput {
         pool,
         worker,
@@ -865,6 +891,7 @@ async fn qualify_specs(
     } in specs
     {
         if let Some(selected) = &mut profile {
+            note("capture_profile_prerequisites");
             let mut next = (**selected).clone();
             let mut client = io::acquire(&pool).await?;
             let tx = client
@@ -888,6 +915,7 @@ async fn qualify_specs(
             *selected = Arc::new(next);
         }
         let mut refs = Vec::new();
+        note("retain_fixture_components");
         for draft in std::iter::once(&candidate)
             .chain(dependencies.iter())
             .chain(std::iter::once(&recipe))
@@ -909,6 +937,7 @@ async fn qualify_specs(
             );
         }
         // A support-only graph must not retain an unrelated candidate identity.
+        note("read_fixture_snapshot");
         let snapshot = Arc::new(
             io::bounded_for(
                 storage.as_ref(),
@@ -930,7 +959,11 @@ async fn qualify_specs(
         let mut programs = BTreeMap::new();
         let mut selections = BTreeMap::new();
         let mut normalized = Vec::new();
+        note("prepare_fixture_programs");
         for (desc, suite) in suites.into_iter().enumerate() {
+            if let Some(trace) = trace {
+                trace.note("prepare_fixture_programs", Some(&suite.variant));
+            }
             let suite = fixtures::normalize_suite(desc, &suite)?;
             let program = Arc::new(
                 prepare_retained_tool_program(
@@ -960,6 +993,7 @@ async fn qualify_specs(
             programs.insert(suite.variant.clone(), program);
             normalized.push(suite);
         }
+        note("construct_fixture_claim");
         let claim = Claim {
             format: if profile.is_some() {
                 "pure-checker-execution-context/1"
@@ -1032,9 +1066,11 @@ async fn qualify_specs(
             &components,
             serde_json::to_value(&offered).map_err(invalid)?,
         );
+        note("read_fixture_reservation");
         let reservation_bytes = match io::read_record(&pool, storage.as_ref(), claim_id).await? {
             Some(bytes) => bytes,
             None => {
+                note("retain_fixture_reservation");
                 // A losing first-claim proposal reads the winner's complete
                 // canonical original. Its offered request ID is never admitted.
                 let _write =
@@ -1044,6 +1080,7 @@ async fn qualify_specs(
                     .ok_or_else(|| invalid("checker reservation unresolved; no admission"))?
             }
         };
+        note("verify_fixture_reservation");
         let envelope: Envelope = serde_json::from_value(
             strict_json(&reservation_bytes, REVISION_LIMITS).map_err(invalid)?,
         )
@@ -1067,6 +1104,7 @@ async fn qualify_specs(
         }
         let reservation_ref = reference(claim_id, &reservation_bytes);
         let operation_id = Uuid::new_v5(&claim_id, reservation.execution_request_id.as_bytes());
+        note("read_fixture_operation");
         let existing = io::read_record(&pool, storage.as_ref(), operation_id).await?;
         let offered_operation = Operation {
             format: format!("{domain}-operation/1"),
@@ -1111,6 +1149,7 @@ async fn qualify_specs(
         }
         let context = Arc::new(context);
         if existing.is_some() {
+            note("verify_published_original");
             let original = io::bounded_for(storage.as_ref(), "checker_published_original", context.claim.root.uuid, async {
                 let mut client = io::acquire(&pool).await?;
                 let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
@@ -1130,6 +1169,7 @@ async fn qualify_specs(
         if existing.is_none() {
             #[cfg(test)]
             tests::before_new_intent(&context).await;
+            note("retain_fixture_operation_intent");
             io::retain_new_intent(
                 &pool,
                 storage.as_ref(),
@@ -1137,10 +1177,11 @@ async fn qualify_specs(
                 &context.operation_bytes,
             )
             .await?;
-            context.execute().await?;
+            context.execute(trace).await?;
         }
         // Existing complete native originals can finish publication without VM
         // execution; incomplete intent fails here and cannot restart fixtures.
+        note("verify_complete_original");
         let qualified = io::bounded_for(
             storage.as_ref(),
             "checker_complete_original",
@@ -1154,14 +1195,16 @@ async fn qualify_specs(
                     .start()
                     .await
                     .map_err(invalid)?;
-                let qualified = context.qualified(&tx).await?;
+                let qualified = context.qualified_traced(&tx, trace).await?;
                 tx.commit().await.map_err(invalid)?;
                 client.recycle_after_commit();
                 Ok(qualified)
             },
         )
         .await?;
+        note("construct_qualification_report");
         let qualified = context.qualification_value(&qualified)?;
+        note("retain_qualification_records");
         for (kind, id) in [
             ("q1", context.id("q1")),
             ("behavior", context.id("behavior")),
@@ -1179,6 +1222,7 @@ async fn qualify_specs(
             .as_ref()
             .is_some_and(|p| !p.approves_function())
         {
+            note("verify_final_instrument");
             let mut client = io::acquire(&pool).await?;
             let tx = client
                 .build_transaction()

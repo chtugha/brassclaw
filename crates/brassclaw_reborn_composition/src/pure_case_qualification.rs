@@ -285,6 +285,9 @@ fn fatal(error: CaseUnavailable) -> RebornBuildError {
 fn diagnostic_cause(error: &(dyn std::error::Error + 'static)) -> String {
     if let Some(error) = error.downcast_ref::<RebornBuildError>() {
         return match error {
+            RebornBuildError::OriginalPureEncoderQualification { diagnostic, .. } => {
+                format!("independent_encoder/{diagnostic}")
+            }
             RebornBuildError::InvalidConfig { reason } => {
                 for phase in ["admission", "completion", "settlement", "shutdown"] {
                     for kind in [
