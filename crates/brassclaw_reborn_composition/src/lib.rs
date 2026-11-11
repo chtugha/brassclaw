@@ -188,6 +188,8 @@ pub(crate) mod pg_review_admission_source;
 pub(crate) mod pg_review_inspection;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 pub(crate) mod pg_review_submission;
+#[cfg(feature = "postgres")]
+pub(crate) mod pg_review_submission_io;
 pub(crate) mod pg_security_settings_store;
 #[cfg(feature = "postgres")]
 pub(crate) mod pg_settings_listing;

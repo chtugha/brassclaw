@@ -242,29 +242,37 @@ impl InstalledMontyCatalogue {
     pub(crate) async fn prepare_source_submission(
         self: &Arc<Self>,
         draft: &ReviewSubmissionDraft,
+        io: &crate::pg_review_submission_io::SubmissionIo,
     ) -> Result<Option<SourceReviewPreparation>, RebornBuildError> {
         if draft.candidate().class_code != 22 || draft.is_function_review() {
             return Ok(None);
         }
         // Historical same-ID requests must not capture today's settings or
         // inspect new definitions. The transaction later compares exact bytes.
-        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
-            self.pool.get().await.map_err(invalid)?,
-        );
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
+        let existing = io
+            .run("source_original_recheck", async {
+                let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+                    self.pool.get().await.map_err(invalid)?,
+                );
+                let tx = client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(invalid)?;
+                let existing =
+                    PgReviewSubmissionStore::read_in_transaction(&tx, draft.submission_id())
+                        .await
+                        .map_err(invalid)?
+                        .is_some();
+                tx.commit().await.map_err(invalid)?;
+                client.recycle_after_commit();
+                drop(client);
+                Ok::<_, RebornBuildError>(existing)
+            })
             .await
-            .map_err(invalid)?;
-        let existing = PgReviewSubmissionStore::read_in_transaction(&tx, draft.submission_id())
-            .await
-            .map_err(invalid)?
-            .is_some();
-        tx.commit().await.map_err(invalid)?;
-        client.recycle_after_commit();
-        drop(client);
+            .map_err(|_| invalid("Source original recheck deadline"))??;
         if existing {
             return Ok(None);
         }
@@ -272,13 +280,34 @@ impl InstalledMontyCatalogue {
             Some(original) => {
                 PreparationCapture::from_original(original.clone()).map_err(invalid)?
             }
-            None => self.capture_task_preparation().await?,
+            None => io
+                .run(
+                    "capture_source_preparation",
+                    self.capture_task_preparation(),
+                )
+                .await
+                .map_err(|_| invalid("Source preparation capture deadline"))??,
         };
-        let worker = verified_worker(
-            &self.worker_image,
-            preparation.limits().max_native_artifact_bytes,
+        io.note("source_native_artifact", "started");
+        let worker = match tokio::time::timeout(
+            preparation.limits().process.response_timeout,
+            verified_worker(
+                &self.worker_image,
+                preparation.limits().max_native_artifact_bytes,
+            ),
         )
-        .await?;
+        .await
+        {
+            Ok(result) => result.inspect_err(|_| {
+                io.note("source_native_artifact", "error");
+            })?,
+            Err(_) => {
+                io.note("source_native_artifact", "deadline");
+                return Err(invalid("Source native artifact deadline"));
+            }
+        };
+        io.note("source_native_artifact", "ok");
+        io.note("source_native_inspection", "started");
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect_with_limits(
                 RetainedProgram::Tools(self.pure_source_review.workflow.program()?),
@@ -286,8 +315,12 @@ impl InstalledMontyCatalogue {
                 preparation.limits(),
             )
             .await
-            .map_err(invalid)?,
+            .map_err(|error| {
+                io.note("source_native_inspection", "error");
+                invalid(error)
+            })?,
         );
+        io.note("source_native_inspection", "ok");
         #[cfg(test)]
         if let Some((captured, release)) = self.capture_gate.lock().await.take() {
             captured.notify_one();

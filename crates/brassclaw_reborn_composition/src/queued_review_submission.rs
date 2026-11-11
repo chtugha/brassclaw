@@ -56,6 +56,7 @@ pub(crate) async fn create(
     pool: &Arc<PgPool>,
     scope: ComponentScope,
     draft: &ReviewSubmissionDraft,
+    io: &crate::pg_review_submission_io::SubmissionIo,
     #[cfg(feature = "skills-db")] source: Option<
         &crate::validator_inventory_review::SourceReviewPreparation,
     >,
@@ -70,7 +71,7 @@ pub(crate) async fn create(
                 prior_knowledge_content:field(d,"prior_knowledge_content")?,override_prompt_creation:field(d,"override_prompt_creation")?,
                 consumer_tags:field(d,"consumer_tags")?,intent_examples:json(d,"intent_examples")?,source:"authored".into(),
                 dependency_registry:json(d,"dependency_registry")?,includes:field(d,"includes")?,content_checksum:None,
-            },draft,&queue, #[cfg(feature="skills-db")] source).await.map_err(python_error),
+            },draft,&queue,io, #[cfg(feature="skills-db")] source).await.map_err(python_error),
         21=>crate::pg_recipe_store::PgRecipeStore::new(pool.clone()).create_and_submit_review(
             crate::pg_recipe_store::NewPgRecipe{
                 tenant_id:scope.tenant_id,user_id:scope.user_id,agent_id:scope.agent_id,project_id:scope.project_id,
@@ -79,7 +80,7 @@ pub(crate) async fn create(
                 consumer_tags:field(d,"consumer_tags")?,intent_examples:json(d,"intent_examples")?,source:"authored".into(),
                 step_descriptions:json(d,"step_descriptions")?,variants:json(d,"variants")?,dependency_registry:json(d,"dependency_registry")?,
                 validates_class_code:field(d,"validates_class_code")?,
-            },draft,&queue).await.map_err(recipe_error),
+            },draft,&queue,io).await.map_err(recipe_error),
         23=>crate::pg_extension_catalogue_store::PgExtensionCatalogueStore::new(pool.clone()).create_and_submit_review(
             crate::pg_extension_catalogue_store::NewPgExtensionCatalogue{
                 tenant_id:scope.tenant_id,user_id:scope.user_id,agent_id:scope.agent_id,project_id:scope.project_id,
@@ -87,7 +88,7 @@ pub(crate) async fn create(
                 task_groups:field(d,"task_groups")?,child_component_ids:field(d,"child_component_ids")?,intent_index:json(d,"intent_index")?,
                 prior_knowledge_content:field(d,"prior_knowledge_content")?,override_prompt_creation:field(d,"override_prompt_creation")?,
                 consumer_tags:field(d,"consumer_tags")?,intent_examples:json(d,"intent_examples")?,source:"authored".into(),dependency_registry:json(d,"dependency_registry")?,
-            },draft,&queue).await.map_err(catalogue_error),
+            },draft,&queue,io).await.map_err(catalogue_error),
         _=>Err(RecipeStoreError::Invalid("this class has no supported legacy create projection; submit the complete immutable subject independently".into())),
     }
 }

@@ -25,6 +25,11 @@ use tokio::{
 mod policy;
 use policy::{OwnershipControl, OwnershipRequest};
 pub(crate) use policy::{OwnershipLimits, OwnershipSnapshot};
+#[cfg(test)]
+#[path = "global_monty_owner_observation.rs"]
+mod observation;
+#[cfg(test)]
+pub(crate) use observation::joined as test_service_exit_facts;
 pub(crate) struct GlobalServiceConfig {
     pub(crate) boot: RootBoot,
     pub(crate) process: ProcessLimits,
@@ -68,8 +73,26 @@ pub(crate) struct GlobalOwnerCheck {
     requests: mpsc::UnboundedSender<OwnershipRequest>,
     control: OwnershipControl,
     closed: Arc<AtomicBool>,
+    #[cfg(test)]
+    terminal: watch::Sender<Option<serde_json::Value>>,
 }
 impl GlobalOwnerCheck {
+    #[cfg(test)]
+    pub(crate) fn test_terminal_facts(&self) -> Option<serde_json::Value> {
+        self.terminal.borrow().clone()
+    }
+    #[cfg(test)]
+    pub(crate) async fn wait_test_terminal_facts(&self) -> Option<serde_json::Value> {
+        let mut observed = self.terminal.subscribe();
+        loop {
+            if let Some(facts) = observed.borrow().clone() {
+                return Some(facts);
+            }
+            if observed.changed().await.is_err() {
+                return None;
+            }
+        }
+    }
     pub(crate) fn is_closed(&self) -> bool {
         self.closed.load(Ordering::Acquire)
     }
@@ -142,6 +165,8 @@ impl GlobalMontyOwner {
             requests,
             control,
             closed,
+            #[cfg(test)]
+            terminal: watch::channel(None).0,
         };
         let (shutdown, stopping) = watch::channel(false);
         let (ready, started) = oneshot::channel();
@@ -351,6 +376,8 @@ async fn bootstrap(
             stopping,
             check_port.closed,
             check_port.control,
+            #[cfg(test)]
+            check_port.terminal,
         )
         .await,
     )
@@ -375,6 +402,7 @@ async fn supervise(
     mut shutdown: watch::Receiver<bool>,
     closed: Arc<AtomicBool>,
     control: OwnershipControl,
+    #[cfg(test)] terminal: watch::Sender<Option<serde_json::Value>>,
 ) -> GlobalServiceExit {
     let mut last_checked = std::time::Instant::now();
     let mut stopping = false;
@@ -460,6 +488,10 @@ async fn supervise(
     while let Ok(request) = requests.try_recv() {
         let _undelivered = request.answer.send(Err(OwnershipError::Lost));
     }
+    // Projection only from this owner's actual completed ServiceOwner::join.
+    // Original service/transport evidence and ownership settlement stay here.
+    #[cfg(test)]
+    let _ = terminal.send_replace(Some(test_service_exit_facts(&service, ownership_failure)));
     let ownership = settle_ownership(guard, &service, &control).await;
     GlobalServiceExit {
         service,
@@ -555,8 +587,15 @@ mod tests {
             PgMontyOwner::acquire(&rig.pool).await,
             Err(OwnershipError::AlreadyOwned)
         ));
+        let observation = owner.ownership_check();
+        assert!(observation.test_terminal_facts().is_none());
         owner.request_shutdown();
         let exit = owner.join().await.unwrap();
+        let observed = observation
+            .test_terminal_facts()
+            .expect("actual owner join publishes terminal facts");
+        assert_eq!(observed, test_service_exit_facts(&exit.service, None));
+        assert_eq!(observed["phase"], "service_join_returned");
         assert!(exit.service.is_ok());
         assert!(matches!(
             exit.ownership,

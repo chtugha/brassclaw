@@ -22,7 +22,6 @@ pub(crate) struct PrivateCompletionWait {
     deliveries: Weak<PrivateDeliveries>,
     original: Weak<PrivateDelivery>,
     result: watch::Receiver<Option<ResultValue>>,
-    service: ServiceClient,
 }
 #[cfg(test)]
 impl PrivateCompletionWait {
@@ -35,12 +34,14 @@ impl PrivateCompletionWait {
             if let Some(result) = result {
                 return result;
             }
-            tokio::select! {
-                changed=self.result.changed()=>{
-                    changed.map_err(|_|failed("private_completion_delivery_closed"))?;
-                }
-                ()=self.service.closed()=>return Err(failed("private_completion_service_closed")),
-            }
+            // Closing admission precedes containment and the producer's actual
+            // result. Keep this original subscription through that interval.
+            // ProducerDelivery/Worker stop publish failure on interruption;
+            // missing evidence stays pending under the caller's test watchdog.
+            self.result
+                .changed()
+                .await
+                .map_err(|_| failed("private_completion_delivery_closed"))?;
         }
     }
 }
@@ -233,7 +234,6 @@ impl GlobalMontyDriver {
             deliveries: Arc::downgrade(&self.private_deliveries),
             original: Arc::downgrade(&slot.channel),
             result: slot.channel.result.subscribe(),
-            service: self.service.clone(),
         })
     }
     pub(super) fn private_producer_stopped(&self, attempt: MontyTaskAttempt) {

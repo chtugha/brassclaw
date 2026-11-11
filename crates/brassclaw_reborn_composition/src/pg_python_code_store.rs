@@ -500,6 +500,7 @@ impl PgPythonCodeStore {
         row: NewPgPythonCode,
         draft: &brassclaw_skills::review_submission_store::ReviewSubmissionDraft,
         queue_store: &ValidationQueueStore,
+        io: &crate::pg_review_submission_io::SubmissionIo,
         #[cfg(feature = "skills-db")] source: Option<
             &crate::validator_inventory_review::SourceReviewPreparation,
         >,
@@ -520,6 +521,7 @@ impl PgPythonCodeStore {
                     .into(),
             );
         }
+        let write = io.run("queue_authoring_transaction", async {
         let mut client = crate::pg_transaction_client::TransactionClient::from_client(
             self.pool.get().await.map_err(map_pool)?,
         );
@@ -535,7 +537,7 @@ impl PgPythonCodeStore {
         {
             tx.commit().await.map_err(map_pg)?;
             client.recycle_after_commit();
-            return Ok(original);
+            return Ok(Some((original, false)));
         }
         Self::insert_on(&*tx, row, false, id).await?;
         queue_store
@@ -560,45 +562,72 @@ impl PgPythonCodeStore {
                 )
             })?;
         }
-        if let Err(error) = tx.commit().await {
+        io.note("queue_author_commit", "started");
+        if tx.commit().await.is_err() {
+            io.note("queue_author_commit", "commit_acknowledgement_lost");
             drop(client);
-            let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
-                self.pool.get().await.map_err(map_pool)?,
-            );
-            let original = readback
-                .build_transaction()
-                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-                .read_only(true)
-                .start()
-                .await
-                .map_err(map_pg)?;
-            ValidationQueueStore::read_original_create(&original, draft, &scope)
-                .await?
-                .ok_or_else(|| map_pg(error))?;
-            #[cfg(feature = "skills-db")]
-            if let Some(source) = source {
-                source
-                    .verify_original(&original, subject.id)
-                    .await
-                    .map_err(|_| {
-                        PgPythonCodeStoreError::OriginalReview(
-                            crate::validation_queue::ValidationQueueError::ReviewChanged {
-                                component_id: id,
-                            },
-                        )
-                    })?;
-            }
-            original.commit().await.map_err(map_pg)?;
-            readback.recycle_after_commit();
+            Ok::<_, PgPythonCodeStoreError>(None)
         } else {
             client.recycle_after_commit();
+            Ok(Some((subject, true)))
         }
-        #[cfg(feature = "skills-db")]
-        if let Some(source) = source {
-            source.notify();
+        }).await.map_err(|_| PgPythonCodeStoreError::Db { reason: "original queue authoring deadline; outcome unresolved".into() })??;
+        let (subject, created) = match write {
+            Some(original) => original,
+            None => (
+                io.run("queue_original_readback", async {
+                    let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
+                        self.pool.get().await.map_err(map_pool)?,
+                    );
+                    let original = readback
+                        .build_transaction()
+                        .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                        .read_only(true)
+                        .start()
+                        .await
+                        .map_err(map_pg)?;
+                    let saved =
+                        ValidationQueueStore::read_original_create(&original, draft, &scope)
+                            .await?
+                            .ok_or_else(|| {
+                                PgPythonCodeStoreError::Db {
+                        reason:
+                            "original queue COMMIT unresolved; retain original request for readback"
+                                .into(),
+                    }
+                            })?;
+                    #[cfg(feature = "skills-db")]
+                    if let Some(source) = source {
+                        source
+                            .verify_original(&original, saved.id)
+                            .await
+                            .map_err(|_| {
+                                PgPythonCodeStoreError::OriginalReview(
+                                    crate::validation_queue::ValidationQueueError::ReviewChanged {
+                                        component_id: id,
+                                    },
+                                )
+                            })?;
+                    }
+                    original.commit().await.map_err(map_pg)?;
+                    readback.recycle_after_commit();
+                    Ok::<_, PgPythonCodeStoreError>(saved)
+                })
+                .await
+                .map_err(|_| PgPythonCodeStoreError::Db {
+                    reason: "original queue readback deadline; outcome unresolved".into(),
+                })??,
+                true,
+            ),
+        };
+        if created {
+            #[cfg(feature = "skills-db")]
+            if let Some(source) = source {
+                source.notify();
+            }
+            #[cfg(feature = "skills-db")]
+            queue_store.fire_q1_kick_if_wired(&scope, id, 22);
         }
-        #[cfg(feature = "skills-db")]
-        queue_store.fire_q1_kick_if_wired(&scope, id, 22);
         Ok(subject)
     }
     /// Insert a new python_code row and submit it to the Q1 validation queue

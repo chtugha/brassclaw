@@ -20,6 +20,10 @@ use brassclaw_skills::{
 };
 use uuid::Uuid;
 
+use crate::pg_review_submission_io::SubmissionIo;
+#[cfg(test)]
+pub(crate) use crate::pg_review_submission_io::observe as observe_submission_io;
+
 fn revision_parse_error(error: RevisionError, kind: &str) -> RecipeStoreError {
     RecipeStoreError::Invalid(match error {
         RevisionError::UnsupportedDepth => RevisionError::UnsupportedDepth.to_string(),
@@ -152,6 +156,7 @@ pub(crate) async fn submit(
         tenant,
         agent,
         request,
+        SubmissionIo::compatibility()?,
         None,
         #[cfg(feature = "skills-db")]
         None,
@@ -179,26 +184,23 @@ pub(crate) async fn submit_with_catalogue_prepared(
     catalogue: &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
     preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
-    let io = catalogue
-        .resource_store_settings
-        .snapshot()
-        .map_err(storage_io)?
-        .validate()
-        .map_err(storage_io)?;
-    tokio::time::timeout(
-        io.timeout,
-        submit_inner(
-            pool,
-            actor,
-            tenant,
-            agent,
-            request,
-            preparation,
-            Some(catalogue),
-        ),
+    let io = SubmissionIo::capture(
+        catalogue
+            .resource_store_settings
+            .snapshot()
+            .map_err(storage_io)?,
+    )?;
+    submit_inner(
+        pool,
+        actor,
+        tenant,
+        agent,
+        request,
+        io,
+        preparation,
+        Some(catalogue),
     )
     .await
-    .map_err(|_| storage_io("original submission I/O deadline elapsed; outcome unresolved"))?
 }
 async fn submit_inner(
     pool: &Arc<PgPool>,
@@ -206,6 +208,7 @@ async fn submit_inner(
     tenant: &str,
     agent: &str,
     request: SubmitComponentReviewRequest,
+    io: SubmissionIo,
     accepted_preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
     #[cfg(feature = "skills-db")] catalogue: Option<
         &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
@@ -219,24 +222,27 @@ async fn submit_inner(
     let id = identifier(&request.submission_id)?;
     // Resolve the original identity BEFORE fresh settings or worker inspection.
     // The connection is released before Source preparation (pool size one).
-    let existing = {
-        let mut client = crate::pg_transaction_client::TransactionClient::from_client(
-            pool.get().await.map_err(storage_io)?,
-        );
-        let tx = client
-            .build_transaction()
-            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(storage_io)?;
-        let original = PgReviewSubmissionStore::read_in_transaction(&tx, id)
-            .await
-            .map_err(storage)?;
-        tx.commit().await.map_err(storage_io)?;
-        client.recycle_after_commit();
-        original
-    };
+    let existing = io
+        .run("original_identity_read", async {
+            let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+                pool.get().await.map_err(storage_io)?,
+            );
+            let tx = client
+                .build_transaction()
+                .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(storage_io)?;
+            let original = PgReviewSubmissionStore::read_in_transaction(&tx, id)
+                .await
+                .map_err(storage)?;
+            tx.commit().await.map_err(storage_io)?;
+            client.recycle_after_commit();
+            Ok::<_, RecipeStoreError>(original)
+        })
+        .await
+        .map_err(|_| storage_io("original identity read deadline"))??;
     let preparation = if let Some(original) = &existing {
         original.preparation.clone()
     } else if let Some(accepted) = accepted_preparation {
@@ -246,9 +252,9 @@ async fn submit_inner(
         {
             match catalogue {
                 Some(owner) => Some(
-                    owner
-                        .capture_task_preparation()
+                    io.run("capture_preparation", owner.capture_task_preparation())
                         .await
+                        .map_err(|_| storage_io("preparation metadata deadline"))?
                         .map_err(storage_io)?
                         .original()
                         .clone(),
@@ -373,7 +379,7 @@ async fn submit_inner(
     #[cfg(feature = "skills-db")]
     let source_preparation = match catalogue {
         Some(owner) => owner
-            .prepare_source_submission(&draft)
+            .prepare_source_submission(&draft, &io)
             .await
             .map_err(storage_io)?,
         None => None,
@@ -396,6 +402,7 @@ async fn submit_inner(
                 project_id: project,
             },
             &draft,
+            &io,
             #[cfg(feature = "skills-db")]
             source_preparation.as_ref(),
         )
@@ -403,18 +410,24 @@ async fn submit_inner(
         #[cfg(feature = "skills-db")]
         if let Some(owner) = catalogue {
             if source_preparation.is_none() {
-                owner
-                    .read_source_submission(retained.id)
-                    .await
-                    .map_err(storage_io)?;
+                io.run(
+                    "queue_source_original_read",
+                    owner.read_source_submission(retained.id),
+                )
+                .await
+                .map_err(|_| storage_io("original queue source read deadline"))?
+                .map_err(storage_io)?;
             }
             if let Some(wake) = owner.private_work_wake.get() {
                 wake.wake();
             }
         }
-        return original_receipt(pool, &retained).await;
+        return io
+            .run("receipt_projection", original_receipt(pool, &retained))
+            .await
+            .map_err(|_| storage_io("original receipt read deadline"))?;
     }
-    let retained = {
+    let write = io.run("authoring_transaction", async {
         let mut client = crate::pg_transaction_client::TransactionClient::from_client(
             pool.get().await.map_err(storage_io)?,
         );
@@ -485,10 +498,24 @@ async fn submit_inner(
                     .map_err(storage_io)?;
             }
         }
+        io.note("author_commit", "started");
         if tx.commit().await.is_err() {
-            // The server may have committed. End this client before one fresh,
-            // read-only snapshot; never repeat authoring or capture settings.
+            io.note("author_commit", "commit_acknowledgement_lost");
+            // Never recycle the unacknowledged original connection.
             drop(client);
+            Ok::<_,RecipeStoreError>(None)
+        } else {
+            client.recycle_after_commit();
+            Ok(Some(retained))
+        }
+    }).await;
+    let retained = match write {
+        Ok(Ok(Some(retained))) => retained,
+        Ok(Err(error)) => return Err(error),
+        // Deadline preserves uncertainty; a later same-ID request reads the
+        // original. Never replay authoring or claim that the write did not run.
+        Err(()) => return Err(storage_io("original authoring deadline; outcome unresolved")),
+        Ok(Ok(None)) => io.run("authoring_original_readback", async {
             let mut readback = crate::pg_transaction_client::TransactionClient::from_client(
                 pool.get().await.map_err(storage_io)?,
             );
@@ -545,11 +572,8 @@ async fn submit_inner(
             }
             original.commit().await.map_err(storage_io)?;
             readback.recycle_after_commit();
-            saved
-        } else {
-            client.recycle_after_commit();
-            retained
-        }
+            Ok::<_,RecipeStoreError>(saved)
+        }).await.map_err(|_|storage_io("original commit readback deadline"))??,
     };
     #[cfg(feature = "skills-db")]
     if let Some(owner) = catalogue {
@@ -557,7 +581,9 @@ async fn submit_inner(
             wake.wake();
         }
     }
-    original_receipt(pool, &retained).await
+    io.run("receipt_projection", original_receipt(pool, &retained))
+        .await
+        .map_err(|_| storage_io("original receipt read deadline"))?
 }
 pub(crate) async fn head(
     pool: &Arc<PgPool>,

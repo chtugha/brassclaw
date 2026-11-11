@@ -204,7 +204,7 @@ pub(super) async fn watchdog<T>(
     }
 }
 
-async fn diagnose(
+pub(super) async fn diagnose(
     runtime: &RebornRuntime,
     id: Uuid,
     stage: &str,
@@ -262,10 +262,23 @@ async fn diagnose(
         Err(_) => json!({"snapshot":"test_watchdog_elapsed"}),
     };
     let pool = runtime.installed_catalogue.pool.status();
+    let owner = runtime.global_monty_owner.ownership_check();
+    let service = runtime.global_monty_owner.client();
+    // Admission closure is not an exit. If it has happened, wait only for
+    // this owner's already-running join to publish its closed projection.
+    let owner_facts = tokio::select! {
+        biased;
+        () = service.closed() => match tokio::time::timeout(deadline(runtime).await, owner.wait_test_terminal_facts()).await {
+            Ok(Some(facts)) => facts,
+            Ok(None) => json!({"phase":"owner_observer_closed"}),
+            Err(_) => json!({"phase":"actual_owner_exit_pending"}),
+        },
+        () = std::future::ready(()) => owner.test_terminal_facts().unwrap_or_else(|| json!({"phase":"no_owner_exit_observed"})),
+    };
     eprintln!(
         "SourceReview diagnostic {}",
         json!({"original":id,"stage":stage,
-        "last_successful_work_view":last_work,"settlement":settlement,"metadata":metadata,
+        "last_successful_work_view":last_work,"settlement":settlement,"metadata":metadata,"owner":owner_facts,
         "pool":{"max_size":pool.max_size,"size":pool.size,"available":pool.available}})
     );
 }

@@ -206,8 +206,20 @@ async fn private_delivery_cold_process_reads_only_original_ack() {
         "the genuine terminal COMMIT precedes Factory acknowledgement"
     );
     read_in_child(&rig, id, &original_context, None, None, deadline).await;
+    // The actual native terminal already exists, but its Factory delivery is
+    // paused. Fencing new admission must not invent this producer's result.
+    runtime.global_monty_owner.client().close_admission();
+    let mut original_completion = Box::pin(waiter.wait());
+    let observed = std::future::poll_fn(|cx| {
+        std::task::Poll::Ready(std::future::Future::poll(original_completion.as_mut(), cx))
+    })
+    .await;
+    assert!(
+        observed.is_pending(),
+        "admission closure is not native producer completion"
+    );
     factory_pause.release.notify_one();
-    let driven = tokio::time::timeout(timeout(&runtime).await, waiter.wait())
+    let driven = tokio::time::timeout(timeout(&runtime).await, original_completion)
         .await
         .unwrap()
         .unwrap();

@@ -454,9 +454,21 @@ async fn native_qualified_pure_source_atomic_submit_and_original_readback() {
     let mut review = OriginalReview::new(&runtime, id);
     faults::install_write_counter(&rig).await;
     transport.arm(1).unwrap();
-    submit(&runtime, request(id, component, false))
-        .await
-        .unwrap();
+    let (submitted, io_facts) = crate::pg_review_submission::observe_submission_io(submit(
+        &runtime,
+        request(id, component, false),
+    ))
+    .await;
+    if submitted.is_err() {
+        eprintln!(
+            "SourceReview original COMMIT diagnostic {}",
+            json!({
+                "actual_cut_count": transport.cut_count(), "io": io_facts,
+            })
+        );
+        progress::diagnose(&runtime, id, "original_authoring_failed", None).await;
+    }
+    submitted.unwrap();
     assert_eq!(
         transport.cut_count(),
         1,
@@ -651,10 +663,21 @@ async fn native_qualified_pure_source_live_parser_block_prevents_dispatch() {
     let release = Arc::new(tokio::sync::Notify::new());
     *runtime.installed_catalogue.capture_gate.lock().await =
         Some((captured.clone(), release.clone()));
+    let io_policy = runtime
+        .installed_catalogue
+        .resource_store_settings
+        .snapshot()
+        .unwrap()
+        .validate()
+        .unwrap();
     let block = async {
         tokio::time::timeout(deadline(&runtime).await, captured.notified())
             .await
             .unwrap();
+        // This is native preparation, after the real inspection and with no
+        // PostgreSQL connection held. Crossing the captured PG phase budget
+        // must not cancel authoring before its transaction has even started.
+        tokio::time::sleep(io_policy.timeout).await;
         let tool = brassclaw_skills::global_bootstrap_components::packaged_component_id(
             "validator:inspection:tool",
         );
