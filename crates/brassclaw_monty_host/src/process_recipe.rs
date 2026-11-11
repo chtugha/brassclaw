@@ -370,10 +370,10 @@ impl WorkerRecipes {
         if self.tasks.len() >= capacity && !root.dependent_admission(key, &input) {
             return Err(VmError::kind(VmFailure::ResourceLimit));
         }
-        // Six legacy chat data fields, or seven with a validated host-selected
-        // entry. The worker adds its own fresh routing token; the parent never
-        // substitutes conversation/run IDs. Wire-version mismatch fails earlier.
-        let valid = input.as_object().is_some_and(|input| {
+        // Private Work uses its own strict message-free envelope. Chat keeps
+        // its six legacy fields, or seven with a validated host-selected entry.
+        // The worker adds its own fresh routing token after either validation.
+        let valid_chat = input.as_object().is_some_and(|input| {
             ((input.len() == 6 && !input.contains_key("entry"))
                 || (input.len() == 7
                     && input
@@ -390,6 +390,7 @@ impl WorkerRecipes {
                 && input.get("user_input").is_some_and(Value::is_string)
                 && input.get("history").is_some_and(Value::is_array)
         });
+        let valid = valid_chat || crate::private_task_input::valid_private_value(&input, false);
         if !valid {
             return Err(VmError::kind(VmFailure::InvalidInputs));
         }

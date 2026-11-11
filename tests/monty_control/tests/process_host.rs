@@ -1281,6 +1281,152 @@ async fn single_real_worker_waits_at_boot_rejects_replacement_and_preserves_admi
 }
 
 #[tokio::test]
+async fn worker_admits_strict_private_input_without_chat_fields_and_keeps_chat_validation() {
+    let mut configuration = boot(SOURCE);
+    configuration.bounds.workers = 3;
+    configuration
+        .aliases
+        .insert("resolve_private_recipe".into());
+    let (mut process, ready) = GlobalProcess::start(worker(), configuration, limits())
+        .await
+        .unwrap();
+    assert_eq!(ready.lifecycle, Lifecycle::Ready);
+    assert_eq!(ready.work_waits.len(), 3);
+    let root = ready.root;
+    let pid = process.process_id();
+    let private = serde_json::to_value(brassclaw_monty_host::service::PrivateTaskInput::new(
+        uuid::Uuid::new_v4(),
+        uuid::Uuid::new_v4(),
+        [7; 32],
+        [9; 32],
+    ))
+    .unwrap();
+    assert_eq!(private.as_object().unwrap().len(), 6);
+    let mut invalid = Vec::new();
+    for (field, replacement) in [
+        ("format", json!("monty-private-task/2")),
+        ("entry", json!({"kind":"chat"})),
+        ("work_id", json!(uuid::Uuid::nil())),
+        ("run_id", json!("not-a-uuid")),
+        ("workflow_checksum", json!("A".repeat(64))),
+        ("input_checksum", json!("0".repeat(63))),
+        ("task_token", json!("caller-must-not-provide-this")),
+        ("conversation_id", json!("not-a-chat")),
+        ("user_input", json!("not-a-chat")),
+    ] {
+        let mut input = private.clone();
+        input[field] = replacement;
+        invalid.push(input);
+    }
+    let mut missing = private.clone();
+    missing.as_object_mut().unwrap().remove("input_checksum");
+    invalid.push(missing);
+    let mut invalid_chat = task();
+    invalid_chat["entry"] = json!("private");
+    invalid.push(invalid_chat);
+    let mut invalid_chat = task();
+    invalid_chat
+        .as_object_mut()
+        .unwrap()
+        .remove("conversation_id");
+    invalid_chat["format"] = json!("monty-private-task/1");
+    invalid.push(invalid_chat);
+    for input in invalid {
+        let rejected = process
+            .exchange(WorkerCommand::Admit {
+                key: ready.work_waits[0].1,
+                task: input,
+            })
+            .await
+            .unwrap_err();
+        assert_eq!(rejected.kind, ProcessFailure::Vm(VmFailure::InvalidInputs));
+        let snapshot = rejected.snapshot.unwrap();
+        assert_eq!(snapshot.lifecycle, Lifecycle::Ready);
+        assert_eq!(snapshot.root, root);
+        assert_eq!(snapshot.work_waits, ready.work_waits);
+        assert!(snapshot.admitted_task.is_none());
+        assert!(snapshot.task_accounting.is_empty());
+    }
+    let admitted = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[0].1,
+            task: private.clone(),
+        })
+        .await
+        .unwrap();
+    let original = admitted
+        .admitted_task
+        .expect("actual private worker admission");
+    let Some(ProcessBoundary::HostCall {
+        name, args, kwargs, ..
+    }) = admitted.boundary
+    else {
+        panic!("actual private root must reach its selected host port")
+    };
+    assert_eq!(name, "resolve_private_recipe");
+    assert_eq!(
+        args,
+        vec![
+            json!(original.to_string()),
+            private["work_id"].clone(),
+            private["run_id"].clone(),
+            private["workflow_checksum"].clone(),
+            private["input_checksum"].clone()
+        ]
+    );
+    assert!(kwargs.is_empty());
+    assert_eq!(admitted.root, root);
+    assert_eq!(admitted.task_accounting.len(), 1);
+    assert_eq!(admitted.task_accounting[0].task, original);
+    assert!(admitted.task_accounting[0].compute_time.is_some());
+    assert!(admitted.task_accounting[0].failure.is_none());
+    // Same admitted run cannot acquire a second task/account at another slot.
+    let duplicate = process
+        .exchange(WorkerCommand::Admit {
+            key: ready.work_waits[1].1,
+            task: private,
+        })
+        .await
+        .unwrap_err();
+    assert_eq!(duplicate.kind, ProcessFailure::Vm(VmFailure::InvalidInputs));
+    let duplicate = duplicate.snapshot.unwrap();
+    assert!(duplicate.admitted_task.is_none());
+    assert_eq!(duplicate.task_accounting.len(), 1);
+    assert_eq!(duplicate.task_accounting[0].task, original);
+    assert!(duplicate.work_waits.contains(&ready.work_waits[1]));
+    for (index, current) in [(1, false), (2, true)] {
+        let mut input = task();
+        input["run_id"] = json!(format!("chat-after-private-{index}"));
+        if current {
+            input["entry"] = json!({"kind":"chat"});
+        }
+        let admitted = process
+            .exchange(WorkerCommand::Admit {
+                key: ready.work_waits[index].1,
+                task: input.clone(),
+            })
+            .await
+            .unwrap();
+        let task = admitted.admitted_task.unwrap();
+        let Some(ProcessBoundary::HostCall { name, args, .. }) = admitted.boundary else {
+            panic!("actual chat root must reach its original intent port")
+        };
+        assert_eq!(name, "resolve_intent");
+        assert_eq!(
+            args,
+            vec![json!(task.to_string()), input["user_input"].clone()]
+        );
+        assert_eq!(admitted.root, root);
+    }
+    assert_eq!(process.process_id(), pid);
+    // No Recipe/host result or durable completion is fabricated. These actual
+    // pending admission probes are explicitly terminated and OS-reaped.
+    assert!(process.terminate().await.is_some());
+    assert!(process.take_containment_error().is_none());
+    assert!(process.take_reap_error().is_none());
+}
+
+#[tokio::test]
 async fn worker_rejects_wrong_root_checksum_before_issuing_execution_identity() {
     let mut requested = boot(SOURCE);
     requested.checksum[0] ^= 1;
