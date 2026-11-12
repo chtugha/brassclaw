@@ -3,6 +3,15 @@ use super::*;
 use brassclaw_turns::private_work::ClaimedPrivateWork;
 use uuid::Uuid;
 
+/// Access contract chosen by the existing owner, never inferred from a failed
+/// SQL statement. Historical readers share one coherent snapshot; terminal and
+/// delivery writers retain their invocation-row custody until COMMIT.
+#[derive(Clone, Copy)]
+enum InvocationRefsRead {
+    Snapshot,
+    RetainShareLock,
+}
+
 /// Passive facts about one original intent exchange. Each bit is published only
 /// at the actual boundary; inspection neither polls nor holds the exchange.
 #[cfg(test)]
@@ -320,22 +329,32 @@ impl PgMontyAdmission {
         })
     }
 
+    /// The native terminal writer retains SHARE locks until its own COMMIT.
     async fn private_invocation_refs(
         &self,
         transaction: &Transaction<'_>,
     ) -> Result<Vec<terminal::InvocationRef>, AgentLoopDriverError> {
-        Self::read_private_invocation_refs(transaction, self.attempt.run_id).await
+        Self::read_private_invocation_refs(
+            transaction,
+            self.attempt.run_id,
+            InvocationRefsRead::RetainShareLock,
+        )
+        .await
     }
     async fn read_private_invocation_refs(
         transaction: &Transaction<'_>,
         run_id: brassclaw_turns::TurnRunId,
+        access: InvocationRefsRead,
     ) -> Result<Vec<terminal::InvocationRef>, AgentLoopDriverError> {
+        let mut query = String::from(
+            "SELECT invocation_id,selection_checksum,arguments_checksum,answer_checksum,phase
+            FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY invocation_id",
+        );
+        if matches!(access, InvocationRefsRead::RetainShareLock) {
+            query.push_str(" FOR SHARE");
+        }
         let rows = transaction
-            .query(
-                "SELECT invocation_id,selection_checksum,arguments_checksum,answer_checksum,phase
-            FROM brassclaw_monty_tool_invocations WHERE run_id=$1 ORDER BY invocation_id FOR SHARE",
-                &[&run_id.as_uuid()],
-            )
+            .query(&query, &[&run_id.as_uuid()])
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
         let mut references = Vec::with_capacity(rows.len());
@@ -524,6 +543,16 @@ impl PgMontyAdmission {
         tx: &Transaction<'_>,
         completion: &crate::global_monty_driver::SettledInternalCompletion,
     ) -> Result<Option<PrivateCompletionOriginal>, AgentLoopDriverError> {
+        // This public-to-crate operation is authentication only. Its actual
+        // consumers read existing settled originals in READ ONLY snapshots.
+        Self::verify_private_completion(tx, completion, InvocationRefsRead::Snapshot).await
+    }
+
+    async fn verify_private_completion(
+        tx: &Transaction<'_>,
+        completion: &crate::global_monty_driver::SettledInternalCompletion,
+        access: InvocationRefsRead,
+    ) -> Result<Option<PrivateCompletionOriginal>, AgentLoopDriverError> {
         let invalid = || failed("private_completion_original_invalid");
         let attempt = completion.attempt();
         let row = tx
@@ -615,7 +644,7 @@ impl PgMontyAdmission {
             address,
             completion.receipt(),
             &report,
-            Self::read_private_invocation_refs(tx, attempt.run_id).await?,
+            Self::read_private_invocation_refs(tx, attempt.run_id, access).await?,
         )?;
         if native.checksum() != terminal_checksum
             || native.bytes() != original.get::<_, &str>(2)
@@ -716,7 +745,13 @@ impl PgMontyAdmission {
             || row.get::<_, Vec<u8>>(14).as_slice() != expected.claim_checksum
             || row.get::<_, Uuid>(16) != row.get::<_, Uuid>(5)
             || row.get::<_, Uuid>(17) != state.request.run_id().as_uuid()
-            || Self::read_private_invocation_refs(tx, state.request.run_id()).await? != refs
+            || Self::read_private_invocation_refs(
+                tx,
+                state.request.run_id(),
+                InvocationRefsRead::Snapshot,
+            )
+            .await?
+                != refs
         {
             return Err(invalid());
         }

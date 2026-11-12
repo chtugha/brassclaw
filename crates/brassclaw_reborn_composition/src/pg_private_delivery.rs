@@ -82,7 +82,12 @@ impl PgMontyAdmission {
             .start()
             .await
             .map_err(database)?;
-        let Some(original) = Self::verify_private_live_completion(&tx, completion).await? else {
+        let access = if write {
+            InvocationRefsRead::RetainShareLock
+        } else {
+            InvocationRefsRead::Snapshot
+        };
+        let Some(original) = Self::verify_private_completion(&tx, completion, access).await? else {
             return Err(invalid());
         };
         let request = original.request();
@@ -229,7 +234,12 @@ impl PgMontyAdmission {
             || report["withheld_host_answers"] != false
             || report["semantic_approval"] != false
             || report["catalogue_activation"] != false
-            || Self::read_private_invocation_refs(tx, state.request.run_id()).await?
+            || Self::read_private_invocation_refs(
+                tx,
+                state.request.run_id(),
+                InvocationRefsRead::Snapshot,
+            )
+            .await?
                 != native.reconciliation_refs
         {
             return Err(invalid());

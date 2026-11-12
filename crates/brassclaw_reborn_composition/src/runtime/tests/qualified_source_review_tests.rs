@@ -1195,3 +1195,8 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
 mod faults;
 #[path = "qualified_source_legacy_fixture.rs"]
 mod legacy_fixture;
+
+mod delivery_snapshot_locks {
+    use super::*;
+    include!("qualified_source_snapshot_lock_tests.rs");
+}

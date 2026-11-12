@@ -2357,3 +2357,8 @@ mod intent_custody {
     use super::*;
     include!("private_intent_custody_tests.rs");
 }
+
+mod delivery_snapshot {
+    use super::*;
+    include!("private_delivery_snapshot_tests.rs");
+}
