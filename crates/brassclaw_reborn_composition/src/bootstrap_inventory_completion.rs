@@ -47,7 +47,7 @@ impl Subject {
             "primitive_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_inventory_primitives.rs")),
             "completion_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),
             "executor_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("global_monty_startup.rs")),
-            "close_owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_validation.rs")),
+            "close_owner_checksum":crate::bootstrap_validation::owner_checksum(),
             "root_checksum":hex::encode(root.source_checksum()),"root_reference":revision_reference_value(root.reference())});
         let intent = Uuid::new_v5(&qualification_id, b"inventory-qualification-intent/1");
         let association = crate::bootstrap_evidence::checksum(binding.association().exact_bytes());

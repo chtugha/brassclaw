@@ -41,6 +41,12 @@ pub(crate) struct PgMontyAdmission {
     #[cfg(test)]
     intent_observation: private_origin::IntentObservation,
 }
+/// Read-only projection of an exact protected original address. Neither state
+/// grants dispatch nor permits creating/replacing a reservation.
+pub(crate) enum OriginalAdmissionPhase {
+    Open,
+    Cancelled,
+}
 struct ChatAdmissionOrigin {
     scope: TurnScope,
     turn_id: TurnId,
@@ -325,6 +331,56 @@ impl PgMontyAdmission {
             .map_err(|_| failed("monty_admission_database_failed"))?;
         drop(client);
         Ok(())
+    }
+
+    pub(crate) async fn read_original_phase(
+        &self,
+    ) -> Result<Option<OriginalAdmissionPhase>, AgentLoopDriverError> {
+        let chat = self.chat_origin()?;
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|_| failed("monty_admission_database_failed"))?;
+        let row = client.query_opt("SELECT phase,outcome,turn_id,scope,accepted_message_ref,runner_id,claim_checksum,admission_key,source_binding_ref,result_only_completion,native_actor
+            FROM brassclaw_monty_task_admissions WHERE run_id=$1", &[&self.attempt.run_id.as_uuid()])
+            .await.map_err(|_|failed("monty_admission_database_failed"))?;
+        let Some(row) = row else {
+            return Ok(None);
+        };
+        if row.get::<_, uuid::Uuid>(2) != chat.turn_id.as_uuid()
+            || row.get::<_, Value>(3)
+                != serde_json::to_value(&chat.scope)
+                    .map_err(|_| failed("monty_admission_identity_invalid"))?
+            || row.get::<_, String>(4) != chat.accepted.as_str()
+            || row.get::<_, uuid::Uuid>(5) != self.attempt.runner_id.as_uuid()
+            || row.get::<_, Vec<u8>>(6).as_slice() != self.checksum
+            || row.get::<_, Vec<u8>>(7).as_slice() != self.key
+            || row.get::<_, Option<String>>(8).as_deref()
+                != self.original_source_binding().map(SourceBindingRef::as_str)
+            || row.get::<_, bool>(9) != self.is_result_only()
+            || row.get::<_, Option<Value>>(10)
+                != Some(
+                    serde_json::to_value(&chat.actor)
+                        .map_err(|_| failed("monty_admission_identity_invalid"))?,
+                )
+        {
+            return Err(failed("monty_admission_fenced"));
+        }
+        match row.get::<_, &str>(0) {
+            "reserved" | "started" if row.get::<_, Option<Value>>(1).is_none() => {
+                Ok(Some(OriginalAdmissionPhase::Open))
+            }
+            "settled"
+                if row.get::<_, Option<Value>>(1)
+                    == Some(
+                        serde_json::json!({"status":"failed","reason_kind":"task_cancelled"}),
+                    ) =>
+            {
+                Ok(Some(OriginalAdmissionPhase::Cancelled))
+            }
+            _ => Err(failed("monty_admission_settlement_conflict")),
+        }
     }
 
     /// Call before one requested operation. Started/settled admission is not an

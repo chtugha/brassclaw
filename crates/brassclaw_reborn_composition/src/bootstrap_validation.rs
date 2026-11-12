@@ -33,6 +33,48 @@ mod host;
 pub(super) const NAMESPACE: &str = "bootstrap-validation";
 pub(super) const INSTALLATION_ACTOR: &str = "installation-owner";
 
+/// Exact shared native-owner closure for newly selected qualification records.
+/// Historical records keep their original bytes; this domain-separated digest
+/// cannot reinterpret an earlier single-file checksum as this source closure.
+pub(super) fn owner_checksum() -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(b"bootstrap-contained-native-owner/1\0");
+    for (name, source) in [
+        (
+            "bootstrap_validation.rs",
+            include_str!("bootstrap_validation.rs"),
+        ),
+        (
+            "bootstrap_admission_original.rs",
+            include_str!("bootstrap_admission_original.rs"),
+        ),
+        (
+            "pg_monty_admission_core.rs",
+            include_str!("pg_monty_admission_core.rs"),
+        ),
+    ] {
+        digest.update((name.len() as u64).to_le_bytes());
+        digest.update(name.as_bytes());
+        digest.update((source.len() as u64).to_le_bytes());
+        digest.update(source.as_bytes());
+    }
+    hex::encode(digest.finalize())
+}
+
+/// One existing qualification owner's source plus the shared native custody
+/// implementation it invokes. This produces only its existing opaque digest.
+pub(super) fn qualification_owner_checksum(source: &str) -> String {
+    crate::bootstrap_evidence::checksum(
+        &json!({
+            "format":"bootstrap-qualified-native-owner/1",
+            "owner":crate::bootstrap_evidence::checksum(source),
+            "contained":owner_checksum(),
+        })
+        .to_string(),
+    )
+}
+
 // Fixed transport-only root: register every configured native slot, then hold
 // the admitted task while the existing closed qualifier drives its pinned steps.
 // This is not the ordinary global orchestrator or a task workflow.
@@ -311,7 +353,7 @@ pub(super) async fn admit(
     let mode = host_factory
         .map(AdmissionMode::ModelContained)
         .unwrap_or(AdmissionMode::Contained);
-    prepare_admission(pool, identity, answer, mode, None).await
+    prepare_admission(pool, identity, answer, mode, None, None).await
 }
 
 /// Passive closed-bootstrap observations. Only fixed phase names and elapsed
@@ -341,21 +383,9 @@ impl AdmissionTrace {
         }
     }
 }
-pub(super) async fn admit_observed(
-    pool: Arc<PgPool>,
-    identity: &str,
-    answer: &str,
-    trace: &AdmissionTrace,
-) -> Result<Admitted, RebornBuildError> {
-    prepare_admission(
-        pool,
-        identity,
-        answer,
-        AdmissionMode::Contained,
-        Some(trace),
-    )
-    .await
-}
+#[path = "bootstrap_admission_original.rs"]
+mod original;
+pub(super) use original::PreparedAdmission;
 
 /// Reserve a real installation-review parent without starting VM execution.
 /// The owner must retain its captured catalogue, live claim and scheduled ports
@@ -372,6 +402,7 @@ pub(super) async fn reserve_child_review_parent(
         identity,
         reference,
         AdmissionMode::RetainedParent,
+        None,
         None,
     )
     .await
@@ -394,6 +425,7 @@ async fn prepare_admission(
     answer: &str,
     mode: AdmissionMode<'_>,
     trace: Option<&AdmissionTrace>,
+    mut original: Option<&mut PreparedAdmission>,
 ) -> Result<Admitted, RebornBuildError> {
     let note = |phase| {
         if let Some(trace) = trace {
@@ -420,7 +452,10 @@ async fn prepare_admission(
             brassclaw_turns::run_profile::TRUSTED_INTERNAL_SOURCE_BINDING
         }
     };
-    let conversation = ThreadId::new(format!("{identity}-{}", Uuid::new_v4())).map_err(invalid)?;
+    let conversation = match original.as_ref() {
+        Some(original) => original.conversation.clone(),
+        None => ThreadId::new(format!("{identity}-{}", Uuid::new_v4())).map_err(invalid)?,
+    };
     let scope = ThreadScope {
         tenant_id: tenant.clone(),
         agent_id: agent.clone(),
@@ -447,11 +482,16 @@ async fn prepare_admission(
             actor_id: actor.to_string(),
             source_binding_id: Some(source_binding.into()),
             reply_target_binding_id: Some(source_binding.into()),
-            external_event_id: None,
+            external_event_id: original
+                .as_ref()
+                .map(|original| original.inbound_event.clone()),
             content: MessageContent::text(answer),
         })
         .await
         .map_err(invalid)?;
+    if let Some(original) = &mut original {
+        original.accepted = Some(accepted.clone());
+    }
     let turn_scope = match mode {
         AdmissionMode::Contained => {
             TurnScope::new(tenant.clone(), Some(agent), project, conversation.clone())
@@ -486,7 +526,16 @@ async fn prepare_admission(
                 .map_err(invalid)?,
         )),
     };
+    let coordinator = match original.as_ref() {
+        Some(original) => original.coordinator.clone(),
+        None => Arc::new(coordinator),
+    };
     note("submit_turn");
+    if let Some(original) = &mut original {
+        original.submit_started = true;
+    }
+    #[cfg(all(test, unix))]
+    original::before_phase(original.as_deref(), "submit_turn").await;
     coordinator
         .submit_turn(SubmitTurnRequest {
             scope: turn_scope.clone(),
@@ -497,9 +546,12 @@ async fn prepare_admission(
             reply_target_binding_ref: ReplyTargetBindingRef::new(source_binding)
                 .map_err(invalid)?,
             requested_run_profile: None,
-            idempotency_key: IdempotencyKey::new(Uuid::new_v4().to_string()).map_err(invalid)?,
+            idempotency_key: match original.as_ref() {
+                Some(original) => original.submit_key.clone(),
+                None => IdempotencyKey::new(Uuid::new_v4().to_string()).map_err(invalid)?,
+            },
             received_at: chrono::Utc::now(),
-            requested_run_id: None,
+            requested_run_id: original.as_ref().map(|original| original.attempt.run_id),
             parent_run_id: None,
             subagent_depth: 0,
             spawn_tree_root_run_id: None,
@@ -507,15 +559,28 @@ async fn prepare_admission(
         .await
         .map_err(invalid)?;
     note("claim_next_run");
+    #[cfg(all(test, unix))]
+    original::before_phase(original.as_deref(), "claim_next_run").await;
     let claimed = state
         .claim_next_run(ClaimRunRequest {
-            runner_id: TurnRunnerId::new(),
-            lease_token: TurnLeaseToken::new(),
+            runner_id: original
+                .as_ref()
+                .map_or_else(TurnRunnerId::new, |original| original.attempt.runner_id),
+            lease_token: original
+                .as_ref()
+                .map_or_else(TurnLeaseToken::new, |original| original.attempt.lease_token),
             scope_filter: Some(turn_scope.clone()),
         })
         .await
         .map_err(invalid)?
         .ok_or_else(|| invalid("bootstrap claim missing"))?;
+    if let Some(original) = &original
+        && (claimed.state.run_id != original.attempt.run_id
+            || claimed.runner_id != original.attempt.runner_id
+            || claimed.lease_token != original.attempt.lease_token)
+    {
+        return Err(invalid("bootstrap original claim identity differs"));
+    }
     note("mark_message_submitted");
     threads
         .mark_message_submitted(
@@ -636,13 +701,24 @@ async fn prepare_admission(
             answer,
         )?;
     }
+    if let Some(original) = &mut original {
+        // Retain the exact native address before its first possible write/ACK.
+        original.admission = Some(admission.clone());
+    }
     note("persist_reservation");
+    #[cfg(all(test, unix))]
+    original::before_phase(original.as_deref(), "persist_reservation").await;
     admission.persist_reservation().await.map_err(invalid)?;
     if matches!(mode, AdmissionMode::Contained) {
         note("check_and_start");
+        #[cfg(all(test, unix))]
+        original::before_phase(original.as_deref(), "check_and_start").await;
         admission.check_and_start().await.map_err(invalid)?;
     }
     note("admitted");
+    if let Some(original) = &mut original {
+        original.handed_off = true;
+    }
     // ModelContained does not call check_and_start; its factory supplies ports.
     Ok(Admitted {
         host,

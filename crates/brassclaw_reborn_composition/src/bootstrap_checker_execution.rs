@@ -293,24 +293,36 @@ impl Context {
         );
         note("admit_encoder_suite");
         let admission_trace = crate::bootstrap_validation::AdmissionTrace::new();
+        let mut original = crate::bootstrap_validation::PreparedAdmission::new(
+            self.pool.clone(),
+            "structural-checker-own-function",
+            &reference_string,
+        )
+        .await?;
+        original
+            .retain(
+                self.storage.as_ref(),
+                stage("admission-original"),
+                serde_json::to_value(self.op()).map_err(invalid)?,
+            )
+            .await?;
         let admitted = io::bounded_for(
             self.storage.as_ref(),
             "checker_fixture_admission",
             self.claim.root.uuid,
-            crate::bootstrap_validation::admit_observed(
-                self.pool.clone(),
-                "structural-checker-own-function",
-                &reference_string,
-                &admission_trace,
-            ),
+            original.admit(Some(&admission_trace)),
         )
-        .await
-        .map_err(|error| {
-            invalid(format!(
-                "{error}; original admission phases: {}",
-                admission_trace.facts()
-            ))
-        })?;
+        .await;
+        let admitted = match admitted {
+            Ok(admitted) => admitted,
+            Err(error) => {
+                let error = invalid(format!(
+                    "{error}; original admission phases: {}",
+                    admission_trace.facts()
+                ));
+                return Err(original.failure(self.storage.as_ref(), error).await);
+            }
+        };
         let binding = Admission {
             format: self.format("admission"),
             operation: self.op(),

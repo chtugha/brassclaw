@@ -287,16 +287,19 @@ async fn qualify_inner(
         false,
     );
     primitives::retain_new_intent(&pool, storage.as_ref(), reservation, &reservation_bytes).await?;
-    let admitted = primitives::bounded(
-        storage.as_ref(),
-        crate::bootstrap_validation::admit(
-            pool.clone(),
-            "inventory-qualification",
-            &reference,
-            None,
-        ),
+    let mut original = crate::bootstrap_validation::PreparedAdmission::new(
+        pool.clone(),
+        "inventory-qualification",
+        &reference,
     )
     .await?;
+    original.retain(storage.as_ref(), Uuid::new_v5(&reservation, b"admission-original"),
+        json!({"id":reservation,"checksum":crate::bootstrap_evidence::checksum(&reservation_bytes)})).await?;
+    let admitted = primitives::bounded(storage.as_ref(), original.admit(None)).await;
+    let admitted = match admitted {
+        Ok(admitted) => admitted,
+        Err(error) => return Err(original.failure(storage.as_ref(), error).await),
+    };
     let quiescence_proof = OnceLock::new();
     let qualification = QualificationRequest {
         quiescence_proof: &quiescence_proof,

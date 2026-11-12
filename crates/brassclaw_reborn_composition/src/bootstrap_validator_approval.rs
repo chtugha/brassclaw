@@ -1018,9 +1018,9 @@ async fn qualify_specs_traced(
             global_root: root.reference().into(),
             global_source_checksum: hex::encode(root.source_checksum()),
             owner_checksum: evidence::checksum(include_str!("bootstrap_validator_approval.rs")),
-            fixture_execution_checksum: evidence::checksum(include_str!(
-                "bootstrap_checker_execution.rs"
-            )),
+            fixture_execution_checksum: crate::bootstrap_validation::qualification_owner_checksum(
+                include_str!("bootstrap_checker_execution.rs"),
+            ),
             factory_checksum: evidence::checksum(include_str!("bootstrap_checker_fixtures.rs")),
             receipt_checksum: evidence::checksum(fixtures::RECEIPT_SOURCE),
             inspector_checksum: evidence::checksum(include_str!(

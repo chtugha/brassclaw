@@ -313,7 +313,7 @@ async fn observe_installation_inner(
     let identity=json!({"components":components,"association":binding.association().exact_bytes(),
         "worker_checksum":hex::encode(worker.checksum()),"qualifier":evidence::checksum(include_str!("bootstrap_inventory_qualification.rs")),
         "completion":evidence::checksum(include_str!("bootstrap_inventory_completion.rs")),"primitives":evidence::checksum(include_str!("bootstrap_inventory_primitives.rs")),
-        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":revision_reference_value(root.reference())}).to_string();
+        "io":evidence::checksum(include_str!("bootstrap_evidence_io.rs")),"contained_close":crate::bootstrap_validation::owner_checksum(),"executor":evidence::checksum(include_str!("global_monty_startup.rs")),"root_reference":revision_reference_value(root.reference())}).to_string();
     let qualification_id = Uuid::new_v5(&binding.skill().uuid, identity.as_bytes());
     let cached = qualification::qualify_packaged(
         pool.clone(),
@@ -397,7 +397,7 @@ async fn observe_installation_inner(
             "coverage":evidence::checksum(include_str!("../../brassclaw_engine/src/memory/retained_validator.rs")),
             "subject_inputs":evidence::checksum(include_str!("../../brassclaw_engine/src/memory/retained_validator_subject.rs")),
             "subject_store":evidence::checksum(include_str!("../../brassclaw_skills/src/review_installation_subject.rs")),
-            "contained_close":evidence::checksum(include_str!("bootstrap_validation.rs")),
+            "contained_close":crate::bootstrap_validation::owner_checksum(),
         }).to_string()),
         worker_checksum: hex::encode(worker.checksum()),
         association_checksum: evidence::checksum(binding.association().exact_bytes()),
@@ -986,16 +986,29 @@ impl Context {
         )
         .await?;
         let source_reference = format!("installation-source-observation:{}", self.operation);
-        let admitted = io::bounded(
-            self.storage.as_ref(),
-            crate::bootstrap_validation::admit(
-                self.pool.clone(),
-                "installation-source-observer",
-                &source_reference,
-                None,
-            ),
+        let mut original_admission = crate::bootstrap_validation::PreparedAdmission::new(
+            self.pool.clone(),
+            "installation-source-observer",
+            &source_reference,
         )
         .await?;
+        original_admission
+            .retain(
+                self.storage.as_ref(),
+                self.id("admission-original"),
+                serde_json::to_value(reference(self.operation, &operation_bytes))
+                    .map_err(invalid)?,
+            )
+            .await?;
+        let admitted = io::bounded(self.storage.as_ref(), original_admission.admit(None)).await;
+        let admitted = match admitted {
+            Ok(admitted) => admitted,
+            Err(error) => {
+                return Err(original_admission
+                    .failure(self.storage.as_ref(), error)
+                    .await);
+            }
+        };
         let binding = AdmissionBinding {
             format: "installation-validator-admission/1".into(),
             operation: reference(self.operation, &operation_bytes),

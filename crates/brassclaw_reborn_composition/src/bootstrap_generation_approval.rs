@@ -256,7 +256,7 @@ impl Subject {
             "owner_checksum":hex::encode(Sha256::digest(include_str!("bootstrap_generation_approval.rs").as_bytes())),
             "root_checksum":evidence::checksum(crate::bootstrap_validation::CONFIGURED_HOLD_ROOT),
             "executor_owner_checksum":evidence::checksum(include_str!("global_monty_startup.rs")),
-            "hold_owner_checksum":evidence::checksum(include_str!("bootstrap_validation.rs"))});
+            "hold_owner_checksum":crate::bootstrap_validation::owner_checksum()});
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         let components = json!(binding.combination().iter().map(|r| json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})).collect::<Vec<_>>());
         let association = binding.association().exact_bytes().to_owned();

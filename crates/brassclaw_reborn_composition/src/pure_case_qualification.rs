@@ -667,16 +667,41 @@ impl Context {
             .cleanup_pending
             .store(true, std::sync::atomic::Ordering::Release);
         self.progress.note("admit_stage");
-        let admitted = io::bounded(
-            self.base.storage.as_ref(),
-            crate::bootstrap_validation::admit(
-                self.base.pool.clone(),
-                "original-pure-seed-qualification",
-                &reference,
-                None,
-            ),
+        let mut original_admission = crate::bootstrap_validation::PreparedAdmission::new(
+            self.base.pool.clone(),
+            "original-pure-seed-qualification",
+            &reference,
         )
         .await?;
+        let retained = original_admission
+            .retain(
+                self.base.storage.as_ref(),
+                self.id(&format!("{}:admission-original", spec.name)),
+                json!({"id":id,"checksum":evidence::checksum(&intent)}),
+            )
+            .await;
+        *self
+            .progress
+            .admission_reference
+            .lock()
+            .map_err(|_| invalid("case admission custody unavailable"))? =
+            Some(original_admission.reference().to_string());
+        retained?;
+        let admitted =
+            io::bounded(self.base.storage.as_ref(), original_admission.admit(None)).await;
+        let admitted = match admitted {
+            Ok(admitted) => admitted,
+            Err(primary) => {
+                self.progress.note_primary_failure();
+                let error = original_admission
+                    .failure(self.base.storage.as_ref(), primary)
+                    .await;
+                if let Some(closed) = original_admission.closed_turn() {
+                    self.progress.acknowledged_cleanup(closed)?;
+                }
+                return Err(error);
+            }
+        };
         let proof = std::sync::OnceLock::new();
         let run=async {
             self.progress.note("prepare_stage_operation");
@@ -1148,7 +1173,7 @@ async fn qualify_inner(
         "root":base.root.reference(),"root_checksum":hex::encode(base.root.source_checksum()),
         "executor_bytes":base.executor.exact_bytes(),"executor_checksum":base.executor.checksum(),
         "preparation_bytes":base.preparation.bytes(),"application_checksum":base.application_checksum,
-        "owner_checksum":evidence::checksum(include_str!("pure_case_qualification.rs")),
+        "owner_checksum":crate::bootstrap_validation::qualification_owner_checksum(include_str!("pure_case_qualification.rs")),
         "fixture_owner_checksum":evidence::checksum(include_str!("pure_case_seed_fixture.rs")),
         "native_handler_checksum":evidence::checksum(include_str!("../../brassclaw_host_runtime/src/first_party_tools/pure_case.rs")),
         "carrier_checksum":evidence::checksum(include_str!("../../brassclaw_engine/src/executor/retained_pure_invocation.rs")),
