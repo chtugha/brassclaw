@@ -96,9 +96,9 @@ async fn intent_exchange(boundary: AckBoundary, cut: Cut) {
     let id = Uuid::new_v4();
     let rule = AckCutRule::after_bind(1, vec![id.as_bytes().to_vec()], vec![], boundary).hold();
     let rule = if boundary == AckBoundary::Begin {
-        // This caller uses Client::transaction(), not the producer's separate
-        // repeatable-read TransactionBuilder START string.
-        rule.following_query(b"BEGIN\0".to_vec())
+        // Client::transaction() delegates to the default TransactionBuilder:
+        // frontend START TRANSACTION, followed by backend CommandComplete BEGIN.
+        rule.following_query(b"START TRANSACTION\0".to_vec())
     } else {
         rule
     };
@@ -192,7 +192,17 @@ async fn intent_exchange(boundary: AckBoundary, cut: Cut) {
     let held = tokio::time::timeout(Duration::from_secs(30), async {
         tokio::select! {
             held = ticket.wait_held() => held.unwrap(),
-            _ = &mut drive => panic!("original must not complete before selected ACK"),
+            result = &mut drive => {
+                use brassclaw_turns::run_profile::AgentLoopDriverError;
+                let kind = match result {
+                    Ok(()) => "Ok",
+                    Err(AgentLoopDriverError::InputAdmissionPending) => "InputAdmissionPending",
+                    Err(AgentLoopDriverError::InvalidRequest { .. }) => "InvalidRequest",
+                    Err(AgentLoopDriverError::Unavailable { .. }) => "Unavailable",
+                    Err(AgentLoopDriverError::Failed { .. }) => "Failed",
+                };
+                panic!("original must not complete before selected ACK; drive_result={kind}");
+            },
         }
     })
     .await
