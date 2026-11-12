@@ -29,7 +29,7 @@ pub(super) enum FunctionPartner {
         candidate: Reference,
         candidate_bytes: String,
         #[serde(skip)]
-        preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
+        preparation: Option<Box<brassclaw_host_api::task_preparation::RetainedPreparation>>,
         base: Option<Reference>,
         expected_previous_version: u64,
     },
@@ -50,7 +50,7 @@ impl FunctionPartner {
                 candidate: super::candidate_reference(&candidate, base, expected_previous_version)?
                     .into(),
                 candidate_bytes: candidate.exact_bytes().to_owned(),
-                preparation: candidate.preparation().cloned(),
+                preparation: candidate.preparation().cloned().map(Box::new),
                 base: base.map(Into::into),
                 expected_previous_version,
             },
@@ -81,7 +81,7 @@ impl FunctionPartner {
             } => {
                 let draft = ComponentRevisionDraft::from_json_with_preparation(
                     candidate_bytes,
-                    preparation.as_ref(),
+                    preparation.as_deref(),
                 )
                 .map_err(crate::revision_store::RevisionStoreError::from)?;
                 let base = base.as_ref().map(Reference::parsed).transpose()?;
@@ -122,7 +122,7 @@ impl FunctionPartner {
             if retained.draft().exact_bytes() != candidate_bytes.as_str() {
                 return Err(SubmissionStoreError::Invalid);
             }
-            *preparation = retained.draft().preparation().cloned();
+            *preparation = retained.draft().preparation().cloned().map(Box::new);
         }
         Ok(())
     }
