@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 //! Real PostgreSQL + actual local HTTP issuer fixtures. The explicit test-only
 //! adapter routes the already bounded host request to local HTTP; it does NOT
 //! establish positive production HTTPS/private-IP-policy acceptance.

@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 //! Loopback SDK/transport evidence; fixture guards are not installation proofs.
 use crate::codex_test_helpers::{codex_http_fixture, make_test_jwt};
 use crate::final_request_guard::*;

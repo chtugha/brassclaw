@@ -2452,6 +2452,9 @@ fn collect_forbidden_uses(
         }
         let contents = std::fs::read_to_string(&path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        if has_file_test_gate(&contents) {
+            continue;
+        }
         for (line_number, line) in contents.lines().enumerate() {
             for rule in forbidden {
                 if rule.exempt.is_some_and(|exempt| exempt(line)) {
@@ -2886,6 +2889,7 @@ fn no_direct_fs_reads_outside_migration_path() {
 /// - files whose path component includes `migration` (the migrate-from-libsql
 ///   module is the permitted exception)
 /// - files whose path matches an entry in `allowlist`
+/// - files beginning with a real canonical `#![cfg(test)]` inner gate
 /// - lines that are inside a `#[cfg(test)]` block (inline test modules)
 /// - comment-only lines (lines where the first non-whitespace char is `//`)
 /// - the two architecture test files passed as `skip_a` / `skip_b`
@@ -2951,6 +2955,10 @@ fn scan_for_direct_fs_reads(
             Ok(c) => c,
             Err(_) => continue,
         };
+
+        if has_file_test_gate(&contents) {
+            continue;
+        }
 
         // Strip inline `#[cfg(test)]` blocks from consideration. Handle both
         // `#[cfg(test)]\nmod ...` and `#[cfg(test)]\n#[path = "..."]\nmod ...`
@@ -3126,6 +3134,102 @@ fn native_executable_artifact_boundary_keeps_unrelated_reads_forbidden() {
     assert!(violations.iter().any(|v| v.contains(":5 contains")));
     assert!(violations.iter().any(|v| v.contains(":11 contains")));
     assert!(violations.iter().any(|v| v.contains(":15 contains")));
+}
+
+/// Recognize the canonical first inner test gate after Rust whitespace and
+/// comments. Never search inside strings, comments, items or nested modules;
+/// unsupported attribute layouts stay conservatively subject to scanning.
+fn has_file_test_gate(contents: &str) -> bool {
+    let mut rest = contents;
+    loop {
+        rest = rest.trim_start();
+        if rest.starts_with("//") {
+            let Some(newline) = rest.find('\n') else {
+                return false;
+            };
+            rest = &rest[newline + 1..];
+        } else if rest.starts_with("/*") {
+            let bytes = rest.as_bytes();
+            let (mut depth, mut cursor) = (1usize, 2);
+            while depth > 0 && cursor + 1 < bytes.len() {
+                match &bytes[cursor..cursor + 2] {
+                    b"/*" => {
+                        depth += 1;
+                        cursor += 2;
+                    }
+                    b"*/" => {
+                        depth -= 1;
+                        cursor += 2;
+                    }
+                    _ => cursor += 1,
+                }
+            }
+            if depth != 0 {
+                return false;
+            }
+            rest = &rest[cursor..];
+        } else {
+            return rest.starts_with("#![cfg(test)]");
+        }
+    }
+}
+
+#[test]
+fn production_scanners_require_a_real_file_test_gate_regardless_of_filename() {
+    let root = std::env::temp_dir().join(format!(
+        "brassclaw-file-test-gate-boundary-{}",
+        std::process::id()
+    ));
+    let cases = [
+        ("gated", "#![cfg(test)]\n", true),
+        (
+            "gated-after-comments",
+            "//! fixture\n/* nested /* comment */ trivia */\n#![cfg(test)]\n",
+            true,
+        ),
+        ("ungated", "", false),
+        ("line-comment", "// #![cfg(test)]\n", false),
+        ("block-comment", "/* #![cfg(test)] */\n", false),
+        ("string", "const NOTE: &str = \"#![cfg(test)]\";\n", false),
+        (
+            "raw-string",
+            "const NOTE: &str = r#\"\n#![cfg(test)]\n\"#;\n",
+            false,
+        ),
+        ("nested", "mod helper {\n#![cfg(test)]\n}\n", false),
+    ];
+    for (label, prefix, gated) in cases {
+        let dir = root.join(label);
+        std::fs::create_dir_all(&dir).unwrap();
+        for filename in ["pg_auth_device_tests.rs", "codex_host_session_tests.rs"] {
+            std::fs::write(dir.join(filename),format!("{prefix}fn forbidden() {{ tokio::net::TcpListener::bind(\"127.0.0.1:0\"); std::fs::read_to_string(\"state\"); }}\n")).unwrap();
+        }
+        let mut ingress = Vec::new();
+        collect_forbidden_uses(
+            &dir,
+            &root,
+            &[ForbiddenUse {
+                pattern: "TcpListener::bind",
+                reason: "production ingress",
+                exempt: None,
+            }],
+            &mut ingress,
+        );
+        let mut files = Vec::new();
+        scan_for_direct_fs_reads(
+            &dir,
+            &root,
+            &root.join("skip-a"),
+            &root.join("skip-b"),
+            &[("std::fs::read_to_string", "production state")],
+            &[],
+            &mut files,
+        );
+        let expected = if gated { 0 } else { 2 };
+        assert_eq!(ingress.len(), expected, "{label}: {ingress:?}");
+        assert_eq!(files.len(), expected, "{label}: {files:?}");
+    }
+    std::fs::remove_dir_all(root).unwrap();
 }
 
 /// Return the production-only slice of `contents`, with any `#[cfg(test)]`
