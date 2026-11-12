@@ -51,7 +51,9 @@ codified in `docs/reborn/2026-05-14-universal-fs-dispatch.md` (the new ADR).
 - Hold raw host paths in public types. `HostPath` stays backend-internal
   and is not serializable.
 - Depend on `brassclaw_*` system-service or runtime crates other than
-  `brassclaw_host_api` and `brassclaw_safety`.
+  `brassclaw_host_api` and `brassclaw_safety`, except the optional PostgreSQL
+  backend's `brassclaw_pg::wire_capacity` dependency for shared protocol
+  representation checks. This exception supplies no pool owner or workflow.
 
 ## Invariants new code must preserve
 
@@ -138,3 +140,14 @@ index field as `EntryIndexMetadata { metadata, value }`. Its separate appended
 `None`; malformed selected JSON/container data is an error. Unrequested fields
 and bodies are not returned or validated. It uses the same page order, selected
 mount and read+list gate; there is no materialized-entry fallback.
+
+## Bounded record body projection
+
+`get_record_body_bounded(path, expected_kind, max_bytes)` projects only the
+matching record's body and version from one atomic backend read. Missing and
+TooLarge are distinct; a wrong kind, directory or corrupt version is an error.
+It never fetches indexed metadata/content type or uses a get/stat fallback.
+The appended `BoundedRecordBody` support flag is currently implemented by
+PostgreSQL and forwarded through the selected Composite mount. Other backends,
+including InMemory, use the explicit Unsupported default and do not claim it.
+This trusted root operation grants no scoped permission or Tool authority.

@@ -12,10 +12,10 @@ use crate::db::{
 };
 use crate::vector::{cosine_similarity, decode_embedding_blob};
 use crate::{
-    BackendCapabilities, Capability, CasExpectation, ContentType, DirEntry, Entry,
-    EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat, FileType, FilesystemError,
-    FilesystemOperation, Filter, IndexKey, IndexKind, IndexSpec, IndexValue, Page, RecordKind,
-    RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
+    BackendCapabilities, BoundedRecordBodyRead, Capability, CasExpectation, ContentType, DirEntry,
+    Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat, FileType,
+    FilesystemError, FilesystemOperation, Filter, IndexKey, IndexKind, IndexSpec, IndexValue, Page,
+    RecordBodySnapshot, RecordKind, RecordVersion, RootFilesystem, SeqNo, VersionedEntry,
 };
 
 #[cfg(feature = "postgres")]
@@ -277,6 +277,7 @@ impl RootFilesystem for PostgresRootFilesystem {
             .with(Capability::OpaqueWrite)
             .with(Capability::EntryBodyCas)
             .with(Capability::ConditionalEntryDelete)
+            .with(Capability::BoundedRecordBody)
             .with(Capability::IndexFts)
             .with(Capability::IndexVector)
     }
@@ -329,6 +330,75 @@ impl RootFilesystem for PostgresRootFilesystem {
             path: path.clone(),
             entry,
             version: record_version_from_i64(path, version_raw)?,
+        }))
+    }
+
+    async fn get_record_body_bounded(
+        &self,
+        path: &VirtualPath,
+        expected_kind: &RecordKind,
+        max_bytes: usize,
+    ) -> Result<BoundedRecordBodyRead, FilesystemError> {
+        use brassclaw_pg::wire_capacity as wire;
+        use tokio_postgres::types::{ToSql, Type};
+        // One unnamed typed exchange, matching the existing wire owner below.
+        const READ: &str = "SELECT is_dir,kind=$2 AS kind_matches,version,octet_length(contents)::bigint AS body_len,CASE WHEN NOT is_dir AND kind=$2 AND version>=0 AND octet_length(contents)::bigint<=$3 AND octet_length(contents)::bigint<=$4 THEN contents ELSE NULL END AS body FROM root_filesystem_entries WHERE path=$1";
+        let invalid = |reason: &str| FilesystemError::Backend {
+            path: path.clone(),
+            operation: FilesystemOperation::ReadFile,
+            reason: reason.into(),
+        };
+        let path_str = path.as_str();
+        let kind = expected_kind.as_str();
+        if wire::unnamed_typed_request_bytes(READ.len(), &[path_str.len(), kind.len(), 8, 8])
+            .is_none()
+        {
+            return Err(invalid(
+                "bounded record request is not PostgreSQL representable",
+            ));
+        }
+        let policy_max = max_bytes.min(i64::MAX as usize) as i64;
+        let wire_max = bounded_record_wire_max() as i64;
+        let params: [(&(dyn ToSql + Sync), Type); 4] = [
+            (&path_str, Type::TEXT),
+            (&kind, Type::TEXT),
+            (&policy_max, Type::INT8),
+            (&wire_max, Type::INT8),
+        ];
+        let client = self.client().await?;
+        let row = client
+            .query_typed(READ, &params)
+            .await
+            .map_err(|error| db_error(path.clone(), FilesystemOperation::ReadFile, error))?;
+        let Some(row) = row.into_iter().next() else {
+            return Ok(BoundedRecordBodyRead::Missing);
+        };
+        if row.get::<_, bool>("is_dir") || row.get::<_, Option<bool>>("kind_matches") != Some(true)
+        {
+            return Err(invalid("bounded record kind or entry shape differs"));
+        }
+        let version = record_version_from_i64(path, row.get("version"))?;
+        let body_len = u64::try_from(row.get::<_, i64>("body_len"))
+            .map_err(|_| invalid("bounded record length is invalid"))?;
+        if u128::from(body_len) > max_bytes as u128 {
+            return Ok(BoundedRecordBodyRead::TooLarge { body_len });
+        }
+        if body_len > wire_max as u64 {
+            return Err(invalid(
+                "bounded record response is not PostgreSQL representable",
+            ));
+        }
+        let body: Vec<u8> = row
+            .get::<_, Option<Vec<u8>>>("body")
+            .ok_or_else(|| invalid("bounded record body projection is missing"))?;
+        if body.len() as u64 != body_len {
+            return Err(invalid("bounded record body projection length differs"));
+        }
+        Ok(BoundedRecordBodyRead::Present(RecordBodySnapshot {
+            path: path.clone(),
+            kind: expected_kind.clone(),
+            version,
+            body,
         }))
     }
 
@@ -1574,3 +1644,21 @@ const POSTGRES_ROOT_FILESYSTEM_SCHEMA: &str = concat!(
     "\n",
     include_str!("../../../migrations/V30__root_filesystem_events.sql"),
 );
+
+/// Intrinsic complete-DataRow ceiling, not an application policy. The monotone
+/// predicate belongs to the existing shared PostgreSQL representation owner.
+fn bounded_record_wire_max() -> usize {
+    use brassclaw_pg::wire_capacity as wire;
+    let (mut low, mut high) = (0, wire::maximum_text_content_bytes());
+    while low < high {
+        let middle = low + (high - low).div_ceil(2);
+        if wire::binary_data_row_bytes(&[Some(1), Some(1), Some(8), Some(8), Some(middle)])
+            .is_some()
+        {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
+    }
+    low
+}

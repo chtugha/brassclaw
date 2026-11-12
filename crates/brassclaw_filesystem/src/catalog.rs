@@ -5,10 +5,11 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    BackendCapabilities, BackendId, BackendKind, Capability, CasExpectation, ContentKind, DirEntry,
-    Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError, Filter,
-    IndexKey, IndexPolicy, IndexSpec, Page, RecordVersion, RootFilesystem, SeqNo, StorageClass,
-    VersionedEntry, path_prefix_matches,
+    BackendCapabilities, BackendId, BackendKind, BoundedRecordBodyRead, Capability, CasExpectation,
+    ContentKind, DirEntry, Entry, EntryBodyChecksum, EntryIndexMetadata, EntryMetadata, FileStat,
+    FilesystemError, FilesystemOperation, Filter, IndexKey, IndexPolicy, IndexSpec, Page,
+    RecordKind, RecordVersion, RootFilesystem, SeqNo, StorageClass, VersionedEntry,
+    path_prefix_matches,
 };
 
 /// Trusted catalog record for one virtual filesystem mount.
@@ -168,6 +169,7 @@ fn validate_mount_capabilities(
         Capability::OpaqueWrite,
         Capability::EntryBodyCas,
         Capability::ConditionalEntryDelete,
+        Capability::BoundedRecordBody,
     ];
     let mut shortfalls: Vec<Capability> = NEW_AXES
         .iter()
@@ -254,6 +256,29 @@ impl RootFilesystem for CompositeRootFilesystem {
 
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
         self.matching_mount(path)?.backend.get(path).await
+    }
+
+    async fn get_record_body_bounded(
+        &self,
+        path: &VirtualPath,
+        expected_kind: &RecordKind,
+        max_bytes: usize,
+    ) -> Result<BoundedRecordBodyRead, FilesystemError> {
+        let mount = self.matching_mount(path)?;
+        if !mount
+            .descriptor
+            .capabilities
+            .has(Capability::BoundedRecordBody)
+        {
+            return Err(FilesystemError::Unsupported {
+                path: path.clone(),
+                operation: FilesystemOperation::ReadFile,
+            });
+        }
+        mount
+            .backend
+            .get_record_body_bounded(path, expected_kind, max_bytes)
+            .await
     }
 
     async fn get_metadata(

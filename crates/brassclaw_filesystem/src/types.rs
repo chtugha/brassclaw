@@ -341,6 +341,8 @@ pub enum Capability {
     EntryBodyCas,
     /// Atomic single-leaf deletion conditional on version and body.
     ConditionalEntryDelete,
+    /// Atomic bounded record body/kind/version projection, without indexes.
+    BoundedRecordBody,
 }
 
 impl Capability {
@@ -370,6 +372,7 @@ impl Capability {
             Capability::OpaqueWrite,
             Capability::EntryBodyCas,
             Capability::ConditionalEntryDelete,
+            Capability::BoundedRecordBody,
         ]
     }
 }

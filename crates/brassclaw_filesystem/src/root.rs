@@ -3,9 +3,9 @@ use brassclaw_host_api::VirtualPath;
 
 use crate::backend::{EventRecord, StorageTxn};
 use crate::{
-    BackendCapabilities, CasExpectation, DirEntry, Entry, EntryBodyChecksum, EntryIndexMetadata,
-    EntryMetadata, FileStat, FilesystemError, FilesystemOperation, Filter, IndexKey, IndexSpec,
-    Page, RecordVersion, SeqNo, VersionedEntry,
+    BackendCapabilities, BoundedRecordBodyRead, CasExpectation, DirEntry, Entry, EntryBodyChecksum,
+    EntryIndexMetadata, EntryMetadata, FileStat, FilesystemError, FilesystemOperation, Filter,
+    IndexKey, IndexSpec, Page, RecordKind, RecordVersion, SeqNo, VersionedEntry,
 };
 
 /// Unified filesystem interface over canonical virtual paths.
@@ -98,6 +98,20 @@ pub trait RootFilesystem: Send + Sync {
     /// `Some(VersionedEntry { entry: Entry::bytes(body), version: 0 })`
     /// directly. See `LocalFilesystem::get` for the canonical pattern.
     async fn get(&self, path: &VirtualPath) -> Result<Option<VersionedEntry>, FilesystemError> {
+        unsupported(path, FilesystemOperation::ReadFile)
+    }
+
+    /// Exact record body and version from one atomic backend snapshot.
+    /// Requires BoundedRecordBody support. Reject wrong kind/directories and
+    /// enforce max_bytes before materializing/returning the body. No indexed
+    /// values or content type are requested or validated. There is no get or
+    /// stat/get compatibility fallback. This is a trusted root read, not a grant.
+    async fn get_record_body_bounded(
+        &self,
+        path: &VirtualPath,
+        _expected_kind: &RecordKind,
+        _max_bytes: usize,
+    ) -> Result<BoundedRecordBodyRead, FilesystemError> {
         unsupported(path, FilesystemOperation::ReadFile)
     }
 
