@@ -301,22 +301,53 @@ context bounds still apply. Use existing acknowledged settings for necessary
 operational limits, quotas and deadlines. Any missing setting needs its existing
 DB/API/WebUI/live-ACK path, units and feasibility rules; do not add hidden local
 caps. Protocol/representation bounds and the supported stop/one-dispatch contract
-remain technical contracts. Reuse and, where required, extend the existing
-final-request validation path. Keep unsupported branches rejected until their
-connected implementation and qualification pass. For construction-specific
-extensions, follow the Construction context handoff below.
+remain technical contracts. Complete model-request construction through the
+existing qualified encoding and request-preparation path. Reuse valid qualification
+evidence and measurements for unchanged inputs; do not add a second identical
+size-validation stage. Preserve existing integrity, dispatch-policy and cancellation
+checks. Keep unsupported branches rejected until their connected implementation
+and qualification pass. For construction-specific extensions, follow the
+Construction context handoff below.
 
 ## Apply the relevant domain handoff
 
+- **Model requests:** Kohai completes the provider-bound request within applicable
+  model limits through the existing qualified encoding path. Follow the
+  [exact two-request handoff](../../../docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests):
+  format the dynamic prompt for the retained target, optionally obtain Sempai's
+  final dynamic prompt, then insert the selected finished target prefix unchanged
+  exactly once. Without correction, use the initially formatted prompt. Do not
+  format Sempai's return again. Include actual history, tools/advertisement metadata,
+  provider framing and effective output settings before construction is complete.
+  Send the completed request unchanged. Reuse its measurements; recompute them only
+  when measurement-relevant inputs change. Apply changed live limits to retained
+  measurements without retokenizing unchanged input. Earlier estimates do not
+  replace complete-request measurement. If required content cannot fit, expose
+  not-ready/error status without silent truncation or additional model calls.
+  Qualified Prefixless omits only the generated prefix and retains required
+  workflow instructions and sources.
 - **Child work:** reuse claim-fenced explicit workflow/typed-input admission and
   its captured parent catalogue. Declare a finite recursive profile. Admission or
   `authorized:true` is not completion: consume the actual correlated terminal
   reply/failure, including absent/null distinctions. Wait yields shared capacity;
   unknown/cancelled results never cause an automatic replacement child.
-- **Completed-turn Sempai:** reuse existing global delivery and native evidence/
-  accounting custody. Review/proposal/iteration semantics remain Recipe-owned in
-  v3.5. Candidate components stay unreviewed; reconciliation cannot resubmit model
-  work, replay Tools, synthesize completion or activate a proposal.
+- **Pre-call Sempai:** correction receives the already target-formatted dynamic
+  prompt and returns the final dynamic prompt for the same target. Its own request
+  uses its retained reviewer context and the same technical request-preparation
+  mechanism for that reviewer target; each distinct request must fit its own model
+  limits. It cannot change the final target's prefix, accepted design or hard limits.
+  Do not introduce implicit recursive review of the reviewer request. Construction
+  reviews retain their explicitly captured context under the Construction context
+  contract below.
+- **Completed-turn Sempai:** eligible original No-Match completion supplies retained
+  turn/exchange/effect evidence for post-turn analysis and unreviewed component
+  proposals. Keep this workflow distinct from pre-call prompt correction under the
+  [v3.5 handoff](../../../path_to_v3.5.md#exact-definition-follow-up-ownership).
+  Review/proposal/iteration semantics remain Recipe-owned. Do not reconstruct or
+  replay the original turn, replace its posted answer or activate proposals. Reuse
+  existing model-request, global delivery, response and native evidence/accounting
+  custody mechanisms. Reconciliation repairs original persistence/accounting
+  without resubmitting model work, replaying Tools or synthesizing completion.
 - **MCP:** derive immutable listing/commands from qualified approved execution
   Recipes, not raw Skills. Calls send the listed completed command once through
   a new ordinary chat and forward its correlated result before non-destructive
@@ -324,8 +355,9 @@ extensions, follow the Construction context handoff below.
   The server remains instance-owned and alive. Kohai connects/advertises after
   final prefix addition immediately before model send, retaining the connection
   through intermediate Tool rounds; complete answer or owned error/cancel cleanup
-  disconnects only that request. The final guard checks the actual transmitted
-  request including Tool/advertisement metadata. No direct MCP execution bridge.
+  disconnects only that request. Include the resulting Tool/advertisement metadata
+  in the complete request construction above before sending that unchanged request.
+  No direct MCP execution bridge.
 - **Prefix:** preserve complete authoritative originals/hashes/provenance separately
   from model-facing output. No row/heading truncation or private deployment data
   in model context. Profile metadata/source-only output/quarantine is not accepted
@@ -349,8 +381,9 @@ extensions, follow the Construction context handoff below.
   existing model-usage implementation under Composition's native delta for
   selection, capture, request preparation, response and guard integration.
   Simplified supplies only genuinely missing shared task, child or continuation
-  mechanics; consume those results through existing interfaces. Keep the full
-  request guard effective with Prefixless. The Recipe editor
+  mechanics; consume those results through existing interfaces. Use the same
+  complete request construction with Prefixless, retaining required workflow
+  instructions, qualified encoding and current dispatch conditions. The Recipe editor
   retains supported Default/profile choices and adds explicit Prefixless only after
   qualification; no Recipe Generate button, baked-in generation or invented old-format
   tag. Preserve old jobs and independent reviewer contracts. Missing native support
