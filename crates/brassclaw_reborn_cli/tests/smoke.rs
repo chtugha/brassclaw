@@ -5,6 +5,10 @@ use std::{
     process::{Command, Stdio},
 };
 
+#[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+#[path = "smoke/provider_contract.rs"]
+mod provider_contract;
+
 const INVALID_PROFILE_MESSAGE: &str = "is not a recognised";
 
 fn reborn_bin() -> &'static str {
@@ -227,40 +231,6 @@ fn logs_json_verbose_includes_status_details() {
         "logs",
         "entries",
         "Reborn log source is not wired yet",
-    );
-}
-
-#[cfg(feature = "root-llm-provider")]
-#[test]
-fn models_list_reports_reborn_provider_catalog_without_v1_state() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let output = Command::new(reborn_bin())
-        .arg("models")
-        .arg("list")
-        .env_clear()
-        .env("HOME", temp.path())
-        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
-        .output()
-        .expect("brassclaw-reborn models list should run");
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("BrassClaw Reborn LLM providers"),
-        "stdout: {stdout}"
-    );
-    assert!(stdout.contains("providers: DB-backed"), "stdout: {stdout}");
-    assert!(
-        stdout.contains("active: not-configured"),
-        "stdout: {stdout}"
-    );
-    assert!(
-        !stdout.contains("openai"),
-        "fresh database must not invent providers: {stdout}"
     );
 }
 
@@ -1174,38 +1144,6 @@ fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
 }
 
 #[test]
-fn run_rejects_codex_backend_when_auth_file_is_missing() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    let missing_codex_auth_path = temp.path().join("missing-codex-auth.json");
-
-    let output = Command::new(reborn_bin())
-        .args(["run", "-m", "ping"])
-        .env_clear()
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env("HOME", temp.path().join("home"))
-        .env("LLM_BACKEND", "openai_codex")
-        .env("CODEX_AUTH_PATH", &missing_codex_auth_path)
-        .output()
-        .expect("brassclaw-reborn run should not crash");
-    assert!(
-        !output.status.success(),
-        "missing Codex auth should fail; stdout: {} stderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("Authentication failed for provider 'openai_codex'"),
-        "stderr should report Codex auth failure; got: {stderr}"
-    );
-    assert!(
-        !stderr.contains(&missing_codex_auth_path.display().to_string()),
-        "stderr should not leak the Codex auth path: {stderr}"
-    );
-}
-
-#[test]
 fn repl_help_command_prints_repl_commands_and_exits_on_exit() {
     let temp = tempfile::tempdir().expect("tempdir");
 
@@ -1693,28 +1631,6 @@ api_key_env = "sk-proj-1234567890abcdef12345678"
 }
 
 #[test]
-fn run_warns_when_falling_back_to_stub_gateway() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    let workspace = temp.path().join("workspace");
-    std::fs::create_dir_all(&workspace).expect("workspace dir");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-
-    let output = isolated_no_llm_command(&workspace, &reborn_home)
-        .args(["run", "-m", "ping"])
-        .output()
-        .expect("brassclaw-reborn run should not crash");
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("no LLM selection configured") && stderr.contains("Runs will fail"),
-        "stderr should warn about degraded stub-gateway boot; got: {stderr}"
-    );
-    // Phase P.1 removed the bundled VFS skill installer: system skills are now
-    // seeded to the reborn_skills DB table at runtime via builtin_bootstrap.rs.
-    // No SKILL.md file is written to local-dev/system/skills/ anymore.
-}
-
-#[test]
 fn run_confirm_host_access_flag_gates_local_dev_yolo() {
     let temp = tempfile::tempdir().expect("tempdir");
     let missing = local_yolo_command(&temp, &["run", "-m", "ping"])
@@ -2153,42 +2069,6 @@ poll_interval_ms = 0
     assert!(
         stderr.contains("poll_interval_ms") && stderr.contains("greater than 0"),
         "stderr should explain poll interval rejection; got: {stderr}"
-    );
-}
-
-#[test]
-fn run_resolves_provider_from_config_and_demands_api_key_env() {
-    let temp = tempfile::tempdir().expect("tempdir");
-    let reborn_home = temp.path().join("reborn-home");
-    std::fs::create_dir_all(&reborn_home).expect("mkdir");
-    let cfg = r#"
-[llm.default]
-provider_id = "openai"
-model = "gpt-4o-mini"
-api_key_env = "REBORN_TEST_UNSET_BC8F4D_KEY"
-"#;
-    std::fs::write(reborn_home.join("config.toml"), cfg).expect("write config");
-
-    let output = Command::new(reborn_bin())
-        .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
-        .env_remove("OPENAI_API_KEY")
-        .env_remove("ANTHROPIC_API_KEY")
-        .env_remove("OLLAMA_BASE_URL")
-        .env_remove("REBORN_TEST_UNSET_BC8F4D_KEY")
-        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .output()
-        .expect("brassclaw-reborn run should not crash");
-    assert!(
-        !output.status.success(),
-        "missing api key must fail; stdout: {} stderr: {}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("REBORN_TEST_UNSET_BC8F4D_KEY"),
-        "stderr should name the unset env var; got: {stderr}"
     );
 }
 
