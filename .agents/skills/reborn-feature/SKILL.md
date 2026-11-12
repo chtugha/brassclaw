@@ -168,7 +168,9 @@ new DTOs or invent fields for old constructors, Recipe JSON or association forma
   membership in a usage dependency graph is insufficient. Consume validator's
   [remaining pure-review contract](../../../docs/reborn/pure-component-review.md#exact-remaining-cutover-contract).
   Source facts, private check Recipes and sealed observations are prerequisites,
-  not general Q1 or approval. Do not widen the closed compiler exception.
+  not general Q1 or approval. Closed installation evidence covers only its
+  qualified subject, profile and claims; it does not establish general Pure
+  approval or complete class Q1.
 - Current global Tool policy and technical constraints apply at every dispatch,
   across retained versions/aliases. Claims/attempts fence execution, not Tool
   permission. Host denial, cancellation, exhausted budgets and unresolved effects
@@ -199,6 +201,13 @@ Follow the [own functional approval and successor compatibility contract](../../
   Its dependency closure identifies tested bytes, not individual approvals for
   every member. Provenance belongs to the actual revision/usage, including mixed
   graphs; a label cannot turn an installed edit into S.
+  Follow [B1-05's existing controlled installation/contained boundary](../../../Repair_bob_1_v3_at_k3.md#5-qualify-actual-shipped-bytes-without-circular-trust),
+  with independently qualified prerequisites and exact retained application,
+  worker and native artifacts. Do not require the unqualified subject to establish
+  its own ordinary admission prerequisites. Preserve kernel policy and technical
+  limits; introduce no permissive bootstrap mode or second production service.
+  Reconcile original qualification evidence after an uncertain commit rather than
+  rerunning behavior.
 - **Recipe changes:** validate the supported workflows/variants and their actual
   handoffs, effects, failures and completion using approved components; do not
   reapprove unchanged constituent components.
@@ -208,15 +217,18 @@ Inspect the selected review/publication consumers before relying on them. Existi
 exact authored approval profiles retain their original meaning and scope until
 qualified cutover; never reinterpret historical evidence or bypass a missing gate.
 
-For validator changes, follow B1-04/B1-08 and B3-06/B3-07: bind the original
-subject/candidate/check-set and selected graph to durable private work before
-effects. A wake only notifies; the durable original request determines work.
-Authenticate observations first, then construct the exact verdict only after
-actual terminal native settlement and required custody acknowledgement. Never
-await a task's terminal receipt from its own finish callback. Keep passed,
-completed-negative, incomplete/infrastructure failure, cancelled/stale and
-unresolved settlement distinct; observation or ResultOnly completion alone cannot
-approve or graduate a component. Reconcile original status without replay.
+For ordinary authored review work, follow B1-04/B1-08 and B3-06/B3-07. Bind the
+original immutable subject/candidate/check-set separately from the selected
+qualified validator graph to durable private work before effects. Use only the
+actually supported review profile; missing required qualification remains an
+explicit readiness gap. A wake only notifies; the durable original request
+determines work. Authenticate observations, then construct only the verdict
+justified by complete evidence within that profile after actual terminal native
+settlement and required custody acknowledgement. Never await a task's terminal
+receipt from its own finish callback. Keep passed, completed-negative,
+incomplete/infrastructure failure, cancelled/stale and unresolved settlement
+distinct. ResultOnly completion alone cannot approve or graduate a component.
+Reconcile original status without replay.
 
 For retained selection and approval carriage, follow
 [B2-02's shared versioned contract and reader inventory](../../../Repair_bob_2_v3_at_k3.md#3-define-exact-approval-carriage-before-touching-readers).
