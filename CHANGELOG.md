@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Feature-off CLI and Source diagnosis (validation pending)**: Align helper
+  compilation with actual caller features and use the existing Engine import,
+  addressing the full CLI-OFF warning set without suppression. Add passive
+  private-admission progress and independent PostgreSQL wait diagnostics for
+  the unresolved Source case; preserve actual cancellation and settlement rules.
+
 - **Private task admission (validation pending)**: Reuse the existing strict
   message-free envelope validator in WorkerRecipes, preserving chat validation,
   run deduplication and host-generated tokens. Add real-worker regression source;

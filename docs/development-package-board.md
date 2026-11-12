@@ -37,7 +37,25 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current supervisor checkpoint — 2026-11-12, private admission correction
+### Current supervisor checkpoint — 2026-11-12, before combined revalidation
+
+Run-40 CLI-OFF compiles in 181.295 seconds, with 22 actual warning diagnostics
+at 15 distinct sites. No test runs; artifacts/source and previous default images
+are verified and the freeze is released. J's one-line actual-use import fix is
+integrated as `a9017783c`, P's connected four-file feature-boundary correction as
+`782196904`. Both are source-reviewed, not yet revalidated.
+
+S's passive diagnostic slice `170ab5986` is reviewed and integrated as
+`592df6907`. Actual intent/submit progress and independent-fixture PostgreSQL
+metadata are connected without changing the original Source assertions or
+productive admission semantics. Source2's cause remains unproven; its proposed
+mandatory cancellation/unknown-intent error split is withdrawn after review.
+R's cause-preserving correction `6f645ba0f` is completely reviewed; the full R
+source is still private/uncompiled. N/R/J/P/S are source-idle at handoff. Root
+bundles CLI-OFF and the two real Source cases next; no package or Bob plan is
+completed by these source integrations.
+
+### Historical supervisor checkpoint — 2026-11-12, private admission correction
 
 The reviewed minimal N backport is integrated as `2061a7e75`: WorkerRecipes
 reuses the existing strict private-envelope validator before adding its own
@@ -48,9 +66,8 @@ N is source-idle while the supervisor finishes connected review.
 
 **Current package owners: R and S.** R's original record/parser/graph correction
 is committed privately as `c3a15f13d`; its complete correction diff is reviewed.
-The full PostgreSQL response is checked before transfer. A further connected
-correction must preserve actual error causes through the new shipped approval
-writer and its caller. Existing EvidenceClient transaction custody is already
+The full PostgreSQL response is checked before transfer. The reviewed 6f645ba0f correction preserves actual error causes through the new
+shipped approval writer and its caller; native acceptance remains pending. Existing EvidenceClient transaction custody is already
 present and does not need a duplicate implementation. R remains uncompiled.
 
 Fresh S-01 owns the separate Source2 private admission/connection-custody
@@ -850,7 +867,7 @@ remain untouched. Do not copy the old tree or infer full Bob completion.
 | P-01 — native Provider/Auth status projection | `01a1c8aa-04ef-7323-a41d-a4a4d738dff5`, host `local`; `/Users/ollama/.codex/worktrees/41f5/brassclaw` | All 32 source identities integrated. JS 33, Run-37 real PG/native status cases and HTTP facade contract pass. Actual CLI-default DB-reader passes; no-default build reveals an Engine feature mismatch, reviewed fix integrated but unrun. Browser/serving/issuer acceptance remains open; idle. |
 | Q-01 — original Capture/Regex policy | `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, host `local`; `/Users/ollama/.codex/worktrees/bad8/brassclaw` | Private 49-file source at 1bc781a9e, uncompiled/unaccepted. Corrected read-only contract retains original R for existing programs; only actual new preparations take current ACK policy. Automatic refresh is withdrawn. Exact reuse/restore, actual per-selection S and original boot/History locators need a connected explicit manifest contract; none newly reserved. V215 reserved; no current source/build grant. |
 | R-01 — independent shipped Pure subjects/readers | `01a1ca84-a21f-7590-8e6d-90fc5e43981c`, host `local`; `/Users/ollama/.codex/worktrees/5fa8/brassclaw` | Private eight-root source through c3a15f13d is reviewed but uncompiled/unaccepted. Original record/parser/graph policy and whole-response PG preflight are connected. Further review correction preserves actual failure causes through the new shipped writer/caller; existing EvidenceClient custody stays unchanged. R/S are current package owners. History usage and original workflow restart discovery remain separate gates. No SQL reservation, build/native or general authored approval claim. |
-| S-01 — private admission and Source2 connection custody | `01a1ccdd-e4e9-7c83-abb2-c1a4a4a45e16`, host `local`; `/Users/ollama/.codex/worktrees/04f7/brassclaw` | Fresh isolated package, initial read-only diagnosis/proposal. Distinguishes actual PostgreSQL intent progress from service capacity waiting and identifies real connection custody. No source/build/native acceptance yet; the worker-envelope correction belongs to N and is already integrated separately. |
+| S-01 — private admission and Source2 connection custody | `01a1ccdd-e4e9-7c83-abb2-c1a4a4a45e16`, host `local`; `/Users/ollama/.codex/worktrees/04f7/brassclaw` | Diagnostic D 170ab5986 fully reviewed and integrated as 592df6907, native acceptance pending. Actual intent/submit progress and independent-fixture PG wait metadata are passive; no productive semantics change. Source2 holder remains unproven; mandatory unknown-intent error split withdrawn. Confirmed IO/custody gap remains open. Source-idle; shared worker repair stays with N. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for

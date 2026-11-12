@@ -1,3 +1,32 @@
+## 2026-11-12 — CLI-OFF compilation and targeted Source diagnostics
+
+Run-40 compiles the actual CLI with no default features at
+`2706cdb82ec5636f033220dcb139f1286d287712` in 181.295 seconds. It reports
+22 warning diagnostics at 15 distinct sites; the warning gate stops before any
+test executes. This is compilation success, not warning-free acceptance.
+Both new executables and the earlier default CLI images are preserved and
+verified. Captured source is unchanged, owned compilers are absent and the source
+freeze is released. Evidence: `run-40-cli-off/terminal-disposition.json` under the
+existing Bob native validation directory.
+
+J's actual-use import correction is integrated as `a9017783c`. P's four-file
+feature-boundary correction is integrated as `782196904`: existing queue,
+migration and secret helpers compile under their actual caller features; the
+unused feature-off PostgreSQL placeholder is removed. No warning suppression,
+cleanup-body change or feature-off error bypass is introduced. Revalidation is
+pending.
+
+S's six-file passive diagnostic slice is integrated as `592df6907`. It exposes
+actual intent acquire/transaction/claim/update/commit boundaries, driver submit
+progress and nonpolling Shared-future facts. Source2 diagnostics use the fixture's
+existing independent pool for original metadata and PostgreSQL wait/blocker
+metadata, without SQL text or payloads. Original assertions and the size-one
+runtime pool remain. The holder is still unproven; no productive IO, cancellation
+or settlement behavior is changed. In particular a genuine service-issued
+never-enqueued cancellation proof remains distinct from an unknown database
+intent ACK. R's reviewed original-policy/error-cause source remains private and
+uncompiled. All three Bob plans remain open.
+
 ## 2026-11-12 — Strict private admission repaired in source; native acceptance pending
 
 The minimal reviewed worker correction is integrated as `2061a7e75`.
