@@ -38,6 +38,8 @@ async fn prepare(
     context: &PrivateExecutionContext,
     source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("confirmation_prepare", None);
     let Some(delivery) =
         crate::pg_monty_admission::PgMontyAdmission::read_private_delivery(tx, id, context).await?
     else {
@@ -57,8 +59,15 @@ async fn prepare(
             .ok_or_else(invalid)?
             .require_selection(tx, &selected)
             .await
-            .map_err(|_| invalid())?;
+            .map_err(|error| {
+                #[cfg(all(test, feature = "skills-db"))]
+                crate::pg_review_submission_io::projection_build_error(&error);
+                let _ = error;
+                invalid()
+            })?;
     }
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("confirmation_verdict", None);
     let verdict = crate::pg_validator_q1_evidence::read_delivered_validator_q1(
         tx, &subject, &selected, &delivery,
     )
@@ -113,6 +122,8 @@ async fn read_prepared(
     bytes: &str,
     checksum: [u8; 32],
 ) -> Result<bool, AgentLoopDriverError> {
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("confirmation_compare", None);
     let Some(row)=tx.query_opt("SELECT confirmation_bytes,checksum FROM reborn_component_review_work_confirmations WHERE submission_id=$1",&[&id]).await.map_err(database)? else {return Ok(false);};
     if row.get::<_, &str>(0) != bytes || row.get::<_, Vec<u8>>(1).as_slice() != checksum {
         return Err(invalid());

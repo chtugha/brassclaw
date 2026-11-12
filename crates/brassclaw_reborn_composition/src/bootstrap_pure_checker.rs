@@ -470,6 +470,8 @@ impl CheckedPureCheckerClosure {
         tx: &Transaction<'_>,
     ) -> Result<Vec<Value>, RebornBuildError> {
         evidence::require_coherent(tx).await?;
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("structural_prerequisites", None);
         let original = self.structural.verify_with_receipt(tx).await?;
         let expected = [
             encoder_id(),
@@ -490,6 +492,13 @@ impl CheckedPureCheckerClosure {
         }
         let mut previous: Vec<(&Profile, RecordRef)> = Vec::new();
         for (context, subject) in self.contexts.iter().zip(expected) {
+            #[cfg(all(test, feature = "skills-db"))]
+            crate::pg_review_submission_io::projection_phase(
+                "own_checker_context",
+                self.contexts
+                    .iter()
+                    .position(|selected| Arc::ptr_eq(selected, context)),
+            );
             let profile = context
                 .profile
                 .as_ref()

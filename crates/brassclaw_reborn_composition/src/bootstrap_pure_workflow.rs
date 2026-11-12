@@ -171,6 +171,8 @@ impl CheckedPureSourceWorkflow {
             .cases
             .first()
             .ok_or_else(|| invalid("qualified W missing"))?;
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("parser_proof", None);
         first.context.parser.proof.verify_in_transaction(tx).await?;
         let program = self.program()?;
         let recipe = &program.inputs().instruction().snapshot().revisions()
@@ -297,7 +299,11 @@ impl CheckedPureSourceWorkflow {
         tx: &Transaction<'_>,
         checkers: &CheckedPureCheckerClosure,
     ) -> Result<Vec<Value>, RebornBuildError> {
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("checker_prerequisites", None);
         let prerequisites = checkers.proof_references(tx).await?;
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("workflow_plan", None);
         for case in &self.cases {
             checkers.require_program(&case.context.program)?;
         }
@@ -306,6 +312,13 @@ impl CheckedPureSourceWorkflow {
             return Err(invalid("complete pure workflow gallery required"));
         }
         for (case, fixture) in self.cases.iter().zip(gallery) {
+            #[cfg(all(test, feature = "skills-db"))]
+            crate::pg_review_submission_io::projection_phase(
+                "workflow_case",
+                self.cases
+                    .iter()
+                    .position(|selected| std::ptr::eq(selected, case)),
+            );
             if case.context.subject.candidate().uuid != fixture.root.uuid()
                 || case.expected_rules != fixture.rules
             {
@@ -313,6 +326,8 @@ impl CheckedPureSourceWorkflow {
             }
             case.verify(tx, &prerequisites).await?;
         }
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("workflow_report", None);
         let claim_id = self.claim_id()?;
         let claim = evidence::read_evidence(tx, claim_id)
             .await?

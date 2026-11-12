@@ -105,10 +105,14 @@ impl QualifiedPureSourceReview {
         &'checked self,
         tx: &'checked Transaction<'connection>,
     ) -> Result<CheckedSourceQualification<'checked, 'connection>, RebornBuildError> {
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("source_qualification", None);
         let pins = self
             .workflow
             .source_qualification(tx, &self.checkers)
             .await?;
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("source_selection_bytes", None);
         let bytes = self
             .workflow
             .program()?
@@ -130,9 +134,10 @@ impl QualifiedPureSourceReview {
         tx: &Transaction<'_>,
         selected: &RetainedValidatorSelection,
     ) -> Result<(), RebornBuildError> {
-        self.check_in_transaction(tx)
-            .await?
-            .require(tx, self, selected)
+        let checked = self.check_in_transaction(tx).await?;
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_phase("source_selection_compare", None);
+        checked.require(tx, self, selected)
     }
     pub(crate) fn parser(&self) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
         self.workflow.parser()

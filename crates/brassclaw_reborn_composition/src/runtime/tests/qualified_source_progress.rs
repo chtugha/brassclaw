@@ -88,6 +88,7 @@ pub(super) struct OriginalReview {
     completion: Pin<Box<dyn Future<Output = Completion> + Send>>,
     completed: bool,
     last_work: Option<ReviewWorkView>,
+    last_read: Option<crate::pg_review_submission_io::ReadObservation>,
 }
 impl OriginalReview {
     pub(super) fn new(runtime: &RebornRuntime, frame: &TestObservationFrame, id: Uuid) -> Self {
@@ -102,6 +103,7 @@ impl OriginalReview {
             completion: Box::pin(waiter.wait()),
             completed: false,
             last_work: None,
+            last_read: None,
         }
     }
     pub(super) fn id(&self) -> Uuid {
@@ -109,6 +111,12 @@ impl OriginalReview {
     }
 
     async fn fail(&self, runtime: &RebornRuntime, stage: &str) -> ! {
+        if let Some(read) = &self.last_read {
+            eprintln!(
+                "SourceReview projection {}",
+                json!({"original":self.id,"read":read.facts()})
+            );
+        }
         diagnose(
             runtime,
             &self.frame,
@@ -139,21 +147,27 @@ impl OriginalReview {
             loop {
                 // Keep the last successful projection even when a later read
                 // stalls. Race the original producer against every read.
-                let reading = crate::pg_review_submission::get_with_catalogue(
+                let observation = crate::pg_review_submission_io::ReadObservation::new();
+                self.last_read = Some(observation.clone());
+                let reading = observation.observe(crate::pg_review_submission::get_with_catalogue(
                     &runtime.installed_catalogue.pool,
                     &submission_id,
                     &runtime.installed_catalogue,
-                );
+                ));
                 tokio::pin!(reading);
-                let view = tokio::select! {
+                let (view, producer_result) = tokio::select! {
                     result = &mut self.completion, if !self.completed => {
-                        self.accept_success(result)?;
-                        // Finish this same read after successful completion;
-                        // don't cancel/reissue an in-flight PG projection.
-                        reading.await.map_err(|_| "original_projection_error".to_owned())?
+                        let producer_result = self.accept_success(result);
+                        // Complete exactly this read, including on a producer
+                        // failure, and retain its passive facts before reporting.
+                        (reading.await, Some(producer_result))
                     }
-                    view = &mut reading => view.map_err(|_| "original_projection_error".to_owned())?,
+                    view = &mut reading => (view, None),
                 };
+                if let Some(result) = producer_result {
+                    result?;
+                }
+                let view = view.map_err(|_| "original_projection_error".to_owned())?;
                 self.last_work = view.work;
                 if self.last_work.as_ref().is_some_and(|work| {
                     matches!(

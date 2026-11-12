@@ -619,18 +619,46 @@ pub(crate) async fn get_with_catalogue(
     submission_id: &str,
     catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
-    let io = catalogue
-        .resource_store_settings
-        .snapshot()
-        .map_err(storage_io)?
-        .validate()
-        .map_err(storage_io)?;
-    tokio::time::timeout(
-        io.timeout,
-        get_inner(pool, submission_id, Some(&catalogue.pure_source_review)),
-    )
-    .await
-    .map_err(|_| storage_io("original inspection I/O deadline elapsed; outcome unresolved"))?
+    #[cfg(test)]
+    crate::pg_review_submission_io::projection_start();
+    let result = async {
+        let io = catalogue
+            .resource_store_settings
+            .snapshot()
+            .map_err(|error| {
+                #[cfg(test)]
+                crate::pg_review_submission_io::projection_error(
+                    "SettingsSource",
+                    Some("snapshot_failed"),
+                    None,
+                );
+                storage_io(error)
+            })?
+            .validate()
+            .map_err(|error| {
+                #[cfg(test)]
+                crate::pg_review_submission_io::projection_error("SettingsValidation", None, None);
+                storage_io(error)
+            })?;
+        #[cfg(test)]
+        crate::pg_review_submission_io::projection_policy(io);
+        let timed = tokio::time::timeout(
+            io.timeout,
+            get_inner(pool, submission_id, Some(&catalogue.pure_source_review)),
+        )
+        .await;
+        #[cfg(test)]
+        if timed.is_err() {
+            crate::pg_review_submission_io::projection_deadline();
+        }
+        timed.map_err(|_| {
+            storage_io("original inspection I/O deadline elapsed; outcome unresolved")
+        })?
+    }
+    .await;
+    #[cfg(test)]
+    crate::pg_review_submission_io::projection_finish(&result);
+    result
 }
 async fn get_inner(
     pool: &Arc<PgPool>,
@@ -640,18 +668,36 @@ async fn get_inner(
     >,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
     let id = identifier(submission_id)?;
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("acquire_started", None);
     let mut client = crate::pg_transaction_client::TransactionClient::from_client(
-        pool.get()
-            .await
-            .map_err(|_| RecipeStoreError::Unavailable("review connection failed".into()))?,
+        pool.get().await.map_err(|error| {
+            #[cfg(all(test, feature = "skills-db"))]
+            crate::pg_review_submission_io::projection_pool_error(&error);
+            let _ = error;
+            RecipeStoreError::Unavailable("review connection failed".into())
+        })?,
     );
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("acquire_acknowledged", None);
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
         .read_only(true)
         .start()
         .await
-        .map_err(|_| RecipeStoreError::Unavailable("review snapshot unavailable".into()))?;
+        .map_err(|error| {
+            #[cfg(all(test, feature = "skills-db"))]
+            crate::pg_review_submission_io::projection_error(
+                "Postgres",
+                None,
+                error.code().map(|code| code.code()),
+            );
+            let _ = error;
+            RecipeStoreError::Unavailable("review snapshot unavailable".into())
+        })?;
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("begin_acknowledged", None);
     let retained = PgReviewSubmissionStore::read_in_transaction(&tx, id)
         .await
         .map_err(storage)?
@@ -689,19 +735,33 @@ async fn get_inner(
         retained_receipt.queue_binding_status =
             brassclaw_product_workflow::ReviewQueueBindingStatus::Bound;
     }
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("work_inspection", None);
     #[cfg(feature = "skills-db")]
     let work = Some(
         crate::review_work_reconciliation::inspect_with_source(&tx, id, source)
             .await
-            .map_err(|_| {
+            .map_err(|error| {
+                #[cfg(all(test, feature = "skills-db"))]
+                crate::pg_review_submission_io::projection_driver_error(&error);
+                let _ = error;
                 RecipeStoreError::Unavailable("original review work requires reconciliation".into())
             })?,
     );
     #[cfg(not(feature = "skills-db"))]
     let work = None;
-    tx.commit()
-        .await
-        .map_err(|_| RecipeStoreError::Unavailable("review snapshot commit unavailable".into()))?;
+    #[cfg(all(test, feature = "skills-db"))]
+    crate::pg_review_submission_io::projection_phase("snapshot_commit", None);
+    tx.commit().await.map_err(|error| {
+        #[cfg(all(test, feature = "skills-db"))]
+        crate::pg_review_submission_io::projection_error(
+            "Postgres",
+            None,
+            error.code().map(|code| code.code()),
+        );
+        let _ = error;
+        RecipeStoreError::Unavailable("review snapshot commit unavailable".into())
+    })?;
     client.recycle_after_commit();
     Ok(ComponentReviewSubmissionView {
         receipt: retained_receipt,
