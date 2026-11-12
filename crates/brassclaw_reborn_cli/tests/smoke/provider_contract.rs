@@ -42,6 +42,12 @@ impl CliDatabase {
         command
             .args(args)
             .env("BRASSCLAW_EMBEDDED_PG_PORT", self.port.to_string())
+            // Existing metadata-only diagnostic makes a failed ModelStarted
+            // event write visible instead of mistaking its absence for refusal.
+            .env(
+                "BRASSCLAW_REBORN_LOG",
+                "info,brassclaw_turns::run_profile::model=debug",
+            )
             .env("BRASSCLAW_BASE_DIR", self.directory.path().join("v1-state"));
         command
     }
@@ -90,6 +96,27 @@ impl CliDatabase {
         ).await.unwrap();
         assert_eq!(row.get::<_, String>(3), "settled");
         (row.get(0), row.get(1), row.get(2))
+    }
+
+    #[cfg(feature = "skills-db")]
+    async fn refused_before_model_dispatch(&self, run_id: uuid::Uuid) {
+        // HostManagedLoopModelPort emits ModelStarted after preparation and
+        // before dispatch, where final Prefix/encoding/interception checks run.
+        // A later refusal must not stand in for failed credential preparation.
+        let count: i64 = self
+            .pool
+            .get()
+            .await
+            .unwrap()
+            .query_one(
+                "SELECT count(*) FROM brassclaw_events WHERE run_id=$1 \
+             AND kind IN ('ModelStarted','ModelCompleted','ModelFailed')",
+                &[&run_id.to_string()],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        assert_eq!(count, 0, "model dispatch began before the reported refusal");
     }
 }
 
@@ -233,25 +260,54 @@ fn failed_without_reply(output: &std::process::Output) {
         !stderr.contains("dropped without calling shutdown"),
         "{stderr}"
     );
+    assert!(
+        !stderr.contains("loop model_started milestone failed before model request"),
+        "failed event persistence cannot prove pre-dispatch refusal: {stderr}"
+    );
 }
 
 #[cfg(feature = "skills-db")]
 fn failed_no_match(outcome: &Value) {
     assert_eq!(outcome["status"], "failed", "{outcome}");
+    assert_eq!(outcome["reason_kind"], "task_execution_failed", "{outcome}");
     let execution = &outcome["execution"];
     assert_eq!(
         execution["intent_outcome"], "no_match",
         "failure before matching is not this case"
     );
-    // This counter counts host model attempts, including refused preparation;
-    // the local trap separately proves zero provider egress. Never replay.
-    assert!(execution["model_exchange_count"].as_u64().unwrap() <= 1);
+    // _non_match reaches stream_model only after building and validating the
+    // host prompt bundle. Zero would incorrectly accept context/prompt failure.
+    // This counts the refused host attempt; the trap proves zero provider egress.
+    assert_eq!(execution["model_exchange_count"], 1);
     assert_eq!(execution["capability_dispatch_count"], 0);
     assert!(execution["reply"].is_null());
     assert_eq!(
         execution["recipes"],
         serde_json::json!([]),
         "no reply/history fallback after failure"
+    );
+}
+
+#[cfg(feature = "skills-db")]
+fn native_preparation_refused(output: &std::process::Output) {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    // Existing native_pre_dispatch_failure observation, not the independent
+    // boot warning. Context/ref-resolution failures cannot produce this line.
+    let rejections: Vec<_> = stderr
+        .lines()
+        .filter(|line| {
+            line.contains("native model preparation rejected before provider submission")
+        })
+        .collect();
+    assert_eq!(
+        rejections.len(),
+        1,
+        "missing/repeated task preparation: {stderr}"
+    );
+    assert!(rejections[0].contains("ConfigurationError"), "{stderr}");
+    assert!(
+        !stderr.contains("native model-prefix binding rejected before submission"),
+        "a later Prefix failure cannot prove credential refusal: {stderr}"
     );
 }
 
@@ -346,6 +402,10 @@ async fn run_uses_qualified_reply_recipe_without_provider_and_rejects_no_match()
         .unwrap()
         .get(0);
     assert_eq!(pin["checksum"], checksum);
+    assert_eq!(client.query_one(
+        "SELECT count(*) FROM brassclaw_events WHERE run_id=$1 AND kind='AssistantReplyFinalized'",
+        &[&run_id.to_string()],
+    ).await.unwrap().get::<_, i64>(0), 1, "verify the real run-correlated event sink too");
     drop(client);
 
     // Preserve the original unmet need too: ordinary No-Match without an LLM
@@ -355,8 +415,9 @@ async fn run_uses_qualified_reply_recipe_without_provider_and_rejects_no_match()
         .output()
         .unwrap();
     failed_without_reply(&output);
-    let (_, outcome, models) = db.chat_task(Some(&output)).await;
+    let (run_id, outcome, models) = db.chat_task(Some(&output)).await;
     failed_no_match(&outcome);
+    db.refused_before_model_dispatch(run_id).await;
     assert_eq!(
         models["selection"]["roles"]["kohai"]["state"],
         "unconfigured"
@@ -386,6 +447,7 @@ async fn run_requires_native_codex_binding_instead_of_legacy_auth_file() {
             .output()
             .unwrap();
         failed_without_reply(&output);
+        native_preparation_refused(&output);
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(
             stderr.contains("primary_configuration_invalid"),
@@ -399,8 +461,9 @@ async fn run_requires_native_codex_binding_instead_of_legacy_auth_file() {
             !stderr.contains("cli-legacy-codex-secret-sentinel"),
             "legacy credential leaked"
         );
-        let (_, outcome, models) = db.chat_task(Some(&output)).await;
+        let (run_id, outcome, models) = db.chat_task(Some(&output)).await;
         failed_no_match(&outcome);
+        db.refused_before_model_dispatch(run_id).await;
         let role = &models["selection"]["roles"]["kohai"];
         assert_eq!(role["state"], "captured");
         assert_eq!(role["binding"]["revision"]["provider_id"], "openai_codex");
@@ -429,14 +492,16 @@ async fn run_uses_database_selection_and_requires_encrypted_key_before_egress() 
         .output()
         .unwrap();
     failed_without_reply(&output);
+    native_preparation_refused(&output);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
         stderr.contains("primary_configuration_invalid"),
         "missing encrypted key must fail preparation: {stderr}"
     );
     assert!(!stderr.contains(secret), "environment credential leaked");
-    let (_, outcome, models) = db.chat_task(Some(&output)).await;
+    let (run_id, outcome, models) = db.chat_task(Some(&output)).await;
     failed_no_match(&outcome);
+    db.refused_before_model_dispatch(run_id).await;
     let role = &models["selection"]["roles"]["kohai"];
     assert_eq!(role["state"], "captured");
     assert_eq!(role["binding"]["revision"]["provider_id"], "openai");
