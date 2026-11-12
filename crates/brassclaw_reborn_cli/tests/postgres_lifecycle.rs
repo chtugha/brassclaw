@@ -18,10 +18,14 @@ fn free_port() -> u16 {
 }
 
 fn command(home: &Path, port: u16, args: &[&str]) -> Command {
+    std::fs::create_dir_all(home).unwrap();
+    std::fs::write(home.join(".env"), "").unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_brassclaw-reborn"));
     command
         .args(args)
+        .current_dir(home)
         .env_clear()
+        .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", home)
         .env("BRASSCLAW_EMBEDDED_PG_PORT", port.to_string());
     command

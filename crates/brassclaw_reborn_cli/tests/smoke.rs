@@ -28,11 +28,21 @@ fn free_pg_port() -> u16 {
         .port()
 }
 
-fn isolated_no_llm_command(workspace: &Path, reborn_home: &Path) -> Command {
+/// Isolate both process variables and dotenv's upward working-directory search.
+/// Presentation-only commands use this boundary without starting PostgreSQL.
+fn isolated_command(workspace: &Path) -> Command {
+    std::fs::write(workspace.join(".env"), "").expect("empty isolated dotenv file");
     let mut command = Command::new(reborn_bin());
     command
         .current_dir(workspace)
         .env_clear()
+        .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1");
+    command
+}
+
+fn isolated_no_llm_command(workspace: &Path, reborn_home: &Path) -> Command {
+    let mut command = isolated_command(workspace);
+    command
         .env("HOME", workspace.join("isolated-home"))
         // Give each parallel binary invocation its own embedded-Postgres port
         // so that concurrent tests that start the runtime do not fight over
@@ -52,7 +62,8 @@ fn isolated_no_llm_command(workspace: &Path, reborn_home: &Path) -> Command {
 
 #[test]
 fn help_mentions_reborn_commands() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("--help")
         .output()
         .expect("brassclaw-reborn --help should run");
@@ -83,10 +94,10 @@ fn help_mentions_reborn_commands() {
 
 #[test]
 fn profile_list_shows_supported_profiles_without_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("runtime-profile")
         .arg("list")
-        .env_clear()
         .output()
         .expect("brassclaw runtime-profile list should run");
 
@@ -113,11 +124,11 @@ fn profile_list_shows_supported_profiles_without_reborn_home() {
 
 #[test]
 fn profile_list_json_is_stable_and_does_not_resolve_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("runtime-profile")
         .arg("list")
         .arg("--json")
-        .env_clear()
         .output()
         .expect("brassclaw runtime-profile list --json should run");
 
@@ -238,11 +249,10 @@ fn logs_json_verbose_includes_status_details() {
 #[test]
 fn models_status_json_reports_routes_not_configured_without_v1_state() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("status")
         .arg("--json")
-        .env_clear()
         .env("HOME", temp.path())
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
@@ -277,11 +287,10 @@ api_key_env = "OPENAI_API_KEY"
     )
     .expect("write config");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("status")
         .arg("--json")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .output()
@@ -307,13 +316,12 @@ fn models_set_provider_writes_reborn_config_without_v1_state() {
     // migration hint.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("set-provider")
         .arg("openai")
         .arg("--model")
         .arg("gpt-5-mini")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn models set-provider should run");
@@ -341,11 +349,10 @@ fn models_set_updates_reborn_default_model() {
     // migration hint.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("set")
         .arg("gpt-5.3-codex")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn models set should run");
@@ -372,11 +379,10 @@ fn models_set_without_provider_fails_without_panicking() {
     // is now unreachable.  Confirm the command exits non-zero without panicking.
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("set")
         .arg("gpt-5.3-codex")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn models set should run");
@@ -390,10 +396,10 @@ fn models_set_without_provider_fails_without_panicking() {
 #[cfg(not(feature = "root-llm-provider"))]
 #[test]
 fn models_list_no_default_features_does_not_resolve_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("list")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn models list should run");
 
@@ -413,11 +419,11 @@ fn models_list_no_default_features_does_not_resolve_reborn_home() {
 #[cfg(not(feature = "root-llm-provider"))]
 #[test]
 fn models_status_no_default_features_does_not_resolve_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("models")
         .arg("status")
         .arg("--json")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn models status should run");
 
@@ -433,9 +439,8 @@ fn models_status_no_default_features_does_not_resolve_reborn_home() {
     for field in ["native_auth", "client_uptake", "serving"] {
         assert_eq!(json[field], "not_observed");
     }
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .args(["models", "status"])
-        .env_clear()
         .output()
         .expect("feature-off text status should not resolve a home or backend");
     assert!(
@@ -457,13 +462,13 @@ fn models_status_no_default_features_does_not_resolve_reborn_home() {
 #[cfg(not(feature = "root-llm-provider"))]
 #[test]
 fn models_write_commands_report_root_llm_provider_required_without_default_features() {
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
     for args in [
         &["models", "set", "gpt-5.3-codex"][..],
         &["models", "set-provider", "openai"][..],
     ] {
-        let output = Command::new(reborn_bin())
+        let output = isolated_command(temp.path())
             .args(args)
-            .env_clear()
             .output()
             .expect("brassclaw-reborn models write command should run");
 
@@ -487,9 +492,9 @@ fn assert_empty_not_wired_surface(
     collection_key: &str,
     count_key: &str,
 ) {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .args(args)
-        .env_clear()
         .output()
         .expect("brassclaw-reborn command should run");
 
@@ -509,9 +514,8 @@ fn assert_empty_not_wired_surface(
 
     let mut json_args = args.to_vec();
     json_args.push("--json");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .args(json_args)
-        .env_clear()
         .output()
         .expect("brassclaw-reborn JSON command should run");
     assert!(
@@ -534,9 +538,9 @@ fn assert_empty_not_wired_surface(
 }
 
 fn assert_verbose_detail(args: &[&str], expected_detail: &str) {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .args(args)
-        .env_clear()
         .output()
         .expect("brassclaw-reborn verbose command should run");
 
@@ -555,9 +559,9 @@ fn assert_json_verbose_detail(
     count_key: &str,
     expected_detail: &str,
 ) {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .args(args)
-        .env_clear()
         .output()
         .expect("brassclaw-reborn JSON verbose command should run");
 
@@ -589,7 +593,7 @@ fn config_path_reports_reborn_home_without_touching_v1_state() {
     let reborn_home = temp.path().join("reborn-home");
     let v1_base_dir = temp.path().join("v1-state");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("config")
         .arg("path")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
@@ -633,13 +637,10 @@ fn config_path_reports_default_reborn_home_without_creating_directories() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join(".brassclaw").join("reborn");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("config")
         .arg("path")
-        .env_remove("BRASSCLAW_REBORN_HOME")
         .env("HOME", temp.path())
-        .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn config path should run");
 
@@ -663,11 +664,11 @@ fn config_path_reports_default_reborn_home_without_creating_directories() {
 
 #[test]
 fn completion_generates_zsh_script_without_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("completion")
         .arg("--shell")
         .arg("zsh")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn completion should run");
 
@@ -690,11 +691,11 @@ fn completion_generates_zsh_script_without_reborn_home() {
 
 #[test]
 fn completion_generates_bash_script_without_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("completion")
         .arg("--shell")
         .arg("bash")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn completion should run");
 
@@ -710,10 +711,10 @@ fn completion_generates_bash_script_without_reborn_home() {
 
 #[test]
 fn serve_help_mentions_host_and_port() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("serve")
         .arg("--help")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn serve --help should run");
 
@@ -737,16 +738,14 @@ fn serve_fails_closed_when_env_bearer_token_var_is_unset() {
     // disabled.
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
+        .env("HOME", temp.path().join("home"))
         .arg("serve")
         .arg("--host")
         .arg("127.0.0.1")
         .arg("--port")
         .arg("0")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
-        .env_remove("BRASSCLAW_REBORN_WEBUI_TOKEN")
-        .env_remove("BRASSCLAW_REBORN_WEBUI_USER_ID")
         .output()
         .expect("brassclaw-reborn serve should run");
 
@@ -764,16 +763,15 @@ fn serve_fails_closed_when_env_bearer_token_var_is_unset() {
 #[test]
 fn serve_fails_closed_when_env_user_id_var_is_unset() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
+        .env("HOME", temp.path().join("home"))
         .arg("serve")
         .arg("--host")
         .arg("127.0.0.1")
         .arg("--port")
         .arg("0")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
         .env("BRASSCLAW_REBORN_WEBUI_TOKEN", "any-non-empty-token")
-        .env_remove("BRASSCLAW_REBORN_WEBUI_USER_ID")
         .output()
         .expect("brassclaw-reborn serve should run");
 
@@ -792,7 +790,7 @@ fn serve_fails_closed_when_env_user_id_var_is_unset() {
 fn serve_rejects_malformed_host_before_webui_handoff() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("serve")
         .arg("--host")
         .arg("localhost:3000")
@@ -829,14 +827,12 @@ fn run_reports_runtime_readiness_snapshot_without_touching_v1_state() {
     // `--dry-run` preserves the legacy diagnostic-only behavior: no agent
     // is started, no state directories are created. Without the flag, `run`
     // boots the live agent and would create the local-dev root.
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("run")
         .arg("--dry-run")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
-        .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn run should run");
 
@@ -884,10 +880,9 @@ fn doctor_uses_reborn_home_override_without_touching_v1_state() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
-        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -919,10 +914,10 @@ fn doctor_uses_reborn_home_override_without_touching_v1_state() {
 
 #[test]
 fn repl_help_mentions_composed_runtime() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("repl")
         .arg("--help")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn repl --help should run");
 
@@ -945,9 +940,8 @@ fn repl_exit_command_exits_cleanly_without_touching_v1_state() {
     let home_dir = temp.path().join("home");
     let v1_base_dir = temp.path().join("v1-state");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("repl")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
@@ -1026,8 +1020,10 @@ fn run_rejects_occupied_explicit_mcp_port_without_reply_stdout_or_abrupt_pg_shut
     );
 }
 
+// These are startup/exit checks only. Native DB-selected Codex readiness and
+// refusal of legacy auth-file fallback are checked in provider_contract.
 #[test]
-fn repl_resolves_codex_auth_env_without_openai_api_key() {
+fn repl_can_exit_with_legacy_codex_session_env_present() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let home_dir = temp.path().join("home");
@@ -1045,9 +1041,8 @@ fn repl_resolves_codex_auth_env_without_openai_api_key() {
     )
     .expect("write codex auth fixture");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("repl")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1081,13 +1076,13 @@ fn repl_resolves_codex_auth_env_without_openai_api_key() {
         "stderr: {stderr}"
     );
     assert!(
-        !stderr.contains("no LLM selection configured"),
-        "Codex auth should prevent stub-gateway warning: {stderr}"
+        !stderr.contains("test-access-token") && !stderr.contains("test-refresh-token"),
+        "legacy session bytes must not leak during startup: {stderr}"
     );
 }
 
 #[test]
-fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
+fn repl_can_exit_with_legacy_codex_api_key_env_present() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let home_dir = temp.path().join("home");
@@ -1102,9 +1097,8 @@ fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
     )
     .expect("write codex auth fixture");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("repl")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1138,8 +1132,8 @@ fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
         "stderr: {stderr}"
     );
     assert!(
-        !stderr.contains("no LLM selection configured"),
-        "Codex API-key auth should prevent stub-gateway warning: {stderr}"
+        !stderr.contains("sk-test-codex-api-key"),
+        "legacy API key must not leak during startup: {stderr}"
     );
 }
 
@@ -1147,9 +1141,8 @@ fn repl_resolves_codex_api_key_auth_env_without_openai_api_key() {
 fn repl_help_command_prints_repl_commands_and_exits_on_exit() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("repl")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1183,9 +1176,8 @@ fn repl_help_command_prints_repl_commands_and_exits_on_exit() {
 fn run_help_command_prints_repl_commands_and_exits_on_quit() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("run")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1221,9 +1213,8 @@ fn run_help_command_prints_repl_commands_and_exits_on_quit() {
 fn repl_piped_message_exits_nonzero_when_runtime_does_not_produce_reply() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("repl")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1259,11 +1250,10 @@ fn repl_piped_message_exits_nonzero_when_runtime_does_not_produce_reply() {
 fn run_message_exits_nonzero_when_runtime_does_not_produce_reply() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("run")
         .arg("--message")
         .arg("hello")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1287,9 +1277,8 @@ fn run_message_exits_nonzero_when_runtime_does_not_produce_reply() {
 fn run_piped_stdin_exits_nonzero_when_runtime_does_not_produce_reply() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let mut child = Command::new(reborn_bin())
+    let mut child = isolated_command(temp.path())
         .arg("run")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("HOME", temp.path().join("home"))
         .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
@@ -1326,12 +1315,9 @@ fn doctor_default_home_is_reborn_scoped_and_dry_run() {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join(".brassclaw").join("reborn");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
-        .env_remove("BRASSCLAW_REBORN_HOME")
         .env("HOME", temp.path())
-        .env_remove("USERPROFILE")
-        .env_remove("BRASSCLAW_RUNTIME_PROFILE")
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1360,7 +1346,7 @@ fn doctor_reports_explicit_profile() {
     // Profile is selected via BRASSCLAW_RUNTIME_PROFILE (not the deprecated
     // BRASSCLAW_REBORN_PROFILE). Doctor no longer prints the profile in its
     // output — selecting a valid profile just succeeds silently.
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("BRASSCLAW_RUNTIME_PROFILE", "local_safe")
@@ -1380,7 +1366,7 @@ fn run_reports_explicit_profile() {
 
     // Profile is now selected via BRASSCLAW_RUNTIME_PROFILE; --dry-run
     // exercises the boot path without booting the agent.
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("run")
         .arg("--dry-run")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
@@ -1405,7 +1391,7 @@ fn run_reports_explicit_profile() {
 fn doctor_rejects_invalid_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("BRASSCLAW_RUNTIME_PROFILE", "prod")
@@ -1424,7 +1410,7 @@ fn doctor_rejects_invalid_profile() {
 fn doctor_rejects_empty_profile_override() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("BRASSCLAW_RUNTIME_PROFILE", "")
@@ -1443,7 +1429,7 @@ fn doctor_rejects_empty_profile_override() {
 fn run_rejects_invalid_profile() {
     let temp = tempfile::tempdir().expect("tempdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("run")
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
         .env("BRASSCLAW_RUNTIME_PROFILE", "prod")
@@ -1463,7 +1449,7 @@ fn run_rejects_reborn_home_equal_to_explicit_v1_base_dir() {
     let temp = tempfile::tempdir().expect("tempdir");
     let v1_root = temp.path().join("v1-state");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("run")
         .env("BRASSCLAW_REBORN_HOME", &v1_root)
         .env("BRASSCLAW_BASE_DIR", &v1_root)
@@ -1483,7 +1469,7 @@ fn doctor_rejects_reborn_home_equal_to_explicit_v1_base_dir() {
     let temp = tempfile::tempdir().expect("tempdir");
     let v1_root = temp.path().join("v1-state");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .env("BRASSCLAW_REBORN_HOME", &v1_root)
         .env("BRASSCLAW_BASE_DIR", &v1_root)
@@ -1503,7 +1489,7 @@ fn doctor_rejects_reborn_home_equal_to_relative_explicit_v1_base_dir() {
     let temp = tempfile::tempdir().expect("tempdir");
     let v1_root = temp.path().join("v1-state");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .arg("doctor")
         .current_dir(temp.path())
         .env("BRASSCLAW_REBORN_HOME", &v1_root)
@@ -1521,9 +1507,9 @@ fn doctor_rejects_reborn_home_equal_to_relative_explicit_v1_base_dir() {
 
 #[test]
 fn doctor_rejects_empty_reborn_home_override() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("doctor")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", "")
         .output()
         .expect("brassclaw-reborn doctor should run");
@@ -1538,9 +1524,9 @@ fn doctor_rejects_empty_reborn_home_override() {
 
 #[test]
 fn doctor_rejects_relative_reborn_home_override() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("doctor")
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", "relative/reborn")
         .output()
         .expect("brassclaw-reborn doctor should run");
@@ -1558,9 +1544,9 @@ fn doctor_rejects_relative_reborn_home_override() {
 
 #[test]
 fn doctor_rejects_missing_home_for_default_reborn_home() {
-    let output = Command::new(reborn_bin())
+    let temp = tempfile::tempdir().expect("isolated CLI working directory");
+    let output = isolated_command(temp.path())
         .arg("doctor")
-        .env_clear()
         .output()
         .expect("brassclaw-reborn doctor should run");
 
@@ -1583,9 +1569,8 @@ fn config_path_reports_file_presence() {
     // `config path` now reports the config.toml path as always present
     // (DB-backed) since the DB is authoritative — the line reads
     // "config.toml (read-only at boot; settings are DB-backed)".
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .args(["config", "path"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("config path runs");
@@ -1660,9 +1645,8 @@ fn run_confirm_host_access_requires_home_or_userprofile() {
     let reborn_home = temp.path().join("reborn-home");
     std::fs::create_dir_all(&reborn_home).expect("reborn home");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .args(["run", "--confirm-host-access", "-m", "ping"])
-        .env_clear()
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .output()
@@ -1685,9 +1669,10 @@ fn run_confirm_host_access_uses_userprofile_when_home_is_absent() {
     std::fs::create_dir_all(&reborn_home).expect("reborn home");
     std::fs::create_dir_all(&host_home).expect("host home");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
         .args(["run", "--confirm-host-access", "-m", "ping"])
-        .env_clear()
+        .current_dir(temp.path())
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .env("USERPROFILE", &host_home)
@@ -1820,12 +1805,10 @@ listen_host = "0.0.0.0"
 #[test]
 fn serve_local_dev_allows_non_loopback_without_trusted_laptop_access() {
     let temp = tempfile::tempdir().expect("tempdir");
-    let output = Command::new(reborn_bin())
+    let output = isolated_command(temp.path())
+        .env("HOME", temp.path().join("home"))
         .args(["serve", "--host", "0.0.0.0", "--port", "0"])
         .env("BRASSCLAW_REBORN_HOME", temp.path().join("reborn-home"))
-        .env_remove("BRASSCLAW_REBORN_PROFILE")
-        .env_remove("BRASSCLAW_REBORN_WEBUI_TOKEN")
-        .env_remove("BRASSCLAW_REBORN_WEBUI_USER_ID")
         .output()
         .expect("brassclaw-reborn serve should not crash");
 
@@ -1853,11 +1836,9 @@ fn run_honors_boot_profile_from_config_file() {
     let reborn_home = temp.path().join("reborn-home");
     std::fs::create_dir_all(&reborn_home).expect("mkdir");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_no_llm_command(temp.path(), &reborn_home)
         .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_RUNTIME_PROFILE", "hosted_safe")
-        .env_remove("BRASSCLAW_PG_URL")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -1961,9 +1942,8 @@ default_project = "project-alpha"
     )
     .expect("write config");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_no_llm_command(temp.path(), &reborn_home)
         .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -1994,9 +1974,8 @@ default_approval_policy = "ask_always"
     )
     .expect("write config");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_no_llm_command(temp.path(), &reborn_home)
         .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -2027,9 +2006,8 @@ heartbeat_interval_secs = 0
     )
     .expect("write config");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_no_llm_command(temp.path(), &reborn_home)
         .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -2058,9 +2036,8 @@ poll_interval_ms = 0
     )
     .expect("write config");
 
-    let output = Command::new(reborn_bin())
+    let output = isolated_no_llm_command(temp.path(), &reborn_home)
         .args(["run", "-m", "ping"])
-        .env_remove("USERPROFILE")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .output()
         .expect("brassclaw-reborn run should not crash");
@@ -2077,11 +2054,9 @@ fn local_yolo_command(temp: &tempfile::TempDir, args: &[&str]) -> Command {
     let home = temp.path().join("home");
     std::fs::create_dir_all(&reborn_home).expect("reborn home");
     std::fs::create_dir_all(&home).expect("home");
-    let mut command = Command::new(reborn_bin());
+    let mut command = isolated_no_llm_command(temp.path(), &reborn_home);
     command
         .args(args)
-        .env_clear()
-        .env("BRASSCLAW_REBORN_HOME", reborn_home)
         .env("BRASSCLAW_RUNTIME_PROFILE", "local_yolo")
         .env("HOME", home);
     command

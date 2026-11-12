@@ -69,11 +69,24 @@ impl CliDatabase {
     }
 
     #[cfg(feature = "skills-db")]
-    async fn latest_task(&self) -> (uuid::Uuid, Value, Value) {
+    async fn chat_task(
+        &self,
+        failed_output: Option<&std::process::Output>,
+    ) -> (uuid::Uuid, Value, Value) {
+        // Failures name their original run in the CLI error. Never select an
+        // unrelated later admission by wall-clock ordering. The first success
+        // must be the only ordinary chat admission in its fresh database.
+        let run_id = failed_output.map(|output| {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let (_, suffix) = stderr
+                .rsplit_once(", run_id=")
+                .expect("original failed run ID");
+            uuid::Uuid::parse_str(suffix.split(')').next().unwrap()).unwrap()
+        });
         let row = self.pool.get().await.unwrap().query_one(
             "SELECT run_id,outcome,task_model_selection,phase FROM brassclaw_monty_task_admissions \
              WHERE scope->>'tenant_id'=$1 AND NOT trusted_internal_turn \
-             ORDER BY started_at DESC LIMIT 1", &[&NAMESPACE],
+             AND ($2::uuid IS NULL OR run_id=$2)", &[&NAMESPACE, &run_id],
         ).await.unwrap();
         assert_eq!(row.get::<_, String>(3), "settled");
         (row.get(0), row.get(1), row.get(2))
@@ -256,7 +269,7 @@ async fn run_uses_qualified_reply_recipe_without_provider_and_rejects_no_match()
         String::from_utf8(output.stdout).unwrap(),
         format!("{literal}\n")
     );
-    let (run_id, outcome, models) = db.latest_task().await;
+    let (run_id, outcome, models) = db.chat_task(None).await;
     assert_eq!(outcome["status"], "completed");
     let execution = &outcome["execution"];
     assert_eq!(execution["intent_outcome"], "match");
@@ -342,7 +355,7 @@ async fn run_uses_qualified_reply_recipe_without_provider_and_rejects_no_match()
         .output()
         .unwrap();
     failed_without_reply(&output);
-    let (_, outcome, models) = db.latest_task().await;
+    let (_, outcome, models) = db.chat_task(Some(&output)).await;
     failed_no_match(&outcome);
     assert_eq!(
         models["selection"]["roles"]["kohai"]["state"],
@@ -386,7 +399,7 @@ async fn run_requires_native_codex_binding_instead_of_legacy_auth_file() {
             !stderr.contains("cli-legacy-codex-secret-sentinel"),
             "legacy credential leaked"
         );
-        let (_, outcome, models) = db.latest_task().await;
+        let (_, outcome, models) = db.chat_task(Some(&output)).await;
         failed_no_match(&outcome);
         let role = &models["selection"]["roles"]["kohai"];
         assert_eq!(role["state"], "captured");
@@ -422,7 +435,7 @@ async fn run_uses_database_selection_and_requires_encrypted_key_before_egress() 
         "missing encrypted key must fail preparation: {stderr}"
     );
     assert!(!stderr.contains(secret), "environment credential leaked");
-    let (_, outcome, models) = db.latest_task().await;
+    let (_, outcome, models) = db.chat_task(Some(&output)).await;
     failed_no_match(&outcome);
     let role = &models["selection"]["roles"]["kohai"];
     assert_eq!(role["state"], "captured");

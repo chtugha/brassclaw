@@ -51,13 +51,16 @@ fn extension_install_json_uses_reborn_home_without_v1_state() {
     write_extension_fixture(&reborn_home, "zztest-mcp");
     let home = temp.path().join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
+    fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
         .arg("install")
         .arg("zztest-mcp")
         .arg("--json")
+        .current_dir(&home)
         .env_clear()
+        .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
@@ -99,12 +102,15 @@ fn extension_search_human_output_escapes_control_characters() {
     );
     let home = temp.path().join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
+    fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
         .arg("search")
         .arg("zztest-evil")
+        .current_dir(&home)
         .env_clear()
+        .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home)
         .output()
@@ -183,10 +189,13 @@ fn run_extension(reborn_home: &Path, args: &[&str]) -> std::process::Output {
         .expect("reborn_home should have a parent temp dir")
         .join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
+    fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
     Command::new(reborn_bin())
         .arg("extension")
         .args(args)
+        .current_dir(&home)
         .env_clear()
+        .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", reborn_home)
         .env("HOME", &home)
         .output()
