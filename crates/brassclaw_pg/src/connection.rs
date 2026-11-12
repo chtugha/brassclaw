@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use tokio_postgres::config::{Host, SslMode};
-use tokio_postgres::tls::{MakeTlsConnect, NoTlsStream};
+use tokio_postgres::tls::{MakeTlsConnect, NoTlsStream, TlsConnect};
 use tokio_postgres::{AsyncMessage, Client, Config, Connection, NoTls, Socket};
 use tokio_postgres_rustls::MakeRustlsConnect;
 
@@ -67,6 +67,13 @@ pub(crate) fn prepare(connection_string: &str) -> Result<PreparedConnection, PgE
             config.host(address.to_string());
         }
     }
+    if !tls {
+        // Preserve the actual shared transport choice in the driver's retained
+        // CancelToken too. NoTls already makes local Prefer connections plain;
+        // leaving Prefer in Config could later negotiate different TLS during
+        // cancellation of that same original connection.
+        config.ssl_mode(SslMode::Disable);
+    }
     Ok(PreparedConnection { config, tls })
 }
 
@@ -98,6 +105,46 @@ pub(crate) fn tls_connector() -> Result<MakeRustlsConnect, PgError> {
 }
 
 type RustlsStream = <MakeRustlsConnect as MakeTlsConnect<Socket>>::Stream;
+
+// CancelToken asks the factory for a connector even for a plaintext Unix
+// socket, whose hostname is empty. Defer certificate/hostname preparation until
+// the driver actually requests TLS. Required TLS still validates the exact
+// token hostname through the same connector as the original pool.
+struct CancellationTls;
+struct CancellationTlsConnect(String);
+impl MakeTlsConnect<Socket> for CancellationTls {
+    type Stream = RustlsStream;
+    type TlsConnect = CancellationTlsConnect;
+    type Error = PgError;
+    fn make_tls_connect(&mut self, hostname: &str) -> Result<Self::TlsConnect, Self::Error> {
+        Ok(CancellationTlsConnect(hostname.to_owned()))
+    }
+}
+impl TlsConnect<Socket> for CancellationTlsConnect {
+    type Stream = RustlsStream;
+    type Error = PgError;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Stream, Self::Error>> + Send>>;
+    fn connect(self, stream: Socket) -> Self::Future {
+        Box::pin(async move {
+            let mut connector = tls_connector()?;
+            let tls = <MakeRustlsConnect as MakeTlsConnect<Socket>>::make_tls_connect(
+                &mut connector,
+                &self.0,
+            )
+            .map_err(|_| PgError::Configuration("invalid cancellation TLS hostname"))?;
+            tls.connect(stream)
+                .await
+                .map_err(|_| PgError::Configuration("cancellation TLS connection failed"))
+        })
+    }
+}
+
+pub(crate) async fn cancel_query(token: tokio_postgres::CancelToken) -> Result<(), PgError> {
+    token
+        .cancel_query(CancellationTls)
+        .await
+        .map_err(PgError::from)
+}
 
 enum Transport {
     Plain(Box<Connection<Socket, NoTlsStream>>),
@@ -169,7 +216,9 @@ mod tests {
             "host=localhost,127.0.0.2 user=brassclaw",
             "postgresql:///db?host=127.0.0.1&user=brassclaw",
         ] {
-            assert!(!prepare(dsn).expect("local connection").tls, "{dsn}");
+            let prepared = prepare(dsn).expect("local connection");
+            assert!(!prepared.tls, "{dsn}");
+            assert_eq!(prepared.config.get_ssl_mode(), SslMode::Disable, "{dsn}");
         }
     }
 

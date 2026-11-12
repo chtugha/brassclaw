@@ -620,6 +620,78 @@ async fn exhausted_pool_and_original_claim_lock_share_one_captured_deadline() {
     }
 }
 
+// A missing observer ACK remains unresolved even when another connection can
+// independently see that the backend ended. There is no implicit second wait,
+// cleanup retry, synthetic success or release of the original custody.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_retirement_missing_server_ack_remains_unresolved_after_pool_release() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let settings = crate::pg_monty_vm_settings::PgMontyVmSettingsStore::new(
+        rig.pool.clone(),
+        "default",
+        "default",
+    )
+    .get("default", "default")
+    .await
+    .unwrap();
+    let pool = brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap();
+    let retirement = brassclaw_pg::transaction_client::retirement::TransactionRetirement::new(
+        pool.clone(),
+        Duration::from_millis(settings.execution_limits.cancellation_ack_timeout_millis),
+    );
+    let client = retirement.acquire().await.unwrap();
+    retirement.capture_backend(&client).await.unwrap();
+    let identity = client
+        .query_one(
+            "SELECT pid,backend_start FROM pg_stat_activity WHERE pid=pg_backend_pid()",
+            &[],
+        )
+        .await
+        .unwrap();
+    let pid = identity.get(0);
+    let started = identity.get(1);
+    client.batch_execute("BEGIN").await.unwrap();
+    let (acquired_tx, acquired_rx) = tokio::sync::oneshot::channel();
+    let (release_tx, release_rx) = tokio::sync::oneshot::channel();
+    let queued_pool = pool.clone();
+    let holder = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+        let client = queued_pool.get().await.unwrap();
+        acquired_tx.send(()).unwrap();
+        release_rx.await.unwrap();
+        drop(client);
+    }));
+    tokio::time::timeout(Duration::from_secs(30), async {
+        while pool.status().waiting != 1 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    // The already queued checkout wins the sole released permit. It holds the
+    // real observer's pool until after its original captured ACK deadline.
+    drop(client);
+    tokio::time::timeout(Duration::from_secs(30), acquired_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(60), retirement.join())
+            .await
+            .unwrap()
+            .is_err()
+    );
+    assert!(!retirement.is_confirmed());
+    assert_backend_ended(&rig.pool, pid, started).await;
+    release_tx.send(()).unwrap();
+    holder.await.unwrap();
+    assert!(retirement.join().await.is_err());
+    assert!(!retirement.is_confirmed());
+    pool.close();
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn close_racing_original_exchange_publication_preserves_proof_and_original() {
     let rig = crate::runtime::test_pg::pg_rig().await;

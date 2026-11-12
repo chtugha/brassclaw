@@ -207,6 +207,7 @@ type IntentCompletion =
 
 struct IntentExchange {
     completion: IntentCompletion,
+    retirement: Arc<brassclaw_pg::transaction_client::retirement::TransactionRetirement>,
     #[cfg(test)]
     abort: tokio::task::AbortHandle,
     #[cfg(test)]
@@ -236,6 +237,13 @@ impl RetainedTask {
             .is_some_and(|io| io.completion.peek().is_none())
         {
             return Err(failed("private_submission_intent_not_joined"));
+        }
+        if self
+            .intent_io
+            .as_ref()
+            .is_some_and(|io| !io.retirement.is_confirmed())
+        {
+            return Err(failed("private_submission_intent_retirement_unresolved"));
         }
         Ok(())
     }
@@ -723,6 +731,11 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 host.check_dispatch_open()
                     .map_err(|_| failed("monty_admission_fenced"))?;
                 let admission = task.admission.clone();
+                // Capture once before this original exchange; a later live edit
+                // cannot replace its accepted native-cleanup budget.
+                let acknowledgement = self.cancellation.current()?.validate()?;
+                let retirement = admission.private_intent_retirement(acknowledgement.timeout);
+                let io_retirement = retirement.clone();
                 let host = host.clone();
                 #[cfg(test)]
                 let (panic_tx, panic_rx) = tokio::sync::oneshot::channel::<()>();
@@ -734,7 +747,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                         tokio::select! {
                             biased;
                             () = host.cancellation_requested() => Err(failed("monty_admission_fenced")),
-                            result = admission.mark_private_submission_intent(storage.as_ref()) => result,
+                            result = admission.mark_private_submission_intent(storage.as_ref(), &io_retirement) => result,
                         }
                     };
                     #[cfg(test)]
@@ -750,8 +763,9 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                 }));
                 #[cfg(test)]
                 let abort = job.abort_handle();
+                let joined_retirement = retirement.clone();
                 let completion = async move {
-                    job.await.map_err(|error| {
+                    let original = job.await.map_err(|error| {
                         let kind = if error.is_cancelled() {
                             "private_submission_intent_join_cancelled"
                         } else {
@@ -762,11 +776,24 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                         // carry this failure; job end is not a COMMIT outcome.
                         tracing::warn!(%run_id, reason_kind = kind, "private intent IO job ended without exchange result");
                         failed(kind)
-                    })
+                    });
+                    // Rust job end does not establish server-side cancellation.
+                    // The retained retirement task progresses even while this
+                    // shared observer is parked, and remains owned until joined.
+                    joined_retirement.join().await.map_err(|_| {
+                        AgentLoopDriverError::Unavailable {
+                            reason: format!("private_submission_intent_retirement_unresolved: {}", serde_json::json!({
+                                "settings_revision":acknowledgement.revision,
+                                "timeout_millis":acknowledgement.timeout.as_millis().to_string(),
+                            })),
+                        }
+                    })?;
+                    original
                 }.boxed().shared();
                 // No await or fallible operation between spawn and publication.
                 task.intent_io = Some(IntentExchange {
                     completion: completion.clone(),
+                    retirement,
                     #[cfg(test)]
                     abort,
                     #[cfg(test)]
@@ -790,9 +817,11 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             if !Arc::ptr_eq(&task.host, host) {
                 return Err(failed("private_original_host_invalid"));
             }
-            task.intent_io.as_ref().map(|io| io.completion.clone())
+            task.intent_io
+                .as_ref()
+                .map(|io| (io.completion.clone(), io.retirement.clone()))
         };
-        if let Some(completion) = completion {
+        if let Some((completion, retirement)) = completion {
             // The original before_submit consumes the SQL outcome. Joining a
             // cancelled/failed IO is cleanup, never a no-effect/settlement proof.
             // Both Ok and JoinError establish the body's actual end. The
@@ -800,6 +829,12 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             // failure. It may obtain the genuine Service proof and authenticate
             // original DB settlement even when COMMIT's outcome was unknown.
             let _ended = completion.await;
+            // Abort/panic may be a joined original failure, but unresolved
+            // physical retirement must still block settlement and registry release.
+            retirement
+                .join()
+                .await
+                .map_err(|_| failed("private_submission_intent_retirement_unresolved"))?;
         }
         Ok(())
     }

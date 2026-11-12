@@ -22,7 +22,7 @@ webpki-roots = "1"
 refinery = { version = "0.8", features = ["tokio-postgres"] }
 pgvector = { version = "0.4", features = ["postgres"] }
 thiserror = "2"
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 tracing = "0.1"
 tokio-util = { version = "0.7", features = ["rt"], optional = true }
 url = { version = "2", optional = true }

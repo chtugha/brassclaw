@@ -183,3 +183,70 @@ async fn local_and_remote_tls_validate_certificates_and_server_transport() {
     assert!(connect(&untrusted).await.is_err());
     pool.close();
 }
+
+#[tokio::test]
+async fn original_transaction_retirement_preserves_plaintext_and_verified_tls_policy() {
+    use brassclaw_pg::transaction_client::retirement::TransactionRetirement;
+    let tls = dsn("TEST_PG_TLS_URL");
+    for (connection_string, encrypted) in [
+        (dsn("TEST_PG_URL"), false),
+        // This real server supports TLS. Local Prefer must still retain the
+        // shared owner's original plaintext selection during cancellation.
+        (format!("{tls} host=localhost sslmode=prefer"), false),
+        (format!("{tls} host=localhost sslmode=require"), true),
+        (format!("{tls} host=pg.brassclaw.test sslmode=prefer"), true),
+    ] {
+        let pool = build_pool_with_max_size(&connection_string, 1).unwrap();
+        let inspector = build_pool_with_max_size(&connection_string, 1).unwrap();
+        let retirement = TransactionRetirement::new(pool.clone(), Duration::from_secs(5));
+        let client = retirement.acquire().await.unwrap();
+        retirement.capture_backend(&client).await.unwrap();
+        assert!(
+            !retirement.is_confirmed(),
+            "an active checkout is not quiescent"
+        );
+        let row = client.query_one(
+            "SELECT a.pid,extract(epoch FROM a.backend_start)::text,COALESCE(s.ssl,false) FROM pg_stat_activity a
+             LEFT JOIN pg_stat_ssl s USING(pid) WHERE a.pid=pg_backend_pid()", &[],
+        ).await.unwrap();
+        let pid: i32 = row.get(0);
+        let started: String = row.get(1);
+        assert_eq!(row.get::<_, bool>(2), encrypted);
+        let observer = inspector.get().await.unwrap();
+        {
+            let query = client.batch_execute("SELECT pg_sleep(60)");
+            tokio::pin!(query);
+            let reached = async {
+                loop {
+                    let waiting: bool = observer.query_one(
+                        "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND wait_event='PgSleep')", &[&pid],
+                    ).await.unwrap().get(0);
+                    if waiting {
+                        break;
+                    }
+                    tokio::task::yield_now().await;
+                }
+            };
+            tokio::select! {
+                result = &mut query => panic!("original query ended before cancellation: {result:?}"),
+                result = timeout(Duration::from_secs(5), reached) => result.unwrap(),
+            }
+        }
+        drop(client);
+        timeout(Duration::from_secs(10), retirement.join())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(retirement.is_confirmed());
+        let exists: bool = observer.query_one(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND extract(epoch FROM backend_start)::text=$2)", &[&pid, &started],
+        ).await.unwrap().get(0);
+        assert!(
+            !exists,
+            "CancelRequest delivery alone cannot establish server termination"
+        );
+        drop(observer);
+        pool.close();
+        inspector.close();
+    }
+}
