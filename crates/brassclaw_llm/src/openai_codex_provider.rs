@@ -238,11 +238,10 @@ impl OpenAiCodexProvider {
             None => (self.build_headers().await?, original),
         };
         let request = codex_request::build_request(&self.client, &self.endpoint, body, headers)
-            .map_err(|error| {
+            .inspect_err(|_error| {
                 if let Some(observer) = &observer {
                     observer.submission_rejected();
                 }
-                error
             })?;
         let response = if let Some(guard) = crate::final_request_guard::current() {
             let checked = guard.prepare(request).await.map_err(|reason| {
