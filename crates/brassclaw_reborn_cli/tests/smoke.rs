@@ -32,10 +32,17 @@ fn free_pg_port() -> u16 {
 /// Presentation-only commands use this boundary without starting PostgreSQL.
 fn isolated_command(workspace: &Path) -> Command {
     std::fs::write(workspace.join(".env"), "").expect("empty isolated dotenv file");
+    // env_clear must not redirect retained native-image copies out of the
+    // fixture's owned tree and onto the platform's default temporary volume.
+    let process_temp = workspace.join("process-temp");
+    std::fs::create_dir_all(&process_temp).expect("owned CLI process temp directory");
     let mut command = Command::new(reborn_bin());
     command
         .current_dir(workspace)
         .env_clear()
+        .env("TMPDIR", &process_temp)
+        .env("TMP", &process_temp)
+        .env("TEMP", &process_temp)
         .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1");
     command
 }

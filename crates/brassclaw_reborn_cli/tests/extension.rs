@@ -52,6 +52,8 @@ fn extension_install_json_uses_reborn_home_without_v1_state() {
     let home = temp.path().join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
     fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
+    let process_temp = home.join("process-temp");
+    fs::create_dir_all(&process_temp).expect("owned CLI process temp directory");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
@@ -60,6 +62,9 @@ fn extension_install_json_uses_reborn_home_without_v1_state() {
         .arg("--json")
         .current_dir(&home)
         .env_clear()
+        .env("TMPDIR", &process_temp)
+        .env("TMP", &process_temp)
+        .env("TEMP", &process_temp)
         .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home)
@@ -103,6 +108,8 @@ fn extension_search_human_output_escapes_control_characters() {
     let home = temp.path().join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
     fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
+    let process_temp = home.join("process-temp");
+    fs::create_dir_all(&process_temp).expect("owned CLI process temp directory");
 
     let output = Command::new(reborn_bin())
         .arg("extension")
@@ -110,6 +117,9 @@ fn extension_search_human_output_escapes_control_characters() {
         .arg("zztest-evil")
         .current_dir(&home)
         .env_clear()
+        .env("TMPDIR", &process_temp)
+        .env("TMP", &process_temp)
+        .env("TEMP", &process_temp)
         .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home)
@@ -190,11 +200,16 @@ fn run_extension(reborn_home: &Path, args: &[&str]) -> std::process::Output {
         .join("home");
     fs::create_dir_all(&home).expect("create fake HOME dir");
     fs::write(home.join(".env"), "").expect("empty isolated dotenv file");
+    let process_temp = home.join("process-temp");
+    fs::create_dir_all(&process_temp).expect("owned CLI process temp directory");
     Command::new(reborn_bin())
         .arg("extension")
         .args(args)
         .current_dir(&home)
         .env_clear()
+        .env("TMPDIR", &process_temp)
+        .env("TMP", &process_temp)
+        .env("TEMP", &process_temp)
         .env("BRASSCLAW_DISABLE_OS_KEYCHAIN", "1")
         .env("BRASSCLAW_REBORN_HOME", reborn_home)
         .env("HOME", &home)
