@@ -82,12 +82,13 @@ impl PgMontyAdmission {
             .start()
             .await
             .map_err(database)?;
-        let access = if write {
-            InvocationRefsRead::RetainShareLock
+        let original = if write {
+            Self::verify_private_completion(&tx, completion, InvocationRefsRead::RetainShareLock)
+                .await?
         } else {
-            InvocationRefsRead::Snapshot
+            Self::verify_private_live_completion(&tx, completion).await?
         };
-        let Some(original) = Self::verify_private_completion(&tx, completion, access).await? else {
+        let Some(original) = original else {
             return Err(invalid());
         };
         let request = original.request();
