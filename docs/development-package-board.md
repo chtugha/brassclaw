@@ -37,6 +37,23 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
+### Current source integration — 2026-11-12, S custody and original-reader fixes
+
+S's `0493cd7b8` and `4a16f791a` are fully source-reviewed and integrated as
+`27db74ed8` and `8966246a7`. All eleven combined final paths match their reviewed
+commit blobs. The new source uses the existing ACK/TransactionClient owners,
+retained IO-only join/abort lifetime, original Stop/Service-proof/settlement and
+complete shutdown cleanup. A separate explicit snapshot/SHARE access mode fixes
+historical READ ONLY queries without weakening writer locks or original checks.
+Nine custody and two real snapshot/lock regression sources remain uncompiled
+and unrun. Root bundles them with the original Source cases; no extra worker
+rebuild is needed if its unchanged dependency closure and exact image verify.
+
+Q continues its reserved manifest and V216 work. S is source-idle for this
+reviewed handoff and receives concrete validation corrections if needed. T setup
+still has no usable chat ID. All three Bob plans remain open; source integration
+does not constitute native acceptance, approval or activation.
+
 ### Current supervisor checkpoint — 2026-11-12, after Run-41
 
 Actual CLI-OFF compilation is warning-free; its exact status test passes

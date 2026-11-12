@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Private IO custody and original readers (validation pending)**: Bound the
+  single original intent exchange by acknowledged settings, retain its IO-only
+  join/abort owner and drain it through Stop/shutdown. Keep genuine pre-enqueue
+  proofs and original settlement after uncertain IO. Separate READ ONLY snapshot
+  authentication from retained writer SHARE locks in the existing reader,
+  including lost-ACK delivery readback. Add eleven real PostgreSQL/native
+  regression sources; compilation and execution remain pending.
+
 - **Run-41 scoped validation**: Actual CLI-OFF compilation is warning-free and
   its model-status regression passes. Worker/Composition compilation and real
   profile/unwind checks pass. After audited disposal of old standalone objects,

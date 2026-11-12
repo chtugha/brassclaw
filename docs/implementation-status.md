@@ -1,3 +1,27 @@
+## 2026-11-12 — Private IO custody and snapshot-reader repairs integrated as source
+
+Reviewed S source is integrated as `27db74ed8` and `8966246a7`; all eleven final
+source paths match the reviewed immutable package bytes. The first change uses
+the existing acknowledged ResourceStore policy and TransactionClient for one
+intent exchange. Its IO-only job has retained join/abort ownership and consumes
+the original host fence independently of a parked submission waiter. Stop and
+shutdown join that owner; original Service proof, settlement and no-replay rules
+remain. Shutdown preserves closed failure classifications without exposing
+arbitrary panic text or skipping subsequent cleanup.
+
+The second repairs a source-confirmed READ ONLY/FOR SHARE conflict. Historical
+delivery/terminal authentication and lost-ACK readback use a snapshot access
+mode in the existing query/decoder. Native terminal and primary delivery writers
+retain their SHARE locks. No read-only transaction is made writable, and all
+original identity/checksum/answered/result checks remain. Run-41 did not retain
+the underlying SQLSTATE; the next native run must establish whether further
+reader failures remain. H01 approval checks are not loosened.
+
+Nine IO-custody and two snapshot/writer-lock regression tests are source-authored,
+using actual Factory/Driver, PostgreSQL, wire acknowledgements and native parser
+invocations. Compilation and runtime acceptance are pending. These source
+integrations neither replace Run-41's failures nor finish any Bob plan.
+
 ## 2026-11-12 — Run-41: CLI-OFF passes; Source reaches delivery, projection fails
 
 At frozen `3d059ef31320c2c3980bbdf5441b5b696f04a1bf`, the actual no-default-feature
