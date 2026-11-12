@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Reborn feature development skill**: Synchronize both skill copies with the
+  three Bob repair owners and dependency order, original-work/settled-verdict
+  boundaries and connected versioned-reader migration. Route the Prefixless
+  construction successor through its shared selection and native guard owners;
+  require semantic review for changed workflow handlers and acknowledged settings
+  for operational limits. Preserve current runtime support gates. See the
+  [update report](docs/validation/2026-11-12-reborn-feature-skill-update.md) for
+  documentation checks and scope; no runtime activation is implied.
+
 - **Qualified Pure Source review (validation pending)**: Connect exact shipped
   checking-workflow qualification to authored class-22 submission, typed capture,
   shared private Work and structural original confirmation. Add V210 with a
