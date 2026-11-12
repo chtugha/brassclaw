@@ -445,13 +445,12 @@ pub(crate) fn recorded_receipt_results(
         .get("results")
         .and_then(Value::as_object)
         .ok_or("validator_receipt_results_missing")?;
-    if matches!(profile, ValidatorReceiptProfile::Inventory) {
-        if value.as_object().is_none_or(|object| object.len() != 2)
+    if matches!(profile, ValidatorReceiptProfile::Inventory)
+        && (value.as_object().is_none_or(|object| object.len() != 2)
             || values.len() != expected.len()
-            || expected.iter().any(|step| !values.contains_key(*step))
-        {
-            return Err("validator_receipt_steps_invalid");
-        }
+            || expected.iter().any(|step| !values.contains_key(*step)))
+    {
+        return Err("validator_receipt_steps_invalid");
     }
     let mut results: BTreeMap<_, _> = values
         .iter()

@@ -292,18 +292,25 @@ impl Context {
             self.operation_id, suite.variant
         );
         note("admit_encoder_suite");
+        let admission_trace = crate::bootstrap_validation::AdmissionTrace::new();
         let admitted = io::bounded_for(
             self.storage.as_ref(),
             "checker_fixture_admission",
             self.claim.root.uuid,
-            crate::bootstrap_validation::admit(
+            crate::bootstrap_validation::admit_observed(
                 self.pool.clone(),
                 "structural-checker-own-function",
                 &reference_string,
-                None,
+                &admission_trace,
             ),
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            invalid(format!(
+                "{error}; original admission phases: {}",
+                admission_trace.facts()
+            ))
+        })?;
         let binding = Admission {
             format: self.format("admission"),
             operation: self.op(),
@@ -424,10 +431,10 @@ impl Context {
                 .map(|_| records),
             Err(error) => Err(error),
         };
-        if let Err(error) = &run {
-            if let Some(trace) = trace {
-                trace.primary_failure(error);
-            }
+        if let Err(error) = &run
+            && let Some(trace) = trace
+        {
+            trace.primary_failure(error);
         }
         note("close_encoder_suite");
         let close = match proof.get() {
@@ -460,10 +467,10 @@ impl Context {
             self.storage.as_ref(),
         )
         .await;
-        if let Err(error) = &close {
-            if let Some(trace) = trace {
-                trace.cleanup_failure(error);
-            }
+        if let Err(error) = &close
+            && let Some(trace) = trace
+        {
+            trace.cleanup_failure(error);
         }
         let (binding_bytes, observed_bytes, quiescence_bytes) = match run {
             Ok(records) => records,

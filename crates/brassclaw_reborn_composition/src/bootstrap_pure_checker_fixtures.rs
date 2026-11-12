@@ -632,11 +632,13 @@ fn definition_cases(declaration: &Value, native: &Value) -> Vec<Case> {
     result
 }
 
+type FixtureExpectedResults = BTreeMap<String, BTreeMap<String, Value>>;
+
 fn suites(
     root: &ComponentRevisionDraft,
     values: Vec<Case>,
     kind: &str,
-) -> Result<(Vec<Suite>, BTreeMap<String, BTreeMap<String, Value>>), RebornBuildError> {
+) -> Result<(Vec<Suite>, FixtureExpectedResults), RebornBuildError> {
     let export = root.document()["preload"]["default_export"]
         .as_str()
         .ok_or_else(|| invalid("fixture root export absent"))?;

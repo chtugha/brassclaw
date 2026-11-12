@@ -311,7 +311,50 @@ pub(super) async fn admit(
     let mode = host_factory
         .map(AdmissionMode::ModelContained)
         .unwrap_or(AdmissionMode::Contained);
-    prepare_admission(pool, identity, answer, mode).await
+    prepare_admission(pool, identity, answer, mode, None).await
+}
+
+/// Passive closed-bootstrap observations. Only fixed phase names and elapsed
+/// time are exposed; input, actor, claim and database diagnostics stay private.
+pub(super) struct AdmissionTrace {
+    started: std::time::Instant,
+    phases: std::sync::Mutex<Vec<(&'static str, u128)>>,
+}
+impl AdmissionTrace {
+    pub(super) fn new() -> Self {
+        Self {
+            started: std::time::Instant::now(),
+            phases: std::sync::Mutex::new(Vec::new()),
+        }
+    }
+    fn note(&self, phase: &'static str) {
+        if let Ok(mut phases) = self.phases.lock() {
+            phases.push((phase, self.started.elapsed().as_millis()));
+        }
+    }
+    pub(super) fn facts(&self) -> Value {
+        match self.phases.lock() {
+            Ok(phases) => {
+                json!({"phases":*phases,"elapsed_millis":self.started.elapsed().as_millis()})
+            }
+            Err(_) => json!({"observation":"unavailable"}),
+        }
+    }
+}
+pub(super) async fn admit_observed(
+    pool: Arc<PgPool>,
+    identity: &str,
+    answer: &str,
+    trace: &AdmissionTrace,
+) -> Result<Admitted, RebornBuildError> {
+    prepare_admission(
+        pool,
+        identity,
+        answer,
+        AdmissionMode::Contained,
+        Some(trace),
+    )
+    .await
 }
 
 /// Reserve a real installation-review parent without starting VM execution.
@@ -324,7 +367,14 @@ pub(super) async fn reserve_child_review_parent(
     identity: &str,
     reference: &str,
 ) -> Result<Admitted, RebornBuildError> {
-    prepare_admission(pool, identity, reference, AdmissionMode::RetainedParent).await
+    prepare_admission(
+        pool,
+        identity,
+        reference,
+        AdmissionMode::RetainedParent,
+        None,
+    )
+    .await
 }
 
 #[derive(Clone, Copy)]
@@ -343,7 +393,14 @@ async fn prepare_admission(
     identity: &str,
     answer: &str,
     mode: AdmissionMode<'_>,
+    trace: Option<&AdmissionTrace>,
 ) -> Result<Admitted, RebornBuildError> {
+    let note = |phase| {
+        if let Some(trace) = trace {
+            trace.note(phase);
+        }
+    };
+    note("prepare_identity");
     let tenant = TenantId::new(NAMESPACE).map_err(invalid)?;
     let agent = AgentId::new(identity).map_err(invalid)?;
     let actor = UserId::new(INSTALLATION_ACTOR).map_err(invalid)?;
@@ -371,6 +428,7 @@ async fn prepare_admission(
         owner_user_id: owner,
     };
     let threads = Arc::new(PgSessionThreadService::new(pool.clone(), tenant.as_str()));
+    note("ensure_thread");
     threads
         .ensure_thread(EnsureThreadRequest {
             scope: scope.clone(),
@@ -381,6 +439,7 @@ async fn prepare_admission(
         })
         .await
         .map_err(invalid)?;
+    note("accept_inbound_message");
     let accepted = threads
         .accept_inbound_message(AcceptInboundMessageRequest {
             scope: scope.clone(),
@@ -427,6 +486,7 @@ async fn prepare_admission(
                 .map_err(invalid)?,
         )),
     };
+    note("submit_turn");
     coordinator
         .submit_turn(SubmitTurnRequest {
             scope: turn_scope.clone(),
@@ -446,6 +506,7 @@ async fn prepare_admission(
         })
         .await
         .map_err(invalid)?;
+    note("claim_next_run");
     let claimed = state
         .claim_next_run(ClaimRunRequest {
             runner_id: TurnRunnerId::new(),
@@ -455,6 +516,7 @@ async fn prepare_admission(
         .await
         .map_err(invalid)?
         .ok_or_else(|| invalid("bootstrap claim missing"))?;
+    note("mark_message_submitted");
     threads
         .mark_message_submitted(
             &scope,
@@ -491,6 +553,7 @@ async fn prepare_admission(
         lease_token: claimed.lease_token,
     };
     let original_source = claimed.state.source_binding_ref.clone();
+    note("prepare_host_handoff");
     let handoff = async {
         let host: Arc<dyn brassclaw_turns::run_profile::AgentLoopDriverHost + Send + Sync> =
             match mode {
@@ -573,10 +636,13 @@ async fn prepare_admission(
             answer,
         )?;
     }
+    note("persist_reservation");
     admission.persist_reservation().await.map_err(invalid)?;
     if matches!(mode, AdmissionMode::Contained) {
+        note("check_and_start");
         admission.check_and_start().await.map_err(invalid)?;
     }
+    note("admitted");
     // ModelContained does not call check_and_start; its factory supplies ports.
     Ok(Admitted {
         host,
