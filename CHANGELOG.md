@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Reborn feature skill — model requests and Sempai**: Clarify complete Kohai
+  request construction through the existing qualified encoding path, with reused
+  measurements for unchanged inputs and current dispatch checks. Separate pre-call
+  prompt correction from eligible No-Match post-turn analysis; align MCP metadata
+  and Prefixless construction with that shared path. Synchronize both skill copies.
+  This instruction update adds no runtime activation or placeholder/history redesign.
+
 - **Intermediate integration checkpoint**: Add an independent bounded
   record-body projection to the existing filesystem API. PostgreSQL checks the
   requested kind, version and byte limit in one atomic read; Composite forwards
