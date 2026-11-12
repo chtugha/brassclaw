@@ -28,10 +28,10 @@ impl std::ops::DerefMut for TransactionClient {
 }
 impl Drop for TransactionClient {
     fn drop(&mut self) {
-        if !self.recyclable {
-            if let Some(client) = self.inner.take() {
-                drop(crate::PgClient::take(client));
-            }
+        if !self.recyclable
+            && let Some(client) = self.inner.take()
+        {
+            drop(crate::PgClient::take(client));
         }
     }
 }
