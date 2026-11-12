@@ -1490,3 +1490,32 @@ mod tests {
         assert!(ok.is_ok(), "top-level VectorNearest must still work");
     }
 }
+
+#[cfg(test)]
+mod bounded_record_default_tests {
+    use super::*;
+    #[tokio::test]
+    async fn record_body_projection_is_unsupported_without_explicit_backend_implementation() {
+        let backend = InMemoryBackend::new();
+        let path = VirtualPath::new("/memory/bounded-record-default").unwrap();
+        let kind = crate::RecordKind::new("example").unwrap();
+        backend
+            .put(
+                &path,
+                Entry::record(kind.clone(), &serde_json::Value::Null).unwrap(),
+                CasExpectation::Absent,
+            )
+            .await
+            .unwrap();
+        assert!(
+            !backend
+                .capabilities()
+                .has(crate::Capability::BoundedRecordBody)
+        );
+        assert!(matches!(
+            backend.get_record_body_bounded(&path, &kind, 0).await,
+            Err(FilesystemError::Unsupported { .. })
+        ));
+        assert!(backend.get(&path).await.unwrap().is_some());
+    }
+}

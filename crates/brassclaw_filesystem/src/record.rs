@@ -377,6 +377,23 @@ pub struct VersionedEntry {
     pub version: RecordVersion,
 }
 
+/// Bounded read projection, not a stored Entry or proof of indexed metadata.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordBodySnapshot {
+    pub path: brassclaw_host_api::VirtualPath,
+    pub kind: RecordKind,
+    pub version: RecordVersion,
+    pub body: Vec<u8>,
+}
+
+/// Missing and oversized records are distinct; neither supplies a body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BoundedRecordBodyRead {
+    Missing,
+    TooLarge { body_len: u64 },
+    Present(RecordBodySnapshot),
+}
+
 /// Structural projection of an entry. This is not a stored value or proof that
 /// its unrequested body/indexed payload is valid. No payload is materialized.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

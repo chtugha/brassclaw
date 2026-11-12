@@ -1342,6 +1342,10 @@ mod native_model_usage_tests;
 mod native_secret_reference_tests;
 
 #[cfg(all(test, feature = "skills-db"))]
+#[path = "native_bounded_record_tests.rs"]
+mod native_bounded_record_tests;
+
+#[cfg(all(test, feature = "skills-db"))]
 #[path = "native_entry_delete_tests.rs"]
 mod native_entry_delete_tests;
 

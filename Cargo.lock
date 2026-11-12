@@ -1728,6 +1728,7 @@ dependencies = [
  "async-trait",
  "blake3",
  "brassclaw_host_api",
+ "brassclaw_pg",
  "brassclaw_safety",
  "deadpool-postgres",
  "serde",
