@@ -32,13 +32,15 @@ async fn source_writer_retains_invocation_lock(writer: Writer) {
         .unwrap()
         .get(0);
     let guard = guard.transaction().await.unwrap();
+    // SHARE holds the actual writer's INSERT while permitting original reads
+    // and the ROW SHARE lock needed by the author's foreign-key checks.
     let (lock_sql, insert_prefix) = match writer {
         Writer::Terminal => (
-            "LOCK TABLE brassclaw_monty_private_terminals IN ACCESS EXCLUSIVE MODE",
+            "LOCK TABLE brassclaw_monty_private_terminals IN SHARE MODE",
             "INSERT INTO brassclaw_monty_private_terminals%",
         ),
         Writer::Delivery => (
-            "LOCK TABLE brassclaw_monty_private_deliveries IN ACCESS EXCLUSIVE MODE",
+            "LOCK TABLE brassclaw_monty_private_deliveries IN SHARE MODE",
             "INSERT INTO brassclaw_monty_private_deliveries%",
         ),
     };
