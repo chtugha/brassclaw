@@ -1316,6 +1316,13 @@ struct TaskCatalogue {
 
 #[async_trait]
 impl MontyCatalogueProvider for Arc<InstalledMontyCatalogue> {
+    fn private_resource_store_settings(
+        &self,
+    ) -> Result<Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>, AgentLoopDriverError>
+    {
+        Ok(self.resource_store_settings.clone())
+    }
+
     fn observe_task_ports(
         &self,
         host: &Arc<MontyTaskHost>,

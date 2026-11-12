@@ -143,7 +143,23 @@ impl PgMontyAdmission {
 
     /// Persist intent before the first possible submit exchange. An uncertain
     /// acknowledgement stays fenced; missing receipt is never no-effect proof.
-    pub(crate) async fn mark_private_submission_intent(&self) -> Result<(), AgentLoopDriverError> {
+    pub(crate) async fn mark_private_submission_intent(
+        &self,
+        storage: &dyn brassclaw_resources::PgResourceStoreSettingsSource,
+    ) -> Result<(), AgentLoopDriverError> {
+        crate::bootstrap_evidence::io::bounded_for(
+            storage,
+            "private_submission_intent",
+            self.attempt.run_id.as_uuid(),
+            async { Ok(self.write_private_submission_intent().await) },
+        )
+        .await
+        .map_err(|error| AgentLoopDriverError::Unavailable {
+            reason: error.to_string(),
+        })?
+    }
+
+    async fn write_private_submission_intent(&self) -> Result<(), AgentLoopDriverError> {
         let AdmissionOrigin::Private(_) = &self.origin else {
             return Ok(());
         };
@@ -154,11 +170,12 @@ impl PgMontyAdmission {
             observation: &self.intent_observation,
             acquired: false,
         };
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| failed("monty_admission_database_failed"))?;
+        let mut client = brassclaw_pg::transaction_client::TransactionClient::from_client(
+            self.pool
+                .get()
+                .await
+                .map_err(|_| failed("monty_admission_database_failed"))?,
+        );
         #[cfg(test)]
         {
             client_scope.acquired = true;
@@ -206,7 +223,9 @@ impl PgMontyAdmission {
             self.intent_observation
                 .note(IntentBoundary::CommitAcknowledged);
         }
-        committed
+        committed?;
+        client.recycle_after_commit();
+        Ok(())
     }
 
     #[cfg(test)]

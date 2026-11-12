@@ -6,7 +6,10 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 use async_trait::async_trait;
@@ -20,6 +23,10 @@ use brassclaw_turns::{
     run_profile::{
         AgentLoopDriverError, AgentLoopHostError, CapabilitySurfaceVersion, MontyTaskAttempt,
     },
+};
+use futures::{
+    FutureExt,
+    future::{BoxFuture, Shared},
 };
 use serde_json::{Value, json};
 
@@ -87,6 +94,15 @@ pub(crate) trait CapturedMontyCatalogue: Send + Sync {
 
 #[async_trait]
 pub(crate) trait MontyCatalogueProvider: Send + Sync {
+    /// Chat/contained providers have no private store owner. This cannot supply
+    /// a fallback policy to a private execution path.
+    fn private_resource_store_settings(
+        &self,
+    ) -> Result<Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>, AgentLoopDriverError>
+    {
+        Err(failed("private_resource_store_settings_unavailable"))
+    }
+
     #[cfg(test)]
     async fn prepare_private_validator(
         &self,
@@ -182,6 +198,19 @@ pub(crate) trait TaskProviderBinding: Send + Sync {
     ) -> Result<Option<Arc<dyn TaskProviderLease>>, AgentLoopHostError>;
 }
 
+// The outer Result is actual task-join custody; the inner Result is the
+// original exchange outcome. Cancellation/unknown COMMIT is not a join failure.
+type IntentCompletion =
+    Shared<BoxFuture<'static, Result<Result<(), AgentLoopDriverError>, AgentLoopDriverError>>>;
+
+struct IntentExchange {
+    completion: IntentCompletion,
+    #[cfg(test)]
+    abort: tokio::task::AbortHandle,
+    #[cfg(test)]
+    panic: Option<tokio::sync::oneshot::Sender<()>>,
+}
+
 struct RetainedTask {
     host: Arc<MontyTaskHost>,
     retention: Arc<AttemptRetentionLease>,
@@ -194,6 +223,20 @@ struct RetainedTask {
     provider_watch: Option<tokio_util::task::AbortOnDropHandle<()>>,
     provider_port: Option<Arc<dyn TaskProviderLease>>,
     unsubmitted: Option<Arc<UnsubmittedTask>>,
+    intent_io: Option<IntentExchange>,
+}
+
+impl RetainedTask {
+    fn require_intent_joined(&self) -> Result<(), AgentLoopDriverError> {
+        if self
+            .intent_io
+            .as_ref()
+            .is_some_and(|io| io.completion.peek().is_none())
+        {
+            return Err(failed("private_submission_intent_not_joined"));
+        }
+        Ok(())
+    }
 }
 
 /// Retained before model/configuration awaits, including caller cancellation.
@@ -246,6 +289,9 @@ pub(crate) struct OwnedGlobalTaskFactory {
     cancellation: Arc<dyn CancellationAckSource>,
     retention: Arc<AttemptRetentionRegistry>,
     tasks: Mutex<HashMap<MontyTaskAttempt, RetainedTask>>,
+    // Read/written only while holding tasks: close and IO publication have one
+    // linearization point. Atomic keeps the existing registry interface intact.
+    intent_closed: AtomicBool,
     mcp_provider_binding: Option<Arc<dyn TaskProviderBinding>>,
     #[cfg(test)]
     private_settlement_pauses: Mutex<HashMap<TurnRunId, Arc<PrivateSettlementPause>>>,
@@ -356,10 +402,59 @@ impl OwnedGlobalTaskFactory {
             cancellation,
             retention: AttemptRetentionRegistry::new(service),
             tasks: Mutex::new(HashMap::new()),
+            intent_closed: AtomicBool::new(false),
             mcp_provider_binding,
             #[cfg(test)]
             private_settlement_pauses: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Close publication under the same lock used by before_submit, fence all
+    /// original IO hosts, then join every job without holding the registry lock.
+    /// This does not remove tasks or acknowledge native/DB settlement.
+    pub(crate) async fn close_private_intents(&self) -> Result<(), AgentLoopDriverError> {
+        let (completions, mut failure) = {
+            // Even a poisoned registry must not skip custody cleanup. No
+            // execution/settlement is authorized by inspecting its last handles.
+            let (tasks, failure) = match self.tasks.lock() {
+                Ok(tasks) => (tasks, None),
+                Err(poisoned) => (
+                    poisoned.into_inner(),
+                    Some(failed("monty_task_registry_failed")),
+                ),
+            };
+            self.intent_closed.store(true, Ordering::Release);
+            let completions = tasks
+                .values()
+                .filter_map(|task| {
+                    if task.host.private_claim().is_some() {
+                        task.host.fence_dispatch();
+                    }
+                    task.intent_io.as_ref().map(|io| io.completion.clone())
+                })
+                .collect::<Vec<_>>();
+            (completions, failure)
+        };
+        for completion in completions {
+            if let Err(error) = completion.await {
+                // Continue draining all remaining owners on a join failure.
+                failure.get_or_insert(error);
+            }
+        }
+        failure.map_or(Ok(()), Err)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn interrupt_private_intent_for_test(&self, host: &Arc<MontyTaskHost>, panic: bool) {
+        let mut tasks = self.tasks().unwrap();
+        let task = tasks.get_mut(&host.attempt()).unwrap();
+        assert!(Arc::ptr_eq(&task.host, host));
+        let io = task.intent_io.as_mut().unwrap();
+        if panic {
+            io.panic.take().unwrap().send(()).unwrap();
+        } else {
+            io.abort.abort();
+        }
     }
 
     fn tasks(
@@ -512,6 +607,7 @@ impl OwnedGlobalTaskFactory {
         {
             return Err(failed("monty_service_reconciliation_required"));
         }
+        task.require_intent_joined()?;
         let task = tasks
             .remove(&attempt)
             .ok_or_else(|| failed("monty_task_registry_failed"))?;
@@ -606,19 +702,104 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         if host.private_claim().is_none() {
             return Ok(());
         }
-        host.check_dispatch_open()
-            .map_err(|_| failed("monty_admission_fenced"))?;
-        let admission = {
-            let tasks = self.tasks()?;
+        // Availability lookup is synchronous and does not acquire a PG client.
+        let storage = self.catalogue.private_resource_store_settings()?;
+        let completion = {
+            let mut tasks = self.tasks()?;
             let task = tasks
-                .get(&host.attempt())
+                .get_mut(&host.attempt())
                 .ok_or_else(|| failed("private_original_host_unavailable"))?;
             if !Arc::ptr_eq(&task.host, host) || task.ports.is_none() || task.settled {
                 return Err(failed("private_original_host_invalid"));
             }
-            task.admission.clone()
+            if let Some(exchange) = &task.intent_io {
+                exchange.completion.clone()
+            } else {
+                if self.intent_closed.load(Ordering::Acquire) {
+                    return Err(failed("private_submission_intent_closed"));
+                }
+                host.check_dispatch_open()
+                    .map_err(|_| failed("monty_admission_fenced"))?;
+                let admission = task.admission.clone();
+                let host = host.clone();
+                #[cfg(test)]
+                let (panic_tx, panic_rx) = tokio::sync::oneshot::channel::<()>();
+                let run_id = host.attempt().run_id;
+                // Only the IO body runs here. No Factory/Driver/Service/Ports
+                // reference enters the job, and no job can submit native work.
+                let job = tokio_util::task::AbortOnDropHandle::new(tokio::spawn(async move {
+                    let exchange = async {
+                        tokio::select! {
+                            biased;
+                            () = host.cancellation_requested() => Err(failed("monty_admission_fenced")),
+                            result = admission.mark_private_submission_intent(storage.as_ref()) => result,
+                        }
+                    };
+                    #[cfg(test)]
+                    {
+                        tokio::select! {
+                            biased;
+                            Ok(()) = panic_rx => panic!("private intent test panic"),
+                            result = exchange => result,
+                        }
+                    }
+                    #[cfg(not(test))]
+                    exchange.await
+                }));
+                #[cfg(test)]
+                let abort = job.abort_handle();
+                let completion = async move {
+                    job.await.map_err(|error| {
+                        let kind = if error.is_cancelled() {
+                            "private_submission_intent_join_cancelled"
+                        } else {
+                            "private_submission_intent_join_panicked"
+                        };
+                        // Closed classification only: never copy panic payloads.
+                        // Retained completion and original before_submit still
+                        // carry this failure; job end is not a COMMIT outcome.
+                        tracing::warn!(%run_id, reason_kind = kind, "private intent IO job ended without exchange result");
+                        failed(kind)
+                    })
+                }.boxed().shared();
+                // No await or fallible operation between spawn and publication.
+                task.intent_io = Some(IntentExchange {
+                    completion: completion.clone(),
+                    #[cfg(test)]
+                    abort,
+                    #[cfg(test)]
+                    panic: Some(panic_tx),
+                });
+                completion
+            }
         };
-        admission.mark_private_submission_intent().await
+        completion.await?
+    }
+
+    async fn join_private_intent(
+        &self,
+        host: &Arc<MontyTaskHost>,
+    ) -> Result<(), AgentLoopDriverError> {
+        let completion = {
+            let tasks = self.tasks()?;
+            let Some(task) = tasks.get(&host.attempt()) else {
+                return Ok(());
+            };
+            if !Arc::ptr_eq(&task.host, host) {
+                return Err(failed("private_original_host_invalid"));
+            }
+            task.intent_io.as_ref().map(|io| io.completion.clone())
+        };
+        if let Some(completion) = completion {
+            // The original before_submit consumes the SQL outcome. Joining a
+            // cancelled/failed IO is cleanup, never a no-effect/settlement proof.
+            // Both Ok and JoinError establish the body's actual end. The
+            // original before_submit still receives the cached exchange/join
+            // failure. It may obtain the genuine Service proof and authenticate
+            // original DB settlement even when COMMIT's outcome was unknown.
+            let _ended = completion.await;
+        }
+        Ok(())
     }
 
     async fn build_private(
@@ -796,6 +977,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
                     provider_watch,
                     provider_port,
                     unsubmitted: None,
+                    intent_io: None,
                 },
             );
         }
@@ -950,6 +1132,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         host: Arc<MontyTaskHost>,
         proof: Arc<UnsubmittedTask>,
     ) -> Result<(), AgentLoopDriverError> {
+        self.join_private_intent(&host).await?;
         let (admission, provider) = {
             let mut tasks = self.tasks()?;
             let task = tasks
@@ -992,6 +1175,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         if !Arc::ptr_eq(&task.admission, &admission) {
             return Err(failed("monty_task_settlement_conflict"));
         }
+        task.require_intent_joined()?;
         task.retention.unsubmitted_settled()?;
         self.catalogue.release_task(host.attempt())?;
         tasks.remove(&host.attempt());
@@ -1003,6 +1187,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         host: Arc<MontyTaskHost>,
         receipt: Arc<TaskReceipt>,
     ) -> Result<(), AgentLoopDriverError> {
+        self.join_private_intent(&host).await?;
         let mut outcome = match &receipt.outcome {
             TaskOutcome::InternalCompleted { receipt_ref } => {
                 if !host.is_result_only_completion()
@@ -1157,6 +1342,7 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         ) {
             self.catalogue.release_task(host.attempt())?;
             if let Some(task) = tasks.get(&host.attempt()) {
+                task.require_intent_joined()?;
                 task.retention.completed()?;
             }
             tasks.remove(&host.attempt());
@@ -1222,6 +1408,7 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant for OwnedGl
                 provider_watch: None,
                 provider_port: None,
                 unsubmitted: None,
+                intent_io: None,
             },
         );
         Ok(admission)

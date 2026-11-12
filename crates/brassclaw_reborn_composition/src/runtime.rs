@@ -225,6 +225,8 @@ pub struct RebornRuntime {
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    monty_task_factory: Arc<crate::global_task_factory::OwnedGlobalTaskFactory>,
     #[cfg(all(
         feature = "postgres",
         feature = "skills-db",
@@ -1644,32 +1646,52 @@ impl RebornRuntime {
         if let Some(projection) = self.budget_event_projection {
             projection.shutdown().await;
         }
+        let mut failures = Vec::new();
         if let Err(error) = self.worker_handle.await {
-            if error.is_panic() {
-                tracing::error!(%error, "reborn worker task panicked during shutdown");
+            failures.push(if error.is_panic() {
+                "worker_shutdown_panicked"
             } else {
-                tracing::debug!(%error, "reborn worker task was cancelled during shutdown");
-            }
+                "worker_shutdown_cancelled"
+            });
         }
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         {
+            // Always drain the existing IO owner, including after worker panic
+            // or failed cancellation ACK. Later cleanup must not be skipped by ?.
+            if self
+                .monty_task_factory
+                .close_private_intents()
+                .await
+                .is_err()
+            {
+                failures.push("private_intent_shutdown_failed");
+            }
             let settings_result = self.monty_settings_owner.shutdown().await;
             let mut owner = self.global_monty_owner;
             owner.request_shutdown();
-            let exit = owner
-                .join()
-                .await
-                .map_err(|error| RebornRuntimeError::InvalidArgument {
-                    reason: error.to_string(),
-                })?;
+            match owner.join().await {
+                Ok(exit) => {
+                    if crate::global_monty_startup::check_shutdown(exit).is_err() {
+                        failures.push("global_monty_shutdown_failed");
+                    }
+                }
+                Err(_) => failures.push("global_monty_join_failed"),
+            }
             #[cfg(feature = "root-llm-provider")]
-            self.completed_turn_review_owner.join().await?;
-            crate::global_monty_startup::check_shutdown(exit)?;
-            settings_result.map_err(|error| RebornRuntimeError::InvalidArgument {
-                reason: error.to_string(),
-            })?;
+            if self.completed_turn_review_owner.join().await.is_err() {
+                failures.push("completed_turn_review_shutdown_failed");
+            }
+            if settings_result.is_err() {
+                failures.push("monty_settings_shutdown_failed");
+            }
         }
-        Ok(())
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(RebornRuntimeError::InvalidArgument {
+                reason: failures.join("; "),
+            })
+        }
     }
 
     fn turn_scope_for(&self, thread_id: &ThreadId) -> TurnScope {
@@ -2996,7 +3018,13 @@ pub async fn build_reborn_runtime(
     let monty_test_controls;
     // Global Monty is ready before any turn worker or trigger producer starts.
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    let (global_monty_owner, installed_catalogue, monty_driver, monty_settings_owner) = {
+    let (
+        global_monty_owner,
+        installed_catalogue,
+        monty_driver,
+        monty_settings_owner,
+        monty_task_factory,
+    ) = {
         let pool = services
             .pg_pool
             .clone()
@@ -3146,7 +3174,7 @@ pub async fn build_reborn_runtime(
         );
         #[cfg(test)]
         {
-            monty_test_controls = (driver.clone(), ports);
+            monty_test_controls = (driver.clone(), ports.clone());
         }
         #[cfg(not(test))]
         {
@@ -3167,6 +3195,7 @@ pub async fn build_reborn_runtime(
             catalogue,
             Some(driver as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
             settings_owner,
+            ports,
         )
     };
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
@@ -3863,6 +3892,8 @@ pub async fn build_reborn_runtime(
         services,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         global_monty_owner,
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        monty_task_factory,
         #[cfg(all(
             feature = "postgres",
             feature = "skills-db",

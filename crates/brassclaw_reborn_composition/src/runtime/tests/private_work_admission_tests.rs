@@ -2351,3 +2351,9 @@ async fn private_prefix_producer_held_ack_shutdown_fails_without_fabricated_succ
         );
     }
 }
+
+// Child module reuses the real private admission fixture and wire observers.
+mod intent_custody {
+    use super::*;
+    include!("private_intent_custody_tests.rs");
+}

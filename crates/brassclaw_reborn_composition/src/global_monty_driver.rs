@@ -115,6 +115,18 @@ pub(crate) trait GlobalTaskPortsFactory: Send + Sync {
         Err(failed("monty_private_preparation_unavailable"))
     }
 
+    /// Join only the original private IO job; no job exists for chat-only
+    /// factories. Missing private custody is unavailable, never a cleanup ACK.
+    async fn join_private_intent(
+        &self,
+        host: &Arc<MontyTaskHost>,
+    ) -> Result<(), AgentLoopDriverError> {
+        if host.private_claim().is_some() {
+            return Err(failed("private_submission_intent_join_unavailable"));
+        }
+        Ok(())
+    }
+
     async fn before_submit(&self, host: &Arc<MontyTaskHost>) -> Result<(), AgentLoopDriverError> {
         if host.private_claim().is_some() {
             return Err(failed("monty_private_submission_intent_unavailable"));
@@ -1109,6 +1121,7 @@ impl MontyTurnDriverPort for GlobalMontyDriver {
             "Monty attempt cancellation acknowledgement wait started"
         );
         tokio::time::timeout(policy.timeout, async {
+            self.ports.join_private_intent(&entry.host).await?;
             loop {
                 let changed = entry.changed.notified();
                 tokio::pin!(changed);
