@@ -141,14 +141,16 @@ implementation. Report the relevant architectural constraints with the package
 handoff; recording hashes alone is not an architecture review.
 
 Package chats commit only their own worktree branches, never edit the leading
-checkout, merge/push `main`, run local Cargo or run tests remotely. They share
+checkout, merge/push `main` or run local Cargo. Assigned remote tests require
+supported runners under the current Modal policy below. They share
 the existing qualified Modal builder, serialized through its controller and
 `/private/tmp/brassclaw-modal-build.lock`, including source synchronization,
 submission and receipt collection. Use immutable source snapshots, existing
 activation/resource/cost rules and one remote job at a time. No independent
 manual upload may overwrite another job's source. Eligible necessary Modal
 compilation has location authorization under this assignment; small checks do
-not justify cloud spending. Tests remain local and supervisor-owned.
+not justify cloud spending without a credible turnaround advantage. Final test
+acceptance remains supervisor-owned.
 
 The leading chat maintains the [package board](development-package-board.md)
 with package scopes, owners, dependencies, reserved interfaces/migrations,
@@ -173,7 +175,8 @@ its canonical target and lock; Modal sync/submission uses
 snapshot with its separate remote cache. Both settings and limits are documented
 in [the build environment contract](build-environments.md). This supersedes the
 former global-Cargo serialization rule and one-off parallel-host flag requirement.
-It does not change source custody, paid-build authorization or local-only tests.
+It does not change source custody. The current Modal policy below owns paid-work
+authorization and supported remote-test execution.
 
 The supervisor owns local Cargo, tests and build-artifact cleanup. Package chats
 use the existing Modal controller for authorized remote compilation.

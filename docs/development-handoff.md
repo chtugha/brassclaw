@@ -1,4 +1,37 @@
-## Latest — 2026-11-12 intermediate checkpoint
+## Latest — 2026-11-12 native repair and four GitHub CLI smoke failures
+
+Root remains supervisor; two active implementation owners are V-01
+(`01a1d1b4-f9ce-7612-a55e-14c3e2613ff5`, `e57e`) and V-03
+(`01a1d1eb-652b-7f12-9741-fe5b2036ecba`, implementation worktree
+`/private/tmp/brassclaw-v03-cli-smoke`, branch `codex/v03-cli-smoke`). V-02 is
+finished and integrated. Main is `bc2bf6089`; runtime source compiled in Run-53a
+is `2645a8853`, with only separately published host-Skill/CHANGELOG changes later.
+
+All 20 strict-Clippy findings are closed. PG strict checks and actual 11 library/
+four transport cases pass; 33 architecture cases pass. Original Source1 and
+pool-one/claim-lock native failures now pass, plus missing-observer-ACK coverage.
+Preserve the failed terminal full-source guard: an external `speedup2.md` plan
+appears during execution. A separate applicability review proves unchanged
+runtime inputs/executable hashes; it does not rewrite the failed receipt.
+
+Two connected custody cases run from retained programs in Screen
+`bob-native-connected-53a`, evidence under Run-53a `native-connected`. No Cargo
+is active. Keep runtime inputs frozen until those cases finish. V-01's new
+original-only bounded-admission interruption repair stays private. V-03's CLI
+provider/auth/port tests stay private; initial commit `aaa14fe3` is reviewed,
+and environment/dotenv/keychain isolation follow-ups are still in progress.
+Review both complete patches before one coherent compilation/test batch.
+
+The user's latest GitHub failures are historical run `41197330030`, job
+`124526200902`, exact log `/private/tmp/brassclaw-cli-github-41197330030.log`.
+Do not restore stub/Rust-loop fallback or remove the actual No-Match negative.
+The existing qualified literal-reply Recipe supplies provider-free success.
+See the [current repair report](validation/2026-11-12-native-cancellation-and-clippy-repair.md)
+for actual evidence. Version bump/changelog/Main push/new tag remain pending;
+all three Bob plans/full private N/R/Q/T remain open. Do not stage unowned
+`.DS_Store`, `.bob/skills`, `speedup.md` or `speedup2.md`.
+
+## Historical — 2026-11-12 intermediate checkpoint
 
 The supervisor's current work is validated intermediate publication, not a claim
 that all Bob plans are finished. Read the current top of

@@ -1,4 +1,30 @@
-## 2026-11-12 — Intermediate checkpoint: application built, scoped acceptance incomplete
+## 2026-11-12 — Native repair acceptance and CLI smoke follow-up in progress
+
+Run-53a at runtime source `2645a8853` closes all 20 original strict Composition
+Clippy diagnostics, with zero warnings. PostgreSQL all-targets strict Clippy,
+11 actual PG library cases, four real transport cases and 33 architecture cases
+pass. Both formerly failing native cases now pass: original Source1 (439.919 s)
+and constructed-one pool/original claim lock (802.550 s). The new missing-server-
+observer-ACK regression passes (6.915 s). Source1's earlier latency cause remains
+unproven; passive diagnostics are not claimed as a causal repair.
+
+The full-source terminal guard remains failed because an external, untracked
+`speedup2.md` plan appears during execution. Independent review verifies this is
+the only new input, absent from all actual compiler dep-info, with unchanged
+captured runtime inputs and original/retained program hashes. Original failed
+receipts are preserved. This is scoped acceptance, not final packaging uptake.
+
+V-01 repairs the additional concrete interruption-custody gap in bounded
+bootstrap admission. V-03 repairs the user's four historical GitHub CLI smoke
+failures through current DB provider/authentication and retained Recipe paths,
+including a real provider-free No-Match negative. Two connected native custody
+regressions execute in the background without recompilation. Release/version/
+tag publication remains pending the connected review and necessary acceptance.
+See the [repair report](validation/2026-11-12-native-cancellation-and-clippy-repair.md)
+and [package board](development-package-board.md). All three Bob plans and the
+full private N/R/Q/T stack remain open; no platform/deployment completion follows.
+
+## Historical 2026-11-12 — Intermediate checkpoint: application built, scoped acceptance incomplete
 
 Compiled source `9bb027f36` builds the actual `brassclaw-reborn` application,
 normal `monty_worker` and Composition test executable without compiler warnings.

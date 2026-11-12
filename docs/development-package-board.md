@@ -40,6 +40,49 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
+### Active follow-up — 2026-11-12, native failures and strict lint before release
+
+The user commissions repair of the two Run-52 native failures and all 20 Run-51
+strict-Clippy diagnostics, then changelog/version update and Main/tag publication.
+No success or release is claimed before their actual acceptance.
+
+- **V-01**, chat `01a1d1b4-f9ce-7612-a55e-14c3e2613ff5`, isolated worktree
+  `e57e`: original bootstrap admission deadline and acknowledged PostgreSQL
+  cancellation through existing IO/PG owners. Also owns the four overlapping
+  diagnostics in `bootstrap_checker_execution.rs`,
+  `bootstrap_pure_checker_fixtures.rs` and `pg_review_admission_source.rs`.
+- **V-02**, chat `01a1d1b4-f9d0-72a1-bb22-b2ebc2e161ef`, isolated worktree
+  `cf2c`: the other 16 diagnostics and their actual consumers; no changes to
+  V-01's three reserved lint files. Preserve wire bytes, original identities,
+  approvals, deadlines and transactional semantics.
+- **V-03**, chat `01a1d1eb-652b-7f12-9741-fe5b2036ecba`, isolated implementation
+  worktree `/private/tmp/brassclaw-v03-cli-smoke`, branch `codex/v03-cli-smoke`
+  (app's initial `6d42` checkout remains untouched): the user's four GitHub CLI
+  smoke failures. Reuse the DB provider/auth
+  facade and real retained Monty Recipe path; preserve explicit provider-free
+  No-Match rejection. No stub/Rust-loop fallback, hand-written approval or
+  weakening of runtime assertions. V-02 implementation is finished before V-03
+  starts, preserving the two-package concurrency limit.
+- **Supervisor**: source review, shared-boundary coordination, integrated serial
+  native compilation and actual acceptance, then release metadata and normal
+  Main/tag push. Native/strict failures remain open until exercised successfully.
+  No package Cargo, new paid image or competing compilation is commissioned.
+
+V-01 and V-02 start from published `364e0bf9c`. Full private N/R/Q/T integration
+and all three complete Bob plans remain distinct from this repair/release scope.
+
+V-01/V-02 runtime changes are integrated through `2645a8853`. Run-53a strict
+Composition Clippy closes all 20 diagnostics; PG strict Clippy, actual 11 PG
+library/4 transport cases and 33 architecture cases pass. The original two
+native failures and new missing-observer-ACK regression all pass on the exact
+compiled image. The full-source terminal guard detects only a new external
+`speedup2.md` plan; a separate applicability review preserves the failure and
+proves unchanged runtime inputs. See the
+[repair record](validation/2026-11-12-native-cancellation-and-clippy-repair.md).
+V-01 continues the concrete interruption-custody follow-up in its private
+worktree; V-03 starts from `bc2bf6089`. Release remains pending their connected
+review and necessary acceptance, not a claim of full Bob completion.
+
 ### Checkpoint terminal — 2026-11-12
 
 The application, normal worker and Composition harness build warning-free from

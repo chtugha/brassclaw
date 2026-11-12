@@ -90,7 +90,7 @@ sudo bash install.sh
 Pin to a specific version:
 
 ```bash
-sudo bash install.sh -v 1.7.0-rc.4
+sudo bash install.sh -v 1.7.0-rc.5
 ```
 
 The installer selects the newest published release containing the complete

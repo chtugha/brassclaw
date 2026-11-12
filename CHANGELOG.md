@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.5] - 2026-11-13
+
+This prerelease collects the reviewed intermediate v3 changes below. It does
+not certify full Bob-plan, general Pure-approval, platform or deployment
+completion. Dated validation entries describe their historical runs; the
+[current repair record](docs/validation/2026-11-12-native-cancellation-and-clippy-repair.md)
+records subsequent results and exact source/artifact scope.
+
+- **Original PostgreSQL cancellation custody**: Retain bounded cancellation of
+  the actual unconfirmed transaction connection, including backend identity and
+  server disappearance acknowledgement. Cancellation delivery alone cannot
+  release custody. Confirmed commits recycle normally; late observer capacity
+  cannot turn an unresolved acknowledgement into success. Preserve TLS hostname
+  and issuer checks and the originally selected local transport.
+- **Interrupted bootstrap admission**: Retain original IDs and a checked pending
+  reference before admission writes. The four bounded qualification consumers
+  keep the native original through lost acknowledgements and caller cancellation;
+  reconciliation reads and closes only that original. New owner digests cover
+  the moved implementation and protected reader. No admission replay, new VM,
+  approval shortcut or secret-bearing evidence is introduced.
+- **Strict lint and CLI contracts**: Resolve the 20 original Composition Clippy
+  findings through their actual callers without suppression. Replace historical
+  empty-provider, file-auth and stub-success test expectations with DB catalogue
+  persistence, native authentication refusal and actual retained Monty
+  Reply/History execution. Keep explicit No-Match failure, original-run evidence,
+  local egress traps, isolated PG ports, empty dotenv fixtures and Keychain
+  suppression in CLI tests. Runtime/compiler acceptance is recorded separately.
+
 - **Reborn feature skill — model requests and Sempai**: Clarify complete Kohai
   request construction through the existing qualified encoding path, with reused
   measurements for unchanged inputs and current dispatch checks. Separate pre-call
