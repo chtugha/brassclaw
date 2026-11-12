@@ -897,7 +897,7 @@ pub struct ProcessError {
     pub command: Option<Box<WorkerCommand>>,
     pub snapshot: Option<Box<ProcessSnapshot>>,
     pub diagnostic: Option<String>,
-    pub python_exception: Option<PythonExceptionObservation>,
+    pub python_exception: Option<Box<PythonExceptionObservation>>,
     pub exit_status: Option<ExitStatus>,
     pub containment_error: Option<io::Error>,
     pub reap_error: Option<io::Error>,
@@ -1315,7 +1315,7 @@ impl GlobalProcess {
                 .map(|request| Box::new(request.command));
             error.snapshot = Some(Box::new(reply.snapshot));
             error.diagnostic = reply.diagnostic;
-            error.python_exception = reply.python_exception;
+            error.python_exception = reply.python_exception.map(Box::new);
             guard.owner.attach_failures(&mut error);
             return Err(error);
         }

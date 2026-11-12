@@ -468,7 +468,7 @@ impl BoundPureContext {
                             return Err(process_error(error));
                         }
                         if let Some(exception)=error.python_exception.take() {
-                            return Ok(PureCandidateOutcome::PythonException { exception });
+                            return Ok(PureCandidateOutcome::PythonException { exception: *exception });
                         }
                     }
                     return Err(process_error(error));
@@ -793,7 +793,7 @@ fn encode_receipt(
     record.command = Some(command);
     record.snapshot = snapshot;
     record.diagnostic = error.and_then(|e| e.diagnostic.as_deref());
-    record.python_exception = error.and_then(|e| e.python_exception.as_ref());
+    record.python_exception = error.and_then(|e| e.python_exception.as_deref());
     let count = brassclaw_common::json::count_json_bytes(&record, Some(limit))
         .map_err(|_| invalid("Pure receipt exceeds its actual IPC-frame accounting"))?;
     let count = usize::try_from(count)
