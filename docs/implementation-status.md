@@ -26,6 +26,15 @@ then releases the freeze. No native case ran; this is not native acceptance.
 The preserved record is
 `target/validation/bob-native-repair-20261105/run-45-composition/terminal-disposition.json`.
 
+Run-46 passes all 68 default filesystem tests and 30 architecture cases; two
+architecture cases fail because separately included, parent-gated Auth/Codex
+test files are scanned as production. The original failures are preserved.
+Reviewed `3812dae05`, integrated as `2fba224e6`, adds explicit inner test gates
+to those two files and recognizes a real first inner gate in both existing
+scanners. Actual walker regressions retain rejection of ungated files and
+comment/string/nested-module markers. No filename exception or production
+permission is added. Its compilation and execution remain pending.
+
 Final checkpoint validation is pending on the coherent source, including the
 actual application executable, filesystem default/PostgreSQL checks and selected
 native regressions. Old native failures, genuine private Memory coverage,

@@ -65,6 +65,16 @@ edits. Its exact source/link/profile/worker audit preserves the original failed
 guard and releases the freeze. Necessary final cases move into the coherent
 checkpoint batch. S' earlier failures are not relabelled passed.
 
+Run-46 is terminal: all 68 default filesystem tests pass, along with 30
+architecture cases. Two production scanners incorrectly include dedicated
+Auth/Codex test files. T's bounded acceptance correction `3812dae05`, integrated
+as `2fba224e6`, uses explicit real inner test gates and conservative recognition
+in the existing walkers, with positive/negative filesystem regressions. Root
+reviews the full three-file diff and verifies every original/final blob and
+diff hash. No product behavior or broad filename exemption changes. The failed
+receipt remains; corrected architecture, lint, actual application/worker builds
+and native cases remain pending in the next coherent batch.
+
 ### Historical supervisor checkpoint — 2026-11-12, after Run-44
 
 Frozen Main `40af8aa9f` compiles Composition warning-free in 841.722 seconds;

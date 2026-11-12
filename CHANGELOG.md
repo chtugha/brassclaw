@@ -7,14 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Validated integration checkpoint preparation**: Add an independent bounded
+- **Intermediate integration checkpoint**: Add an independent bounded
   record-body projection to the existing filesystem API. PostgreSQL checks the
   requested kind, version and byte limit in one atomic read; Composite forwards
   only to its selected capable mount. Other backends explicitly remain
   unsupported, with no unbounded fallback or new permission. Reuse the shared
   wire-representation limits. The connected History/approval/cold-restore stack
   remains separate; exact build and native acceptance are recorded in the
-  implementation status rather than inferred from source integration.
+  implementation status rather than inferred from source integration. Give the
+  native Auth/Codex test modules explicit file-level test gates and recognize
+  those gates in the existing architecture scanners, while retaining checks
+  against ungated production files, comments and string markers.
 
 - **Run-44 scoped validation and generation checkout repair**: Composition
   compiles warning-free; the corrected writer-lock/READ ONLY case passes.
