@@ -559,6 +559,8 @@ impl PgMontyAdmission {
 
 #[path = "pg_monty_private_admission.rs"]
 mod private_origin;
+#[cfg(test)]
+pub(crate) use private_origin::SettlementPhase;
 pub(crate) use private_origin::{DeliveredPrivateCompletion, PrivateOriginalTerminalStatus};
 
 /// Shape validation is not completion proof. The private task owner verifies

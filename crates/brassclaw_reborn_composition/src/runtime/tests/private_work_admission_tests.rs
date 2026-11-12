@@ -2327,6 +2327,11 @@ async fn private_prefix_producer_held_ack_shutdown_fails_without_fabricated_succ
             ticket.wait_closed().await.unwrap(),
             brassclaw_pg::test_support::AckHoldEnd::Shutdown
         );
+        assert_eq!(
+            ticket.first_held(),
+            Some(held),
+            "real first Held observation must survive the later Closed status"
+        );
         assert!(ticket.release().await.is_err());
         assert!(finish_prefix_producer(producer).await.is_err());
         assert_backend_ended(&rig.pool, held.backend_pid, started).await;

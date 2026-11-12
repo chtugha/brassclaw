@@ -12,6 +12,8 @@ use std::{
     },
 };
 
+#[cfg(test)]
+use crate::pg_monty_admission::SettlementPhase;
 use async_trait::async_trait;
 use brassclaw_monty_host::service::{
     ServiceClient, TaskInput, TaskOutcome, TaskPorts, TaskReceipt, UnsubmittedTask,
@@ -1250,20 +1252,38 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
         // A transient journal failure must not discard a received Tool result.
         // This retries only its same idempotent evidence acknowledgement; the
         // original failed VM outcome stays failed and execution never resumes.
+        #[cfg(test)]
+        let settlement_observation = admission.test_settlement_started();
+        #[cfg(test)]
+        settlement_observation.note(SettlementPhase::ReconcileNativeStarted);
         ports
             .reconcile_received_native_results()
             .await
             .map_err(|_| failed("monty_native_result_reconciliation_required"))?;
+        #[cfg(test)]
+        settlement_observation.note(SettlementPhase::ReconcileNativeAcknowledged);
+        #[cfg(test)]
+        settlement_observation.note(SettlementPhase::ReconcileChildrenStarted);
         self.catalogue
             .reconcile_received_child_results(host.attempt())
             .await?;
+        #[cfg(test)]
+        settlement_observation.note(SettlementPhase::ReconcileChildrenAcknowledged);
         let report = match retained_report {
-            Some(report) => report,
+            Some(report) => {
+                #[cfg(test)]
+                settlement_observation.note(SettlementPhase::ReportReused);
+                report
+            }
             None => {
+                #[cfg(test)]
+                settlement_observation.note(SettlementPhase::ReportStarted);
                 let report = ports
                     .settlement_report(&receipt)
                     .await
                     .map_err(|_| failed("monty_task_execution_evidence_invalid"))?;
+                #[cfg(test)]
+                settlement_observation.note(SettlementPhase::ReportAcknowledged);
                 let mut tasks = self.tasks()?;
                 let task = tasks
                     .get_mut(&host.attempt())
@@ -1303,7 +1323,14 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             {
                 return Err(failed("monty_service_reconciliation_required"));
             }
-            admission.settle_private_native(outcome, &receipt).await?;
+            admission
+                .settle_private_native(
+                    outcome,
+                    &receipt,
+                    #[cfg(test)]
+                    &settlement_observation,
+                )
+                .await?;
             #[cfg(test)]
             {
                 let pause = self
@@ -1347,6 +1374,8 @@ impl GlobalTaskPortsFactory for OwnedGlobalTaskFactory {
             }
             tasks.remove(&host.attempt());
         }
+        #[cfg(test)]
+        settlement_observation.note(SettlementPhase::FactoryCompleted);
         Ok(())
     }
 }

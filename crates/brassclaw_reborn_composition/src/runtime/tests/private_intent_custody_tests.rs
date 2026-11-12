@@ -2,7 +2,7 @@
 // original Factory/Driver, actual wire response or exact private settlement.
 use brassclaw_product_workflow::MontyVmSettingsStore;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Cut {
     Deadline,
     PolicyEdit,
@@ -191,7 +191,17 @@ async fn intent_exchange(boundary: AckBoundary, cut: Cut) {
     pause.release.notify_one();
     let held = tokio::time::timeout(Duration::from_secs(30), async {
         tokio::select! {
-            held = ticket.wait_held() => held.unwrap(),
+            held = ticket.wait_held() => match held {
+                Ok(held) => held,
+                Err(_) => {
+                    eprintln!(
+                        "private intent hold ended: original={id} boundary={boundary:?} cut={cut:?} client_id={} backend_pid={} ticket_status={:?} first_held={:?} pool={:?} intent={:?}",
+                        old.0, old.1, ticket.status(), ticket.first_held(), fixture.pool.status(),
+                        factory.test_private_intent_observation(claim.attempt()).ok(),
+                    );
+                    panic!("original selected ACK hold ended before observation");
+                }
+            },
             result = &mut drive => {
                 use brassclaw_turns::run_profile::AgentLoopDriverError;
                 let kind = match result {

@@ -6,7 +6,7 @@ use std::{
     io,
     net::{IpAddr, Ipv4Addr, SocketAddr},
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicI32, AtomicU64, AtomicUsize, Ordering},
     },
 };
@@ -133,6 +133,7 @@ pub enum AckHoldStatus {
 
 struct HoldControl {
     backend_pid: i32,
+    first_held: OnceLock<AckHoldObservation>,
     status: watch::Sender<AckHoldStatus>,
     release: Mutex<Option<oneshot::Receiver<()>>>,
     abandoned: CancellationToken,
@@ -211,6 +212,9 @@ impl TransportControl {
         else {
             return Ok(false);
         };
+        // This bounded witness survives a later Closed watch value. Only the
+        // actual selected transport publication can establish it.
+        let _ = hold.first_held.set(observation);
         hold.status.send_replace(AckHoldStatus::Held(observation));
         Ok(true)
     }
@@ -245,6 +249,9 @@ pub struct AckHoldTicket {
 impl AckHoldTicket {
     pub fn status(&self) -> AckHoldStatus {
         *self.status.borrow()
+    }
+    pub fn first_held(&self) -> Option<AckHoldObservation> {
+        self.hold.first_held.get().copied()
     }
     pub async fn wait_held(&mut self) -> io::Result<AckHoldObservation> {
         loop {
@@ -510,6 +517,7 @@ impl AckCutTransport {
         let (release, receive) = oneshot::channel();
         let hold = Arc::new(HoldControl {
             backend_pid,
+            first_held: OnceLock::new(),
             status,
             release: Mutex::new(Some(receive)),
             abandoned: CancellationToken::new(),

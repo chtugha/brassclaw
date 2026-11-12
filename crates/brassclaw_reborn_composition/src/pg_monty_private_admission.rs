@@ -3,6 +3,12 @@ use super::*;
 use brassclaw_turns::private_work::ClaimedPrivateWork;
 use uuid::Uuid;
 
+#[cfg(test)]
+#[path = "pg_private_settlement_observation.rs"]
+mod settlement_observation;
+#[cfg(test)]
+pub(crate) use settlement_observation::{SettlementPhase, SettlementScope};
+
 /// Access contract chosen by the existing owner, never inferred from a failed
 /// SQL statement. Historical readers share one coherent snapshot; terminal and
 /// delivery writers retain their invocation-row custody until COMMIT.
@@ -19,6 +25,7 @@ enum InvocationRefsRead {
 pub(super) struct IntentObservation {
     reached: std::sync::atomic::AtomicU16,
     backend_pid: std::sync::atomic::AtomicI32,
+    settlement: settlement_observation::SettlementObservation,
 }
 #[cfg(test)]
 #[derive(Clone, Copy)]
@@ -92,6 +99,7 @@ impl IntentObservation {
             "boundaries": boundaries,
             "client_scope_ended": reached & (1 << IntentBoundary::ClientScopeEnded as u16) != 0,
             "claim_query_backend_pid": (pid > 0).then_some(pid),
+            "settlement": self.settlement.snapshot(),
         })
     }
 }
@@ -240,6 +248,10 @@ impl PgMontyAdmission {
     #[cfg(test)]
     pub(crate) fn test_private_intent_observation(&self) -> Value {
         self.intent_observation.snapshot()
+    }
+    #[cfg(test)]
+    pub(crate) fn test_settlement_started(&self) -> SettlementScope {
+        self.intent_observation.settlement.start()
     }
 }
 
@@ -455,6 +467,7 @@ impl PgMontyAdmission {
         &self,
         outcome: Value,
         receipt: &brassclaw_monty_host::service::TaskReceipt,
+        #[cfg(test)] observation: &SettlementScope,
     ) -> Result<(), AgentLoopDriverError> {
         use brassclaw_monty_host::service::TaskOutcome;
         match &receipt.outcome {
@@ -466,17 +479,37 @@ impl PgMontyAdmission {
                     && outcome["reason_kind"].as_str() == Some(reason_kind.as_str()) => {}
             _ => return Err(failed("private_terminal_original_invalid")),
         }
+        #[cfg(test)]
+        let mut client_scope = observation.client_scope();
+        #[cfg(test)]
+        observation.note(SettlementPhase::AcquireStarted);
         let mut client = self
             .pool
             .get()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        client_scope.acquired(&client);
+        #[cfg(test)]
+        observation.note(SettlementPhase::BeginStarted);
         let transaction = client
             .transaction()
             .await
             .map_err(|_| failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::BeginAcknowledged);
+        #[cfg(test)]
+        observation.note(SettlementPhase::AddressStarted);
         let address = self.private_settlement_address(&transaction).await?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::AddressAcknowledged);
+        #[cfg(test)]
+        observation.note(SettlementPhase::RefsStarted);
         let refs = self.private_invocation_refs(&transaction).await?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::RefsAcknowledged);
+        #[cfg(test)]
+        observation.note(SettlementPhase::EncodeStarted);
         let terminal = terminal::Terminal::native(
             address,
             receipt,
@@ -485,13 +518,28 @@ impl PgMontyAdmission {
                 .ok_or_else(|| failed("private_terminal_original_invalid"))?,
             refs,
         )?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::EncodeCompleted);
+        #[cfg(test)]
+        observation.note(SettlementPhase::CasStarted);
         self.settle_in_transaction(&transaction, &outcome).await?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::CasAcknowledged);
+        #[cfg(test)]
+        observation.note(SettlementPhase::TerminalStarted);
         self.record_private_terminal(&transaction, &terminal)
             .await?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::TerminalAcknowledged);
+        #[cfg(test)]
+        observation.note(SettlementPhase::CommitStarted);
         transaction
             .commit()
             .await
-            .map_err(|_| failed("monty_admission_database_failed"))
+            .map_err(|_| failed("monty_admission_database_failed"))?;
+        #[cfg(test)]
+        observation.note(SettlementPhase::CommitAcknowledged);
+        Ok(())
     }
 
     pub(crate) async fn settle_private_unsubmitted(
