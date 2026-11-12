@@ -347,10 +347,12 @@ async fn require_snapshot(tx: &tokio_postgres::Transaction<'_>) -> Result<(), Re
     Ok(())
 }
 
+type SelectionArrays = (Vec<Uuid>, Vec<i64>, Vec<usize>);
+
 fn selection_arrays(
     references: &[ComponentRevisionRef],
     limits: SnapshotReadLimits,
-) -> Result<(Vec<Uuid>, Vec<i64>, Vec<usize>), RevisionStoreError> {
+) -> Result<SelectionArrays, RevisionStoreError> {
     if references.is_empty() || references.len() > limits.max_revisions() {
         return Err(RevisionStoreError::Capacity);
     }
