@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Run-43 scoped validation and fixture repairs**: Composition compiles without
+  warnings; nine of twelve executed native cases pass, including the original
+  Source1, Prefix ACK-loss and seven intent-custody cases. Source2 remains
+  unresolved after confirmation. Preserve its failure and add passive same-read
+  diagnostics. Correct the actual BEGIN selector, construct true single-capacity
+  contention fixtures before startup and permit original/FK reads while holding
+  writer INSERTs. Corrected native cases remain pending; full Bob and private
+  qualification/cold-restore acceptance remain open.
+
 - **Reborn feature development skill**: Synchronize both skill copies with the
   three Bob repair owners and dependency order, original-work/settled-verdict
   boundaries and connected versioned-reader migration. Route the Prefixless

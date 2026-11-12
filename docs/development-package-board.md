@@ -37,7 +37,47 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current source integration — 2026-11-12, S custody and original-reader fixes
+### Current supervisor checkpoint — 2026-11-12, after Run-43
+
+Run-43 compiles the actual Composition harness warning-free in 588.103 seconds
+at frozen `3c04cb307`, verifies the unchanged worker and real profiles, then
+executes twelve native cases: nine pass and three fail. Source1 passes its narrow
+structural original/readback path; Prefix lost-ACK and seven intent-custody cases
+pass. Source2 still fails during projection after confirmation. Its underlying
+reader error remains unknown. Preserve the original failed/gated batch and the
+independent writer-lock failure; neither is full Q1 or Bob completion.
+
+Reviewed S follow-ups are integrated: passive same-read projection diagnostics
+`e2a08a856`, actual BEGIN frontend selector `1fa18697f`, genuinely constructed-one
+contention fixture `ad56389d0`, and SHARE table-lock fixture `e75058e91`. The latter
+permits required original/FK reads while preserving the actual writer INSERT and
+invocation-row lock oracles. All corrected native cases remain unrun. Root will
+bundle only these necessary diagnostics/corrections; passing unrelated cases
+retain their exact earlier scope. No active Root build or source freeze exists
+at this checkpoint.
+
+**Current source owner: Q.** Its grant joins real T History proofs to fresh `/2`
+publication and original-only cold restore, including the missing original Reply
+constructor in its existing owner. Authored `/5` and V216 stay exclusively with Q.
+Restoration must not call qualification or perform effects. N/R private sources
+remain unaccepted. S is source-idle after its small reviewed corrections.
+
+T's actual chat is `01a1ce85-3f4a-7cb0-a3d4-3afa762915d3`, worktree `48ff`; its
+complete source through `d6fdddb53` awaits Root's connected review. Further work
+is read-only: the existing ResultOnly usage has Chat origin and does not prove a
+real private Memory warning. Investigate the existing N installation-spec owner
+without falsifying Prefix/Pure originals or introducing a parallel runner.
+Technical questions go directly to Root under the user's explicit authorization.
+U, `01a1d036-e92b-7201-b6b8-63dfe9d13b5b` in `07e6`, has a concrete read-only
+class-validator/Q1 proposal only; no source/format/migration grant.
+
+The external four-file skill/documentation update and its isolated publication
+are preserved, including local merge `fa6bc71e6`. CHANGELOG is embedded runtime
+content; the independent writer-lock receipt detects that source change and
+cannot certify the new head. Run-43 terminal audit releases the freeze and
+preserves all original failures. All three Bob plans remain open.
+
+### Historical source integration — 2026-11-12, S custody and original-reader fixes
 
 S's `0493cd7b8` and `4a16f791a` are fully source-reviewed and integrated as
 `27db74ed8` and `8966246a7`. All eleven combined final paths match their reviewed
@@ -54,7 +94,7 @@ reviewed handoff and receives concrete validation corrections if needed. T setup
 still has no usable chat ID. All three Bob plans remain open; source integration
 does not constitute native acceptance, approval or activation.
 
-### Current supervisor checkpoint — 2026-11-12, after Run-41
+### Historical supervisor checkpoint — 2026-11-12, after Run-41
 
 Actual CLI-OFF compilation is warning-free; its exact status test passes
 (one executed/none ignored). Worker and Composition compile without warnings;

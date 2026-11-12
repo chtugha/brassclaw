@@ -1,4 +1,47 @@
-## 2026-11-12 — Private IO custody and snapshot-reader repairs integrated as source
+## 2026-11-12 — Run-43: scoped passes, unresolved Source2 and corrected fixtures
+
+Frozen `3c04cb307ef72d009d819387464fe9f67836fd84` compiles the Composition library
+harness without warnings in 588.103 seconds. Actual profiles and unwind metadata
+pass; the unchanged worker's 903 captured inputs and canonical/retained images
+are verified. Twelve native cases execute: nine pass and three fail, none ignored.
+Source1 now passes its complete original structural Source/readback path. This
+does not establish general Pure approval or full Q1 qualification. The passing
+cases also cover Prefix delivery ACK-loss readback and seven intent-custody
+scenarios, including parked IO, captured policy, cancellation, concurrent Stop,
+abort/panic, shutdown and recycling/publication races.
+
+Source2 still fails during original projection, now after confirmation exists.
+Its underlying reader error is not yet identified. The other failures expose
+two test-fixture defects: a BEGIN wire selector did not match the actual
+`START TRANSACTION` frontend message, and post-start pool resizing did not prove
+actual one-connection capacity. Passive reader diagnostics and the exact selector
+repair are integrated as `e2a08a856` and `1fa18697f`; `ad56389d0` constructs the
+contention fixture with capacity one before bootstrap. Their new native results
+remain pending; no production timeout or pool size is increased.
+
+The writer-lock case was gated in the original batch, then independently executed
+and failed during authoring, before its writer-lock oracle. Its table lock blocked
+required original/FK reads. Reviewed `e75058e91` changes only the two test table
+locks to SHARE, retaining the actual INSERT blocker, invocation-row NOWAIT lock,
+release and READ ONLY original-readback assertions. Revalidation remains pending.
+The independent run also detects a concurrent four-file documentation change,
+including embedded CHANGELOG content. Those commits are preserved; neither that
+run nor the earlier images establish current-head acceptance. Exact failures and
+the source-change disposition remain in
+`target/validation/bob-native-repair-20261105/run-43-composition/terminal-disposition.json`.
+
+Q now owns the connected fresh `/2` catalogue and original-only cold restore,
+including the actual Reply and T History proof readers; `/5` and V216 stay with Q.
+T's private handoff `d6fdddb53` is under connected source review, not accepted or
+activated. Its contained ResultOnly usage still has Chat origin and therefore is
+not evidence of a real `TaskOrigin::Private` Memory-warning regression. T is
+examining the existing N installation-spec owner for that distinct case; no
+Prefix/Pure original or fabricated chat may stand in for it. U has only a
+read-only proposal for genuine class-validator/Q1 work, with no source grant.
+N/R and the remaining qualification/cutover work remain unaccepted. All three
+Bob plans remain open.
+
+## Historical 2026-11-12 — Private IO custody and snapshot-reader repairs integrated as source
 
 Reviewed S source is integrated as `27db74ed8` and `8966246a7`; all eleven final
 source paths match the reviewed immutable package bytes. The first change uses
