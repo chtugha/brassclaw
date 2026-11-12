@@ -759,6 +759,7 @@ impl PgPrefixGenerations {
         if let Some(existing) = tx.query_opt("SELECT generation_bytes,profile_revision FROM reborn_prefix_generations WHERE profile_name=$1 AND generation_id=$2", &[&profile,&generation]).await.map_err(|_|Error::Unavailable)? {
             if existing.get::<_,String>(0)!=request.generation_bytes || existing.get::<_,i64>(1)!=revision {return Err(Error::Conflict);}
             tx.commit().await.map_err(|_|Error::Unavailable)?;
+            drop(client);
             return self.get(profile,&generation).await;
         }
         let row = tx
@@ -795,6 +796,7 @@ impl PgPrefixGenerations {
             return Err(Error::Conflict);
         }
         tx.commit().await.map_err(|_| Error::Unavailable)?;
+        drop(client);
         self.get(profile, &generation).await
     }
     pub(crate) async fn list(&self, profile: &str) -> Result<Vec<PrefixGenerationSummary>, Error> {
