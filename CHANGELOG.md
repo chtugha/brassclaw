@@ -7,17 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Feature-off CLI and Source diagnosis (validation pending)**: Align helper
+- **Run-41 scoped validation**: Actual CLI-OFF compilation is warning-free and
+  its model-status regression passes. Worker/Composition compilation and real
+  profile/unwind checks pass. After audited disposal of old standalone objects,
+  reuse the same executable images without recompilation. Both Source cases
+  now reach settled native delivery with one recorded Tool invocation, but fail
+  original projection before confirmation. Preserve those failures; historical
+  readback, private qualification packages and full Bob acceptance remain open.
+
+- **Feature-off CLI and Source diagnosis**: Align helper
   compilation with actual caller features and use the existing Engine import,
   addressing the full CLI-OFF warning set without suppression. Add passive
   private-admission progress and independent PostgreSQL wait diagnostics for
   the unresolved Source case; preserve actual cancellation and settlement rules.
 
-- **Private task admission (validation pending)**: Reuse the existing strict
+- **Private task admission (scoped validation)**: Reuse the existing strict
   message-free envelope validator in WorkerRecipes, preserving chat validation,
   run deduplication and host-generated tokens. Add real-worker regression source;
-  compilation and native acceptance remain pending. Investigate the separate
-  size-one-pool Source failure independently.
+  its standalone admission/rejection regression remains unrun. Run-41 compiles
+  the product path and advances both real Source cases beyond admission to
+  persisted delivery; their subsequent projection failures remain unresolved.
+  Investigate the original reader independently of the confirmed IO-custody gap.
 
 - **Original Queue custody and Source diagnostics**: Correct test selectors to
   target the real Queue transaction and retain authentic test observation limits

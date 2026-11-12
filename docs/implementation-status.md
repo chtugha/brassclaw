@@ -1,3 +1,42 @@
+## 2026-11-12 — Run-41: CLI-OFF passes; Source reaches delivery, projection fails
+
+At frozen `3d059ef31320c2c3980bbdf5441b5b696f04a1bf`, the actual no-default-feature
+CLI compiles without warnings in 82.164 seconds. Its exact model-status test
+passes, one executed/none ignored. This validates the J/P feature-boundary
+repairs; it does not broaden the previous default-feature or serving receipts.
+The worker and Composition library harness also compile without warnings
+(14.334 and 1,315.931 seconds). Actual profiles remain intact, with
+`__eh_frame` at 13,610,276 bytes and valid unwind metadata.
+
+The first post-build disk gate stops before native execution at 93.009% usage.
+Audited removal of old standalone Rust object files preserves every current
+incremental session, library, dependency file and 50 verified executable paths.
+Runtime resumes from the same images at 88.958% usage, without recompilation.
+The original failed gate and the separate resumption record remain preserved.
+
+Both original Source tests still fail, in 401.937 and 411.701 seconds, at
+`original_projection_error`. Both now record one Tool invocation, settled work
+and admission, and persisted terminal and delivery records; confirmation remains
+absent. The earlier worker `InvalidInputs` boundary is passed. These facts do
+not prove a valid historical delivery/readback or complete Source qualification.
+The second test's independent PostgreSQL observation sees an idle backend,
+ClientRead and no blockers; the earlier pre-admission stall is not established
+as this failure's cause. Trace the original delivery/projection/confirmation
+reader before changing any verification or replaying work.
+
+Terminal review verifies complete source and canonical/retained images, confirms
+owned compilers/workers have ended and releases the freeze. Evidence remains in
+`target/validation/bob-native-repair-20261105/run-41-composition/`, particularly
+`terminal-disposition.json`, `runtime-resume-completed.json` and both original
+logs under `focused-corrections-1/`.
+
+Q owns the reserved original-manifest `/2`/`/5` and V216 reader/publication work.
+S implements the separately source-confirmed unbounded intent IO/client-custody
+repair through the existing ACK, Factory, Driver and shutdown owners. Its private
+source is not accepted; this gap is not asserted as the Source projection cause.
+N/R remain private and unaccepted. The History package creation is still pending
+without a usable chat ID. All three Bob plans remain open.
+
 ## 2026-11-12 — CLI-OFF compilation and targeted Source diagnostics
 
 Run-40 compiles the actual CLI with no default features at

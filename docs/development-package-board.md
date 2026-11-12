@@ -37,7 +37,41 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current supervisor checkpoint — 2026-11-12, before combined revalidation
+### Current supervisor checkpoint — 2026-11-12, after Run-41
+
+Actual CLI-OFF compilation is warning-free; its exact status test passes
+(one executed/none ignored). Worker and Composition compile without warnings;
+actual profiles/unwind checks pass. The initial disk gate stops native execution;
+audited disposal of old standalone objects preserves all current incremental
+caches, libraries and executable evidence. Both Source cases then execute from
+the same retained images, without another compilation.
+
+Both fail at original projection, after one recorded Tool invocation and
+persisted settled work/admission, terminal and delivery. No confirmation exists.
+This passes the earlier worker-envelope boundary, without accepting the Source
+workflow or historical reader. The size-one test observes an idle ClientRead
+backend without blockers. Its earlier pre-admission holder remains unproven.
+Exact outcomes, source/image checks, failed disk gate and runtime resumption are
+recorded in Run-41's `terminal-disposition.json`; the source freeze is released.
+
+**Current source owners: Q and S.** Q owns the reserved
+`installation-monty-catalogue/2`, `authored-monty-catalogue/5` and new V216;
+per-program original R/S, catalogue C, exact base/slot restoration and coherent
+readers/publication stay in that one owner. S owns the independently confirmed
+intent-IO custody repair: existing ACK source, one original bounded exchange,
+TransactionClient, actively owned IO-only completion, real Stop/shutdown drain.
+No new queue, VM, workflow, deadline constant or replay is authorized. Its private
+implementation and regression sources require connected review and acceptance.
+The new projection outcome additionally informs S's read-only original-admission
+diagnosis; no approval or delivery check may be weakened on a guess.
+
+T-01 History chat setup remains queued without a usable chat ID; its existing
+worktree is not proof of an active package. The intended usage saves a completed
+turn through the existing memory-write usage, distinct from history retrieval.
+No third implementation owner is active. N/R/J/P are source-idle; N/R private
+qualification/Flow sources remain unaccepted. No Bob plan is complete.
+
+### Historical supervisor checkpoint — 2026-11-12, before combined revalidation
 
 Run-40 CLI-OFF compiles in 181.295 seconds, with 22 actual warning diagnostics
 at 15 distinct sites. No test runs; artifacts/source and previous default images

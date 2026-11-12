@@ -477,6 +477,14 @@ semantics, and actual retention/cleanup behavior accepted through native tests.
 
 - [ ] **B3-09 — Connect WebUI/CLI/API status without leaking custody.**
 
+**Scoped CLI acceptance — 2026-11-12:** Run-41 builds the actual CLI with no
+default features without warnings and passes its exact model-status regression
+(one executed/none ignored). The existing default-feature database-reader
+receipt retains its separate scope. This closes the observed feature-off
+warning/configuration failure, not this whole step, browser/issuer acceptance
+or serving qualification. Use the [current status and exact receipts](docs/implementation-status.md)
+for the subsequent Source projection failure and remaining connected work.
+
 **Partial implementation — 2026-11-03:** the existing provider-mutation reader
 and reconciler now accept the login observer's abort/current-context fence and
 its exact receipt validator. They check those before dispatch and after the
