@@ -5,7 +5,9 @@ import base64
 import json
 import shlex
 
-RUST = "1.96.0"
+RUST = "1.98.1"
+# Preserve the pinned bootstrap layers; install the selected compiler afterwards.
+BOOTSTRAP_RUST = "1.96.0"
 TARGET = "aarch64-apple-darwin"
 BASE = "rust@sha256:811d6caab4a84e6148c8722128993c1caf152156868b2b66f3a26af189b0dad8"
 OSXCROSS = "27d21e4977c9751d01199c7a226a6faf494c3dd9"
@@ -52,12 +54,20 @@ def image(sdk, config):
                       "tar xzf /tmp/osxcross.tar.gz --strip-components=1 -C /opt/osxcross")
         .add_local_file(sdk, sdk_dest, copy=True)
         .run_commands(f"echo '{config['sdk_sha256']}  {sdk_dest}' | sha256sum -c -",
-                      f"rustup target add {TARGET} --toolchain {RUST}",
-                      f"rustup component add clippy rustfmt --toolchain {RUST}")
+                      f"rustup target add {TARGET} --toolchain {BOOTSTRAP_RUST}",
+                      f"rustup component add clippy rustfmt --toolchain {BOOTSTRAP_RUST}")
         .workdir("/opt/osxcross")
         .run_commands("timeout 1200 env JOBS=2 UNATTENDED=1 BUILD_FLAVOR=llvm ENABLE_REPLACEMENT_LIPO=0 ENABLE_ARCHS=arm64 OSX_VERSION_MIN=14.0 SDK_VERSION=26.5 ./build.sh")
         .env(env)
+        .run_commands(f"rustup toolchain install {RUST} --profile minimal --component clippy,rustfmt --target {TARGET}",
+                      f"rustup default {RUST}",
+                      f"test \"$(rustc --version | cut -d ' ' -f 2)\" = {RUST}",
+                      f"printf 'fn main() {{}}\\n' | rustc --edition 2024 --crate-name image_probe --target {TARGET} -C linker={env['CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER']} -o /tmp/image-probe -",
+                      "file /tmp/image-probe | tee /opt/osxcross/rust-probe.txt",
+                      "file /tmp/image-probe | grep -q 'Mach-O 64-bit arm64'",
+                      "rm /tmp/image-probe")
         .run_commands("mkdir -p /opt/brassclaw", "rustc -Vv > /opt/brassclaw/rust.txt",
+                      "cargo -V > /opt/brassclaw/cargo.txt",
                       "dpkg-query -W > /opt/brassclaw/packages.txt",
                       "clang --version > /opt/brassclaw/clang.txt",
                       "ld64.lld --version > /opt/brassclaw/linker.txt",

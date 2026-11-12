@@ -14,11 +14,14 @@ queue, component approval or evidence of completed Bob plans.
   before this direction retains its real tested/untested scope.
 - Package chats: their own isolated worktree/branch; mandatory architecture and
   owner-plan reading, implementation, self-review, tests as source, eligible
-  Modal compilation and exact commit/receipt handoff. No local Cargo, remote
-  tests, main edits/push or nested delegation. Each handles only its package and
+  Modal work and exact commit/receipt handoff. No local Cargo, main edits/push
+  or nested delegation. Remote tests require an assigned check and supported
+  runner under the updated cost policy. Each handles only its package and
   its review corrections; the next package receives a new chat.
-- Modal: existing activated Apple image `im-S1cpT9G1fsMPpwjISvBSlK`, environment
-  `brassclaw`, volume `brassclaw-build`. Use the existing controller and shared
+- Modal: the earlier qualified Apple image was `im-S1cpT9G1fsMPpwjISvBSlK`.
+  Its Rust-1.98.1 successor `im-Wxm74Dwhp6v20AWvy6T6aj` is prepared, not activated;
+  qualification does not transfer. Environment `brassclaw`, volume
+  `brassclaw-build`. Use the existing controller and shared
   `/private/tmp/brassclaw-modal-build.lock` for the entire synchronization/build/
   receipt lifetime. No parallel remote job or standalone competing upload.
   Keep existing cost/activation policies; no provisioning or speculative runs.
@@ -37,7 +40,28 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current user priority — 2026-11-12, validated runnable checkpoint
+### Checkpoint terminal — 2026-11-12
+
+The application, normal worker and Composition harness build warning-free from
+`9bb027f36`; actual version/help smokes pass. Native cases pass 3/5: bounded PG
+projection, function-subject/unknown-COMMIT retention and original Pure outcome
+observation. Source1 startup fixture admission and physical backend cancellation
+acknowledgement fail. Composition strict Clippy retains 20 existing diagnostics;
+33 architecture cases pass and applicable FS/Memory checks are reused. See the
+[exact checkpoint report](validation/2026-11-12-runnable-intermediate-checkpoint.md).
+
+Root integrates reviewed checkpoint corrections and ready Modal compiler helpers,
+records failures and publishes Main. The original failed manifests remain failed;
+separate source/artifact reviews establish applicability of the retained images.
+No more compile is needed for these unembedded development-documentation changes.
+All owned validation processes are terminal and their source freeze is released.
+The 12 non-equivalent side histories, including the full connected N/R/Q/T stack,
+remain preserved. No new package or private-stack integration is commissioned.
+All three Bob plans remain open. Follow-up work first diagnoses original
+`checker_fixture_admission` phases and actual cancellation/server acknowledgement;
+do not mask either failure with larger limits or weaker tests.
+
+### Historical user-priority checkpoint preparation — 2026-11-12
 
 The user prioritizes validating/integrating ready work, updating CHANGELOG and
 publishing a runnable intermediate Main state while credits are limited. Further

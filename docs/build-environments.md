@@ -4,7 +4,11 @@ The authoritative checkout remains the repository root. One native local Cargo
 execution and one Modal compilation may run concurrently. Each environment
 serializes its own jobs; they do not share mutable compiler inputs or caches.
 This supersedes the old global serial-build rule and temporary parallel-host
-exception. It does not authorize paid work, change activation, or move tests.
+exception. The user's 2026-11-12 authorization permits test builds, tests and
+other necessary Modal work when it credibly reduces total completion time,
+without a per-batch question. See the current
+[cost and validation policy](development-policy.md#modal-usage-and-cost-policy-updated-2026-11-12).
+Activation and actual controller/runtime support remain prerequisites.
 
 ## Settings and commands
 
@@ -116,8 +120,12 @@ distributed lock for independent submitting machines; do not introduce a second
 controller host writing the same Volume under this contract.
 
 Each result retains its own exact command, source manifest, image, resources and
-artifact identities. Native tests remain local, including test compilation, and
-use their existing database/runtime locks. Different snapshots establish
+artifact identities. Native tests use their existing database/runtime locks;
+supported remote execution needs equivalent fixture custody and compatible
+artifacts. The current Apple controller still supports CLI dev/release builds
+only; the [combined-build plan](../combined-building_v3_at_bob3.md) describes
+future extensions. User permission does not make test transport implemented.
+Different snapshots establish
 different claims; remote compilation cannot certify a newer native test result.
 Screen can keep either launcher running detached; it does not replace these
 locks, source custody or evidence capture.

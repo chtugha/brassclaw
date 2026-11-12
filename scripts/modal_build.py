@@ -43,13 +43,20 @@ def rust_version():
 
 
 def image_name(platform="linux"):
-    return "brassclaw-rust:" + rust_version() + ("-apple-arm64" if platform == "apple" else "")
+    return "brassclaw-rust:" + compiler_version(platform) + ("-apple-arm64" if platform == "apple" else "")
+
+
+def compiler_version(platform):
+    if platform == "apple":
+        from modal_apple_toolchain import RUST
+        return RUST
+    return rust_version()
 
 
 def setup(args):
     import modal
 
-    version = rust_version()
+    version = compiler_version(args.platform)
     image = (
         modal.Image.from_registry(f"rust:{version}-slim-bookworm", add_python="3.13")
         .apt_install("build-essential", "pkg-config", "libssl-dev", "cmake", "clang",
@@ -64,8 +71,6 @@ def setup(args):
     if args.platform == "apple":
         from modal_apple_toolchain import configuration, image as apple_image
         config = configuration(args.sdk)
-        if config["rust"] != version:
-            raise ValueError("Pinned image Rust differs from project MSRV")
         image = apple_image(args.sdk, config)
     app = modal.App("brassclaw-build-setup", include_source=False)
     with modal.enable_output(), app.run(environment_name=args.environment):
@@ -109,8 +114,8 @@ def run(args):
         manifest = json.loads(manifest_bytes)
         verify_source(ROOT, manifest)
         prepared = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
-        if prepared["rust_version"] != rust_version():
-            raise ValueError("Prepared image Rust version differs from the current project MSRV")
+        if prepared["rust_version"] != compiler_version(args.platform):
+            raise ValueError("Prepared image Rust version differs from the selected compiler")
         if prepared["environment"] != args.environment:
             raise ValueError("Prepared image environment differs")
         # Named images are lazy and cannot be hydrated on demand. Use the
@@ -345,7 +350,9 @@ def main():
     if args.action == "setup":
         if not args.confirmed_paid_setup:
             parser.error("Paid image setup requires an explicit approved build/setup cost decision")
-        setup(args)
+        with modal_lock():
+            assert_remote_settled()
+            setup(args)
     elif args.action == "run":
         raise SystemExit(run(args))
     elif args.action == "settings":

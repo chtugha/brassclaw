@@ -1,4 +1,49 @@
-## 2026-11-12 — Runnable intermediate checkpoint: bounded filesystem slice
+## 2026-11-12 — Intermediate checkpoint: application built, scoped acceptance incomplete
+
+Compiled source `9bb027f36` builds the actual `brassclaw-reborn` application,
+normal `monty_worker` and Composition test executable without compiler warnings.
+The application reports `1.7.0-rc.4`; `--version` and `--help` pass. This is a
+runnable development build, not release, deployment or full-runtime acceptance.
+The following host-Skill publication/preserving merge changes only development
+instructions. Subsequent checkpoint documentation and Modal helpers are not
+runtime/compiler inputs. Exact identities, commands and evidence are in the
+[checkpoint report](validation/2026-11-12-runnable-intermediate-checkpoint.md).
+
+Five genuine native cases execute from the retained images: bounded PostgreSQL
+record projection, coordinated function-subject retention/unknown-COMMIT retry
+and original Pure return/exception/contract-defect observation pass. Source1
+fails during fresh bootstrap at `checker_fixture_admission` with the captured
+2000 ms IO deadline, before its source assertions. The genuinely constructed-one
+pool contention case now completes both fresh bootstraps, but its claim-lock
+branch fails to acknowledge physical PostgreSQL backend termination while the
+original lock remains held. Returning `Unavailable`, ending the client scope
+and retiring the pool connection are not that acknowledgement. Both failures
+remain open; no deadline/pool increase or weaker assertion is accepted as repair.
+
+All 33 architecture cases pass. Applicable evidence is reused for 68 default
+filesystem tests, strict PostgreSQL filesystem Clippy and two Memory codec tests.
+Composition strict Clippy still fails with 20 preexisting diagnostics in 13
+unchanged files; the report enumerates them for B3-12/B2-09. Original failed
+full-tree guards remain preserved separately from reviewed non-runtime changes;
+neither compilation nor the three passing native cases makes those guards green.
+
+Final inventory: 47 local branches, including 44 `codex/*`; 34 of 46 side
+histories are ancestral or patch-equivalent, with 12 non-equivalent histories.
+Those include superseded variants and the connected private N/R/Q/T stack,
+not twelve independent features. Only the independent bounded-filesystem slice
+and reviewed checkpoint corrections are integrated. Full private History,
+qualification/cold restore, general Pure approval and all three Bob plans remain
+open. No private branch or worktree is discarded.
+
+The Modal Apple helper now selects Rust 1.98.1 independently of project MSRV.
+Its real compiler/link probe and 16 local controller tests pass, but the new
+image is prepared, not activated; no new project/cloud build was launched for
+this checkpoint. The current user authorization permits useful remote tests
+and other work; actual unsupported controller modes remain implementation work.
+The [combined-build plan](../combined-building_v3_at_bob3.md) is planning only.
+All checkpoint build/test processes are terminal and the source freeze is released.
+
+## Historical 2026-11-12 — Intermediate checkpoint preparation: bounded filesystem slice
 
 The user reprioritized validated integration and publication of a runnable
 intermediate state before further Bob implementation. The branch inventory

@@ -236,7 +236,17 @@ clean the repository's entire `target` directory because it contains evidence.
 Follow the unchanged free-space rules and choose checks for the merged claim.
 A combined-root build does not retrospectively broaden older frozen receipts.
 
-### Modal usage and cost policy (2026-11-03)
+### Modal usage and cost policy (updated 2026-11-12)
+
+**Current user authorization — 2026-11-12:** Modal may be used for necessary
+test-program compilation, test execution and other development work whenever
+distributing the work credibly reduces total completion time. Local and remote
+processes may overlap or run serially. This supersedes the former 60-second
+eligibility floor, local-only test rule and previous per-batch Local/Modal question
+and in older package instructions. Do not ask again within this scope. Compare
+complete turnaround, including source transfer, provisioning, cache state and
+result collection; avoid duplicate builds and speculative paid timing runs.
+Permission does not establish technical support, image activation or acceptance.
 
 **Activation prerequisite — user instruction, 2026-11-03:** until a suitable
 Modal compiler image has been successfully qualified and explicitly activated
@@ -248,43 +258,25 @@ the local path available without a Modal prompt, source upload or cloud-readines
 probe. An explicitly commissioned image setup/qualification job may run under
 its own authorization before activation; it does not enable general offloading.
 
-Local execution is the default. Modal is eligible only for necessary compilation
-or static-analysis work whose expected local command runtime is **at least
-60 seconds**, and only when the expected complete remote turnaround (source
-transfer, provisioning, cache restore, command and result collection) improves
-on local execution. Eligibility is not an instruction to offload every long run.
+Local execution remains available. Choose Modal only when necessary work has a
+credible end-to-end advantage; eligibility is not an instruction to offload
+every long run.
 Use recent applicable timings for the same packages, features and warm/cold cache
 state. If there is no credible estimate, keep the work local and use its normal
 required run to inform future estimates; do not launch duplicate timing probes.
-The threshold chooses execution location before launch, not a timeout or a reason
-to restart a local command remotely after 60 seconds.
-
-**Build-location choice — user-confirmed, 2026-11-03:** before an eligible non-test
-compilation or Clippy batch expected to take at least 60 seconds locally, ask the user to choose
-Local or Modal only when a qualified, explicitly activated image is available
-for that command's target. State the estimate and recommend local
-when remote turnaround/cost offers no advantage. Wait for the answer; do not
-interpret account authentication or a previous batch's choice as permission to
-choose Modal automatically for the next batch. Short runs and test execution/compilation
-remain local under the rules below. Source byte size is not the threshold.
-
-**Temporary explicit Modal choice — user instruction, 2026-11-03:** after
-verifying the qualified Apple build image, this chat is authorized to use it
-for its necessary eligible compilations while the other chat finishes its
-validation build. Do not ask Local/Modal again within that explicit scope.
-The general independent-environment contract above now permits isolated
-remote/local overlap; do not interfere with local validation's source, artifacts
-or processes.
-Keep one remote build at a time, exact immutable remote inputs, separate target
-caches, the 60-second eligibility rule and all test work local. Once that
-validation work is finished or the user changes this instruction, return to
-the ordinary per-batch location choice above.
+Decide before launch; elapsed local runtime is not a reason to duplicate the
+same command remotely. Source byte size is not a reliable timing threshold.
+The existing controller still technically requires `--confirmed-modal` and an
+estimate of at least 60 seconds. Until its owning implementation changes that
+gate, do not invent an estimate or bypass the validator to submit a shorter job.
+The future shared entry point is planned in
+[combined-building_v3_at_bob3.md](../combined-building_v3_at_bob3.md).
 
 **No speculative spending — user instruction, 2026-11-03:** do not provision
 workers, build/publish compiler images or run paid sizing/benchmark jobs merely
 to prepare for possible future builds or answer a question. Reuse existing
 storage/images. Any necessary paid setup must be disclosed with its estimated
-cost as part of a concrete eligible build's Local/Modal choice, or obtain an
+cost as part of a concrete required job, or obtain an
 explicit request for image setup and qualification; wait for that authorization
 before starting it. Do not solicit a general build-location choice while the
 image is inactive. Account authentication and a prepared local script
@@ -322,22 +314,21 @@ collection. Do not invoke the standalone sync CLI inside a lock-owning controlle
 Recheck the captured source identity before submission. A disconnected unresolved
 job blocks remote sync/new submissions even after its OS lock is released.
 
-**Tests stay local regardless of duration.** Do not run unit, integration,
-browser, end-to-end, behavioral or acceptance tests on Modal, or move a test suite
-there under a benchmark/smoke/setup label. Test-binary compilation, including
-`cargo test --no-run` and `cargo build --tests`, also stays local so its artifacts
-remain usable by the local test environment. A mixed build-and-test command or
-runner stays local; do not submit it to Modal on the strength of its build time.
+**Remote test support must be real.** The user authorization includes tests and
+their compilation, but today's Apple controller exports only CLI dev/release
+product builds; its worker command validator does not accept `cargo test`.
+Extend the existing controller/worker/runner owners before using those modes.
+An arm64 Mach-O executable runs on the compatible Mac, not the Linux compiler
+host. A Linux test needs its actual libraries, fixtures, services and runtime
+paths on Linux. Preserve compile-time paths, companion workers, exact feature/
+profile selection and native resource locks. Mocked transport tests establish
+controller behavior only. Final acceptance remains with the supervisor; package
+chats execute only their assigned checks, even where remote execution is allowed.
 
-Clippy is local by default. A demonstrated long Clippy batch may use Modal only
-under the same 60-second and total-turnaround rules. `cargo clippy --tests` checks
-test-target code without running tests and is static analysis; it does not permit
-invoking a test executable or using a test runner remotely. Verify the complete
-command, wrapper and build-script behavior before submission: custom compilation
-steps must not execute tests on Modal. Formatting, metadata inspection, short
-checks, scripts and document validation remain local. Do not add unnecessary
-targets/checks or pad a batch merely to cross the threshold. Do not rerun passing
-local Clippy remotely merely to obtain a second receipt.
+Clippy, short checks, scripts and tests follow the same demonstrated turnaround
+rule. Formatting or metadata normally remain local because transfer has no
+advantage. Do not pad batches, duplicate a passing check or build the same
+usable target twice merely to collect another receipt.
 
 For an eligible job, record the source identity, exact command/target/features,
 timing basis, selected CPU/RAM and estimated compute cost in the existing
@@ -354,14 +345,15 @@ A disconnected client is not proof that the remote job stopped; reconcile its
 actual state before admitting another remote build or changing remote source.
 Local work remains available when remote state is unresolved.
 
-**Local tests may run concurrently with remote Cargo.** Test compilation still
+**Local tests may run concurrently with remote work.** Native test compilation
 uses the native Cargo lock and its canonical target; execution-only native
 runners retain their existing backend/test-resource locks. Preserve exact
 application/worker/test artifacts, fixtures and source inputs for each claim.
 Do not interrupt or bypass an active native build's locks/frozen inputs to enable
 concurrency. The remote worker uses its already captured immutable snapshot;
 local results establish only the source/artifacts actually tested, even if Modal
-is compiling a different snapshot. No tests or test compilation move to Modal.
+is compiling a different snapshot. Supported remote tests retain their own
+equivalent fixture/backend locks and exact execution receipts.
 
 The local checkout remains authoritative. Remote jobs use an exact isolated
 source snapshot with original tracked/pending input hashes, not a second editable

@@ -201,7 +201,7 @@ class ControllerTests(SourceFixture):
         manifest_bytes = encoded(manifest)
         records = self.base / "records"
         records.mkdir()
-        (records / "image-apple.json").write_text(json.dumps({"rust_version": "1.96.0",
+        (records / "image-apple.json").write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
                                                                "environment": "brassclaw", "image_id": "im-test"}))
         resources, submitted = {}, {}
         remote_files = {sync.MANIFEST_PATH: manifest_bytes, sync.BASE_MANIFEST_PATH: manifest_bytes}

@@ -6,18 +6,49 @@ The compiler host is Linux/amd64; the artifact target is
 Use only the `brassclaw` Modal environment and `brassclaw-build` Volume.
 
 The image is a prerequisite, not proof of a working BrassClaw build or activation.
-All tests, including test compilation, remain local. Remote workers compile only.
+The current Apple controller supports CLI dev/release product compilation only.
+The user's 2026-11-12 permission also covers time-saving Modal test builds,
+tests and other development work, but those modes require their real connected
+controller/worker/runner support before use; see the
+[current policy](development-policy.md#modal-usage-and-cost-policy-updated-2026-11-12)
+and [combined-build plan](../combined-building_v3_at_bob3.md).
 For current independent local/Modal settings, locks and parallel operation, see
 [the build environment contract](build-environments.md). Dated qualification
 observations below retain their historical activation/serialization state.
 
 ## Image inputs
 
-`modal_apple_toolchain.py` pins Rust 1.96.0, the amd64 Rust base by OCI digest,
+`modal_apple_toolchain.py` pins Rust 1.98.1, the amd64 bootstrap base by OCI digest,
 OSXCross commit and tarball SHA-256, Debian's 2026-07-01 package snapshot, LLVM 19,
 including its security repository, and SDK 26.5 by the SHA-256 of the supplied archive. The image receipt records the
 actual Modal image ID. `/opt/brassclaw/` records the complete dpkg package versions,
 Rust/Clang/linker versions, OSXCross configuration and SDK provenance.
+
+The selected Apple compiler is independent of the project's minimum supported
+Rust version. The digest-pinned bootstrap still contains Rust 1.96.0; a final
+layer installs and selects Rust 1.98.1 with the Apple target, Clippy and rustfmt.
+This preserves the existing SDK/OSXCross image layers. Setup checks the selected
+version and links a minimal Rust program into an arm64 Mach-O executable without
+executing it. This is a compiler probe, not project or native acceptance.
+
+Matching Rust versions does not make the local macOS/arm64 and remote
+Linux/amd64 Cargo target caches interchangeable. Build scripts and proc-macros
+are host programs. Keep their target caches separate; downloaded crate sources
+can be reused. Setup and image replacement use the existing remote lock and
+reject unsettled jobs. An old image's activation cannot activate its successor;
+the new image needs its own project build and native acceptance receipts.
+
+On 2026-11-12 setup published `brassclaw-rust:1.98.1-apple-arm64`, image
+`im-Wxm74Dwhp6v20AWvy6T6aj`, in environment `brassclaw` (App
+`ap-cWU0HDza3xIJQkrZoOeft0`). Rust reports `1.98.1 (48a229cea 2026-09-01)`,
+matching the local compiler commit. The version assertion and actual arm64
+Mach-O compile/link probe passed; 16 local build-controller tests passed.
+The first setup attempt failed because the direct rustc probe omitted the
+explicit cross-linker; the corrected attempt passed and the App stopped.
+No project build or target execution was performed for this update. The new
+image is prepared but not activated. Setup logs and the previous image/activation
+receipts are retained under
+`$CARGO_TARGET_DIR/modal-build/setup-apple-rust-1.98.1-20261112/`.
 
 Package an actual local SDK with OSXCross's `tools/gen_sdk_package.sh` on macOS
 (`XCODE_TOOLS=1` selects Command Line Tools). For this qualification the upstream

@@ -1,4 +1,34 @@
-## Latest — PKG-F complete: all PythonCode seed bodies now in preloadable format
+## Latest — 2026-11-12 intermediate checkpoint
+
+The supervisor's current work is validated intermediate publication, not a claim
+that all Bob plans are finished. Read the current top of
+[implementation status](implementation-status.md), the
+[package board](development-package-board.md) and the
+[exact validation report](validation/2026-11-12-runnable-intermediate-checkpoint.md)
+before using older summaries below.
+
+Actual CLI/worker/harness builds are warning-free at compiled `9bb027f36`;
+version/help smokes pass. Five selected genuine native cases finish, three pass
+and two fail. Diagnose fresh `checker_fixture_admission` deadline expiry and
+original PostgreSQL backend cancellation acknowledgement before claiming those
+boundaries accepted. Composition strict Clippy retains 20 baseline findings.
+The complete private N/R/Q/T stack remains preserved and unaccepted as a whole.
+No source freeze or owned checkpoint build/test remains active.
+
+Ready Modal helpers select Rust 1.98.1. The new image is prepared, not activated;
+its compiler probe is not BrassClaw acceptance. The user's expanded remote-work
+permission is recorded in the development policy; the existing Apple controller
+still lacks general test-build/export/run support. The combined-build document
+is a plan, not implemented runtime functionality. Keep local/remote Cargo caches
+separate and do not repeat this completed local build just to obtain a cloud receipt.
+
+The supervisor owns review, acceptance, documentation and Main integration;
+product implementation stays in bounded package chats. All three Bob plans
+remain open. Do not delete branches or merge the connected private stack merely
+to reduce the branch count. The embedded CHANGELOG already contains the compiled
+checkpoint entry; final evidence belongs in the unembedded validation report.
+
+## Historical — PKG-F complete: all PythonCode seed bodies now in preloadable format
 
 ### Session summary (2026-11-01, continuation)
 
