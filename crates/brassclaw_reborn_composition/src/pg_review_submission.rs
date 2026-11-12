@@ -152,9 +152,11 @@ pub(crate) async fn submit(
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
     submit_inner(
         pool,
-        actor,
-        tenant,
-        agent,
+        SubmissionIdentity {
+            actor,
+            tenant,
+            agent,
+        },
         request,
         SubmissionIo::compatibility()?,
         None,
@@ -192,9 +194,11 @@ pub(crate) async fn submit_with_catalogue_prepared(
     )?;
     submit_inner(
         pool,
-        actor,
-        tenant,
-        agent,
+        SubmissionIdentity {
+            actor,
+            tenant,
+            agent,
+        },
         request,
         io,
         preparation,
@@ -202,11 +206,15 @@ pub(crate) async fn submit_with_catalogue_prepared(
     )
     .await
 }
+struct SubmissionIdentity<'a> {
+    actor: &'a str,
+    tenant: &'a str,
+    agent: &'a str,
+}
+
 async fn submit_inner(
     pool: &Arc<PgPool>,
-    actor: &str,
-    tenant: &str,
-    agent: &str,
+    identity: SubmissionIdentity<'_>,
     request: SubmitComponentReviewRequest,
     io: SubmissionIo,
     accepted_preparation: Option<brassclaw_host_api::task_preparation::RetainedPreparation>,
@@ -214,6 +222,11 @@ async fn submit_inner(
         &Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
     >,
 ) -> Result<ComponentReviewSubmissionReceipt, RecipeStoreError> {
+    let SubmissionIdentity {
+        actor,
+        tenant,
+        agent,
+    } = identity;
     let queue_ids = request
         .queue_ids
         .iter()
@@ -341,8 +354,8 @@ async fn submit_inner(
                 expected_previous_version: request
                     .expected_previous_version
                     .unwrap_or_else(|| base.map_or(0, |b| b.version)),
-                partner: partner,
-                preparation: preparation,
+                partner,
+                preparation,
             },
         )
     } else {
@@ -490,13 +503,13 @@ async fn submit_inner(
                 .map_err(storage_io)?;
         }
         #[cfg(feature = "skills-db")]
-        if let Some(owner) = catalogue {
-            if source_preparation.is_none() {
-                owner
-                    .verify_source_submission(&tx, retained.id)
-                    .await
-                    .map_err(storage_io)?;
-            }
+        if let Some(owner) = catalogue
+            && source_preparation.is_none()
+        {
+            owner
+                .verify_source_submission(&tx, retained.id)
+                .await
+                .map_err(storage_io)?;
         }
         io.note("author_commit", "started");
         if tx.commit().await.is_err() {
@@ -576,10 +589,10 @@ async fn submit_inner(
         }).await.map_err(|_|storage_io("original commit readback deadline"))??,
     };
     #[cfg(feature = "skills-db")]
-    if let Some(owner) = catalogue {
-        if let Some(wake) = owner.private_work_wake.get() {
-            wake.wake();
-        }
+    if let Some(owner) = catalogue
+        && let Some(wake) = owner.private_work_wake.get()
+    {
+        wake.wake();
     }
     io.run("receipt_projection", original_receipt(pool, &retained))
         .await

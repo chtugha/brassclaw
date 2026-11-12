@@ -926,13 +926,15 @@ impl InstalledMontyCatalogue {
             Box::pin(crate::validator_inventory_review::observe_installation(
                 pool.clone(),
                 kernel.clone(),
-                worker_image.clone(),
+                crate::validator_inventory_review::InventoryExecutor {
+                    worker: worker_image.clone(),
+                    configuration: startup_executor.clone(),
+                    root: root_definition.clone(),
+                },
                 inventory_components.definitions,
                 reply_components,
-                startup_executor.clone(),
                 preparation,
                 resource_store_settings.clone(),
-                root_definition.clone(),
             ))
             .await?;
         inventory_observations.require_positive_for_qualification()?;

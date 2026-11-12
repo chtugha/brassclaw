@@ -802,8 +802,7 @@ impl InstalledMontyCatalogue {
                 tx.commit().await.map_err(|_| failed())?;
                 drop(client);
                 let source = crate::pure_case_source::CaseSource::new(
-                    case,
-                    qualified,
+                    crate::pure_case_source::CaseSelection { case, qualified },
                     &self.worker_image,
                     captured.preparation(),
                     self.kernel.clone(),
@@ -863,9 +862,10 @@ impl InstalledMontyCatalogue {
                     return Err(failed());
                 }
                 let (profile, revision) = definition.target.profile().ok_or_else(failed)?;
+                let expected_revision = revision.to_string();
                 if !matches!(profile, "base-prompt" | "prefix-maker" | "sempai")
                     || definition.input["profile"] != profile
-                    || definition.input["revision"] != revision.to_string()
+                    || definition.input["revision"].as_str() != Some(expected_revision.as_str())
                 {
                     return Err(failed());
                 }
