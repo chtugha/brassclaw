@@ -622,13 +622,15 @@ pub(crate) async fn assert_original_pure_workflow_readback(
     let original = observe_installation(
         pool.clone(),
         catalogue.kernel.clone(),
-        catalogue.worker_image.clone(),
+        InventoryExecutor {
+            worker: catalogue.worker_image.clone(),
+            configuration: catalogue.startup_executor.clone(),
+            root: catalogue.root_definition.clone(),
+        },
         package.definitions,
         reply,
-        catalogue.startup_executor.clone(),
         preparation.limits(),
         catalogue.resource_store_settings.clone(),
-        catalogue.root_definition.clone(),
     )
     .await
     .unwrap();
