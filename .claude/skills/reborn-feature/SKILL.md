@@ -149,11 +149,21 @@ new DTOs or invent fields for old constructors, Recipe JSON or association forma
   Children, retries and resumes keep it. Mutable inputs/defaults/closures/results
   stay isolated per invocation; runtime values never become Python source.
 - Inspect the actual `python-preload/2` reader, retained inspector and selected
-  caller. The ordinary retained runner currently supports one bound Tool call per
-  execution step and `stop`/`max_attempts: 1`. A documented dependent-chain or
-  retry exception requires its real qualified binding/control/durable adapter;
-  binding coverage or read-only evidence alone does not enable it. Recheck source
-  and status before relying on a successor implementation.
+  caller. The ordinary retained runner currently accepts flat, ordered execution:
+  each selected static executable step may begin once, with at most one bound
+  Tool dispatch per execution step and `stop`/`max_attempts: 1`. Recipe-level
+  branching and repeated occurrences require qualified successor support. A
+  dependent-chain or retry declaration alone enables neither. Recheck source and
+  scoped acceptance before relying on an extension. This does not prohibit
+  ordinary control flow within a permitted pure function or reuse of one component
+  in distinct static steps; pure steps still need no Tool binding.
+- A static step identifies a declaration in the selected workflow; its component
+  UUID is not an execution occurrence ID. A dynamic occurrence is a host-verified
+  execution of that step under the qualified flow. A Tool retry repeats the same
+  logical invocation under its approved failure contract. A run/worker attempt
+  fences execution; replacing it does not create a new occurrence, reset
+  invocation counts or authorize replay. Use the actual shared identity contract,
+  not invented fields or caller-selected IDs to disguise a retry as new work.
 - Independent pure execution needs its own exact root/export/closure evidence;
   membership in a usage dependency graph is insufficient. Consume validator's
   [remaining pure-review contract](../../../docs/reborn/pure-component-review.md#exact-remaining-cutover-contract).
@@ -214,6 +224,19 @@ For retained selection and approval carriage, follow
 flow and occurrence semantics and extend that same contract with the selection
 implementation. Do not introduce a separate manifest or independently reinterpret
 its fields.
+
+Qualify dynamic execution as one connected extension of the existing selection,
+interpreter, binding and effect-journal path. Monty selects the permitted
+branch/item; native checks verify retained membership, typed edges, occurrence
+identity and freshness. Record required dispatch intent/count before effects and
+retain original arguments, deduplication identity, answer and confirmed/unresolved
+outcome. Removing the started-step fence or trusting a caller-supplied loop index
+is insufficient. Initial structured support remains sequential and stop-only;
+it does not enable Tool retries or general crash replay. Supported waits retain
+the original pending occurrence without replaying begun Tool effects. Workflow
+qualification covers the allowed repeated usage; no new Q1/Q2 is created per
+iteration. Preserve valid old flat selections.
+
 Review the shared versioned schema and checksum domains before changing writers.
 Connect serializers, strict nested readers, DB constraints, prepare/publication,
 ordinary/private/child/wait/restore/recovery and MCP/Prefix consumers before
