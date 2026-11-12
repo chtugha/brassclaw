@@ -949,7 +949,7 @@ impl Context {
         }
         seed::verify_originals(tx, self, spec, observed, &native).await?;
         let intent = self.stage_intent(spec)?;
-        let actual = evidence::read_evidence(&tx, self.id(&format!("{}:intent", spec.name)))
+        let actual = evidence::read_evidence(tx, self.id(&format!("{}:intent", spec.name)))
             .await?
             .ok_or_else(|| invalid("original seed stage intent missing"))?;
         if actual != intent

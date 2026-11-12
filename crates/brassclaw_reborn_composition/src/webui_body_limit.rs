@@ -96,6 +96,23 @@ pub(crate) fn build_body_limit_state(descriptors: &[IngressRouteDescriptor]) -> 
 struct LegacyComponentBody;
 const LEGACY_COMPONENT_BODY_BYTES: u64 = 14 * 1024 * 1024;
 
+enum PreparationRejection {
+    Unavailable,
+    InvalidLimit,
+}
+impl IntoResponse for PreparationRejection {
+    fn into_response(self) -> Response {
+        match self {
+            Self::Unavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Acknowledged preparation unavailable.",
+            )
+                .into_response(),
+            Self::InvalidLimit => too_large_for(ResolvedBodyPolicy::ComponentPreparation),
+        }
+    }
+}
+
 impl BodyLimitState {
     pub(crate) fn with_host(
         mut self,
@@ -108,7 +125,7 @@ impl BodyLimitState {
         self.outer_explicit = outer_explicit;
         self
     }
-    async fn accept_preparation(&self, request: &mut Request) -> Result<u64, Response> {
+    async fn accept_preparation(&self, request: &mut Request) -> Result<u64, PreparationRejection> {
         use brassclaw_host_api::task_preparation::RetainedPreparation;
         if request.extensions().get::<LegacyComponentBody>().is_some() {
             return Ok(self
@@ -119,22 +136,12 @@ impl BodyLimitState {
         }
         if request.extensions().get::<RetainedPreparation>().is_none() {
             let Some(services) = &self.services else {
-                return Err((
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Acknowledged preparation unavailable.",
-                )
-                    .into_response());
+                return Err(PreparationRejection::Unavailable);
             };
             let original = services
                 .capture_component_preparation()
                 .await
-                .map_err(|_| {
-                    (
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        "Acknowledged preparation unavailable.",
-                    )
-                        .into_response()
-                })?;
+                .map_err(|_| PreparationRejection::Unavailable)?;
             match original {
                 Some(original) => {
                     request.extensions_mut().insert(original);
@@ -152,17 +159,11 @@ impl BodyLimitState {
         let policy = request
             .extensions()
             .get::<RetainedPreparation>()
-            .ok_or_else(|| {
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "Acknowledged preparation unavailable.",
-                )
-                    .into_response()
-            })?
+            .ok_or(PreparationRejection::Unavailable)?
             .policy();
         let limit = policy.max_value_bytes;
         if limit == 0 || usize::try_from(limit).is_err() {
-            return Err(too_large_for(ResolvedBodyPolicy::ComponentPreparation));
+            return Err(PreparationRejection::InvalidLimit);
         }
         Ok(match self.outer_explicit {
             Some(max) => limit.min(max as u64),
@@ -287,7 +288,7 @@ pub(crate) async fn enforce_body_limit(
             }
             match state.accept_preparation(&mut request).await {
                 Ok(bytes) => bytes,
-                Err(response) => return response,
+                Err(rejection) => return rejection.into_response(),
             }
         }
     };

@@ -104,13 +104,11 @@ enum QualificationFault {
 pub(crate) async fn qualify(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
-    worker: Arc<PackagedExecutableImage>,
+    execution: InventoryExecutor,
     candidate: &InspectedRetainedProgram,
     reply: &RetainedToolProgram,
     qualification_id: Uuid,
-    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
-    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
 ) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
     let RetainedProgram::Tools(program) = candidate.program() else {
         return Err(invalid("qualification Tool program missing"));
@@ -118,84 +116,65 @@ pub(crate) async fn qualify(
     qualify_packaged(
         pool,
         kernel,
-        worker,
-        program,
-        candidate.preparation_limits(),
+        execution,
+        QualificationSelection {
+            candidate: program,
+            preparation: candidate.preparation_limits(),
+            qualification_id,
+            allow_new: true,
+        },
         reply,
-        qualification_id,
-        executor,
         storage,
-        true,
-        root,
     )
     .await?
     .ok_or_else(|| invalid("inventory qualification unavailable before execution"))
 }
 
+pub(super) struct QualificationSelection<'a> {
+    pub(super) candidate: &'a RetainedToolProgram,
+    pub(super) preparation: brassclaw_monty_host::utility::UtilityLimits,
+    pub(super) qualification_id: Uuid,
+    pub(super) allow_new: bool,
+}
+
 pub(super) async fn qualify_packaged(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
-    worker: Arc<PackagedExecutableImage>,
-    candidate: &RetainedToolProgram,
-    preparation: brassclaw_monty_host::utility::UtilityLimits,
+    execution: InventoryExecutor,
+    selection: QualificationSelection<'_>,
     reply: &RetainedToolProgram,
-    qualification_id: Uuid,
-    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
-    allow_new: bool,
-    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
 ) -> Result<Option<Arc<QualifiedSourceInventoryUsage>>, RebornBuildError> {
     #[cfg(all(test, unix))]
     {
-        qualify_inner(
-            pool,
-            kernel,
-            worker,
-            candidate,
-            preparation,
-            reply,
-            qualification_id,
-            executor,
-            storage,
-            allow_new,
-            None,
-            root,
-        )
-        .await
+        qualify_inner(pool, kernel, execution, selection, reply, storage, None).await
     }
     #[cfg(not(all(test, unix)))]
     {
-        qualify_inner(
-            pool,
-            kernel,
-            worker,
-            candidate,
-            preparation,
-            reply,
-            qualification_id,
-            executor,
-            storage,
-            allow_new,
-            root,
-        )
-        .await
+        qualify_inner(pool, kernel, execution, selection, reply, storage).await
     }
 }
 
 async fn qualify_inner(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
-    worker: Arc<PackagedExecutableImage>,
-    candidate: &RetainedToolProgram,
-    preparation: brassclaw_monty_host::utility::UtilityLimits,
+    execution: InventoryExecutor,
+    selection: QualificationSelection<'_>,
     reply: &RetainedToolProgram,
-    qualification_id: Uuid,
-    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
-    allow_new: bool,
     #[cfg(all(test, unix))] fault: Option<QualificationFault>,
-    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
 ) -> Result<Option<Arc<QualifiedSourceInventoryUsage>>, RebornBuildError> {
+    let QualificationSelection {
+        candidate,
+        preparation,
+        qualification_id,
+        allow_new,
+    } = selection;
+    let InventoryExecutor {
+        worker,
+        configuration: executor,
+        root,
+    } = execution;
     let (_, binding) = require_inventory_binding(candidate)?;
     let reply_binding = reply
         .bindings()

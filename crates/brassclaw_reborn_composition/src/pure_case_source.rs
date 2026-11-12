@@ -27,6 +27,11 @@ use crate::{
     pure_case_qualification::QualifiedCaseHarness,
 };
 
+pub(crate) struct CaseSelection<'a> {
+    pub(crate) case: Arc<CheckedOriginalPureCase>,
+    pub(crate) qualified: &'a QualifiedCaseHarness,
+}
+
 pub(crate) struct CaseSource {
     reference: String,
     inspected: Arc<InspectedRetainedProgram>,
@@ -36,8 +41,7 @@ pub(crate) struct CaseSource {
 }
 impl CaseSource {
     pub(crate) async fn new(
-        case: Arc<CheckedOriginalPureCase>,
-        qualified: &QualifiedCaseHarness,
+        selection: CaseSelection<'_>,
         worker: &brassclaw_host_runtime::PackagedExecutableImage,
         preparation: &PreparationCapture,
         kernel: Arc<dyn MontyKernelSnapshot>,
@@ -45,6 +49,7 @@ impl CaseSource {
         admission: Arc<PgMontyAdmission>,
         evidence: Arc<EvidenceStore>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        let CaseSelection { case, qualified } = selection;
         let receipt_failure = PortFailure::new("original_pure_case_receipt_invalid")
             .map_err(|_| invalid("original Pure case receipt failure classification is invalid"))?;
         if case.worker_checksum() != worker.checksum() {

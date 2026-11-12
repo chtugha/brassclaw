@@ -100,7 +100,7 @@ enum Completion {
         root: Root,
         outcome: Outcome,
         #[serde(deserialize_with = "present_option")]
-        accounting: Option<Accounting>,
+        accounting: Option<Box<Accounting>>,
         execution_report_checksum: [u8; 32],
     },
     NeverSubmitted {
@@ -282,7 +282,10 @@ impl Terminal {
                 workers: receipt.root.workers(),
             },
             outcome,
-            accounting: receipt.accounting.as_ref().map(Accounting::from),
+            accounting: receipt
+                .accounting
+                .as_ref()
+                .map(|account| Box::new(Accounting::from(account))),
             execution_report_checksum: checksum(&execution_report_bytes),
         };
         Self::encode(

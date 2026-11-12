@@ -942,7 +942,7 @@ impl InstalledMontyCatalogue {
                 disabled,
                 CataloguePreparation {
                     raw_policy: retained.then_some(&document["preparation_policy"]),
-                    original: original,
+                    original,
                 },
             )
             .await?;

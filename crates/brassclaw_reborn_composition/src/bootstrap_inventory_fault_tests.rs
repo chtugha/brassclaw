@@ -18,13 +18,15 @@ impl Case<'_> {
         qualify(
             pool,
             self.catalogue.kernel.clone(),
-            self.catalogue.worker_image.clone(),
+            InventoryExecutor {
+                worker: self.catalogue.worker_image.clone(),
+                configuration: self.executor.clone(),
+                root: self.catalogue.root_definition.clone(),
+            },
             self.candidate,
             self.reply,
             id,
-            self.executor.clone(),
             self.catalogue.resource_store_settings.clone(),
-            self.catalogue.root_definition.clone(),
         )
         .await
     }
@@ -188,19 +190,23 @@ pub(crate) async fn assert_actual_ack_and_timeout_faults(
         qualify_inner(
             catalogue.pool.clone(),
             catalogue.kernel.clone(),
-            catalogue.worker_image.clone(),
-            match candidate.program() {
-                RetainedProgram::Tools(p) => p,
-                _ => panic!("actual Tool program"),
+            InventoryExecutor {
+                worker: catalogue.worker_image.clone(),
+                configuration: case.executor.clone(),
+                root: catalogue.root_definition.clone(),
             },
-            candidate.preparation_limits(),
+            QualificationSelection {
+                candidate: match candidate.program() {
+                    RetainedProgram::Tools(p) => p,
+                    _ => panic!("actual Tool program"),
+                },
+                preparation: candidate.preparation_limits(),
+                qualification_id: id,
+                allow_new: true,
+            },
             reply,
-            id,
-            case.executor.clone(),
             catalogue.resource_store_settings.clone(),
-            true,
             Some(QualificationFault::WorkerExit),
-            catalogue.root_definition.clone(),
         )
         .await
         .is_err()
@@ -229,19 +235,23 @@ pub(crate) async fn assert_actual_ack_and_timeout_faults(
     let cancelled = qualify_inner(
         catalogue.pool.clone(),
         catalogue.kernel.clone(),
-        catalogue.worker_image.clone(),
-        match candidate.program() {
-            RetainedProgram::Tools(p) => p,
-            _ => panic!("actual Tool program"),
+        InventoryExecutor {
+            worker: catalogue.worker_image.clone(),
+            configuration: case.executor.clone(),
+            root: catalogue.root_definition.clone(),
         },
-        candidate.preparation_limits(),
+        QualificationSelection {
+            candidate: match candidate.program() {
+                RetainedProgram::Tools(p) => p,
+                _ => panic!("actual Tool program"),
+            },
+            preparation: candidate.preparation_limits(),
+            qualification_id: id,
+            allow_new: true,
+        },
         reply,
-        id,
-        case.executor.clone(),
         catalogue.resource_store_settings.clone(),
-        true,
         Some(QualificationFault::LateCancellation),
-        catalogue.root_definition.clone(),
     )
     .await
     .err()

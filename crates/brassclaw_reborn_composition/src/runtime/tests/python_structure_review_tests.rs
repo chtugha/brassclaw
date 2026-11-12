@@ -433,13 +433,15 @@ async fn check_private_structure_recipe(pure: bool) {
     let qualified_parser = crate::validator_inventory_review::qualify(
         rig.pool.clone(),
         catalogue.kernel.clone(),
-        catalogue.worker_image.clone(),
+        crate::validator_inventory_review::InventoryExecutor {
+            worker: catalogue.worker_image.clone(),
+            configuration: catalogue.startup_executor.clone(),
+            root: catalogue.root_definition.clone(),
+        },
         &inspected,
         reply,
         qualification_id,
-        catalogue.startup_executor.clone(),
         catalogue.resource_store_settings.clone(),
-        catalogue.root_definition.clone(),
     )
     .await
     .unwrap();
@@ -487,13 +489,15 @@ async fn check_private_structure_recipe(pure: bool) {
             crate::validator_inventory_review::qualify(
                 readback_pool.clone(),
                 catalogue.kernel.clone(),
-                catalogue.worker_image.clone(),
+                crate::validator_inventory_review::InventoryExecutor {
+                    worker: catalogue.worker_image.clone(),
+                    configuration: next_executor.clone(),
+                    root: catalogue.root_definition.clone(),
+                },
                 &inspected,
                 reply,
                 qualification_id,
-                next_executor.clone(),
                 catalogue.resource_store_settings.clone(),
-                catalogue.root_definition.clone(),
             ),
         )
         .await

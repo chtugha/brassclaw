@@ -260,13 +260,13 @@ pub(crate) async fn original_registration(
     )
     .await?
     {
-        RegistrationInspection::Bound(registration) => Ok(registration),
+        RegistrationInspection::Bound(registration) => Ok(*registration),
         RegistrationInspection::Invalid => Err(LlmConfigServiceError::Unavailable),
     }
 }
 
 pub(crate) enum RegistrationInspection {
-    Bound(BoundCodexRegistration),
+    Bound(Box<BoundCodexRegistration>),
     Invalid,
 }
 
@@ -334,8 +334,10 @@ pub(crate) async fn inspect_registration(
     {
         return Ok(RegistrationInspection::Invalid);
     }
-    Ok(RegistrationInspection::Bound(BoundCodexRegistration {
-        binding,
-        head_reference: expected_head_reference.into(),
-    }))
+    Ok(RegistrationInspection::Bound(Box::new(
+        BoundCodexRegistration {
+            binding,
+            head_reference: expected_head_reference.into(),
+        },
+    )))
 }

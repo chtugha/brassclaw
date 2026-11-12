@@ -46,6 +46,14 @@ fn revision_reference_value(reference: ComponentRevisionRef) -> Value {
         "version":reference.version,"checksum":hex::encode(reference.checksum)})
 }
 
+/// Exact native artifacts used by the existing contained installation executor.
+/// This carries identity/configuration only, without admitting or approving work.
+pub(crate) struct InventoryExecutor {
+    pub(crate) worker: Arc<PackagedExecutableImage>,
+    pub(crate) configuration: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    pub(crate) root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
+}
+
 #[path = "installation_inventory_observation.rs"]
 mod installation;
 pub(crate) use installation::CheckedPureSourceWorkflow;

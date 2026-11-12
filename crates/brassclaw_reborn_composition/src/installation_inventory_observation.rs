@@ -210,26 +210,22 @@ impl InstallationSourceObservations {
 pub(crate) async fn observe_installation(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
-    worker: Arc<PackagedExecutableImage>,
+    execution: InventoryExecutor,
     definitions: PackagedDefinitions,
     reply: &RetainedToolProgram,
-    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     preparation: brassclaw_monty_host::utility::UtilityLimits,
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
-    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
 ) -> Result<InstallationSourceObservations, RebornBuildError> {
     #[cfg(test)]
     let audit_pool = pool.clone();
     let result = observe_installation_inner(
         pool,
         kernel,
-        worker,
+        execution,
         definitions,
         reply,
-        executor,
         preparation,
         storage,
-        root,
     )
     .await;
     #[cfg(test)]
@@ -240,14 +236,17 @@ pub(crate) async fn observe_installation(
 async fn observe_installation_inner(
     pool: Arc<PgPool>,
     kernel: Arc<dyn MontyKernelSnapshot>,
-    worker: Arc<PackagedExecutableImage>,
+    execution: InventoryExecutor,
     mut definitions: PackagedDefinitions,
     reply: &RetainedToolProgram,
-    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     preparation: brassclaw_monty_host::utility::UtilityLimits,
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
-    root: Arc<brassclaw_skills::orchestrator_contract::GlobalRootDefinition>,
 ) -> Result<InstallationSourceObservations, RebornBuildError> {
+    let InventoryExecutor {
+        worker,
+        configuration: executor,
+        root,
+    } = execution;
     let revisions = brassclaw_skills::revision_store::PgComponentRevisionStore::new(pool.clone());
     for draft in crate::builtin_bootstrap::validator_check_drafts() {
         let draft = draft.map_err(invalid)?;
@@ -319,15 +318,19 @@ async fn observe_installation_inner(
     let cached = qualification::qualify_packaged(
         pool.clone(),
         kernel.clone(),
-        worker.clone(),
-        &programs[0].1,
-        preparation,
+        InventoryExecutor {
+            worker: worker.clone(),
+            configuration: executor.clone(),
+            root: root.clone(),
+        },
+        qualification::QualificationSelection {
+            candidate: &programs[0].1,
+            preparation,
+            qualification_id,
+            allow_new: false,
+        },
         reply,
-        qualification_id,
-        executor.clone(),
         storage.clone(),
-        false,
-        root.clone(),
     )
     .await?;
     let parser = match cached {
@@ -365,15 +368,19 @@ async fn observe_installation_inner(
             qualification::qualify_packaged(
                 pool.clone(),
                 kernel.clone(),
-                worker.clone(),
-                &programs[0].1,
-                preparation,
+                InventoryExecutor {
+                    worker: worker.clone(),
+                    configuration: executor.clone(),
+                    root: root.clone(),
+                },
+                qualification::QualificationSelection {
+                    candidate: &programs[0].1,
+                    preparation,
+                    qualification_id,
+                    allow_new: true,
+                },
                 reply,
-                qualification_id,
-                executor.clone(),
                 storage.clone(),
-                true,
-                root.clone(),
             )
             .await?
             .ok_or_else(|| invalid("permitted installation parser qualification unavailable"))?
@@ -1457,13 +1464,15 @@ pub(crate) async fn assert_original_installation_readback(
     let original = observe_installation(
         pool.clone(),
         catalogue.kernel.clone(),
-        catalogue.worker_image.clone(),
+        InventoryExecutor {
+            worker: catalogue.worker_image.clone(),
+            configuration: executor,
+            root: catalogue.root_definition.clone(),
+        },
         package.definitions,
         reply,
-        executor,
         preparation,
         catalogue.resource_store_settings.clone(),
-        catalogue.root_definition.clone(),
     )
     .await
     .unwrap();
