@@ -37,7 +37,35 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current supervisor checkpoint — 2026-11-12, after Run-44
+### Current user priority — 2026-11-12, validated runnable checkpoint
+
+The user prioritizes validating/integrating ready work, updating CHANGELOG and
+publishing a runnable intermediate Main state while credits are limited. Further
+feature expansion is held for this checkpoint. This supersedes completing the
+entire Bob backlog before the next push. Q/T/U are source-idle; the new private
+Memory and full-Q1 work remain deferred. All existing private work is preserved.
+
+At inventory time, 27 of 39 side branches are already ancestors or patch-equivalent
+to Main; the twelve other histories are not twelve independent open packages.
+The exact private N/R/Q/T runtime stack cannot be safely integrated as isolated
+migrations/writers. Q's preserving merge is `8ed62ca7b`; full T is `92fc13a61`.
+Both remain private and unaccepted as a whole. U has no product source changes.
+
+T supplies a separate twelve-file filesystem checkpoint at `82edcdb57`, based on
+the real Main and preserving its full T branch. Root completely reviews source,
+all blobs, original parent bytes and exact Cargo.lock/module insertion, then
+integrates it as `2b5ed2f2c`. It contains only the implemented bounded filesystem
+projection and its actual lightweight native/default tests. No History/private
+approval/cold-restore caller is activated. Final compilation/lint/native/app
+acceptance is pending; Root owns that batch and the subsequent ordinary push.
+
+Run-45 is terminal: Composition compilation passes warning-free; no native test
+runs after the strict guard catches two separately authorized unembedded Skill
+edits. Its exact source/link/profile/worker audit preserves the original failed
+guard and releases the freeze. Necessary final cases move into the coherent
+checkpoint batch. S' earlier failures are not relabelled passed.
+
+### Historical supervisor checkpoint — 2026-11-12, after Run-44
 
 Frozen Main `40af8aa9f` compiles Composition warning-free in 841.722 seconds;
 actual link/profile checks and 903 unchanged worker inputs pass. Four targeted

@@ -1,4 +1,38 @@
-## 2026-11-12 — Run-44 terminal: writer locks pass; private startup remains open
+## 2026-11-12 — Runnable intermediate checkpoint: bounded filesystem slice
+
+The user reprioritized validated integration and publication of a runnable
+intermediate state before further Bob implementation. The branch inventory
+initially finds 37 local `codex/*` branches plus two other side branches; 27 of
+the 39 side branches are already ancestors or patch-equivalent to Main. The
+twelve remaining non-equivalent histories include superseded variants and the
+connected private N/R/Q/T stack, not twelve independent missing features.
+
+The independent T filesystem slice `82edcdb57`, integrated as `2b5ed2f2c`, has
+complete source/blob review. It adds the real PostgreSQL/Composite bounded
+record-body API, capability and fail-closed backend default, plus a lightweight
+real-PG contract and real-InMemory negative test. It uses a pool constructed with
+capacity one, not a later resize as proof. No History caller, private Memory
+consumer, approval, workflow or cold-restore activation is included. The full
+private T branch remains intact at `92fc13a61`; Q's preserving combined branch
+is `8ed62ca7b`. Full-stack integration still requires its connected acceptance.
+
+Run-45 compiles the existing S/Main Composition harness without warnings in
+1059.060 seconds; actual profile/link checks pass. Its strict full-tree guard
+correctly fails after two human-authorized development Skill files change;
+the original failure remains preserved. Exact source comparison confirms no
+compiler input changed. The terminal audit verifies 902 unchanged normal-worker
+inputs and the single source delta excluded by the original PG feature gate,
+then releases the freeze. No native case ran; this is not native acceptance.
+The preserved record is
+`target/validation/bob-native-repair-20261105/run-45-composition/terminal-disposition.json`.
+
+Final checkpoint validation is pending on the coherent source, including the
+actual application executable, filesystem default/PostgreSQL checks and selected
+native regressions. Old native failures, genuine private Memory coverage,
+general approval, upgrade and all three Bob plans remain open. No source-only
+package or successful compilation establishes those broader claims.
+
+## Historical 2026-11-12 — Run-44 terminal: writer locks pass; private startup remains open
 
 Frozen `40af8aa9f` compiles the Composition library harness without warnings in
 841.722 seconds. Actual link/profile checks and the unchanged worker's 903
