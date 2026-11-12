@@ -11,7 +11,7 @@ full contracts. Maintain this file as the canonical source and keep
 `.claude/skills/reborn-feature/SKILL.md` byte-for-byte synchronized. Repository
 links resolve from either skill directory.
 
-## Establish the current gate, owner and bounded change
+## Establish the current gate and bounded change
 
 Read root `AGENTS.md`, the [development policy](../../../docs/development-policy.md)
 and the [current implementation status](../../../docs/implementation-status.md).
@@ -23,9 +23,10 @@ dated receipts establish only their exact observed scope.
 For ongoing v3 implementation, check the [priority conformity gate in simplified_v3](../../../simplified_v3.md#vorrang-konformität-des-bereits-implementierten-stands-herstellen)
 before continuing the ordinary remaining-work lists. Use its current completion
 record; do not cache K-step status in this skill or redo accepted steps. While the
-gate is open, implement the next authorized applicable correction in its named
-owner before regular plan continuation. Do not turn a separate authorized doc
-fix or bounded maintenance request into unsolicited implementation of every K-step.
+gate is open, implement the next authorized applicable correction in the existing
+implementation identified by the relevant plan before regular plan continuation.
+Do not turn a separate authorized doc fix or bounded maintenance request into
+unsolicited implementation of every K-step.
 
 For a new or changed capability, first present its candidate Recipe: reusable
 usages, ordered steps, typed handoffs, completion and exact missing support.
@@ -38,40 +39,49 @@ or Tool to represent a settings endpoint or an agent-documentation edit.
 Before creating or changing components, read all four ground-truth guides:
 [recipe.md](../../../recipe.md), [skills.md](../../../skills.md),
 [tools.md](../../../tools.md) and [toolskills.md](../../../toolskills.md).
-Choose the implementing owner before editing shared code:
+Before editing shared code, identify the existing responsible implementation and
+its boundary for each affected responsibility; trace its producer and consumers.
+Use these areas for navigation, not as new architecture layers or authorities:
 
-| Responsibility | Implementing owner / contract |
+| Area | Responsibility |
 | --- | --- |
-| Task workflow, reusable components, bindings/exports, canonical commands and MCP protocol/consumer wiring | [composition ownership](../../../docs/plans/monty.composition.md#concurrent-implementation-with-simplified-v3) and only the relevant linked appendix entries. Recipes/PythonCode sequence tasks; narrow missing system primitives use existing native registration. |
-| Retained loading/typed transport, global hosting, child/chat lifecycle, live resources, provider revision handling and recovery | [simplified library integration](../../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration), [shared admission/recovery](../../../simplified_v3.md#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge) and applicable Phases 0a/3a/6/8/§10.1. Extend their existing owners. |
-| Review subjects, required checks, trusted Q1/Q2/behavior and general pure approval | [validator ownership](../../../validator_v3.md#concurrent-implementation-with-simplified-v3), using [shared review-runtime support](../../../simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung). Runtime completion is not approval. |
-| Prefix sources, compiler/design/generation/serving and request-contract qualification | [prefix remaining sequence](../../../docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion). For the construction successor, Prefix owns options/eligibility and qualification; Composition/Simplified own native capture/request/child/response/guard mechanics under the shared contract linked below. |
-| Recipe-owned Sempai semantics, dynamic control/occurrences and shared facilities | [v3.5 handoffs](../../../path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations). Preserve existing native transport/accounting/effect custody. |
+| Recipes and components | Domain behavior, reusable usages, typed handoffs, workflow sequencing and domain completion. Review workflows express their checks through supported components. |
+| Existing native infrastructure and kernel | Tools provide declared primitives. Existing services supply coherent selection, retained loading, authenticated persistence and observations, transport, lifecycle and effect custody. The kernel retains authority and technical enforcement. |
+| Product, API and UI | Operator interaction, configuration, status and attachment to existing component and infrastructure interfaces. |
 
-For affected repair work, read the applicable Bob plan as the bounded breakdown
-of those existing owners:
+Read only relevant sections of [Composition](../../../docs/plans/monty.composition.md#concurrent-implementation-with-simplified-v3)
+for components and consumers; [Simplified library integration](../../../simplified_v3.md#gemeinsame-runtime-verträge-für-die-komponentenmigration)
+and [admission/recovery](../../../simplified_v3.md#gemeinsamer-admission--und-recoveryvertrag-für-produktaufträge)
+for shared runtime/security changes; [Validator](../../../validator_v3.md#concurrent-implementation-with-simplified-v3)
+and its [shared runtime support](../../../simplified_v3.md#gemeinsame-runtime-anbindung-der-komponentenprüfung)
+for review contracts; [Prefix](../../../docs/plans/prefix_v3_upgrade.md#remaining-implementation-sequence--full-completion)
+for prefix functionality; and [v3.5 handoffs](../../../path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations)
+for remaining workflow migration. Applicable Simplified Phases 0a/3a/6/8 and
+section 10.1 retain their runtime, upgrade and provider contracts.
 
-| Repair responsibility | Plan |
-| --- | --- |
-| Exact subjects, required checks, sealed verdicts, trusted evidence and approval production | [Bob 1](../../../Repair_bob_1_v3_at_k3.md), B1 |
-| Qualified selection, approval pins, coherent publication and every retained reader | [Bob 2](../../../Repair_bob_2_v3_at_k3.md), B2 |
-| Durable original-work admission/discovery, shared driver lifecycle and native Codex/Auth integration | [Bob 3](../../../Repair_bob_3_v3_at_k3.md), B3 |
+The Bob plans break down repairs to these existing implementations:
+[B1](../../../Repair_bob_1_v3_at_k3.md) covers subjects, checks, evidence and
+approval; [B2](../../../Repair_bob_2_v3_at_k3.md) covers qualified selection,
+approval pins, readers and publication; [B3](../../../Repair_bob_3_v3_at_k3.md)
+covers durable original work, lifecycle and native Codex/Auth integration.
+They introduce no additional runtime authority or service.
 
 Use [B1's shared dependency order](../../../Repair_bob_1_v3_at_k3.md#required-order-across-all-three-plans)
 and current scoped evidence; do not cache repair completion in this skill.
 `missing4_v3_at_k3.md` is superseded navigation/history, not a parallel checklist.
 
-These are implementing responsibilities, not separate services to create. Reuse
-qualified loaders, stores, supervisors, settings publishers and evidence writers.
-A missing adapter stays with its named owner; it cannot justify a second queue,
-VM, provider catalogue, approval path or specialized Rust workflow loop.
+Extend the existing implementation for a missing responsibility. Other plans
+consume its result and contribute applicable acceptance cases. Reuse qualified
+loaders, stores, supervisors, settings publishers and evidence writers; do not
+create another queue, VM, provider catalogue, approval path or workflow loop.
 
 For new Tools and changed workflow handlers, apply the
 [V35-08 semantic review](../../../path_to_v3.5.md#guidance-reconciliation-and-semantic-review)
 in the existing review record: candidate Recipe, actual reuse identities, primitive
-versus shared-support gap, per-responsibility owner, retained binding/approval
-route and ordinary-caller refusal/failure/no-replay evidence. Inspect actual method
-and export responsibilities; a wrapper Recipe or host-call count proves no
+versus shared-support gap, the existing responsible implementation, its boundary
+and applicable owning plan, retained binding/approval route and ordinary-caller
+refusal/failure/no-replay evidence. Inspect actual method and export
+responsibilities; a wrapper Recipe or host-call count proves no
 workflow conversion.
 
 ## Inspect the actual producer, handoffs and consumer
@@ -198,8 +208,12 @@ completed-negative, incomplete/infrastructure failure, cancelled/stale and
 unresolved settlement distinct; observation or ResultOnly completion alone cannot
 approve or graduate a component. Reconcile original status without replay.
 
-For new approval or flow profiles, use
-[B2-02 and its reader inventory](../../../Repair_bob_2_v3_at_k3.md#3-define-exact-approval-carriage-before-touching-readers).
+For retained selection and approval carriage, follow
+[B2-02's shared versioned contract and reader inventory](../../../Repair_bob_2_v3_at_k3.md#3-define-exact-approval-carriage-before-touching-readers).
+[V35-13/14](../../../path_to_v3.5.md#two-distinct-shared-support-gaps) define required
+flow and occurrence semantics and extend that same contract with the selection
+implementation. Do not introduce a separate manifest or independently reinterpret
+its fields.
 Review the shared versioned schema and checksum domains before changing writers.
 Connect serializers, strict nested readers, DB constraints, prepare/publication,
 ordinary/private/child/wait/restore/recovery and MCP/Prefix consumers before
@@ -252,10 +266,10 @@ context bounds still apply. Use existing acknowledged settings for necessary
 operational limits, quotas and deadlines. Any missing setting needs its existing
 DB/API/WebUI/live-ACK path, units and feasibility rules; do not add hidden local
 caps. Protocol/representation bounds and the supported stop/one-dispatch contract
-remain technical contracts. Implement missing guard mechanics at the existing
-model boundary through the applicable shared owner; Prefix qualifies its request
-contract. For construction work use the ownership split below, without a parallel
-guard.
+remain technical contracts. Reuse and, where required, extend the existing
+final-request validation path. Keep unsupported branches rejected until their
+connected implementation and qualification pass. For construction-specific
+extensions, follow the Construction context handoff below.
 
 ## Apply the relevant domain handoff
 
@@ -286,15 +300,22 @@ guard.
   Provider-free qualified builds must not depend on an optional provider/prefix.
 - **Construction context:** consume the
   [shared Prefixless successor](../../../docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
-  and its [Simplified](../../../simplified_v3.md#open-prefixless-construction-successor--existing-owner-contribution)/[v3.5](../../../path_to_v3.5.md#open-construction-choice-handoff)
+  and its [Composition native delta](../../../docs/plans/monty.composition.implementation.md#sole-native-selectioncapturerequest-implementation-delta),
+  [Simplified lifecycle contribution](../../../simplified_v3.md#open-prefixless-construction-successor--existing-owner-contribution)
+  and [v3.5](../../../path_to_v3.5.md#open-construction-choice-handoff)
   handoffs. Maker -> Base -> Prefixless is only a visible editable form suggestion,
-  never a runtime fallback chain. Bind the submitted choice's exact generation or
-  intentional absence, executing route/instructions and original job before effects;
+  never a runtime fallback chain. Bind the operator-submitted choice's exact
+  generation or intentional absence, executing route/instructions and original job
+  before effects;
   stale or incompatible choices fail without reselection. Required children/reviews
-  use their own qualified retained context and legitimate lineage. Prefix owns
-  options/eligibility and construction qualification; Composition/Simplified own
-  declaration/admission/capture and native request/child/response/guard/continuation
-  support. Keep the full request guard effective with Prefixless. The Recipe editor
+  use their own qualified retained context and legitimate lineage. For this
+  construction successor, Prefix supplies qualified options, the operator-submitted
+  job choice, construction qualification and product integration. Extend the
+  existing model-usage implementation under Composition's native delta for
+  selection, capture, request preparation, response and guard integration.
+  Simplified supplies only genuinely missing shared task, child or continuation
+  mechanics; consume those results through existing interfaces. Keep the full
+  request guard effective with Prefixless. The Recipe editor
   retains supported Default/profile choices and adds explicit Prefixless only after
   qualification; no Recipe Generate button, baked-in generation or invented old-format
   tag. Preserve old jobs and independent reviewer contracts. Missing native support
