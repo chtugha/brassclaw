@@ -425,21 +425,29 @@ async fn acknowledged_intent_recycles_before_service_and_prestart_fence_does_no_
 // Pool acquisition and the original claim lock are part of the same budget,
 // rather than receiving a fresh deadline at each SQL phase.
 async fn intent_contention(hold_pool: bool) {
+    use brassclaw_turns::run_profile::AgentLoopDriverError;
     let rig = crate::runtime::test_pg::pg_rig().await;
     let _db = rig.lock_db().await;
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
-    // Separate actual runtime pool keeps the independent inspector/blocker usable.
-    let pool = Arc::new(
-        brassclaw_pg::pool::build_pool_with_max_size(
-            rig.url.expose_secret(),
-            brassclaw_pg::pool::MAX_POOL_SIZE,
-        )
-        .unwrap(),
+    let branch = if hold_pool {
+        "pool_acquire"
+    } else {
+        "original_claim_lock"
+    };
+    let id = Uuid::new_v4();
+    // Capacity is real from construction, including bootstrap. A lazy pool's
+    // later resize/status is not proof that its unused permits were removed.
+    let pool =
+        Arc::new(brassclaw_pg::pool::build_pool_with_max_size(rig.url.expose_secret(), 1).unwrap());
+    eprintln!(
+        "Intent contention setup {}",
+        json!({
+            "original":id,"branch":branch,"capacity_origin":"constructed_one","stage":"before_runtime_bootstrap",
+        })
     );
     let fixture = Fixture::start(&rig, pool).await;
     let selected = settings_for_intent(&fixture, 2000).await;
-    let id = Uuid::new_v4();
     fixture.original(id).await;
     fixture.ready(id).await;
     let original = prefix_original_bytes(&rig.pool, id).await;
@@ -460,13 +468,34 @@ async fn intent_contention(hold_pool: bool) {
     })
     .await
     .unwrap();
-    fixture.pool.resize(1);
     let old = one_connection_identity(&fixture.pool).await;
     let pool_guard = if hold_pool {
         Some(fixture.pool.get().await.unwrap())
     } else {
         None
     };
+    let diagnose = |stage: &'static str, result: Option<&'static str>| {
+        let pool = fixture.pool.status();
+        let intent = match factory.test_private_intent_observation(claim.attempt()) {
+            Ok(facts) => json!({"status":"observed","facts":facts}),
+            Err(_) => json!({"status":"unavailable"}),
+        };
+        eprintln!(
+            "Intent contention diagnostic {}",
+            json!({
+                "original":id,"branch":branch,"capacity_origin":"constructed_one","stage":stage,
+                "policy_revision":selected.revision,"timeout_millis":selected.timeout.as_millis(),
+                "pool_guard_client_id":pool_guard.as_ref().map(|client|brassclaw_pg::PgClient::id(client).to_string()),
+                "original_client_id":old.0,"original_backend_pid":old.1,
+                "pool":{"max_size":pool.max_size,"size":pool.size,"available":pool.available,"waiting":pool.waiting},
+                "intent":intent,"result":result,
+            })
+        );
+    };
+    diagnose("guard_prepared", None);
+    if let Some(guard) = &pool_guard {
+        assert_eq!(brassclaw_pg::PgClient::id(guard).to_string(), old.0);
+    }
     let mut blocker = rig.pool.get().await.unwrap();
     let blocker_pid: i32 = blocker
         .query_one("SELECT pg_backend_pid()", &[])
@@ -487,6 +516,10 @@ async fn intent_contention(hold_pool: bool) {
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
                 let facts = factory.test_private_intent_observation(claim.attempt()).unwrap().unwrap();
+                if hold_pool && facts["boundaries"].as_array().is_some_and(|boundaries|boundaries.iter().any(|phase|phase=="acquire_acknowledged")) {
+                    diagnose("unexpected_acquire_acknowledgement", None);
+                    panic!("intent must not acquire the constructed-one pool while its guard is held");
+                }
                 let expected = if hold_pool { "acquire_started" } else { "claim_started" };
                 if facts["last_io_boundary"] == expected {
                     if hold_pool { break None; }
@@ -505,13 +538,23 @@ async fn intent_contention(hold_pool: bool) {
     };
     let started = tokio::select! {
         result = blocked => result,
-        _ = &mut drive => panic!("original must not finish before its intended wait"),
+        _ = &mut drive => {
+            diagnose("drive_finished_before_intended_wait", None);
+            panic!("original must not finish before its intended wait");
+        },
     };
     // Park the submission again: only its IO job can consume the store deadline.
-    let error = tokio::time::timeout(Duration::from_secs(10), factory.before_submit(&host))
-        .await
-        .unwrap()
-        .unwrap_err();
+    let outcome = tokio::time::timeout(Duration::from_secs(10), factory.before_submit(&host)).await;
+    let kind = match &outcome {
+        Err(_) => "test_watchdog_elapsed",
+        Ok(Ok(())) => "Ok",
+        Ok(Err(AgentLoopDriverError::InputAdmissionPending)) => "InputAdmissionPending",
+        Ok(Err(AgentLoopDriverError::InvalidRequest { .. })) => "InvalidRequest",
+        Ok(Err(AgentLoopDriverError::Unavailable { .. })) => "Unavailable",
+        Ok(Err(AgentLoopDriverError::Failed { .. })) => "Failed",
+    };
+    diagnose("intent_result", Some(kind));
+    let error = outcome.unwrap().unwrap_err();
     let error = error.to_string();
     assert!(error.contains("private_submission_intent"));
     assert!(error.contains(&format!("\"settings_revision\":{}", selected.revision)));
@@ -527,6 +570,14 @@ async fn intent_contention(hold_pool: bool) {
             .test_private_intent_observation(claim.attempt())
             .unwrap()
             .unwrap();
+        assert!(
+            !facts["boundaries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|phase| phase == "acquire_acknowledged"),
+            "the held pool guard must exclude every actual intent checkout through the deadline"
+        );
         assert_eq!(facts["client_scope_ended"], false);
         assert!(pool_guard.is_some());
     }
@@ -549,7 +600,6 @@ async fn intent_contention(hold_pool: bool) {
     assert!(fixture.claim(TurnRunnerId::new()).await.is_none());
     assert!(driver.drive_private(claim).await.is_err());
     drop(drive);
-    fixture.pool.resize(brassclaw_pg::pool::MAX_POOL_SIZE);
     fixture.finish().await;
 }
 
