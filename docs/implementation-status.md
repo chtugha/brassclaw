@@ -1,4 +1,53 @@
-## 2026-11-12 — Run-43: scoped passes, unresolved Source2 and corrected fixtures
+## 2026-11-12 — Run-44 terminal: writer locks pass; private startup remains open
+
+Frozen `40af8aa9f` compiles the Composition library harness without warnings in
+841.722 seconds. Actual link/profile checks and the unchanged worker's 903
+captured inputs pass. Four selected native cases execute: the corrected
+writer-lock case passes (748.285 seconds); Source2 and the BEGIN/fence case fail.
+The genuinely constructed-one case hangs before Runtime bootstrap returns and
+is deliberately interrupted after 2118.432 seconds, recorded with return code
+`-15`, not a normal assertion failure or a pass. Its own worker exits and its
+exact PostgreSQL fixture is stopped normally; the terminal audit finds no owned
+compiler, worker or server remaining.
+
+Source2's same-read observer expires at pool acquisition after 2001 milliseconds
+under the actual 2000-millisecond ResourceStore revision. The native outcome is
+internally completed, but admission/settlement acknowledgement is still absent.
+The current holder is unproven. The BEGIN ticket closes before its observer sees
+Held; the actual close cause is not established. Passive bounded diagnostics
+`f502b7cc6` retain the first real Held observation and actual Factory/settlement
+phases without changing SQL, task deadlines or effects. Their new results remain
+unrun.
+
+The startup investigation independently confirms two source checkout cycles:
+the generation importer retains its client after COMMIT while its readback
+requests another, and the fresh generation validator retains a client across
+worker-close/admission settlement. Reviewed `3d49c52df` adds exactly three client
+releases after successful COMMIT. The live original invocation was still
+`dispatch_intent` at step `0:3`, with no answer; the exact live Future stack was
+not measured. Native acceptance of these repairs remains pending.
+
+Run-44 preserves the original full-tree guard failure caused by the externally
+owned, untracked, non-input `speedup.md`, and its first failed disk gate. A
+separate, explicitly reviewed runtime continuation verifies every captured
+compiler/runtime input unchanged and reuses the same images without Cargo.
+Exact results and interruption custody are in
+`target/validation/bob-native-repair-20261105/run-44-composition/terminal-disposition.json`.
+The source freeze is released; this is one narrow writer-lock pass, not general
+Pure approval or full Bob completion.
+
+Q's private connected catalogue/cold-restore follow-up `6c9aa0403` awaits complete
+review and compilation. T's original History source has been fully reviewed;
+its claim-token correction `451bfea53` is source-reviewed, while the midnight
+path correction `22d745932` still has an open bounded-materialization finding.
+No qualified genuine private Memory consumer exists yet. Its future fixture
+belongs to the existing installation-spec/controlled-session owner; a contained
+Chat must not be relabelled Private. T sends technical questions directly to
+the supervisor under the user's authorization. U's connected class-validator
+proposal remains read-only, with no source/format/migration grant. N/Q/R/T/U
+qualification and all three Bob plans remain open.
+
+## Historical 2026-11-12 — Run-43: scoped passes, unresolved Source2 and corrected fixtures
 
 Frozen `3c04cb307ef72d009d819387464fe9f67836fd84` compiles the Composition library
 harness without warnings in 588.103 seconds. Actual profiles and unwind metadata

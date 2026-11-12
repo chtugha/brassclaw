@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Run-44 scoped validation and generation checkout repair**: Composition
+  compiles warning-free; the corrected writer-lock/READ ONLY case passes.
+  Source2 and BEGIN/fence still fail; record the actual constructed-one startup
+  hang and controlled test interruption without claiming success. Release three
+  generation clients after confirmed COMMIT before their existing readback or
+  settlement requests another connection. Add bounded passive Hold/settlement
+  witnesses; native acceptance of these repairs remains pending. Preserve all
+  failed guard/disk/native evidence. Private qualification/cold-restore packages
+  and all three Bob plans remain open.
+
 - **Run-43 scoped validation and fixture repairs**: Composition compiles without
   warnings; nine of twelve executed native cases pass, including the original
   Source1, Prefix ACK-loss and seven intent-custody cases. Source2 remains

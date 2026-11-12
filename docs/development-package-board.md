@@ -37,7 +37,48 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Current supervisor checkpoint — 2026-11-12, after Run-43
+### Current supervisor checkpoint — 2026-11-12, after Run-44
+
+Frozen Main `40af8aa9f` compiles Composition warning-free in 841.722 seconds;
+actual link/profile checks and 903 unchanged worker inputs pass. Four targeted
+native cases execute: writer-lock/READ ONLY original delivery passes; Source2
+and BEGIN/fence fail. The constructed-one case hangs during genuine fresh
+bootstrap and is deliberately interrupted after source-confirmed checkout
+cycles, with actual return code `-15`. It is not a pass or a normal assertion
+failure. Its own worker exits, its exact PostgreSQL fixture stops normally and
+the independent terminal audit releases the source freeze. Preserve all actual
+outcomes, original full-tree guard failure, separate failed first disk gate and
+runtime continuation in Run-44's `terminal-disposition.json`.
+
+S's fully reviewed passive observation `a9014e283` is integrated as `f502b7cc6`;
+its three post-COMMIT client releases `6b15ad7ea` as `3d49c52df`. The latter fixes
+existing generation-import/readback and fresh-validator/settlement checkout
+cycles, without changing pool sizes, deadlines or effects. Both corrections
+still require native validation. Source2's actual current holder and the BEGIN
+ticket's close cause remain open. S performs a bounded read-only audit of the
+remaining constructed-one fresh-start lifetime before the next expensive batch.
+
+Q's connected source at `6c9aa0403` corrects four Root findings in the private
+cold-restore package; its new 37-file delta awaits complete Root review. Q alone
+owns fresh `/2`, original-only restore, authored `/5` and V216. Its source,
+alongside private N/R prerequisites, is uncompiled/unaccepted.
+
+T at `22d745932` is source-idle. Root fully reviewed the original 46-file source
+and claim-token correction `451bfea53`; the midnight correction's native
+filesystem reads still materialize unbounded entries. T prepares a read-only
+proposal for the missing bounded record projection in the existing filesystem
+owner. No source grant for that API or the separate true-private Memory fixture
+exists yet. No suitable existing private Memory consumer is available; use the
+existing N installation-spec/controlled-session boundary for its future strict
+inner spec, after independent T usage/R instrument qualification. No fabricated
+Private origin or foreign Prefix/Pure fixture. Technical questions go directly
+to Root under the user's explicit authorization. U remains read-only for its
+connected class-validator/Q1 contract; no format/migration/source reservation.
+
+Root has no active build at this checkpoint. `.DS_Store` and externally owned
+`speedup.md` are not staged or changed by Root. All three Bob plans remain open.
+
+### Historical supervisor checkpoint — 2026-11-12, after Run-43
 
 Run-43 compiles the actual Composition harness warning-free in 588.103 seconds
 at frozen `3c04cb307`, verifies the unchanged worker and real profiles, then
@@ -956,9 +997,11 @@ remain untouched. Do not copy the old tree or infer full Bob completion.
 | N-01 — qualified flow and unique occurrences | `01a1c5d0-0b6b-7d62-8af5-0463259e6bab`, host `local`; `/Users/ollama/.codex/worktrees/9cb5/brassclaw` | Private V214 source through 456c06128 remains uncompiled/unaccepted; all 25 handoff artifacts and 176 actual Base/Head blobs across 105 net files are verified. Signature/caller corrections are reviewed. The minimal worker-envelope repair and real-worker regression alone are integrated as 2061a7e75; native execution is pending. N is source-idle. The single Modal build of old 7c55abe05 fails with 22 diagnoses/no artifacts; no later compilation/native acceptance. |
 | O-01 — native Codex Responses transport | `01a1c639-77bd-7da1-a646-65ff8019f60b`, host `local`; `/Users/ollama/.codex/worktrees/e60c/brassclaw` | Fourteen-file A source integrated; 25 codec/isolated SDK cases and actual factory pre-authentication case pass. Complete Prefix caller passes in Run-36 after reviewed `95a9f01c7` fixture repair. Idle. No serving activation; technical upgrade compatibility, pair-format/Sempai/exact-prefix and actual API evidence remain open. |
 | P-01 — native Provider/Auth status projection | `01a1c8aa-04ef-7323-a41d-a4a4d738dff5`, host `local`; `/Users/ollama/.codex/worktrees/41f5/brassclaw` | All 32 source identities integrated. JS 33, Run-37 real PG/native status cases and HTTP facade contract pass. Actual CLI-default DB-reader passes; no-default build reveals an Engine feature mismatch, reviewed fix integrated but unrun. Browser/serving/issuer acceptance remains open; idle. |
-| Q-01 — original Capture/Regex policy | `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, host `local`; `/Users/ollama/.codex/worktrees/bad8/brassclaw` | Private 49-file source at 1bc781a9e, uncompiled/unaccepted. Corrected read-only contract retains original R for existing programs; only actual new preparations take current ACK policy. Automatic refresh is withdrawn. Exact reuse/restore, actual per-selection S and original boot/History locators need a connected explicit manifest contract; none newly reserved. V215 reserved; no current source/build grant. |
+| Q-01 — original Capture/Regex policy | `01a1c9c5-d6e7-7511-a91c-c1741552cde0`, host `local`; `/Users/ollama/.codex/worktrees/bad8/brassclaw` | Private connected source through 6c9aa0403, including preserved N/R/T prerequisites, remains uncompiled/unaccepted. Complete f496 review returned four findings; the new 37-file correction awaits review. Exclusive owner of `/2`, `/5`, V215/V216, original R/S and actual boot/History locators. No automatic refresh or fresh qualification during restore. Source-idle for review; no current build grant. |
 | R-01 — independent shipped Pure subjects/readers | `01a1ca84-a21f-7590-8e6d-90fc5e43981c`, host `local`; `/Users/ollama/.codex/worktrees/5fa8/brassclaw` | Private eight-root source through c3a15f13d is reviewed but uncompiled/unaccepted. Original record/parser/graph policy and whole-response PG preflight are connected. Further review correction preserves actual failure causes through the new shipped writer/caller; existing EvidenceClient custody stays unchanged. R/S are current package owners. History usage and original workflow restart discovery remain separate gates. No SQL reservation, build/native or general authored approval claim. |
-| S-01 — private admission and Source2 connection custody | `01a1ccdd-e4e9-7c83-abb2-c1a4a4a45e16`, host `local`; `/Users/ollama/.codex/worktrees/04f7/brassclaw` | Diagnostic D 170ab5986 fully reviewed and integrated as 592df6907, native acceptance pending. Actual intent/submit progress and independent-fixture PG wait metadata are passive; no productive semantics change. Source2 holder remains unproven; mandatory unknown-intent error split withdrawn. Confirmed IO/custody gap remains open. Source-idle; shared worker repair stays with N. |
+| S-01 — private admission and Source2 connection custody | `01a1ccdd-e4e9-7c83-abb2-c1a4a4a45e16`, host `local`; `/Users/ollama/.codex/worktrees/04f7/brassclaw` | Run-43 seven custody cases and Run-44 writer-lock/READ ONLY case pass narrowly. Source2/BEGIN remain failed; true-capacity startup hangs and is explicitly interrupted. Reviewed passive diagnostics a901 and exact three-client-release fix 6b15 are integrated as f502b7cc6/3d49c52df, native acceptance pending. Read-only remaining-startup audit; no timeout/pool workaround or new replay. |
+| T-01 — exact shipped History usage | `01a1ce85-3f4a-7cb0-a3d4-3afa762915d3`, host `local`; `/Users/ollama/.codex/worktrees/48ff/brassclaw` | Original 46-file source fully reviewed; claim-token fix 451bfea53 source-reviewed. Latest 22d745932 midnight-path delta has a confirmed unbounded native-record materialization gap; no final acceptance. Read-only bounded filesystem proposal, no source grant. Actual private Memory fixture remains a separate missing installation-spec consumer; technical questions go directly to Root. |
+| U-01 — connected class-validator/Q1 successor | `01a1d036-e92b-7201-b6b8-63dfe9d13b5b`, host `local`; `/Users/ollama/.codex/worktrees/07e6/brassclaw` | Read-only concrete class-22 successor proposal, not general Pure or eight-validator completion. Latest-trigger preservation and post-terminal graduation custody corrections pending. No source, format, migration or build grant. |
 
 Migration ownership: V203 (exact pure links) is integrated; V204 belongs to A-01
 (filesystem Auth cutover) and is integrated. V205 is reserved exclusively for
