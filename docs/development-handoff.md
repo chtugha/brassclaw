@@ -68,11 +68,12 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Four external package branches remain **unmerged**: B1-06 `c0cdb7ccd`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `6655c63e0`, B3-09 `ff186d9b8`. Review corrections return
+Four external package branches remain **unmerged into Main**: B1-06 `b48d45b7c`, B2-02
+`e0be06d8f` (source `78147448b`), B3-06 `36697df4b`, B3-09 `63d4a80c6`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
-reserved for B1, V215 for B2. Root stays on Main and preserves unrelated human
-working changes. Package chats must not switch that checkout or unlink the
+reserved for B1, V215 for B2. Root prepares B1 on central integration branch
+`codex/bob-reviewed-integration-20261113` at `8cdbd5f7`; Main remains `d722c92d4`.
+Unrelated human working changes are preserved. Package chats must not switch that checkout or unlink the
 shared Cargo lock. Local Cargo stays serial; Composition requires explicit
 `postgres,skills-db` acceptance.
 
@@ -84,13 +85,16 @@ The actual class-22 dispatcher, immutable viewed-decision binding, B2 historical
 strictness/original limits/base validation and B3 qualified selection/commit
 custody remain review blockers. B2's shared-owner and explicit nil/zero checks
 are corrected in source; its direct Rustfmt check fails, and Cargo is not run.
-B1 now closes unsupported authored approval creation; full producers and typed Q2
-remain open. B3-06's coherent reads/write guard are corrected, but its new checksum
-read conflicts with the TEXT schema and it still selects unqualified heads without
-bounded resolution or real lost-ACK coverage. B3-09's React boundary is corrected;
-its new backend helper has a trait-implementation error and substitutes legacy
-graduation for the required immutable decision. Its revised 35 UI cases pass;
-B1/B3-06 direct formatter checks pass. No new Cargo/native acceptance is claimed.
+B1's authored creation remains closed. Its actual Run-58 strict full-feature
+Clippy fails on a collapsible if at writer line 687, with unchanged inputs.
+The fixture also double-allocates one revision; V214 needs direct constraint
+cases. The receipt runner's premature success-artifact assertion is diagnosed
+separately, preserving original logs; no unchanged rerun. The freeze is released.
+B3-06 removes the faulty draft selector and bounds writes, but error readback
+still escapes its bound; test duplication/permissive ACK assertions remain.
+B3-09 reverts its flawed Rust helper and makes class 22 inspection-only; class-21
+panel actions still need B1's typed decision. Its revised 35 UI cases pass.
+No incoming native acceptance or Main integration is claimed.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
 Before native continuation, collect accepted package corrections and compile

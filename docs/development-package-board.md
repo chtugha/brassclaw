@@ -113,10 +113,10 @@ The four externally prepared package branches remain separate from Main:
 
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
-| B1-06 | `c0cdb7ccd` | Unsupported authored creation closed; unused test helper/future activation instructions need correction; full B1 remains open. |
+| B1-06 | `b48d45b7c` | Prior corrections applied; candidate `8cdbd5f7` fails actual strict Clippy. Fixture allocation and V214 coverage corrections returned; full B1 remains open. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
-| B3-06 | `6655c63e0` (`8f46752d6` source) | Coherent reads/write guard corrected; checksum SQL type, qualified selection, bounded resolution and actual lost-ACK cases remain open. |
-| B3-09 | `ff186d9b8` | React boundary corrected and 35 UI cases pass; new Rust helper has a trait-implementation error and bypasses the required immutable decision contract. |
+| B3-06 | `36697df4b` (`ad1ea1b90` source) | Production draft selector removed and write bounded; failure readback, duplicated test entry and permissive ACK assertions remain open. |
+| B3-09 | `63d4a80c6` | Flawed Rust path reverted; class-22 inspection and 35 UI cases pass. New class-21 panel actions still lack typed immutable decision binding. |
 
 Reserve unpublished migration V214 for B1 and V215 for B2. Package authors
 must not switch Root's checkout or delete the shared Cargo lock file. Release
@@ -126,6 +126,9 @@ review corrections are supplied in the user conversation for forwarding.
 
 Root bundles source-accepted corrections before the next expensive native
 build. Composition acceptance explicitly enables `postgres,skills-db`;
+the B1-only candidate check is a bounded intermediate lint gate, not another
+native-program build. Root's deliberate central integration branch leaves Main
+unchanged until acceptance; package chats must not switch that checkout.
 package-default Clippy does not reach these gated modules. No incoming package
 is marked complete from its report or source review. Exact findings and cheap
 UI/baseline checks are in the

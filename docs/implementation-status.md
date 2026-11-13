@@ -55,8 +55,8 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Incoming Bob packages remain unmerged
 
-B1-06 `c0cdb7ccd`, B2-02 `e0be06d8f` (source `78147448b`), B3-06 `6655c63e0` and B3-09
-`ff186d9b8` are reviewed incoming work, not implemented Main boundaries. Open
+B1-06 `b48d45b7c`, B2-02 `e0be06d8f` (source `78147448b`), B3-06 `36697df4b` and B3-09
+`63d4a80c6` are reviewed incoming work, not implemented Main boundaries. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
 readers, coherent qualified validator selection, cancelled/unknown commits and
 the actual class-22/stale-view decision path. B3-09's 35 UI tests pass; the same
@@ -66,11 +66,13 @@ records source facts, owner corrections and the required combined acceptance.
 B2's shared structural owner and explicit nil/zero checks are corrected in
 source; `/1` strictness, original limits, complete base structure and formatting
 still require correction. This does not establish new runtime support.
-B1's unsupported authored writer is now closed in source. B3-06 corrects coherent
-reads/write-client custody, and B3-09 corrects its React component boundary; the
-remaining typed decision, qualified selection, SQL type, bounded-I/O and native
-acceptance findings remain open in the linked review. No package completion or
-new runtime support follows from these unmerged corrections.
+B1's unsupported authored writer is closed. Candidate integration `8cdbd5f7` on
+the supervisor's central integration branch fails actual full-feature strict
+Clippy at writer line 687; fixture allocation and V214 coverage corrections
+remain. Main is unchanged. B3-06 removes the faulty draft selector and bounds
+writes, but failure readback/tests still need correction. B3-09 reverts its unsafe
+Rust path and makes class 22 inspection-only; typed class-21 decisions remain
+open. No package completion or native/Main support follows from these changes.
 
 ## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 

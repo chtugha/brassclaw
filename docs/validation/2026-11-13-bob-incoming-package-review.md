@@ -1,7 +1,7 @@
 # Incoming Bob package review — 2026-11-13
 
 This is a supervisor source-review checkpoint. None of the four incoming
-packages is merged or accepted as complete. The four component guides and the
+packages is merged into Main or accepted as complete. The four component guides and the
 three Bob plans remain binding; reports and structural parsing grant no approval.
 Main's reviewed compatibility checkpoint is `d24a87508`. Review corrections go
 back to the existing package owners, not a second implementation service.
@@ -10,10 +10,57 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `c0cdb7ccd6c9e3fba9da37995411aeecb25442d7` |
+| B1-06 | `codex/b1-06-approval-writer` | `b48d45b7c` |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `6655c63e0fecd61498096494ad4efee64023f02b` |
-| B3-09 | `codex/b3-09-webui-review-panels` | `ff186d9b8fc5cb449feffa01d4ed2c734cfedca0` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `36697df4b` (source `ad1ea1b90`) |
+| B3-09 | `codex/b3-09-webui-review-panels` | `63d4a80c65d7a945aee5a5cc7759a40a10bdf066` |
+
+### Latest follow-up and actual candidate check
+
+Earlier per-commit findings below remain historical where superseded here.
+The five B1 corrections are applied in `b48d45b7c`: real table/positive
+qualification requirement, feature-correct selectors, helper removal and bounded
+checkpoint ownership. Root prepares only that source on
+`codex/bob-reviewed-integration-20261113`, candidate merge `8cdbd5f7`;
+Main remains at `d722c92d4`. No package is accepted into Main.
+
+Actual Run-58 strict Rust 1.100 Composition all-targets Clippy, explicitly
+`postgres,skills-db`, fails on `clippy::collapsible_if` at
+`pg_pure_component_approval.rs:687`. Inputs remain unchanged; elapsed time is
+103.969 seconds. Upper/test lint may be blocked; this is not complete lint or
+native acceptance. The receipt runner also incorrectly required successful
+feature artifacts before recording a failed command. Original receipts and full
+Cargo JSON/stderr are preserved. Separate `post-review-diagnostics.json` confirms
+Cargo `build-finished: false`, the diagnostic and unchanged source; the future
+runner records failures before success-only artifact assertions. No unchanged
+build is rerun for a reporting error. The source freeze is released.
+
+B1 also needs a fixture correction before native execution: its subject-binding
+test stages revision 1 and then calls `submit(base=None)` on the same UUID,
+attempting another allocation from head zero. Use `submit_retained` or allocate
+once through submission, preserving assertions. V214 requires actual missing-run,
+failed-run and seed-exemption constraint cases; closed authored writer tests
+return before that trigger. This is low-level DB integrity, not full approval.
+
+B3-06 `ad1ea1b90` removes the production draft selector and incompatible checksum
+read, and explicitly defers absent selections. Its write now has a deadline and
+custody. Remaining: bounded readback starts with `write_result?` and skips its
+read on write failure; the outer original reader remains unbounded/raw-pooled.
+Guard and bound actual SQL resolution separately from captured native checks.
+The test-only entry duplicates production preparation, and the ACK-cut test
+permits arbitrary first `Ok`/`Err`. Use one actual path, preferably the existing
+transport-backed runtime with a capacity-one pool, and require exact successful
+recovery when readback is healthy. Test intentionally blocked/unresolved readback
+separately. The controlled draft fixture does not prove general qualification.
+
+B3-09 `63d4a80c6` fully reverts the flawed class-22 Rust helper; the net Rust
+change is a boundary comment. Class 22 is inspection-only and the corrected
+React boundary remains. Root's changed Node suites pass 35/35, zero ignored.
+Class 21 still labels legacy graduation as a connected Q2 writer without a
+displayed-view expectation. Keep the new panel inspection-only for both classes
+until B1 connects typed Pure/workflow decisions. Existing legacy QueueRow behavior
+is separate. Correct stale dispatcher/409 header claims and replace plan-ID/
+internal-writer product text with a plain unavailable-approval explanation.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.
