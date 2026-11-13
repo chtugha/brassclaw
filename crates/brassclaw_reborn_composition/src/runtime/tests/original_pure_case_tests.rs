@@ -193,7 +193,7 @@ async fn one_case_with_id(
         .0
         .private_completion_waiter(run)
         .unwrap();
-    let state = submit_case(&runtime, id, submission, export, &json!({"text":text}))
+    let state = submit_case(runtime, id, submission, export, &json!({"text":text}))
         .await
         .unwrap();
     assert_eq!(state.case_id, id.to_string());

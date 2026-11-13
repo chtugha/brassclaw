@@ -289,16 +289,6 @@ fn seed_cause_kind(cause: &CaseCause) -> String {
     }
 }
 
-#[cfg(test)]
-mod diagnostic_tests {
-    use super::*;
-
-    #[test]
-    fn native_dispatch_diagnostic_never_formats_retained_payload() {
-        let cause = CaseCause::Dispatch(json!({"answer":"private receipt/source marker"}));
-        assert_eq!(seed_cause_kind(&cause), "native_dispatch");
-    }
-}
 #[async_trait]
 impl OriginalCaseOperation for SeedOperation {
     fn has_uncommitted_evidence(&self) -> bool {
@@ -1053,4 +1043,15 @@ pub(super) async fn verify_originals(
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn native_dispatch_diagnostic_never_formats_retained_payload() {
+        let cause = CaseCause::Dispatch(json!({"answer":"private receipt/source marker"}));
+        assert_eq!(seed_cause_kind(&cause), "native_dispatch");
+    }
 }

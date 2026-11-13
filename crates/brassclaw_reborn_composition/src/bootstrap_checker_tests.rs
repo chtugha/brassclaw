@@ -24,10 +24,10 @@ pub(super) async fn audit_original_walks<T>(
     (result, observed)
 }
 pub(super) async fn before_new_intent(context: &Context) {
-    if context.claim.root.uuid == fixtures::receipt_id() {
-        if let Ok(barrier) = RACE.try_with(Arc::clone) {
-            barrier.wait().await;
-        }
+    if context.claim.root.uuid == fixtures::receipt_id()
+        && let Ok(barrier) = RACE.try_with(Arc::clone)
+    {
+        barrier.wait().await;
     }
 }
 #[derive(Clone, Copy)]
@@ -189,7 +189,7 @@ async fn retain_and_reject_fabricated_legacy(context: &Context) {
             kind,
             true,
             &evidence::checksum(&context.claim.root.uuid.to_string()),
-            &[component.clone()],
+            std::slice::from_ref(&component),
             json!({"checks":["no-host-calls","effect-free-load"]}),
         );
         context.pool.get().await.unwrap().execute("INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3)",&[&id,&bytes,&evidence::checksum(&bytes)]).await.unwrap();

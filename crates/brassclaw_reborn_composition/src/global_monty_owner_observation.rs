@@ -74,7 +74,7 @@ pub(crate) fn joined(
         .failed_exchanges
         .iter()
         .find_map(|receipt| receipt.outcome.as_ref().err())
-        .map(|error| process(error));
+        .map(process);
     json!({"phase":"service_join_returned","service_join_error":Value::Null,
         "ownership_failure":ownership,"service_failure":exit.failure.map(|kind|format!("{kind:?}")),
         "transport":transport,"tasks_retained":exit.tasks.len(),"pending_admission":exit.pending_admission.is_some(),

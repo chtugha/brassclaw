@@ -112,9 +112,9 @@ fn new_slot() -> DeliverySlot {
 #[cfg(test)]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum PauseStage {
-    BeforeDrive,
-    BeforeSubmit,
-    BeforePublish,
+    Drive,
+    Submit,
+    Publish,
 }
 #[cfg(test)]
 pub(crate) struct PublishPause {
@@ -133,15 +133,15 @@ impl PublishPause {
 impl GlobalMontyDriver {
     #[cfg(test)]
     pub(crate) fn pause_private_publish(&self, run: TurnRunId) -> Arc<PublishPause> {
-        self.pause_private_at(run, PauseStage::BeforePublish)
+        self.pause_private_at(run, PauseStage::Publish)
     }
     #[cfg(test)]
     pub(crate) fn pause_private_start(&self, run: TurnRunId) -> Arc<PublishPause> {
-        self.pause_private_at(run, PauseStage::BeforeDrive)
+        self.pause_private_at(run, PauseStage::Drive)
     }
     #[cfg(test)]
     pub(crate) fn pause_private_before_submit(&self, run: TurnRunId) -> Arc<PublishPause> {
-        self.pause_private_at(run, PauseStage::BeforeSubmit)
+        self.pause_private_at(run, PauseStage::Submit)
     }
     #[cfg(test)]
     pub(super) fn private_submit_pause(&self, run: TurnRunId) -> Option<Arc<PublishPause>> {
@@ -149,7 +149,7 @@ impl GlobalMontyDriver {
             .lock()
             .unwrap()
             .get(&run)
-            .filter(|pause| pause.stage == PauseStage::BeforeSubmit)
+            .filter(|pause| pause.stage == PauseStage::Submit)
             .cloned()
     }
     #[cfg(test)]
@@ -278,15 +278,14 @@ impl GlobalMontyDriver {
             published: false,
         };
         #[cfg(test)]
-        self.private_test_pause(run, PauseStage::BeforeDrive).await;
+        self.private_test_pause(run, PauseStage::Drive).await;
         let result = async {
             let host = self.ports.private_host(&claimed)?;
             self.drive_host(host).await
         }
         .await;
         #[cfg(test)]
-        self.private_test_pause(run, PauseStage::BeforePublish)
-            .await;
+        self.private_test_pause(run, PauseStage::Publish).await;
         #[cfg(test)]
         self.private_publish_pauses.lock().unwrap().remove(&run);
         delivery.publish(result.clone());
