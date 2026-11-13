@@ -833,7 +833,7 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
 /// Returns `(submission_id, component_id)`.
 pub(super) async fn queued_structural_original_with_selection(
     rig: &crate::runtime::test_pg::PgRig,
-    runtime: &super::RebornRuntime,
+    runtime: &crate::RebornRuntime,
 ) -> (Uuid, Uuid) {
     use brassclaw_engine::{
         executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},
