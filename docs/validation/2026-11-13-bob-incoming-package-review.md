@@ -13,7 +13,7 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `01cc4499a`, report `8b6f96a63`; restored guard, remaining lint/DB fixture findings |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `e4b6adedb`, report `ec5a821af` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `d94aaa8e1`, report `07e0a4656` |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### Latest follow-up and actual candidate check
@@ -218,6 +218,34 @@ Remaining owner corrections before the combined build:
 
 The package remains outside Main. The read-custody and Send findings from the
 previous commit are superseded by these source corrections.
+
+### B3-06 `d94aaa8e1`, report `07e0a4656` — shared recovery, test lifecycle open
+
+The actual runtime now receives the capacity-one proxy pool, and the test uses
+the production `prepare_private_validator()` entry point. Write and readback
+therefore share that pool. Checkout and PID query have one configured timeout;
+the nested production wake condition is flattened. These supersede the previous
+split-pool and wake-condition findings. No Cargo/native pass is claimed.
+
+Before building, correct the connected fixture lifecycle in the package owner:
+
+- Stop and await the existing turn worker through
+  `test_pg::stop_worker_for_state_fixture()` immediately after runtime startup,
+  before creating the controlled queued selection. The ordinary worker invokes
+  `reconcile_private_originals()` before claiming work and can prepare this same
+  original before the manual faulted call (or consume the armed fault itself).
+  The test's rig mutex does not lock the runtime worker. Apply this to the other
+  new manually controlled preparation/rollback cases as appropriate; do not
+  introduce a fake production success flag or replay. Preserve separate live
+  Worker execution acceptance. Assert no private original exists before arming.
+- Keep the proxy and pool available until `runtime.shutdown().await` completes;
+  close the pool and shut down the transport afterwards. The former split-pool
+  teardown order cannot be reused after making this the runtime's shared pool.
+  This avoids races between active lifecycle owners and closed infrastructure.
+
+The earlier report whitespace and PID wording remain presentation corrections;
+a distinct PID proves a different observed session, not completed old-backend
+termination. Production connection custody stays with the existing PG owner.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.

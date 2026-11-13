@@ -55,7 +55,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Bob inspection slice accepted; remaining packages open
 
-B1-06 `01cc4499a` (report `8b6f96a63`), B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `e4b6adedb`
+B1-06 `01cc4499a` (report `8b6f96a63`), B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `d94aaa8e1`
 remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
@@ -77,9 +77,9 @@ the supervisor's central integration branch fails actual full-feature strict
 Clippy at writer line 687; the newer fixture-allocation fix is source-reviewed,
 while V214 coverage corrections remain. Those source changes are absent from Main. B3-06 removes the faulty draft
 selector and bounds writes. Its latest source corrects Send/read custody and
-passes direct Rustfmt; the ACK test still reads back through a separate healthy
-pool, so actual same-capacity-one-pool recovery and strict lint/native acceptance
-remain open.
+passes direct Rustfmt at the prior checkpoint. The latest ACK test uses one
+capacity-one pool through the production entry point; manual-fixture worker
+races and teardown order still need correction before strict lint/native acceptance.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,

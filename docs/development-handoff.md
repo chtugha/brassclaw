@@ -69,7 +69,7 @@ before Cargo starts; no whole-batch/native pass is claimed.
 ### Incoming Bob review checkpoint
 
 Three package branches remain **unaccepted into Main**: B1-06 `01cc4499a` (report `8b6f96a63`), B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `e4b6adedb` (report `ec5a821af`). B3-09's inspection-only
+`e0be06d8f` (source `78147448b`), B3-06 `d94aaa8e1` (report `07e0a4656`). B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Failed B1 source remains on central integration
@@ -105,10 +105,12 @@ B3-09 now makes both classes inspection-only. Its 41 Node cases and all 28 real
 Rust static asset/router tests pass warning-free. Run-59 verifies the new embedded
 module and unchanged hashes; all 362 relevant inputs match the accepted Main
 merge. No browser, Q2 or full-plan acceptance follows. B3-06's latest source
-corrects Send and timed transactional-read custody; direct Rustfmt passes. Its
-ACK test still recovers through a separate healthy pool. Exercise production
-recovery through the same capacity-one pool, bound the complete recovery
-observation and correct the nested wake-if before combined validation. Its branch
+corrects Send and timed transactional-read custody; the prior direct Rustfmt passes.
+Latest `d94aaa8e1` uses the production preparation path with one capacity-one
+proxy pool, bounds the recovery observation and flattens the wake condition.
+Stop/await the real worker before controlled fixtures to prevent it preparing
+the original or consuming the targeted fault; shut down runtime before closing
+its shared pool/proxy. These source-visible test lifecycle fixes precede combined validation. Its branch
 remains uncompiled. No unaccepted B1/B3-06 source enters Main.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
