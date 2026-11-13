@@ -1,7 +1,8 @@
 # Incoming Bob package review — 2026-11-13
 
-This is a supervisor source-review checkpoint. None of the four incoming
-packages is merged into Main or accepted as complete. The four component guides and the
+This is a supervisor source-review and bounded acceptance checkpoint. The
+inspection-only B3-09 slice is accepted into Main; the other packages remain
+unaccepted and no complete Bob step is claimed. The four component guides and the
 three Bob plans remain binding; reports and structural parsing grant no approval.
 Main's reviewed compatibility checkpoint is `d24a87508`. Review corrections go
 back to the existing package owners, not a second implementation service.
@@ -12,8 +13,8 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `b48d45b7c` |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `36697df4b` (source `ad1ea1b90`) |
-| B3-09 | `codex/b3-09-webui-review-panels` | `63d4a80c65d7a945aee5a5cc7759a40a10bdf066` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `6c24e5e33` |
+| B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### Latest follow-up and actual candidate check
 
@@ -22,7 +23,7 @@ The five B1 corrections are applied in `b48d45b7c`: real table/positive
 qualification requirement, feature-correct selectors, helper removal and bounded
 checkpoint ownership. Root prepares only that source on
 `codex/bob-reviewed-integration-20261113`, candidate merge `8cdbd5f7`;
-Main remains at `d722c92d4`. No package is accepted into Main.
+At that gate Main remains at `d722c92d4`. B1 is not accepted into Main.
 
 Actual Run-58 strict Rust 1.100 Composition all-targets Clippy, explicitly
 `postgres,skills-db`, fails on `clippy::collapsible_if` at
@@ -61,6 +62,73 @@ displayed-view expectation. Keep the new panel inspection-only for both classes
 until B1 connects typed Pure/workflow decisions. Existing legacy QueueRow behavior
 is separate. Correct stale dispatcher/409 header claims and replace plan-ID/
 internal-writer product text with a plain unavailable-approval explanation.
+
+### Accepted B3-09 inspection slice `f857421e3`
+
+The new panel is now read-only for both classes, removes its mutations and stale
+affordance texts, and uses plain unavailable-decision wording. Existing legacy
+QueueRow actions remain unchanged. Root reviews the complete final change,
+confirms removed translation keys have no production consumers and runs 33 panel
+plus eight queue Node cases: 41 passed, zero failed/skipped. This is static
+render/contract evidence, not real React lifecycle or backend approval acceptance.
+
+Candidate `04dfb7c7` includes this reviewed slice for Run-59. Actual Rust 1.98.1
+static-library test compilation passes without warnings in 13.28 seconds;
+all 28 existing Rust asset/router tests pass, zero ignored. Generated asset-table
+inspection and executable bytes establish exact inclusion of the new JS module.
+Total recorded batch time is 16.912 seconds, source/artifact hashes unchanged.
+Logs, captured source, artifact SHA and the exact asset proof are under
+`target/validation/bob-native-repair-20261105/run-59-b309-static/`.
+
+Main merges only the UI branch as `52d74c2c3`. A checked comparison verifies all
+362 static-package/root-manifest inputs identical to the tested candidate;
+`main-scope-reuse.json` records that applicability. The unaccepted B1 writer and
+V214 are absent from Main. No repeated native build is needed for unchanged
+static inputs. This accepts inspection packaging/routing, not typed Q2, full
+B3-09/Bob, browser/issuer/platform or deployment completion. The pre-existing
+eleven provider fixture failures remain explicit B3-12 work.
+
+### B3-06 `ec039b38e` remains unaccepted
+
+The read setup is factored and the ACK test now requires success. Source review
+still finds a closure error-type mismatch: `bounded_for` requires
+`RebornBuildError`, while new `?` paths return local `WriteOutcome`. Carry the
+classified outcome through a correctly typed data result. The ACK test also
+consumes `result` with `unwrap()` and later uses it in a diagnostic; borrow or
+retain the recovered state once. These are source-visible issues, not observed
+compiler results for this branch.
+
+Both metadata-read helpers remain raw-pooled/unbounded, and production/test
+recovery flows remain separate after sharing their setup. Complete actual guarded
+SQL resolution and one real path, then verify same-pool capacity-one ACK recovery
+and immutable original checksums. Pre-COMMIT failure means no committed write,
+not necessarily that no INSERT statement executed. Corrections return to B3-06;
+no compilation or acceptance of `ec039b38e` is claimed.
+
+### B3-06 `6c24e5e33` — further source corrections, not accepted
+
+The custom closure error mismatch and consumed test result are corrected.
+Metadata SQL now has an acknowledged deadline while native original inspection
+remains outside that SQL block. The two recovered request checksums are compared.
+Remaining owner corrections:
+
+- The closure borrows `Cell<bool>` across await, conflicting with the actual
+  `async_trait` Send-future requirement because Cell is not Sync. A status value
+  mutably borrowed by this one future needs no additional synchronization.
+- Both timed SQL readers still acquire raw pooled clients. Use existing
+  transaction custody so timeout cannot recycle an uncertain read transaction;
+  recycle only after acknowledged commit, including the absent-original branch.
+- The new zero-timeout checkout does not prove saturation. In the pinned
+  Deadpool 0.13.1, Object::take calls detach_object, which decrements pool size
+  and restores a semaphore permit. Recovery should permit a fresh bounded
+  checkout with a distinct connection identity, not require permanent capacity
+  loss. Exercise the same capacity-one pool rather than a separate healthy reader.
+- A timeout after the commit-attempt flag is set is possible during commit await;
+  correct the contrary comment. The fixed-size request checksum is always
+  nonempty, so that assertion proves nothing; use actual original-byte digest
+  and identity comparisons. No replay of a completed effect is authorized.
+
+These are source findings. No Cargo/native acceptance of this branch is claimed.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.

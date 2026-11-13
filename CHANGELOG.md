@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.0-rc.7] - 2026-11-13
 
+- **Review inspection**: Show original immutable Recipe and PythonCode
+  submissions, revision checksums, retained component bytes and review progress
+  in the validation queue. The new panel is read-only; connecting immutable
+  human decisions remains pending.
 - **Cargo 1.100 compatibility**: Inherit the existing workspace lint policy in
   first-party packages, remove redundant homepage metadata and the unused root
   build dependency. Correct internal visibility and expose the already documented

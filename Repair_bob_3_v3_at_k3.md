@@ -477,6 +477,18 @@ semantics, and actual retention/cleanup behavior accepted through native tests.
 
 - [ ] **B3-09 — Connect WebUI/CLI/API status without leaking custody.**
 
+**Inspection slice accepted — 2026-11-13:** reviewed `f857421e3` is integrated
+as `52d74c2c3`. The queue's new class-21/22 panel reads the immutable original
+submission and exposes no decision controls. The existing legacy Recipe
+QueueRow is unchanged. Actual 33 panel plus eight queue Node cases pass;
+Run-59 compiles the real static bundle warning-free and passes all 28 existing
+asset/router tests. The new panel's exact bytes are present in the executable;
+all 362 static-package/root-manifest inputs match across candidate and Main.
+See the [review and exact scope](docs/validation/2026-11-13-bob-incoming-package-review.md).
+This is inspection support only. Requirements 4–7 and 9–10 below still need
+B1's prepared-view/evidence-bound decisions and B2 publication; no full B3-09,
+browser, human-Q2, catalogue activation or deployment acceptance is claimed.
+
 **Scoped CLI acceptance — 2026-11-12:** Run-41 builds the actual CLI with no
 default features without warnings and passes its exact model-status regression
 (one executed/none ignored). The existing default-feature database-reader
@@ -709,6 +721,16 @@ before any separately authorized remote/provider acceptance; no provider server
 file/template change and no remote compilation is required by this plan.
 
 - [ ] **B3-12 — Batch validation and record actual completion.**
+
+**Remaining observed UI baseline — 2026-11-13:** the existing
+`provider-components.test.mjs` suite passes four and fails eleven cases on both
+the pre-panel Main baseline and the B3-09 branch. Its VM loader strips imports
+but omits the actual `ProviderBootstrapStatus`/`ProviderAuthStatus` dependencies.
+Repair the existing test/dependency loading and preserve its provider grouping,
+auth state and callback assertions; do not suppress, skip or replace the failing
+cases with fabricated successful authentication. Run the corrected actual
+component cases and their relevant imported-component coverage. This explicit
+remaining B3-12 item is not closed by the unrelated inspection-panel checks.
 
 **Scoped linker gate accepted — 2026-11-05:** C-00's shared test-profile change
 is integrated as `e212e0ba2`. An actual Apple ARM64 native link completed without

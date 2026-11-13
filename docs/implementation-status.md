@@ -53,13 +53,14 @@ Run-57-r1 default workspace/all-targets strict check passes on `d24a87508` in
 unchanged source. The next compatibility command stops before Cargo at the
 disk gate; this is not a whole-batch or native acceptance pass.
 
-### Incoming Bob packages remain unmerged
+### Bob inspection slice accepted; remaining packages open
 
-B1-06 `b48d45b7c`, B2-02 `e0be06d8f` (source `78147448b`), B3-06 `36697df4b` and B3-09
-`63d4a80c6` are reviewed incoming work, not implemented Main boundaries. Open
+B1-06 `b48d45b7c`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `6c24e5e33`
+remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
+for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
 readers, coherent qualified validator selection, cancelled/unknown commits and
-the actual class-22/stale-view decision path. B3-09's 35 UI tests pass; the same
+the actual class-21/22 prepared-view decision path. B3-09's 41 UI tests pass; the same
 11 pre-existing provider tests fail on both source trees. Neither result grants
 component approval. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
 records source facts, owner corrections and the required combined acceptance.
@@ -69,10 +70,12 @@ still require correction. This does not establish new runtime support.
 B1's unsupported authored writer is closed. Candidate integration `8cdbd5f7` on
 the supervisor's central integration branch fails actual full-feature strict
 Clippy at writer line 687; fixture allocation and V214 coverage corrections
-remain. Main is unchanged. B3-06 removes the faulty draft selector and bounds
-writes, but failure readback/tests still need correction. B3-09 reverts its unsafe
-Rust path and makes class 22 inspection-only; typed class-21 decisions remain
-open. No package completion or native/Main support follows from these changes.
+remain. Those source changes are absent from Main. B3-06 removes the faulty draft
+selector and bounds writes, but actual resolution/tests still need correction.
+B3-09's independent inspection slice passes all 28 real static asset/router cases
+without warnings; exact embedded module bytes and all 362 relevant unchanged
+inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,
+browser/platform and deployment acceptance remain open.
 
 ## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 

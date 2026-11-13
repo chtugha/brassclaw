@@ -68,11 +68,14 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Four external package branches remain **unmerged into Main**: B1-06 `b48d45b7c`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `36697df4b`, B3-09 `63d4a80c6`. Review corrections return
+Three package branches remain **unaccepted into Main**: B1-06 `b48d45b7c`, B2-02
+`e0be06d8f` (source `78147448b`), B3-06 `6c24e5e33`. B3-09's inspection-only
+`f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
-reserved for B1, V215 for B2. Root prepares B1 on central integration branch
-`codex/bob-reviewed-integration-20261113` at `8cdbd5f7`; Main remains `d722c92d4`.
+reserved for B1, V215 for B2. Failed B1 source remains on central integration
+branch `codex/bob-reviewed-integration-20261113`; Root returns to Main only after
+the independent UI slice passes acceptance. V214/B1 writer changes are absent
+from Main.
 Unrelated human working changes are preserved. Package chats must not switch that checkout or unlink the
 shared Cargo lock. Local Cargo stays serial; Composition requires explicit
 `postgres,skills-db` acceptance.
@@ -92,9 +95,13 @@ cases. The receipt runner's premature success-artifact assertion is diagnosed
 separately, preserving original logs; no unchanged rerun. The freeze is released.
 B3-06 removes the faulty draft selector and bounds writes, but error readback
 still escapes its bound; test duplication/permissive ACK assertions remain.
-B3-09 reverts its flawed Rust helper and makes class 22 inspection-only; class-21
-panel actions still need B1's typed decision. Its revised 35 UI cases pass.
-No incoming native acceptance or Main integration is claimed.
+B3-09 now makes both classes inspection-only. Its 41 Node cases and all 28 real
+Rust static asset/router tests pass warning-free. Run-59 verifies the new embedded
+module and unchanged hashes; all 362 relevant inputs match the accepted Main
+merge. No browser, Q2 or full-plan acceptance follows. B3-06's latest source fixes
+the earlier error typing/result move and bounds SQL, but its Cell/Send contract,
+raw read custody and zero-timeout pool proof still need correction. Its branch
+remains uncompiled. No unaccepted B1/B3-06 source enters Main.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
 Before native continuation, collect accepted package corrections and compile
