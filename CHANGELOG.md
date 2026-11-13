@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.0-rc.7] - 2026-11-13
 
+- **Pure approval integrity**: Validate the supported evidence formats and add
+  V214's database guard against authored approvals
+  without a succeeded Q1 run. Keep authored approval creation closed until its
+  qualified behavioral and human-review producers are connected; preserve the
+  installation seed path without an additional human approval. Verify the
+  guarded repair with eleven focused tests and a native seed-compatibility case.
+- **Review-work recovery**: Prepare already retained validator work through the
+  existing global Monty lifecycle, defer requests without a selected validator,
+  and bound PostgreSQL writes/readback with cancellation-safe connection custody.
+  Recover an unknown commit through the original work identity without creating
+  another task. Full validator qualification and human approval remain separate.
 - **Review inspection**: Show original immutable Recipe and PythonCode
   submissions, revision checksums, retained component bytes and review progress
   in the validation queue. The new panel is read-only; connecting immutable

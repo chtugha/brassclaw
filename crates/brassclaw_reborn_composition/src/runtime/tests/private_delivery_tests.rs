@@ -745,3 +745,648 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
     transport.shutdown().await.unwrap();
     runtime.shutdown().await.unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// B3-06: durable Q1-work reconciliation — three focused acceptance cases
+// ---------------------------------------------------------------------------
+
+/// Case 1 — Deferral when selection is absent:
+/// The reconciler must defer (take no action) when
+/// `selection_preparation_present` is false. Creating a selection from draft
+/// heads is B1-07/B2-04 work; the reconciler must not attempt it.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reconciler_defers_when_qualified_selection_absent() {
+    use brassclaw_turns::run_profile::PrivateWorkReconciliationPort;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    // Stop the background worker before constructing controlled fixtures so it
+    // cannot race to prepare the original or trigger the reconciler itself.
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+
+    // Queue a submission but do not create the validator selection.
+    let (_scope, _store, _component_id, submission_id) =
+        super::validator_retained_q1_tests::queued_structural_original(&rig).await;
+
+    let reconciler = crate::review_work_reconciliation::ReviewWorkReconciler::new(
+        rig.pool.clone(),
+        runtime.installed_catalogue.clone(),
+        context(&runtime),
+    );
+
+    // Reconcile: selection absent → reconciler must skip the submission.
+    reconciler.reconcile_originals().await.unwrap();
+
+    // Verify status is still OriginalPreparationMissing — no private_work row.
+    {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let view = crate::review_work_reconciliation::inspect(&tx, submission_id)
+            .await
+            .unwrap();
+        assert!(
+            matches!(view.status, ReviewWorkStatus::OriginalPreparationMissing),
+            "status must remain OriginalPreparationMissing when selection is absent"
+        );
+        assert!(
+            !view.selection_preparation_present,
+            "selection must not exist"
+        );
+        assert!(
+            view.work_id.is_none(),
+            "no private_work row must be created"
+        );
+        tx.commit().await.unwrap();
+    }
+
+    runtime.shutdown().await.unwrap();
+}
+
+/// Case 2 — Restart without wake, qualified selection pre-seeded:
+/// When a qualified selection already exists (created by B1-07/B2-04 or the
+/// pure-source path), a fresh reconciler must create the `private_work` row on
+/// the first `reconcile_originals()` call without any prior wake notification.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn reconciler_creates_private_work_without_wake_when_selection_present() {
+    use brassclaw_turns::run_profile::PrivateWorkReconciliationPort;
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    // Stop the background worker before constructing controlled fixtures so it
+    // cannot race to prepare the original or call reconcile_originals itself.
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+
+    // Use the test helper that seeds validator drafts, creates a queued
+    // submission, and retains the validator selection via the draft-head path
+    // (the same code path that B1-07/B2-04 targets in production, restricted
+    // to test-only here).
+    let (submission_id, _component_id) =
+        super::validator_retained_q1_tests::queued_structural_original_with_selection(
+            &rig, &runtime,
+        )
+        .await;
+
+    // Verify the selection is present but the private_work row is not yet.
+    {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let view = crate::review_work_reconciliation::inspect(&tx, submission_id)
+            .await
+            .unwrap();
+        assert!(
+            view.selection_preparation_present,
+            "selection must be present"
+        );
+        tx.commit().await.unwrap();
+    }
+
+    // Build a fresh reconciler (no prior wake) and call reconcile_originals once.
+    let restarted_reconciler = crate::review_work_reconciliation::ReviewWorkReconciler::new(
+        rig.pool.clone(),
+        runtime.installed_catalogue.clone(),
+        context(&runtime),
+    );
+    restarted_reconciler.reconcile_originals().await.unwrap();
+
+    {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .start()
+            .await
+            .unwrap();
+        let view = crate::review_work_reconciliation::inspect(&tx, submission_id)
+            .await
+            .unwrap();
+        assert!(
+            !matches!(view.status, ReviewWorkStatus::OriginalPreparationMissing),
+            "private_work row must be created without wake; status={:?}",
+            view.status
+        );
+        assert!(view.work_id.is_some(), "work_id must be set");
+        tx.commit().await.unwrap();
+    }
+
+    runtime.shutdown().await.unwrap();
+}
+
+/// Case 3a — Concurrent-winner idempotency: when `prepare_private_validator` is
+/// called twice on the same submission (simulating a re-entrant or concurrent
+/// call after the row already exists), the second call returns the same immutable
+/// state without inserting a duplicate row.
+///
+/// Note: this test does NOT simulate a lost PostgreSQL COMMIT acknowledgement.
+/// Real lost-ACK fault injection is covered by Case 3b below.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepare_private_validator_concurrent_winner_returns_existing_original_without_replay() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    // Stop the background worker before constructing controlled fixtures so it
+    // cannot race to prepare the original ahead of the test.
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+
+    let (submission_id, _component_id) =
+        super::validator_retained_q1_tests::queued_structural_original_with_selection(
+            &rig, &runtime,
+        )
+        .await;
+
+    // Confirm no private_work row exists before the test-controlled prepare call.
+    let count_before: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count_before, 0,
+        "no private_work row must exist before test action"
+    );
+
+    // First call — succeeds and creates the private_work row.
+    let state_a = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await
+        .expect("first prepare must succeed");
+
+    // Verify exactly one private_work row exists.
+    let count: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count, 1,
+        "exactly one private_work row must exist after first prepare"
+    );
+
+    // Second call — row already exists; advisory lock + read-before-write returns
+    // the existing state without inserting a duplicate.
+    let state_b = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await
+        .expect("second prepare (concurrent-winner re-read) must succeed");
+
+    assert_eq!(
+        state_a.request.work_id(),
+        state_b.request.work_id(),
+        "both calls must return the same work_id"
+    );
+    assert_eq!(
+        state_a.request_checksum, state_b.request_checksum,
+        "both calls must return the same immutable request checksum"
+    );
+
+    // Still exactly one row — no duplicate.
+    let count_after: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count_after, 1, "no duplicate private_work row after retry");
+
+    runtime.shutdown().await.unwrap();
+}
+
+/// Case 3b — Real PostgreSQL COMMIT abort via trigger fault injection:
+/// a BEFORE INSERT trigger on `brassclaw_turns` raises an exception so that the
+/// validator-original write transaction rolls back. The retry must call
+/// `prepare_private_validator` again and succeed on a clean connection.
+/// Critically, the rolled-back attempt must leave exactly zero rows so that the
+/// retry inserts exactly one — no duplicate and no phantom row from the fault.
+///
+/// This exercises the `TransactionClient` custody under a real rollback: the
+/// detached connection is not returned to the pool, the caller's error-path
+/// readback in `prepare_private_validator` finds no existing row (because the
+/// rollback was real), returns `Err`, and the caller retries cleanly.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepare_private_validator_commit_abort_retries_cleanly_without_duplicate() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    // Stop the background worker before constructing controlled fixtures so it
+    // cannot prepare the original before the fault trigger is installed or
+    // race to prepare after trigger removal.
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+
+    let (submission_id, _component_id) =
+        super::validator_retained_q1_tests::queued_structural_original_with_selection(
+            &rig, &runtime,
+        )
+        .await;
+
+    // Confirm no private_work row exists before installing the fault trigger.
+    let count_before: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count_before, 0,
+        "no private_work row must exist before fault trigger"
+    );
+
+    // Install a trigger that raises an exception on the INSERT into brassclaw_turns.
+    // Scoped to private_work rows for this specific submission to avoid affecting
+    // other concurrent test sessions.
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute(&format!(
+            "CREATE SEQUENCE b3_06_prepare_fault_reached;
+             CREATE FUNCTION b3_06_fault_first_prepare() RETURNS trigger LANGUAGE plpgsql AS $$
+             BEGIN
+                 IF NEW.record_kind = 'private_work'
+                    AND NEW.validator_submission_id = '{submission_id}' THEN
+                     PERFORM nextval('b3_06_prepare_fault_reached');
+                     RAISE EXCEPTION 'b3-06 test: simulated prepare fault';
+                 END IF;
+                 RETURN NEW;
+             END $$;
+             CREATE TRIGGER b3_06_fault_first_prepare
+                 BEFORE INSERT ON brassclaw_turns
+                 FOR EACH ROW EXECUTE FUNCTION b3_06_fault_first_prepare();"
+        ))
+        .await
+        .unwrap();
+
+    // First call — write transaction rolls back due to the trigger.
+    let first_result = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await;
+    assert!(
+        first_result.is_err(),
+        "first prepare must fail due to trigger fault"
+    );
+
+    // Verify the trigger actually fired (sequence counter incremented).
+    let reached: bool = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT is_called FROM b3_06_prepare_fault_reached", &[])
+        .await
+        .unwrap()
+        .get(0);
+    assert!(reached, "trigger must actually be reached before rollback");
+
+    // No row must exist — the rollback was real.
+    let count_after_fault: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count_after_fault, 0,
+        "no private_work row must exist after rollback"
+    );
+
+    // Remove the trigger so the retry can succeed.
+    rig.pool
+        .get()
+        .await
+        .unwrap()
+        .batch_execute(
+            "DROP TRIGGER b3_06_fault_first_prepare ON brassclaw_turns;
+             DROP FUNCTION b3_06_fault_first_prepare();",
+        )
+        .await
+        .unwrap();
+
+    // Second call — succeeds, inserts exactly one row.
+    let state = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await
+        .expect("retry after fault removal must succeed");
+    assert_eq!(
+        state.request.work_id(),
+        submission_id,
+        "returned work_id must match submission"
+    );
+
+    let count_final: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count_final, 1,
+        "exactly one private_work row after retry — no duplicate"
+    );
+
+    runtime.shutdown().await.unwrap();
+}
+
+/// Case 3c — Real lost PostgreSQL COMMIT ACK via `AckCutTransport`:
+///
+/// The runtime and catalogue are started with the AckCutTransport proxy as
+/// their sole pool (capacity 1). Both the write transaction and the subsequent
+/// bounded readback go through the same proxy pool — this is the actual
+/// production recovery path, not a split-pool injection.
+///
+/// Sequence:
+/// 1. Start the proxy; build the runtime with the proxy pool.
+/// 2. Seed fixtures while the transport is unarmed (clean connections).
+/// 3. Arm the transport so the next matching COMMIT ACK is cut.
+/// 4. Call `prepare_private_validator()` — the production entry point.
+///    The write transaction triggers the advisory-lock advisory parameter match;
+///    the COMMIT ACK is dropped. `commit_reached = true`, so the bounded
+///    readback runs. It gets a new connection from the same proxy pool (the
+///    uncertain connection was detached+dropped, freeing the slot) and finds
+///    the committed row. Returns `Ok`.
+/// 5. Assert successful readback, correct work_id, DB-verified checksum, exactly
+///    one ACK cut, exactly one stored row, and that the recovery connection is a
+///    different PG session (new PID) obtained within the configured deadline.
+/// 6. Second call returns the same immutable row; checksums match; still one row.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn prepare_private_validator_pg_commit_ack_loss_reads_back_without_replay() {
+    use secrecy::ExposeSecret as _;
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+
+    // Start the AckCutTransport proxy before the runtime so it is the sole
+    // connection path. The transport is unarmed at this point; fixture seeding
+    // and runtime startup use clean connections through the proxy.
+    let transport = AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![AckCutRule::after_bind(
+            1,
+            vec![b"brassclaw-validator-original:".to_vec()],
+            vec![],
+            AckBoundary::Commit,
+        )],
+    )
+    .await
+    .unwrap();
+
+    // Build a capacity-1 pool through the proxy. All catalogue I/O — read-only
+    // snapshots, write transaction, and the bounded readback — uses this pool.
+    let proxy_pool = std::sync::Arc::new(
+        brassclaw_pg::pool::build_pool_with_max_size(transport.connection_string(), 1).unwrap(),
+    );
+
+    // Start the runtime with the proxy pool so installed_catalogue.pool IS the
+    // proxy pool. This matches private_work_admission_tests::Fixture::start.
+    let home = tempfile::tempdir().unwrap();
+    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
+        crate::input::RebornBuildInput::postgres_with_reborn_home(
+            "h01-ack-loss-proxy",
+            proxy_pool.as_ref().clone(),
+            rig.url.clone(),
+            home.path().to_path_buf(),
+        )
+        .with_runtime_policy(local_dev_runtime_policy()),
+    )))
+    .await
+    .unwrap();
+    // Stop the background worker before seeding fixtures and before arming the
+    // transport so it cannot race to prepare the original ahead of the test-
+    // controlled call.
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+
+    // Seed fixtures while the transport is unarmed. The seeding helpers use
+    // rig.pool directly, not the proxy, so they are unaffected by the fault.
+    let (submission_id, _component_id) =
+        super::validator_retained_q1_tests::queued_structural_original_with_selection(
+            &rig, &runtime,
+        )
+        .await;
+
+    // Confirm no private_work row exists before arming the transport.
+    let count_before_arm: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count_before_arm, 0,
+        "no private_work row must exist before arming the transport"
+    );
+
+    // Record the first backend PID reachable via the proxy pool. This is the
+    // PG session that will be used for the write transaction. After the COMMIT
+    // ACK is cut and the connection is detached+dropped, the slot is freed and
+    // the readback gets a new connection with a different PID.
+    let first_pid: i32 = proxy_pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+
+    // Now arm the transport: the next advisory-lock COMMIT ACK is intercepted.
+    transport.arm(1).unwrap();
+
+    // Production call: write + readback both go through proxy_pool (self.pool).
+    // The write ACK is cut; commit_reached = true; the bounded readback gets a
+    // new connection from the same proxy pool and resolves the committed row.
+    let state_a = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await
+        .expect("bounded readback on proxy_pool must resolve the committed row after ACK loss");
+
+    assert_eq!(
+        state_a.request.work_id(),
+        submission_id,
+        "resolved work_id must match the submission"
+    );
+
+    // Transport must have cut exactly one COMMIT ACK.
+    assert_eq!(
+        transport.cut_count(),
+        1,
+        "transport must have cut exactly one COMMIT ACK"
+    );
+
+    // Verify DB-persisted checksum — proves the readback returned the actual row.
+    let db_checksum: Vec<u8> = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT private_request_checksum FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        state_a.request_checksum,
+        db_checksum.as_slice(),
+        "resolved request_checksum must match the DB-persisted value"
+    );
+
+    // The uncertain write connection was detached (slot freed). The readback
+    // already obtained a new connection from proxy_pool. Verify that a fresh
+    // checkout from proxy_pool now returns a different PG backend PID — proving
+    // the original session ended and recovery ran through the same pool.
+    // The checkout and PID query are bounded by the configured deadline.
+    let configured_deadline = timeout(&runtime).await;
+    let recovery_pid: i32 = tokio::time::timeout(configured_deadline, async {
+        proxy_pool
+            .get()
+            .await
+            .expect("proxy_pool must accept a new checkout after detach freed the slot")
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .expect("pg_backend_pid must be readable on fresh connection")
+            .get(0)
+    })
+    .await
+    .expect("recovery PID query must complete within the configured deadline");
+    assert_ne!(
+        recovery_pid, first_pid,
+        "recovery connection must be a fresh PG session (original was detached+dropped)"
+    );
+
+    // Exactly one private_work row — no replay.
+    let count: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(
+        count, 1,
+        "exactly one private_work row after COMMIT ACK loss"
+    );
+
+    // Second call: row already exists, returned by read_private_validator_original
+    // without a new INSERT. Both calls must resolve the same immutable row.
+    let state_b = runtime
+        .installed_catalogue
+        .prepare_private_validator(submission_id)
+        .await
+        .expect("second call after ACK loss must succeed");
+    assert_eq!(
+        state_b.request.work_id(),
+        submission_id,
+        "second call: work_id must match the submission"
+    );
+    assert_eq!(
+        state_a.request_checksum, state_b.request_checksum,
+        "both calls must return the same immutable request checksum (same original row)"
+    );
+
+    // Still exactly one row after the second call.
+    let count_final: i64 = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT COUNT(*) FROM brassclaw_turns \
+             WHERE validator_submission_id=$1 AND record_kind='private_work'",
+            &[&submission_id],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(count_final, 1, "no duplicate row after ACK-loss retry");
+
+    // Shut down the runtime first (joins all background tasks that use
+    // proxy_pool), then close the pool, then stop the transport proxy.
+    runtime.shutdown().await.unwrap();
+    proxy_pool.close();
+    transport.shutdown().await.unwrap();
+}

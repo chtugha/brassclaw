@@ -12,6 +12,8 @@ use std::sync::Arc;
 use tokio_postgres::Transaction;
 use uuid::Uuid;
 
+use crate::global_task_factory::MontyCatalogueProvider;
+
 pub(crate) struct ReviewWorkReconciler {
     pool: Arc<PgPool>,
     catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
@@ -155,33 +157,128 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
         for row in rows {
             let id: Uuid = row.get(1);
             *cursor = Some((row.get(0), id));
-            let result=tokio::time::timeout(deadline,async {
-                let mut client=crate::bootstrap_evidence::io::acquire(&self.pool).await.map_err(|_|unavailable())?;
-                let tx=client.build_transaction()
+
+            // Phase 1: read-only inspection within the deadline budget.
+            // All required state is read under a single RepeatableRead snapshot.
+            // Confirmation context is captured here so the action phase holds no
+            // open connection.
+            //
+            // Phase 2: execute the resulting action *outside* the timeout.
+            // `prepare_private_validator` runs its write transaction inside the
+            // acknowledged store deadline (bounded_for) and uses TransactionClient
+            // custody, so the reconciler's outer deadline does not need to cover it.
+            enum Action {
+                PrepareOriginal,
+                ConfirmDelivery(PrivateExecutionContext),
+                None,
+            }
+            let inspect_result = tokio::time::timeout(deadline, async {
+                let mut client = crate::bootstrap_evidence::io::acquire(&self.pool)
+                    .await
+                    .map_err(|_| unavailable())?;
+                let tx = client
+                    .build_transaction()
                     .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
-                    .read_only(true).start().await.map_err(|_|unavailable())?;
-                let view=inspect_with_source(&tx,id,Some(&self.catalogue.pure_source_review)).await?;
-                let mut confirmation_context=None;
-                if view.delivery_checksum.is_some() && view.confirmation_checksum.is_none() {
-                    let row=tx.query_one("SELECT private_request_bytes FROM brassclaw_turns WHERE validator_submission_id=$1 AND record_kind='private_work'",&[&id]).await.map_err(|_|unavailable())?;
-                    let request:PrivateWorkRequest=serde_json::from_str(row.get(0)).map_err(|_|invalid())?;
-                    // Preserve the original actor; another instance/context is
-                    // visible but cannot be adopted by this worker.
-                    let context=request.context();
-                    if context.tenant_id==self.context.tenant_id && context.agent_id==self.context.agent_id && context.project_id==self.context.project_id {
-                        confirmation_context=Some(context.clone());
+                    .read_only(true)
+                    .start()
+                    .await
+                    .map_err(|_| unavailable())?;
+                let view =
+                    inspect_with_source(&tx, id, Some(&self.catalogue.pure_source_review)).await?;
+                let action = match view.status {
+                    ReviewWorkStatus::OriginalPreparationMissing => {
+                        if view.selection_preparation_present {
+                            // Qualified selection present; create the private_work row.
+                            Action::PrepareOriginal
+                        } else {
+                            // No qualified selection yet. Creating one from draft
+                            // heads is restricted to controlled tests (B1-07/B2-04
+                            // owns production selection). Defer to next wake cycle.
+                            tracing::debug!(
+                                submission_id = %id,
+                                "original review preparation deferred: \
+                                 qualified validator selection not yet present"
+                            );
+                            Action::None
+                        }
                     }
-                }
-                tracing::debug!(submission_id=%id,status=?view.status,"original review work inspected");
-                tx.commit().await.map_err(|_|unavailable())?;
+                    _ if view.delivery_checksum.is_some()
+                        && view.confirmation_checksum.is_none() =>
+                    {
+                        let row = tx
+                            .query_one(
+                                "SELECT private_request_bytes FROM brassclaw_turns \
+                                 WHERE validator_submission_id=$1 \
+                                 AND record_kind='private_work'",
+                                &[&id],
+                            )
+                            .await
+                            .map_err(|_| unavailable())?;
+                        let request: PrivateWorkRequest =
+                            serde_json::from_str(row.get(0)).map_err(|_| invalid())?;
+                        // Preserve the original actor; another instance/context
+                        // is visible but cannot be adopted by this worker.
+                        let context = request.context();
+                        if context.tenant_id == self.context.tenant_id
+                            && context.agent_id == self.context.agent_id
+                            && context.project_id == self.context.project_id
+                        {
+                            Action::ConfirmDelivery(context.clone())
+                        } else {
+                            Action::None
+                        }
+                    }
+                    _ => Action::None,
+                };
+                tracing::debug!(
+                    submission_id = %id,
+                    status = ?view.status,
+                    "original review work inspected"
+                );
+                tx.commit().await.map_err(|_| unavailable())?;
                 client.recycle_after_commit();
-                drop(client);
-                if let Some(context)=confirmation_context {
-                    crate::review_work_confirmation::confirm_original_with_source(&self.pool,id,&context,Some(&self.catalogue.pure_source_review)).await?;
+                Ok::<Action, AgentLoopDriverError>(action)
+            })
+            .await
+            .unwrap_or_else(|_| Err(unavailable()));
+
+            let action = match inspect_result {
+                Ok(action) => action,
+                Err(error) => {
+                    tracing::warn!(submission_id=%id,%error,"original review remains unresolved");
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                    continue;
                 }
-                Ok(())
-            }).await.unwrap_or_else(|_|Err(unavailable()));
-            if let Err(error) = result {
+            };
+
+            // Phase 2: execute outside the read-only deadline. prepare_private_validator
+            // owns its write-tx deadline and TransactionClient custody internally.
+            let action_result = match action {
+                Action::PrepareOriginal => {
+                    // Write transaction bounded by acknowledged store deadline;
+                    // unknown-commit resolved by internal readback before returning.
+                    self.catalogue
+                        .prepare_private_validator(id)
+                        .await
+                        .map(|_| ())
+                        .map_err(|_| unavailable())
+                }
+                Action::ConfirmDelivery(context) => {
+                    crate::review_work_confirmation::confirm_original_with_source(
+                        &self.pool,
+                        id,
+                        &context,
+                        Some(&self.catalogue.pure_source_review),
+                    )
+                    .await
+                    .map(|_| ())
+                }
+                Action::None => Ok(()),
+            };
+
+            if let Err(error) = action_result {
                 tracing::warn!(submission_id=%id,%error,"original review remains unresolved");
                 if first_error.is_none() {
                     first_error = Some(error);

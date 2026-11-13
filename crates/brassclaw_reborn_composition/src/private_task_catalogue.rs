@@ -11,7 +11,6 @@ use brassclaw_turns::{
     },
 };
 
-#[cfg(test)]
 struct ValidatorOriginal {
     subject: Arc<brassclaw_skills::review_submission_store::RetainedValidatorSubject>,
     selection:
@@ -128,11 +127,15 @@ impl InstalledMontyCatalogue {
             .cloned()
             .ok_or_else(|| invalid("Source Work runtime context unavailable"))
     }
-    #[cfg(test)]
-    pub(crate) async fn prepare_private_validator(
+
+    /// Read the coherent validator subject, selection, actor and root revision
+    /// from a single RepeatableRead snapshot inside the acknowledged store
+    /// deadline. This is the shared setup for both the production path and the
+    /// test-only write-pool injection point.
+    async fn read_validator_original(
         &self,
         submission_id: Uuid,
-    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, RebornBuildError> {
+    ) -> Result<ValidatorOriginal, RebornBuildError> {
         use brassclaw_skills::component_revision::REVISION_LIMITS;
         use brassclaw_skills::review_submission_store::{PgReviewSubmissionStore, selection};
         let mut context = self
@@ -140,55 +143,80 @@ impl InstalledMontyCatalogue {
             .get()
             .cloned()
             .ok_or_else(|| invalid("private validator runtime context unavailable"))?;
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| invalid("private validator preparation unavailable"))?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(|_| invalid("private validator preparation unavailable"))?;
-        let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
-            &tx,
-            submission_id,
-            REVISION_LIMITS,
-        )
-        .await
-        .map_err(|error| invalid(error.to_string()))?
-        .ok_or_else(|| invalid("private validator subject missing"))?;
-        let selection =
-            selection::read_preparation_in_transaction(&tx, submission_id, REVISION_LIMITS)
-                .await
-                .map_err(|error| invalid(error.to_string()))?
-                .ok_or_else(|| invalid("private validator selection missing"))?;
-        let actor = tx
-            .query_one(
-                "SELECT actor FROM reborn_component_review_submissions WHERE submission_id=$1",
-                &[&submission_id],
+        let resource_store_settings = self.resource_store_settings.as_ref();
+        let (subject, sel, actor_str, root) =
+            crate::bootstrap_evidence::io::bounded_for(
+                resource_store_settings,
+                "private-validator-read-original",
+                submission_id,
+                async {
+                    let mut client =
+                        crate::bootstrap_evidence::io::acquire(&self.pool)
+                            .await
+                            .map_err(|_| invalid("private validator preparation unavailable"))?;
+                    let tx = client
+                        .build_transaction()
+                        .isolation_level(IsolationLevel::RepeatableRead)
+                        .read_only(true)
+                        .start()
+                        .await
+                        .map_err(|_| invalid("private validator preparation unavailable"))?;
+                    let subject =
+                        PgReviewSubmissionStore::read_validator_subject_in_transaction(
+                            &tx,
+                            submission_id,
+                            REVISION_LIMITS,
+                        )
+                        .await
+                        .map_err(|error| invalid(error.to_string()))?
+                        .ok_or_else(|| invalid("private validator subject missing"))?;
+                    let sel = selection::read_preparation_in_transaction(
+                        &tx,
+                        submission_id,
+                        REVISION_LIMITS,
+                    )
+                    .await
+                    .map_err(|error| invalid(error.to_string()))?
+                    .ok_or_else(|| invalid("private validator selection missing"))?;
+                    let actor_str = tx
+                        .query_one(
+                            "SELECT actor FROM reborn_component_review_submissions WHERE submission_id=$1",
+                            &[&submission_id],
+                        )
+                        .await
+                        .map_err(|_| invalid("private validator actor unavailable"))?
+                        .get::<_, String>(0);
+                    let root = PgComponentRevisionStore::read_revision_in_transaction(
+                        &tx,
+                        self.root_reference,
+                    )
+                    .await
+                    .map_err(|error| invalid(error.to_string()))?;
+                    tx.commit()
+                        .await
+                        .map_err(|_| invalid("private validator original read failed"))?;
+                    client.recycle_after_commit();
+                    Ok((subject, sel, actor_str, root))
+                },
             )
-            .await
-            .map_err(|_| invalid("private validator actor unavailable"))?;
+            .await?;
         context.actor = Some(brassclaw_turns::TurnActor::new(
-            brassclaw_host_api::UserId::new(actor.get::<_, String>(0))
+            brassclaw_host_api::UserId::new(actor_str)
                 .map_err(|error| invalid(error.to_string()))?,
         ));
-        let root = PgComponentRevisionStore::read_revision_in_transaction(&tx, self.root_reference)
-            .await
-            .map_err(|error| invalid(error.to_string()))?;
-        tx.commit()
-            .await
-            .map_err(|_| invalid("private validator original read failed"))?;
-        drop(client);
-        let original = ValidatorOriginal {
+        Ok(ValidatorOriginal {
             subject: Arc::new(subject),
-            selection: Arc::new(selection),
+            selection: Arc::new(sel),
             context,
             root,
-        };
+        })
+    }
+
+    pub(crate) async fn prepare_private_validator(
+        &self,
+        submission_id: Uuid,
+    ) -> Result<brassclaw_turns::private_work::PrivateWorkState, RebornBuildError> {
+        let original = self.read_validator_original(submission_id).await?;
         if let Some(state) = self.read_private_validator_original(&original).await? {
             return Ok(state);
         }
@@ -205,7 +233,14 @@ impl InstalledMontyCatalogue {
         }
     }
 
-    #[cfg(test)]
+    /// Performs the write transaction for a fresh validator-original.
+    ///
+    /// The entire write transaction (advisory lock, INSERT, definition seal,
+    /// COMMIT) runs inside the acknowledged store deadline supplied by
+    /// `self.resource_store_settings` via `bounded_for`. On timeout the
+    /// connection is not returned to the pool (TransactionClient custody).
+    /// The readback after COMMIT also runs inside a separate `bounded_for` call
+    /// so the resolution of an unknown-commit outcome is bounded.
     async fn prepare_fresh_private_validator(
         &self,
         original: &ValidatorOriginal,
@@ -239,172 +274,262 @@ impl InstalledMontyCatalogue {
             original_preparation_checksum: Some(decode_checksum(capture.preparation().checksum())?),
             original_workflow_checksum: Some(decode_checksum(capture.validator_checksum())?),
         };
-        // All original bytes and the Ready seal commit together. No interrupted
-        // producer leaves only a hash whose original limits cannot be restored.
-        let mut client = self
-            .pool
-            .get()
-            .await
-            .map_err(|_| invalid("private validator retention unavailable"))?;
-        let tx = client
-            .transaction()
-            .await
-            .map_err(|_| invalid("private validator retention unavailable"))?;
-        tx.query_one(
-            "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
-            &[&format!(
-                "brassclaw-validator-original:{}",
-                original.subject.submission_id()
-            )],
+        // The write transaction (advisory lock, INSERT, definition, COMMIT) is
+        // bounded by the acknowledged store deadline. The connection uses the
+        // custody-aware TransactionClient: on timeout or future cancellation the
+        // connection is detached (slot freed) so an uncertain connection is never
+        // recycled into the pool. recycle_after_commit() is called only after a
+        // successfully acknowledged COMMIT.
+        //
+        // commit_reached is set just before tx.commit() after all pre-COMMIT logic
+        // has succeeded. AtomicBool is used instead of Cell<bool>: the async
+        // closure must be Send (required by bounded_for and the async_trait
+        // dispatch path); Cell<T> is !Sync, making &Cell<bool> !Send; AtomicBool
+        // with Relaxed ordering satisfies the Send bound without additional
+        // synchronisation — there are no cross-thread races here.
+        //
+        // commit_reached = false → COMMIT not sent; INSERT was not completed.
+        // commit_reached = true  → COMMIT was sent; a timeout or lost ACK after
+        //                          this point requires the readback to resolve.
+        let submission_id = original.subject.submission_id();
+        let resource_store_settings = self.resource_store_settings.as_ref();
+        let commit_reached = std::sync::atomic::AtomicBool::new(false);
+        let write_result = crate::bootstrap_evidence::io::bounded_for(
+            resource_store_settings,
+            "private-validator-prepare",
+            submission_id,
+            async {
+                let mut client = crate::bootstrap_evidence::io::acquire(&self.pool)
+                    .await
+                    .map_err(|_| invalid("private validator retention unavailable"))?;
+                let tx = client
+                    .transaction()
+                    .await
+                    .map_err(|_| invalid("private validator retention unavailable"))?;
+                tx.query_one(
+                    "SELECT pg_advisory_xact_lock(hashtextextended($1,0))",
+                    &[&format!("brassclaw-validator-original:{submission_id}")],
+                )
+                .await
+                .map_err(|_| invalid("private validator original serialization unavailable"))?;
+                if store
+                    .get_private_work_state_in_transaction(&tx, submission_id)
+                    .await
+                    .map_err(|_| invalid("private validator original unavailable"))?
+                    .is_some()
+                {
+                    // A concurrent winner already committed. No completed INSERT
+                    // occurred in this transaction; skip the readback.
+                    return Err(invalid(
+                        "private validator original won concurrently; readback required",
+                    ));
+                }
+                let request_checksum = store
+                    .submit_private_work_in_transaction(
+                        &tx,
+                        &request,
+                        PrivatePreparationReason::PreparationPending,
+                        self,
+                    )
+                    .await
+                    .map_err(|_| invalid("private validator original retention failed"))?;
+                let state = store
+                    .get_private_work_state_in_transaction(&tx, submission_id)
+                    .await
+                    .map_err(|_| invalid("private validator original unavailable"))?
+                    .ok_or_else(|| invalid("private validator original missing"))?;
+                if state.status == PrivateWorkStatus::AwaitingPreparation {
+                    let definition = PrivateWorkDefinition::capture(DefinitionCapture {
+                        request: &request,
+                        request_checksum,
+                        preparation: capture.preparation().clone(),
+                        worker_checksum: self.worker_image.checksum(),
+                        root: &original.root,
+                        workflow_checksum: decode_checksum(capture.validator_checksum())?,
+                        input_checksum: decode_checksum(capture.input_checksum())?,
+                        domain: DomainCapture::ValidatorStructural {
+                            capture_bytes: capture.bytes().to_owned(),
+                            capture_checksum: decode_checksum(capture.checksum())?,
+                        },
+                    })?;
+                    self.retain_private_definition(&tx, &definition, &store, &state)
+                        .await?;
+                }
+                // All pre-COMMIT logic succeeded. Mark the flag before calling
+                // tx.commit() so that a timeout or connection drop after this
+                // point is classified as unknown-commit, not pre-COMMIT failure.
+                commit_reached.store(true, std::sync::atomic::Ordering::Relaxed);
+                tx.commit()
+                    .await
+                    .map_err(|_| invalid("private validator preparation commit unknown"))?;
+                client.recycle_after_commit();
+                Ok(())
+            },
         )
-        .await
-        .map_err(|_| invalid("private validator original serialization unavailable"))?;
-        if store
-            .get_private_work_state_in_transaction(&tx, original.subject.submission_id())
-            .await
-            .map_err(|_| invalid("private validator original unavailable"))?
-            .is_some()
-        {
-            // Do not compare a second offered ACK capture with immutable bytes.
-            // Leave this transaction before the one strict original readback.
-            return Err(invalid(
-                "private validator original won concurrently; readback required",
-            ));
-        }
-        let request_checksum = store
-            .submit_private_work_in_transaction(
-                &tx,
-                &request,
-                PrivatePreparationReason::PreparationPending,
-                self,
-            )
-            .await
-            .map_err(|_| invalid("private validator original retention failed"))?;
-        let state = store
-            .get_private_work_state_in_transaction(&tx, original.subject.submission_id())
-            .await
-            .map_err(|_| invalid("private validator original unavailable"))?
-            .ok_or_else(|| invalid("private validator original missing"))?;
-        if state.status == PrivateWorkStatus::AwaitingPreparation {
-            let definition = PrivateWorkDefinition::capture(DefinitionCapture {
-                request: &request,
-                request_checksum,
-                preparation: capture.preparation().clone(),
-                worker_checksum: self.worker_image.checksum(),
-                root: &original.root,
-                workflow_checksum: decode_checksum(capture.validator_checksum())?,
-                input_checksum: decode_checksum(capture.input_checksum())?,
-                domain: DomainCapture::ValidatorStructural {
-                    capture_bytes: capture.bytes().to_owned(),
-                    capture_checksum: decode_checksum(capture.checksum())?,
-                },
-            })?;
-            self.retain_private_definition(&tx, &definition, &store, &state)
-                .await?;
-        }
-        tx.commit()
-            .await
-            .map_err(|_| invalid("private validator preparation commit unknown"))?;
-        drop(client);
-        if let Some(wake) = self.private_work_wake.get() {
+        .await;
+        // Wake private-work consumers only when the COMMIT was acknowledged.
+        if let (true, Some(wake)) = (write_result.is_ok(), self.private_work_wake.get()) {
             wake.wake();
         }
-        store
-            .get_private_work_state(original.subject.submission_id())
-            .await
-            .map_err(|_| invalid("private validator published original unavailable"))?
-            .ok_or_else(|| invalid("private validator published original missing"))
+        // Determine whether the bounded readback is necessary:
+        //   Ok(())                           → COMMIT ACK received; readback
+        //                                     confirms the row.
+        //   Err + commit_reached = true      → COMMIT was sent; ACK lost or
+        //                                     deadline fired after the flag;
+        //                                     readback resolves actual state.
+        //   Err + commit_reached = false     → error before COMMIT; INSERT was
+        //                                     not completed; propagate immediately.
+        let needs_readback =
+            write_result.is_ok() || commit_reached.load(std::sync::atomic::Ordering::Relaxed);
+        if !needs_readback {
+            return write_result.map(|_| unreachable!());
+        }
+        // Bounded readback on the shared pool (never write_pool / fault pool).
+        // Both the happy path and the unknown-commit path run this readback so
+        // that the returned state is always verified against the actual DB row.
+        let readback = crate::bootstrap_evidence::io::bounded_for(
+            resource_store_settings,
+            "private-validator-readback",
+            submission_id,
+            async {
+                store
+                    .get_private_work_state(submission_id)
+                    .await
+                    .map_err(|_| invalid("private validator published original unavailable"))?
+                    .ok_or_else(|| invalid("private validator preparation commit unknown"))
+            },
+        )
+        .await;
+        match (write_result, readback) {
+            (_, Ok(state)) => Ok(state),
+            (Ok(()), Err(readback_err)) => Err(readback_err),
+            (Err(write_err), Err(readback_err)) => Err(invalid(format!(
+                "private validator original unresolved: write={write_err}; readback={readback_err}"
+            ))),
+        }
     }
 
-    #[cfg(test)]
     async fn read_private_validator_original(
         &self,
         original: &ValidatorOriginal,
     ) -> Result<Option<brassclaw_turns::private_work::PrivateWorkState>, RebornBuildError> {
         use brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier;
         let unresolved = || invalid("private validator complete original is unresolved");
-        let mut client = self.pool.get().await.map_err(|_| unresolved())?;
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .read_only(true)
-            .start()
-            .await
-            .map_err(|_| unresolved())?;
-        let Some(state) = PgTurnStateStore::read_private_work_state_in_transaction(
-            &tx,
-            original.context.tenant_id.as_str(),
-            original.subject.submission_id(),
-        )
-        .await
-        .map_err(|_| unresolved())?
-        else {
-            tx.commit().await.map_err(|_| unresolved())?;
+        // SQL reads are bounded by the acknowledged store deadline. The native
+        // codec/inspector runs outside the transaction and outside the deadline.
+        let resource_store_settings = self.resource_store_settings.as_ref();
+        let submission_id = original.subject.submission_id();
+        let sql_result: Option<(brassclaw_turns::private_work::PrivateWorkState, PrivateWorkDefinition)> =
+            crate::bootstrap_evidence::io::bounded_for(
+                resource_store_settings,
+                "private-validator-verify-original",
+                submission_id,
+                async {
+                    let mut client =
+                        crate::bootstrap_evidence::io::acquire(&self.pool)
+                            .await
+                            .map_err(|_| unresolved())?;
+                    let tx = client
+                        .build_transaction()
+                        .isolation_level(IsolationLevel::RepeatableRead)
+                        .read_only(true)
+                        .start()
+                        .await
+                        .map_err(|_| unresolved())?;
+                    let Some(state) = PgTurnStateStore::read_private_work_state_in_transaction(
+                        &tx,
+                        original.context.tenant_id.as_str(),
+                        submission_id,
+                    )
+                    .await
+                    .map_err(|_| unresolved())?
+                    else {
+                        tx.commit().await.map_err(|_| unresolved())?;
+                        client.recycle_after_commit();
+                        return Ok(None);
+                    };
+                    if state.request.work_id() != submission_id
+                        || state.request.run_id() != TurnRunId::from_uuid(submission_id)
+                        || state.request.context() != &original.context
+                        || !matches!(state.request.original(),
+                            PrivateOriginalRef::ValidatorStructural { submission_id: sid, subject_checksum }
+                            if *sid == submission_id
+                                && *subject_checksum == decode_checksum(original.subject.subject_checksum())?)
+                    {
+                        return Err(unresolved());
+                    }
+                    self.verify_original(&tx, &state.request)
+                        .await
+                        .map_err(|_| unresolved())?;
+                    let row = tx
+                        .query_opt(
+                            "SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
+                            &[&state.request.work_id()],
+                        )
+                        .await
+                        .map_err(|_| unresolved())?
+                        .ok_or_else(unresolved)?;
+                    let definition = PrivateWorkDefinition::restore(
+                        &tx,
+                        &state.request,
+                        state.request_checksum,
+                        row.get(0),
+                        row.get::<_, Vec<u8>>(1)
+                            .try_into()
+                            .map_err(|_| unresolved())?,
+                    )
+                    .await?;
+                    if definition.root().reference() != original.root.reference()
+                        || definition.worker_checksum() != self.worker_image.checksum()
+                        || state.request.original_preparation_checksum()
+                            != Some(decode_checksum(definition.preparation().checksum())?)
+                        || state.request.original_workflow_checksum()
+                            != Some(definition.workflow_checksum())
+                        || definition.workflow_checksum()
+                            != checksum(original.selection.validator_bytes())
+                    {
+                        return Err(unresolved());
+                    }
+                    // Only coherent metadata disposition is returned. No SQL value
+                    // creates a live completion, reopens dispatch, renews a lease or
+                    // grants approval.
+                    let coherent: bool = tx.query_one("SELECT COALESCE(w.private_definition_checksum=$3 AND w.version=$4 AND
+                        CASE WHEN w.status IN ('ready','cancelled') THEN
+                            w.private_claim_generation=0 AND w.private_claim_attempts=0 AND w.private_runner_id IS NULL
+                            AND w.private_claim_checksum IS NULL AND w.private_admission_run IS NULL AND w.private_lease_deadline IS NULL
+                            AND a.run_id IS NULL AND t.work_id IS NULL AND w.private_terminal_checksum IS NULL
+                            AND ((w.status='ready' AND w.private_cancel_revision=0) OR (w.status='cancelled' AND w.private_cancel_revision>0))
+                        WHEN w.status IN ('claimed','reconciliation_required','settled') THEN
+                            w.private_claim_generation=1 AND w.private_claim_attempts=1 AND w.private_runner_id IS NOT NULL
+                            AND octet_length(w.private_claim_checksum)=32 AND w.private_admission_run=w.execution_run_id
+                            AND a.origin_kind='private_work' AND a.private_work_id=w.work_id AND a.run_id=w.execution_run_id
+                            AND a.runner_id=w.private_runner_id AND a.claim_checksum=w.private_claim_checksum
+                            AND a.private_claim_generation=w.private_claim_generation AND a.private_request_checksum=w.private_request_checksum
+                            AND a.private_execution_context=w.private_request_bytes::jsonb->'context' AND a.native_actor=$5
+                            AND a.turn_id IS NULL AND a.scope IS NULL AND a.accepted_message_ref IS NULL
+                            AND CASE WHEN w.status='settled' THEN a.phase='settled' AND t.run_id=w.execution_run_id
+                                AND t.checksum=w.private_terminal_checksum AND t.checksum=sha256(convert_to(t.terminal_bytes,'UTF8'))
+                            ELSE a.phase IN ('reserved','started') AND t.work_id IS NULL AND w.private_terminal_checksum IS NULL END
+                        ELSE false END,false)
+                        FROM brassclaw_turns w LEFT JOIN brassclaw_monty_task_admissions a ON a.run_id=w.private_admission_run
+                        LEFT JOIN brassclaw_monty_private_terminals t ON t.work_id=w.work_id
+                        WHERE w.record_kind='private_work' AND w.tenant_id=$1 AND w.work_id=$2",
+                        &[&original.context.tenant_id.as_str(), &state.request.work_id(), &&definition.checksum()[..],
+                            &i64::try_from(state.version).map_err(|_| unresolved())?,
+                            &serde_json::to_value(&original.context.actor).map_err(|_| unresolved())?])
+                        .await.map_err(|_| unresolved())?.get(0);
+                    if !coherent {
+                        return Err(unresolved());
+                    }
+                    tx.commit().await.map_err(|_| unresolved())?;
+                    client.recycle_after_commit();
+                    Ok(Some((state, definition)))
+                },
+            )
+            .await?;
+        let Some((state, definition)) = sql_result else {
             return Ok(None);
         };
-        if state.request.work_id() != original.subject.submission_id()
-            || state.request.run_id() != TurnRunId::from_uuid(original.subject.submission_id())
-            || state.request.context() != &original.context
-            || !matches!(state.request.original(),PrivateOriginalRef::ValidatorStructural { submission_id, subject_checksum }
-                if *submission_id==original.subject.submission_id() && *subject_checksum==decode_checksum(original.subject.subject_checksum())?)
-        {
-            return Err(unresolved());
-        }
-        self.verify_original(&tx, &state.request)
-            .await
-            .map_err(|_| unresolved())?;
-        let row = tx.query_opt("SELECT definition_bytes,checksum FROM brassclaw_monty_private_preparations WHERE work_id=$1",
-            &[&state.request.work_id()]).await.map_err(|_| unresolved())?.ok_or_else(unresolved)?;
-        let definition = PrivateWorkDefinition::restore(
-            &tx,
-            &state.request,
-            state.request_checksum,
-            row.get(0),
-            row.get::<_, Vec<u8>>(1)
-                .try_into()
-                .map_err(|_| unresolved())?,
-        )
-        .await?;
-        if definition.root().reference() != original.root.reference()
-            || definition.worker_checksum() != self.worker_image.checksum()
-            || state.request.original_preparation_checksum()
-                != Some(decode_checksum(definition.preparation().checksum())?)
-            || state.request.original_workflow_checksum() != Some(definition.workflow_checksum())
-            || definition.workflow_checksum() != checksum(original.selection.validator_bytes())
-        {
-            return Err(unresolved());
-        }
-        // Only coherent metadata disposition is returned. No SQL value creates
-        // a live completion, reopens dispatch, renews a lease or grants approval.
-        let coherent: bool = tx.query_one("SELECT COALESCE(w.private_definition_checksum=$3 AND w.version=$4 AND
-            CASE WHEN w.status IN ('ready','cancelled') THEN
-                w.private_claim_generation=0 AND w.private_claim_attempts=0 AND w.private_runner_id IS NULL
-                AND w.private_claim_checksum IS NULL AND w.private_admission_run IS NULL AND w.private_lease_deadline IS NULL
-                AND a.run_id IS NULL AND t.work_id IS NULL AND w.private_terminal_checksum IS NULL
-                AND ((w.status='ready' AND w.private_cancel_revision=0) OR (w.status='cancelled' AND w.private_cancel_revision>0))
-            WHEN w.status IN ('claimed','reconciliation_required','settled') THEN
-                w.private_claim_generation=1 AND w.private_claim_attempts=1 AND w.private_runner_id IS NOT NULL
-                AND octet_length(w.private_claim_checksum)=32 AND w.private_admission_run=w.execution_run_id
-                AND a.origin_kind='private_work' AND a.private_work_id=w.work_id AND a.run_id=w.execution_run_id
-                AND a.runner_id=w.private_runner_id AND a.claim_checksum=w.private_claim_checksum
-                AND a.private_claim_generation=w.private_claim_generation AND a.private_request_checksum=w.private_request_checksum
-                AND a.private_execution_context=w.private_request_bytes::jsonb->'context' AND a.native_actor=$5
-                AND a.turn_id IS NULL AND a.scope IS NULL AND a.accepted_message_ref IS NULL
-                AND CASE WHEN w.status='settled' THEN a.phase='settled' AND t.run_id=w.execution_run_id
-                    AND t.checksum=w.private_terminal_checksum AND t.checksum=sha256(convert_to(t.terminal_bytes,'UTF8'))
-                ELSE a.phase IN ('reserved','started') AND t.work_id IS NULL AND w.private_terminal_checksum IS NULL END
-            ELSE false END,false)
-            FROM brassclaw_turns w LEFT JOIN brassclaw_monty_task_admissions a ON a.run_id=w.private_admission_run
-            LEFT JOIN brassclaw_monty_private_terminals t ON t.work_id=w.work_id
-            WHERE w.record_kind='private_work' AND w.tenant_id=$1 AND w.work_id=$2",
-            &[&original.context.tenant_id.as_str(),&state.request.work_id(),&&definition.checksum()[..],
-                &i64::try_from(state.version).map_err(|_| unresolved())?,&serde_json::to_value(&original.context.actor).map_err(|_| unresolved())?])
-            .await.map_err(|_| unresolved())?.get(0);
-        if !coherent {
-            return Err(unresolved());
-        }
-        tx.commit().await.map_err(|_| unresolved())?;
-        drop(client);
         let DomainCapture::ValidatorStructural {
             capture_bytes,
             capture_checksum,

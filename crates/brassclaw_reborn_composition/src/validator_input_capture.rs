@@ -195,7 +195,6 @@ impl PreparedValidatorReview {
     }
     /// Fresh task preparation is captured by the catalogue exactly once before
     /// this call. No caller-provided inputs or separate revision claims exist.
-    #[cfg(test)]
     pub(crate) async fn prepare(
         subject: Arc<RetainedValidatorSubject>,
         selection: Arc<RetainedValidatorSelection>,

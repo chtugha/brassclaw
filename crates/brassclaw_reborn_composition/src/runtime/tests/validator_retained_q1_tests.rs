@@ -824,3 +824,156 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
         "queue row must stay at state 1 after Q1Outcome::Failed"
     );
 }
+
+/// Test helper: creates a queued submission with its qualified validator
+/// selection already retained, without completing full Q1 delivery. Used by
+/// B3-06 reconciler tests that need `selection_preparation_present == true`
+/// without running the full native settlement pipeline.
+///
+/// Returns `(submission_id, component_id)`.
+pub(super) async fn queued_structural_original_with_selection(
+    rig: &crate::runtime::test_pg::PgRig,
+    runtime: &super::RebornRuntime,
+) -> (Uuid, Uuid) {
+    use brassclaw_engine::{
+        executor::{retained_recipe::RetainedProgram, retained_source::InspectedRetainedProgram},
+        memory::{
+            retained_inputs::prepare_retained_unbound_program,
+            retained_instruction::{WorkflowClass, compile_retained_recipe},
+        },
+    };
+    use brassclaw_skills::{
+        component_revision::{REVISION_LIMITS, RetainedComponentSnapshot},
+        review_submission_store::PgReviewSubmissionStore,
+        revision_store::PgComponentRevisionStore,
+        validator_components::{
+            structural_validator_aggregate_id, structural_validator_collect_id,
+            structural_validator_pc_id, structural_validator_receipt_id,
+            structural_validator_recipe_id,
+        },
+    };
+
+    // Seed the validator check drafts for all classes.
+    crate::builtin_bootstrap::retain_validator_check_drafts(&rig.pool)
+        .await
+        .expect("retain_validator_check_drafts must succeed");
+
+    let (_scope, _store, component_id, submission_id) = queued_structural_original(rig).await;
+
+    // Build the inspected programme from validator revision drafts (test-only
+    // draft-head path; production selection creation belongs to B1-07/B2-04).
+    let class_i16: i16 = 22;
+    let revision_store = PgComponentRevisionStore::new(rig.pool.clone());
+    let recipe_id = structural_validator_recipe_id(class_i16);
+    let pc_id = structural_validator_pc_id(class_i16);
+    let collect_id = structural_validator_collect_id(class_i16);
+    let aggregate_id = structural_validator_aggregate_id(class_i16);
+    let receipt_id = structural_validator_receipt_id(class_i16);
+
+    let (_, recipe_version) = revision_store
+        .read_allocation_head(recipe_id)
+        .await
+        .unwrap()
+        .expect("recipe draft must be seeded");
+    let (_, pc_version) = revision_store
+        .read_allocation_head(pc_id)
+        .await
+        .unwrap()
+        .expect("pc draft must be seeded");
+    let (_, collect_version) = revision_store
+        .read_allocation_head(collect_id)
+        .await
+        .unwrap()
+        .expect("collect draft must be seeded");
+    let (_, aggregate_version) = revision_store
+        .read_allocation_head(aggregate_id)
+        .await
+        .unwrap()
+        .expect("aggregate draft must be seeded");
+    let (_, receipt_version) = revision_store
+        .read_allocation_head(receipt_id)
+        .await
+        .unwrap()
+        .expect("receipt draft must be seeded");
+
+    let recipe_rev = revision_store
+        .read_revision(recipe_id, recipe_version)
+        .await
+        .unwrap();
+    let pc_rev = revision_store
+        .read_revision(pc_id, pc_version)
+        .await
+        .unwrap();
+    let collect_rev = revision_store
+        .read_revision(collect_id, collect_version)
+        .await
+        .unwrap();
+    let aggregate_rev = revision_store
+        .read_revision(aggregate_id, aggregate_version)
+        .await
+        .unwrap();
+    let receipt_rev = revision_store
+        .read_revision(receipt_id, receipt_version)
+        .await
+        .unwrap();
+
+    let snapshot = std::sync::Arc::new(
+        RetainedComponentSnapshot::new(
+            &[recipe_id],
+            vec![recipe_rev, pc_rev, collect_rev, aggregate_rev, receipt_rev],
+        )
+        .unwrap(),
+    );
+
+    let preparation = runtime
+        .installed_catalogue
+        .capture_task_preparation()
+        .await
+        .unwrap();
+
+    let instruction = compile_retained_recipe(
+        snapshot,
+        recipe_id,
+        &format!("validator-class-{class_i16}"),
+        WorkflowClass::Deterministic,
+    )
+    .unwrap();
+    let program = prepare_retained_unbound_program(instruction).unwrap();
+
+    let inspected = std::sync::Arc::new(
+        InspectedRetainedProgram::inspect_with_limits(
+            RetainedProgram::Unbound(std::sync::Arc::new(program)),
+            runtime.installed_catalogue.worker.as_path(),
+            preparation.limits(),
+        )
+        .await
+        .unwrap(),
+    );
+
+    let subject = {
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let s = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+            &tx,
+            submission_id,
+            REVISION_LIMITS,
+        )
+        .await
+        .unwrap()
+        .expect("subject must exist");
+        tx.commit().await.unwrap();
+        s
+    };
+
+    crate::pg_validator_q1_admission::retain_validator_selection(&rig.pool, &subject, &inspected)
+        .await
+        .expect("retain_validator_selection must succeed");
+
+    (submission_id, component_id)
+}
