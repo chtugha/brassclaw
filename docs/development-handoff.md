@@ -69,7 +69,7 @@ before Cargo starts; no whole-batch/native pass is claimed.
 ### Incoming Bob review checkpoint
 
 Three package branches remain **unaccepted into Main**: B1-06 `d6f8c7af5`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `d94aaa8e1` (report `07e0a4656`). B3-09's inspection-only
+`e0be06d8f` (source `78147448b`), B3-06 `f97bd0e3d` (report `583d9191e`). B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Failed B1 source remains on central integration
@@ -106,12 +106,15 @@ Rust static asset/router tests pass warning-free. Run-59 verifies the new embedd
 module and unchanged hashes; all 362 relevant inputs match the accepted Main
 merge. No browser, Q2 or full-plan acceptance follows. B3-06's latest source
 corrects Send and timed transactional-read custody; the prior direct Rustfmt passes.
-Latest `d94aaa8e1` uses the production preparation path with one capacity-one
-proxy pool, bounds the recovery observation and flattens the wake condition.
-Stop/await the real worker before controlled fixtures to prevent it preparing
-the original or consuming the targeted fault; shut down runtime before closing
-its shared pool/proxy. These source-visible test lifecycle fixes precede combined validation. Its branch
-remains uncompiled. No unaccepted B1/B3-06 source enters Main.
+Latest `f97bd0e3d` closes worker/teardown fixture findings. Isolated local candidate
+`codex/b3-06-reviewed-integration-20261113` at `3dd52ec6e` fails actual Run-60
+full-feature strict Clippy in 61.156 seconds, exit 101, unchanged source. Fix the
+test-only `PreparedValidatorReview::prepare()` callee used by production and the
+confirmation action's `Option<Value>` versus unit result. Keep only actually
+production-used interfaces ungated; remove the now-unused split-pool test entry.
+Return fixes to B3-06, preserve original checks/evidence and do not suppress
+diagnostics. Root is back on Main, candidate preserved, source freeze released.
+No native/PG test or Main product-code acceptance is claimed.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
 Before native continuation, collect accepted package corrections and compile

@@ -13,7 +13,7 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `d6f8c7af5`; lint/fixture source corrections, DB-message assertion still wrong |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `d94aaa8e1`, report `07e0a4656` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `f97bd0e3d`, report `583d9191e`; actual candidate compilation fails |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### Latest follow-up and actual candidate check
@@ -263,6 +263,48 @@ Before building, correct the connected fixture lifecycle in the package owner:
 The earlier report whitespace and PID wording remain presentation corrections;
 a distinct PID proves a different observed session, not completed old-backend
 termination. Production connection custody stays with the existing PG owner.
+
+### B3-06 `f97bd0e3d`, report `583d9191e` — actual Run-60 failure
+
+All five controlled cases now stop and await the real worker before constructing
+fixtures. Cases 3a/3b/3c check zero originals before the controlled action. The
+shared-pool case shuts down runtime before pool/proxy teardown. This closes the
+preceding lifecycle source findings; it is not test execution evidence.
+
+Root merged only this package onto Main `981fbb4db` in the separate local
+`codex/b3-06-reviewed-integration-20261113` branch, merge `2fc8696e6`, followed
+by report-only whitespace correction `3dd52ec6e`. No B1/B2 candidate was included.
+Actual detached Screen Run-60 invoked Rust 1.100 full-feature Composition
+all-targets Clippy with `postgres,skills-db`, `--locked` and `-D warnings`,
+under the canonical native lock/target. Command return code is 101, elapsed
+61.156 seconds (receipt batch 66.459 seconds), source unchanged. Full JSON/logs
+and the terminal failure are retained under
+`target/validation/bob-native-repair-20261105/run-60-b306-guarded-clippy/`.
+
+Two compiler root causes require package-owner correction:
+
+- `private_task_catalogue.rs:300` calls `PreparedValidatorReview::prepare()`, but
+  its implementation at `validator_input_capture.rs:198` remains `#[cfg(test)]`.
+  Complete the actual preparation production boundary under the existing module
+  features; retain exact subject/selection, worker integrity, captured limits and
+  typed-input checks. Do not manufacture a prepared result or qualification.
+  Missing-method, never-type/inference and unreachable diagnostics at lines
+  307/313 follow this missing entry point, not independent approval failures.
+- `review_work_reconciliation.rs:269` returns `Result<Option<Value>, _>` from
+  confirmation while the other action arms return `Result<(), _>`. Normalize
+  only this caller's successful action return to unit; preserve the shared
+  confirmation API, error propagation, original readback and persisted evidence.
+
+Before the next strict build, also resolve the connected source reachability:
+the GlobalTaskPortsFactory/MontyCatalogueProvider preparation bridge has only
+test consumers, while production reconciliation calls the inherent catalogue
+method directly. Retain test-only gating for that unused bridge instead of
+promoting a second production interface. The split-write-pool test entry point
+also has no remaining caller after the ACK test switched to the real runtime;
+remove it rather than suppressing dead code. These are source-review findings,
+not compiler-observed dead-code diagnostics: type errors prevented full lint
+acceptance. No native or PG tests ran. Main remains `981fbb4db`; Root has returned
+to Main, leaving the failed candidate preserved and the source freeze released.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.
