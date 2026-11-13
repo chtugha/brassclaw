@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Install a verified BrassClaw application/worker pair from a GitHub release.
+# Install a checksum-verified BrassClaw application/worker pair from a release or local directory.
 # Linux amd64 and macOS arm64/amd64. PostgreSQL/pgvector are embedded in the
-# application; Monty is a separate companion executable from the same release.
+# application; Monty is a separate companion executable. Local operators supply
+# the matching pair; local checksums do not establish release provenance.
 # Usage: bash install.sh [-v version] [--local-dir path] [--startup-timeout seconds]
 # Root on systemd Linux installs a service; other installs are started manually.
 set -euo pipefail
@@ -35,17 +36,19 @@ log_step()  { printf '[STEP]  %s\n' "$*"; }
 
 usage() {
     printf 'Usage: %s [-v version] [--local-dir path] [--startup-timeout seconds]\n' "$0"
+    printf 'With --local-dir, -v is an optional operator-supplied display label, not verified metadata.\n'
+    printf 'Local files require both platform binaries and their digest-only .sha256 files; no GitHub requests are made.\n'
 }
 
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -v|--version)
-                [[ $# -ge 2 ]] || { usage >&2; return 1; }
+                [[ $# -ge 2 && -n "$2" && "$2" != v ]] || { usage >&2; return 1; }
                 PINNED_VERSION="${2#v}"
                 shift 2 ;;
             --local-dir)
-                [[ $# -ge 2 ]] || { usage >&2; return 1; }
+                [[ $# -ge 2 && -n "$2" && "$2" != --* ]] || { usage >&2; return 1; }
                 LOCAL_DIR="$2"
                 shift 2 ;;
             --startup-timeout)
@@ -60,10 +63,6 @@ parse_args() {
         log_error 'Invalid release version.'
         return 1
     fi
-    if [[ -n "$LOCAL_DIR" && -n "$PINNED_VERSION" ]]; then
-        log_error '--local-dir and -v/--version are mutually exclusive.'
-        return 1
-    fi
     if [[ -n "$LOCAL_DIR" && ! -d "$LOCAL_DIR" ]]; then
         log_error "--local-dir: directory not found: $LOCAL_DIR"
         return 1
@@ -72,9 +71,12 @@ parse_args() {
 
 require_commands() {
     local name
-    for name in curl python3 cat tr sed tail mktemp install cp mv chmod mkdir ln rm rmdir od id uname; do
+    for name in python3 cat tr sed tail mktemp install cp mv chmod mkdir ln rm rmdir od id uname; do
         command -v "$name" >/dev/null || { log_error "Required command missing: $name"; return 1; }
     done
+    if [[ -z "$LOCAL_DIR" ]]; then
+        command -v curl >/dev/null || { log_error 'Required command missing: curl'; return 1; }
+    fi
     python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || {
         log_error 'Python 3.9+ is required for release metadata and safe uninstallation.'
         return 1
@@ -171,6 +173,45 @@ download_pair() {
             -o "$DOWNLOAD_DIR/$asset" "$base_url/$asset"
         curl -fsSL --retry 3 --connect-timeout 10 --max-time 60 \
             -o "$DOWNLOAD_DIR/$asset.sha256" "$base_url/$asset.sha256"
+        sha256_check "$DOWNLOAD_DIR/$asset" "$DOWNLOAD_DIR/$asset.sha256" || {
+            log_error "Checksum verification failed for $asset."
+            return 1
+        }
+    done
+}
+
+snapshot_local_pair() {
+    local artifact="$1" asset
+    DOWNLOAD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/brassclaw-download.XXXXXX")
+    # Copy from open regular files into private, newly created files. Never
+    # install directly from a mutable operator directory or follow asset links.
+    python3 - "$LOCAL_DIR" "$DOWNLOAD_DIR" "$artifact" <<'PY_SNAPSHOT' || return 1
+import os
+import shutil
+import stat
+import sys
+
+source, destination, artifact = sys.argv[1:]
+try:
+    directory = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for asset in (artifact, artifact + "-monty-worker"):
+            for name in (asset, asset + ".sha256"):
+                descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+                with os.fdopen(descriptor, "rb") as incoming:
+                    if not stat.S_ISREG(os.fstat(incoming.fileno()).st_mode):
+                        raise ValueError("Local artifact is not a regular file: " + name)
+                    with open(os.path.join(destination, name), "xb") as outgoing:
+                        shutil.copyfileobj(incoming, outgoing)
+    finally:
+        os.close(directory)
+except (OSError, ValueError) as error:
+    raise SystemExit("Cannot snapshot local artifacts: " + str(error))
+PY_SNAPSHOT
+    # All later staging reads use only this snapshot. These checks establish
+    # byte integrity against operator-supplied hashes, not GitHub provenance or
+    # proof that independently supplied application/worker files share a release.
+    for asset in "$artifact" "$artifact-monty-worker"; do
         sha256_check "$DOWNLOAD_DIR/$asset" "$DOWNLOAD_DIR/$asset.sha256" || {
             log_error "Checksum verification failed for $asset."
             return 1
@@ -397,7 +438,7 @@ cleanup() {
     elif [[ "$result" != 0 && "$WAS_RUNNING" == true && "$retain_stage" == false ]]; then
         systemctl start "$SERVICE_NAME" || log_error 'Could not restart the previous service; inspect its journal.'
     fi
-    [[ -z "$DOWNLOAD_DIR" || "$DOWNLOAD_DIR" == "$LOCAL_DIR" ]] || rm -rf "$DOWNLOAD_DIR" || log_warn "Could not remove $DOWNLOAD_DIR"
+    [[ -z "$DOWNLOAD_DIR" ]] || rm -rf "$DOWNLOAD_DIR" || log_warn "Could not remove $DOWNLOAD_DIR"
     if [[ -n "$STAGE_DIR" && "$retain_stage" == false ]]; then
         rm -rf "$STAGE_DIR" || log_warn "Could not remove $STAGE_DIR"
     fi
@@ -410,7 +451,15 @@ cleanup() {
 
 print_summary() {
     local version="$1"
-    log_info "BrassClaw v$version installed: $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/monty_worker"
+    if [[ -n "$LOCAL_DIR" ]]; then
+        if [[ -n "$version" ]]; then
+            log_info "Local BrassClaw pair installed (operator-supplied version: v$version): $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/monty_worker"
+        else
+            log_info "Local BrassClaw pair installed (version unknown): $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/monty_worker"
+        fi
+    else
+        log_info "BrassClaw v$version installed: $INSTALL_DIR/$BINARY_NAME and $INSTALL_DIR/monty_worker"
+    fi
     if [[ "$USE_SYSTEMD" == true ]]; then
         printf '  Data: %s\n' "${SERVICE_HOME:-see the preserved service configuration}"
         printf '  Local WebUI: %s\n  Service: systemctl status %s\n' "$SERVICE_URL" "$SERVICE_NAME"
@@ -438,31 +487,7 @@ main() {
     local artifact version
     artifact=$(detect_artifact)
     if [[ -n "$LOCAL_DIR" ]]; then
-        # Use pre-downloaded files; resolve version from the artifact filename.
-        for asset in "$artifact" "$artifact-monty-worker"; do
-            [[ -f "$LOCAL_DIR/$asset" ]] || { log_error "Local artifact not found: $LOCAL_DIR/$asset"; return 1; }
-            [[ -f "$LOCAL_DIR/$asset.sha256" ]] || { log_error "Local checksum not found: $LOCAL_DIR/$asset.sha256"; return 1; }
-        done
-        version=$(python3 -c '
-import re, sys
-data = open(sys.argv[1]).read().strip()
-m = re.search(r"v([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)", data)
-if not m:
-    sys.exit("Cannot determine version from sha256 file; pass -v to set it explicitly.")
-print(m.group(1))
-' "$LOCAL_DIR/$artifact.sha256" 2>/dev/null) || version=""
-        if [[ -z "$version" || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
-            log_warn 'Could not determine version from local files; set -v to display the correct version.'
-            version="local"
-        fi
-        log_step "Verifying local artifacts in $LOCAL_DIR"
-        for asset in "$artifact" "$artifact-monty-worker"; do
-            sha256_check "$LOCAL_DIR/$asset" "$LOCAL_DIR/$asset.sha256" || {
-                log_error "Checksum verification failed for $asset."
-                return 1
-            }
-        done
-        DOWNLOAD_DIR="$LOCAL_DIR"
+        version="$PINNED_VERSION"
     else
         version=$(resolve_version "$artifact")
     fi
@@ -471,6 +496,7 @@ print(m.group(1))
         INSTALL_DIR=/usr/local/bin
         if [[ "$(uname -s)" == Linux ]] && command -v systemctl >/dev/null; then
             USE_SYSTEMD=true
+            command -v curl >/dev/null || { log_error 'curl is required for local service readiness checks.'; return 1; }
             command -v journalctl >/dev/null || { log_error 'journalctl is required for readiness checks.'; return 1; }
         fi
     else
@@ -479,7 +505,10 @@ print(m.group(1))
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    if [[ -z "$LOCAL_DIR" ]]; then
+    if [[ -n "$LOCAL_DIR" ]]; then
+        log_step "Snapshotting and verifying local artifacts in $LOCAL_DIR"
+        snapshot_local_pair "$artifact"
+    else
         download_pair "$version" "$artifact"
     fi
     if [[ "$USE_SYSTEMD" == false ]]; then
