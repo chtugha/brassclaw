@@ -11,7 +11,7 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `01cc4499a`, report `8b6f96a63`; restored guard, remaining lint/DB fixture findings |
+| B1-06 | `codex/b1-06-approval-writer` | `d6f8c7af5`; lint/fixture source corrections, DB-message assertion still wrong |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
 | B3-06 | `codex/b3-06-durable-q1-work-wt` | `d94aaa8e1`, report `07e0a4656` |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
@@ -99,6 +99,23 @@ Two connected corrections are still necessary before spending another build:
 No new Cargo run is justified for these source-visible failures. Main and the
 previous B1 candidate remain unchanged. General B1 producer qualification stays
 open; restoration of the guard is not activation.
+
+### B1-06 `d6f8c7af5` — reported lint/fixture corrected; message assertion open
+
+The actual legacy-checksum condition is collapsed. V214's fixture stages a real
+root revision, uses its checksum/version, passes an actual authored q2_ref and
+adds a failed-run row with the required evidence/submission references. Its
+historical `/1` submission shape satisfies the relevant V104/V148/V193/V212 SQL
+carriage checks; this is a controlled constraint test, not review qualification.
+These supersede the three fixture/lint findings from `01cc4499a`.
+
+Both negative cases still check `err.to_string().contains(trigger_text)`.
+The pinned tokio-postgres Error Display implementation writes only `db error`
+for database errors; the actual PostgreSQL message belongs to
+`err.as_db_error().expect(...).message()`. Correct both `err` and `err2`
+assertions, retaining CHECK_VIOLATION and the specific V214 message. Otherwise
+the test fails even when the trigger behaves correctly. No new Cargo/native
+run or Main integration is claimed; the authored writer remains guarded.
 
 B3-06 `ad1ea1b90` removes the production draft selector and incompatible checksum
 read, and explicitly defers absent selections. Its write now has a deadline and

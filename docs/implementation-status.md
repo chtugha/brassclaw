@@ -55,7 +55,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Bob inspection slice accepted; remaining packages open
 
-B1-06 `01cc4499a` (report `8b6f96a63`), B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `d94aaa8e1`
+B1-06 `d6f8c7af5`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `d94aaa8e1`
 remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
@@ -69,13 +69,14 @@ source; `/1` strictness, original limits, complete base structure and formatting
 still require correction. This does not establish new runtime support.
 B1's earlier `b48d45b7c` checkpoint closes its unsupported authored writer.
 Rejected `3f802f79c` removed that protection without qualified replacements;
-`01cc4499a` restores it and corrects the duplicate revision fixture. The actual
-reported checksum-block lint remains; the new V214 fixture needs a real revision,
-valid authored Q2 reference and failed-run case before native execution.
+`01cc4499a` restores it and corrects the duplicate revision fixture. Latest
+`d6f8c7af5` fixes the actual checksum-block lint and V214 root/Q2/failed-run
+fixtures; both new message assertions must use the PostgreSQL DbError message
+rather than Error Display before native execution.
 Candidate integration `8cdbd5f7` on
 the supervisor's central integration branch fails actual full-feature strict
 Clippy at writer line 687; the newer fixture-allocation fix is source-reviewed,
-while V214 coverage corrections remain. Those source changes are absent from Main. B3-06 removes the faulty draft
+while V214 message-assertion corrections remain. Those source changes are absent from Main. B3-06 removes the faulty draft
 selector and bounds writes. Its latest source corrects Send/read custody and
 passes direct Rustfmt at the prior checkpoint. The latest ACK test uses one
 capacity-one pool through the production entry point; manual-fixture worker

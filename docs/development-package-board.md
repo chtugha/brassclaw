@@ -114,7 +114,7 @@ inspection slice is accepted; its full typed-decision integration remains open:
 
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
-| B1-06 | `01cc4499a` (report `8b6f96a63`) | Authored protection restored and revision fixture corrected. Actual checksum-block Clippy issue remains; V214 test has missing root FK, invalid authored q2_ref and no failed-run case. No new Cargo/native acceptance. |
+| B1-06 | `d6f8c7af5` | Guard preserved; actual checksum-block lint and V214 fixture corrected in source. Both V214 message assertions still use Error Display (`db error`) instead of `as_db_error().message()`. Correct before native acceptance. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
 | B3-06 | `d94aaa8e1` (report `07e0a4656`) | Same-pool production recovery and wake-if corrected in source. Manual fixture still races the active worker and closes shared infrastructure before runtime shutdown; return lifecycle fixes before Cargo/native acceptance. |
 | B3-09 | `f857421e3`, Main `52d74c2c3` | Inspection-only slice accepted: 41 Node and 28 real static asset/router cases pass; typed decisions/full B3-09 remain open. |

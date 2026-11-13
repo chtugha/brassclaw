@@ -68,7 +68,7 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Three package branches remain **unaccepted into Main**: B1-06 `01cc4499a` (report `8b6f96a63`), B2-02
+Three package branches remain **unaccepted into Main**: B1-06 `d6f8c7af5`, B2-02
 `e0be06d8f` (source `78147448b`), B3-06 `d94aaa8e1` (report `07e0a4656`). B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
@@ -89,10 +89,10 @@ strictness/original limits/base validation and B3 qualified selection/commit
 custody remain review blockers. B2's shared-owner and explicit nil/zero checks
 are corrected in source; its direct Rustfmt check fails, and Cargo is not run.
 B1's `01cc4499a` restores the protected `b48d45b7c` checkpoint after rejected
-`3f802f79c` and fixes duplicate revision allocation. Its actual reported nested
-checksum-condition lint remains; changes in format detection address different
-code. The V214 test needs a real root revision, non-null authored q2_ref and a
-failed-run fixture; assert the trigger-specific error rather than SQLSTATE alone.
+`3f802f79c` and fixes duplicate revision allocation. Latest `d6f8c7af5` fixes the
+actual checksum-condition lint and V214 root/Q2/failed-run fixtures. Both negative
+message assertions still inspect `err.to_string()` (only `db error`); change to
+`as_db_error().expect(...).message()` while retaining specific trigger/SQLSTATE checks.
 No new Cargo run for these source-visible failures. B2 selection findings remain
 separate. The prior candidate remains preserved. Its actual Run-58 strict full-feature
 Clippy fails on a collapsible if at writer line 687, with unchanged inputs.
