@@ -406,6 +406,20 @@ storing records alone does not activate or publish anything.
 
 - [ ] **B1-06 — Repair the writer, routes and persistence contract.**
 
+**Scoped repair accepted, 2026-11-13:** package tip `d41db6c37`, integrated final
+tree `3cd63dfc3`, preserves the authored-path guard, strict evidence formats and
+inactive Q1 subject-binding infrastructure, repairs the revision fixture and
+adds V214 missing/failed-run and seed-exemption checks. Actual full-feature
+all-targets strict Rust 1.100 Clippy passes without warnings. All eleven B1
+tests and the existing native seed-checker compatibility case pass on the
+captured Rust 1.98.1 programs, with unchanged source/artifacts and no ignored
+cases; see the [supervisor receipt](docs/validation/2026-11-13-bob-incoming-package-review.md).
+This closes the bounded repair checkpoint only. B1-06 remains open for trusted
+behavioral/full-Q1 qualification, authenticated exact-view human Q2, coordinated
+approval/link persistence and the connected class-21/22 product routes below.
+The authored guard is removed only after those real producers and consumers
+are connected and qualified; the V214 succeeded flag alone is insufficient.
+
 1. Restrict successful approval creation to the existing trusted review/
    installation owner. `PgPureApprovalStore` must not treat public arbitrary
    approval JSON as authority. Keep operator prepare/approve/read operations

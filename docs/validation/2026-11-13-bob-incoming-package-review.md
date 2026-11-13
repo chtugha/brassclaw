@@ -11,12 +11,60 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `d6f8c7af5`; lint/fixture source corrections, DB-message assertion still wrong |
+| B1-06 | `codex/b1-06-approval-writer` | `d41db6c37`; guarded repair accepted as Main `3cd63dfc3`, full B1-06 open |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `f97bd0e3d`, report `583d9191e`; actual candidate compilation fails |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `530a6855f`, report `e6e51253a`; Run-60 causes corrected in source, new validation pending |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
-### Latest follow-up and actual candidate check
+### B1 guarded repair accepted — full B1-06 remains open
+
+`d41db6c37` fixes both V214 message assertions through DbError::message().
+Root squashes the reviewed final B1 tree onto Main `5012e6451` in isolated local
+candidate `codex/b1-06-reviewed-integration-20261113`, commit `3cd63dfc3`. Thus the
+reverted intermediate `3f802f79c` commit is not added to the integration ancestry.
+The three source/migration blobs match the package tip exactly. B3/B2 are absent.
+
+Actual Run-61 Rust 1.100 Composition all-targets Clippy with `postgres,skills-db`
+and `-D warnings` passes: exit 0, 144.851 seconds (batch 150.069 seconds), zero
+Rust/Cargo warnings, unchanged source. Both Composition artifacts confirm the
+required features. Run-62 compiles the actual Rust 1.98.1 worker and native
+Composition test program without warnings (17.472 and 1421.980 seconds).
+The Composition image retains `__eh_frame` 13,862,568 bytes below 16 MiB and
+`__unwind_info` 2,658,080 bytes. Its immutable test image SHA-256 is
+`73932313718fc77904c171af2b9cf06b4219a46c552e23300a4c87b8cc065e0b`.
+
+All eleven B1 cases pass, including actual PostgreSQL V214 missing-run,
+failed-run and seed-exemption checks. The existing
+`bootstrap_validator_approval::tests::native_structural_checker_exports_keep_originals_after_pruning_smaller_limits_and_authored_head`
+also passes (392.101 seconds), covering the real seed path, original first-claim
+race and retained originals under later limits/heads. Total test batch: 404.585
+seconds, twelve passed, zero failed/ignored, unchanged source and both canonical/
+immutable image hashes. No warning/deprecation/panic markers occur in the selected
+logs. This does not qualify positive authored behavior or human Q2.
+
+The first test invocation stopped before any case at the post-build disk gate;
+its blocked preflight is recorded, not counted as a test pass. Two separately
+audited one-use cache manifests remove only old alternate incremental profiles,
+preserving every Composition session, all current/newest required graphs,
+libraries, fingerprints, source, DBs and executable evidence. Their receipts and
+manifests are retained in Run-62 `capacity-recovery/`. The same compiled programs
+then execute without recompilation. Earlier cleanup manifests are not rerun.
+
+Actual receipts: `target/validation/bob-native-repair-20261105/run-61-b1-corrected-clippy/`
+and `run-62-b1-native/`, including `current-native-acceptance/completed.json`.
+Root fast-forwards the accepted `3cd63dfc3` final tree into Main. Source freeze
+is released; B3/B2 remain absent from this accepted source. Full B1-06/Bob,
+authored activation, platform and deployment acceptance remain open.
+
+The pending release-note addition changes `CHANGELOG.md`, an actual embedded
+input of `prefix_release_documents.rs`. Scope classification correctly marks it
+as requiring Reborn validation. It is deliberately kept out of this accepted
+Main checkpoint and will be compiled/qualified with the already-reviewed B3
+successor batch. The committed Main changelog bytes still match Run-62 exactly;
+the Bob plan and this acceptance documentation are unembedded. Do not claim the
+pending working-tree changelog is covered by these original image receipts.
+
+### Historical follow-up and actual candidate check
 
 Earlier per-commit findings below remain historical where superseded here.
 The five B1 corrections are applied in `b48d45b7c`: real table/positive
@@ -305,6 +353,18 @@ remove it rather than suppressing dead code. These are source-review findings,
 not compiler-observed dead-code diagnostics: type errors prevented full lint
 acceptance. No native or PG tests ran. Main remains `981fbb4db`; Root has returned
 to Main, leaving the failed candidate preserved and the source freeze released.
+
+### B3-06 `530a6855f`, report `e6e51253a` — corrected source, next gate pending
+
+The package exposes the existing verified prepare operation in production,
+normalizes only the confirmation caller's successful return to unit, restores
+test-only factory/provider bridges and removes the now-unused split-pool test
+entry point and forwarding layer. The reviewed diff preserves the underlying
+subject/selection/worker/captured-limit/input checks. This addresses the actual
+Run-60 causes and connected reachability findings in source. Root's current B1
+native candidate does not include it. New B3 strict compilation and five-case
+PostgreSQL acceptance follow after the active B1 gate; no new compiler or runtime
+pass is inferred from this source review.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.

@@ -109,14 +109,14 @@ whole native batch. Do not repeat the passing phase without relevant changes.
 
 ### Incoming Bob packages — source review, not integration
 
-The three unaccepted packages remain separate from Main. B3-09's bounded
-inspection slice is accepted; its full typed-decision integration remains open:
+The bounded B1 guarded repair and B3-09 inspection slice are accepted. B2/B3
+incoming runtime packages and full typed-decision integration remain open:
 
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
-| B1-06 | `d6f8c7af5` | Guard preserved; actual checksum-block lint and V214 fixture corrected in source. Both V214 message assertions still use Error Display (`db error`) instead of `as_db_error().message()`. Correct before native acceptance. |
+| B1-06 | `d41db6c37`, Main `3cd63dfc3` | Guarded repair accepted: strict full-feature Clippy, eleven B1 cases and one real seed-compatibility case pass; native link/source/image guards pass. Full trusted producer/Q2/route work remains open. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
-| B3-06 | `f97bd0e3d` (report `583d9191e`) | Lifecycle source corrections applied. Actual candidate `3dd52ec6e` Run-60 strict full-feature Clippy exits 101: production calls test-only prepare and confirmation arm has wrong result type. Return connected feature/reachability fixes; no native acceptance/Main merge. |
+| B3-06 | `530a6855f` (report `e6e51253a`) | Run-60 compiler causes and unused bridges corrected in source; new B3 validation pending completion of current B1 native gate. No Main acceptance. |
 | B3-09 | `f857421e3`, Main `52d74c2c3` | Inspection-only slice accepted: 41 Node and 28 real static asset/router cases pass; typed decisions/full B3-09 remain open. |
 
 Reserve unpublished migration V214 for B1 and V215 for B2. Package authors

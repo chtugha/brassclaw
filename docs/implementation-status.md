@@ -55,8 +55,10 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Bob inspection slice accepted; remaining packages open
 
-B1-06 `d6f8c7af5`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `f97bd0e3d`
-remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
+B1-06's guarded repair `d41db6c37` is accepted as Main `3cd63dfc3`;
+full B1-06 producer/Q2/route integration remains open. B2-02 `e0be06d8f` (source
+`78147448b`) and B3-06 `530a6855f` remain unaccepted incoming runtime work.
+B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
 readers, coherent qualified validator selection, cancelled/unknown commits and
@@ -69,20 +71,22 @@ source; `/1` strictness, original limits, complete base structure and formatting
 still require correction. This does not establish new runtime support.
 B1's earlier `b48d45b7c` checkpoint closes its unsupported authored writer.
 Rejected `3f802f79c` removed that protection without qualified replacements;
-`01cc4499a` restores it and corrects the duplicate revision fixture. Latest
-`d6f8c7af5` fixes the actual checksum-block lint and V214 root/Q2/failed-run
-fixtures; both new message assertions must use the PostgreSQL DbError message
-rather than Error Display before native execution.
-Candidate integration `8cdbd5f7` on
-the supervisor's central integration branch fails actual full-feature strict
-Clippy at writer line 687; the newer fixture-allocation fix is source-reviewed,
-while V214 message-assertion corrections remain. Those source changes are absent from Main. B3-06 removes the faulty draft
+`01cc4499a` restores it and corrects the duplicate revision fixture; `d6f8c7af5`
+fixes the actual lint and V214 constraints/failed-run fixture, and `d41db6c37`
+corrects both DbError message assertions. Isolated candidate `3cd63dfc3` passes
+actual Run-61 full-feature all-targets strict Clippy without warnings. Run-62's
+worker/native test programs link warning-free with retained unwind sections;
+all eleven B1 cases and the existing native seed-checker compatibility case pass,
+with unchanged source/images and no ignored tests. That guarded source and V214
+are now in Main; positive authored approval remains closed.
+Earlier failed candidate receipts are historical. B3-06 removes the faulty draft
 selector and bounds writes. Its latest source corrects Send/read custody and
 passes direct Rustfmt at the prior checkpoint. Latest `f97bd0e3d` corrects
 same-pool manual-fixture worker/teardown races. Its isolated candidate fails actual
 Run-60 full-feature Clippy (exit 101, unchanged source): the production prepare
 callee remains test-only and confirmation has an incompatible action-result
-type. Connected feature/reachability repair and native acceptance remain open.
+type. New `530a6855f` corrects these and the test-only bridge reachability in
+source; its new strict/native validation remains pending after the active B1 gate.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,

@@ -68,15 +68,32 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Three package branches remain **unaccepted into Main**: B1-06 `d6f8c7af5`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `f97bd0e3d` (report `583d9191e`). B3-09's inspection-only
+**B1 guarded checkpoint accepted:** Root fast-forwards final tree `3cd63dfc3`
+into Main after Run-61 full-feature strict Rust 1.100 Clippy and all twelve
+selected Run-62 native cases pass (eleven B1 plus existing seed-checker case).
+Worker and Composition programs link warning-free; source/images remain unchanged.
+The first native test invocation was disk-blocked before running cases; audited
+cache recovery preserves all Composition/newest required sessions and actual
+programs, then the same programs pass without recompilation. Receipts/manifests
+are retained under Run-62. Native test image SHA-256:
+`73932313718fc77904c171af2b9cf06b4219a46c552e23300a4c87b8cc065e0b`.
+All owned validation is terminal and source freeze released. B1-06 remains open
+for qualified producers/full-Q1/exact-view Q2/routes; keep its authored guard.
+The release-note edit is pending in the working tree: CHANGELOG is embedded and
+must be compiled with the next B3 batch, not claimed against Run-62's old bytes.
+
+Two incoming runtime packages remain **unaccepted into Main**: B2-02
+`e0be06d8f` (source `78147448b`), B3-06 `530a6855f` (report `e6e51253a`).
+The separate failed B3 candidate `3dd52ec6e` remains preserved; the corrected
+B3 source is reviewed and its new strict/native gate follows this checkpoint.
+B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Failed B1 source remains on central integration
-branch `codex/bob-reviewed-integration-20261113`; Root returns to Main only after
-the independent UI slice passes acceptance. V214/B1 writer changes are absent
-from Main.
-Unrelated human working changes are preserved. Package chats must not switch that checkout or unlink the
+branch `codex/bob-reviewed-integration-20261113`; accepted B1 source is separately
+squashed as `3cd63dfc3`, avoiding the reverted regression in Main ancestry.
+Earlier attempt details below are historical where superseded by the accepted
+checkpoint above. Unrelated human working changes are preserved. Package chats must not switch that checkout or unlink the
 shared Cargo lock. Local Cargo stays serial; Composition requires explicit
 `postgres,skills-db` acceptance.
 
