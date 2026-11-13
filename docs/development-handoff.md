@@ -37,9 +37,9 @@ Actual Rust 1.100 full-workspace/all-targets Clippy diagnostic completes in
 215.073 seconds with unchanged source. This is compilation evidence, not strict
 acceptance: it reports six remaining Composition Clippy warnings and eighteen
 further unused manifest edges. W-02's six source repairs are reviewed/integrated;
-W-05's eighteen-edge audit and membership correction are integrated; final
-manifest/compiler acceptance is pending. No final strict pass, native acceptance
-or rc.7 release is claimed yet.
+W-05's eighteen-edge audit and membership correction are integrated. Subsequent
+manifest fixes and default workspace strict acceptance are recorded below;
+changed-feature/native acceptance and rc.7 publication remain pending.
 
 A moved unchanged Pure fixture test module changes its complete file checksum,
 `original-pure-seed-manifest/1` and derived reservation identity. Preserve old
@@ -60,8 +60,39 @@ warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
 `315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
 `md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
 and the same 64-member set. Total orphan pruning is 103 packages. The final
-warning-free, changed-feature and native acceptance checks remain pending;
-the earlier successful compiler run is not relabelled warning-free.
+changed-feature and native acceptance checks remain pending. Run-57-r1's
+subsequent default workspace/all-targets strict check passes on `d24a87508` in
+62.104 seconds, with zero Rust diagnostics, zero Cargo warning lines and
+unchanged source. The following compatibility command stops at the disk gate
+before Cargo starts; no whole-batch/native pass is claimed.
+
+### Incoming Bob review checkpoint
+
+Four external package branches remain **unmerged**: B1-06 `266bea0d7`, B2-02
+`27267af66`, B3-06 `f5493ff04`, B3-09 `e683aa024`. Review corrections return
+to their original authors; do not create competing implementations. V214 is
+reserved for B1, V215 for B2. Root stays on Main and preserves unrelated human
+working changes. Package chats must not switch that checkout or unlink the
+shared Cargo lock. Local Cargo stays serial; Composition requires explicit
+`postgres,skills-db` acceptance.
+
+B3-09's 35 selected Node UI cases pass. The provider suite fails the same
+11/15 cases on Main and the package branch: missing `ProviderBootstrapStatus`
+or `ProviderAuthStatus` in its VM context. This establishes the baseline failure,
+not permission to ignore it. Panel rendering does not establish backend approval.
+The actual class-22 dispatcher, immutable viewed-decision binding, B2 store
+validation and B3 qualified selection/commit custody remain review blockers.
+See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
+
+Before native continuation, collect accepted package corrections and compile
+their combined source once. Reuse applicable completed checks; new source may
+invalidate their affected scope. Pure Rust 1.100 metadata checks should avoid
+recreating multi-gigabyte incremental query caches; preserve the warm native
+1.98.1 code-generation cache. Existing one-off cleanup manifests are consumed
+and must not be replayed. The latest metadata-only cleanup removed all selected
+Rust 1.100 check caches, including recent ones; its generic preservation text
+is overbroad. Published metadata, objects, native executables and evidence were
+preserved. Do not rewrite the original receipt to hide that wording error.
 
 ## Historical — 2026-11-13 rc.5 published; rc.6 native runner repair prepared
 

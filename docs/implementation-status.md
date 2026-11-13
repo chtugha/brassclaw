@@ -27,7 +27,8 @@ The full-workspace/all-targets Rust 1.100 Clippy diagnostic compiles successfull
 (215.073 s, unchanged source), but has six remaining Rust lints and eighteen
 unused dependency warnings. Six source repairs are integrated; the remaining
 manifest audit is integrated, including correction of unintended automatic TUI
-membership loss; actual strict/native acceptance remains pending. Installer file
+membership loss; subsequent default strict acceptance is recorded below, while
+changed-feature/native acceptance remains pending. Installer file
 operations pass seventeen cases with the systemd-only validator explicitly
 unavailable on macOS. The first dependency repair preserves legacy YAML tests
 and offline resolver passes remove 32, 69 and two unreachable lock revisions
@@ -46,8 +47,22 @@ warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
 `315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
 `md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
 and the same 64-member set. Total orphan pruning is 103 packages. The final
-warning-free, changed-feature and native acceptance checks remain pending;
-the earlier successful compiler run is not relabelled warning-free.
+changed-feature and native acceptance checks remain pending. The subsequent
+Run-57-r1 default workspace/all-targets strict check passes on `d24a87508` in
+62.104 seconds, with zero Rust diagnostics, zero Cargo warning lines and
+unchanged source. The next compatibility command stops before Cargo at the
+disk gate; this is not a whole-batch or native acceptance pass.
+
+### Incoming Bob packages remain unmerged
+
+B1-06 `266bea0d7`, B2-02 `27267af66`, B3-06 `f5493ff04` and B3-09
+`e683aa024` are reviewed incoming work, not implemented Main boundaries. Open
+findings concern qualified own Pure behavior/human Q2, strict connected `/2`
+readers, coherent qualified validator selection, cancelled/unknown commits and
+the actual class-22/stale-view decision path. B3-09's 35 UI tests pass; the same
+11 pre-existing provider tests fail on both source trees. Neither result grants
+component approval. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
+records source facts, owner corrections and the required combined acceptance.
 
 ## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 

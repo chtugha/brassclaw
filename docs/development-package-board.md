@@ -81,7 +81,8 @@ packages are source-idle. See [the bounded review](validation/2026-11-13-speedup
   and explicit TUI membership correction `55828a04` are integrated; actual
   metadata preserves all 64 original members and the TUI library/example.
   Storage's PostgreSQL dependency and Root compatibility feature names remain.
-  Source accepted; final strict/feature/native checks are pending. No concurrent
+  Source accepted; default workspace strict lint passes, while changed-feature
+  and native checks remain pending. No concurrent
   Root Rust implementation package is active.
 
 Root alone owns local Cargo, reviews, final strict/native acceptance and release.
@@ -99,8 +100,36 @@ warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
 `315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
 `md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
 and the same 64-member set. Total orphan pruning is 103 packages. The final
-warning-free, changed-feature and native acceptance checks remain pending;
-the earlier successful compiler run is not relabelled warning-free.
+changed-feature and native acceptance checks remain pending. The subsequent
+Run-57-r1 default workspace/all-targets strict check passes on `d24a87508` in
+62.104 seconds, with zero Rust diagnostics and zero Cargo warning lines;
+source remains unchanged. Its next compatibility command stops at the disk
+gate before Cargo starts. This is a successful strict phase, not a successful
+whole native batch. Do not repeat the passing phase without relevant changes.
+
+### Incoming Bob packages — source review, not integration
+
+The four externally prepared package branches remain separate from Main:
+
+| Package | Reviewed incoming tip | Integration state |
+| --- | --- | --- |
+| B1-06 | `266bea0d7` | Q1 stage binding corrected; own Pure behavior/Q2 producer and decision binding remain open. |
+| B2-02 | `27267af66` | Strict JSON/private parsed fields improved; reference validation and the connected store reader still need correction. |
+| B3-06 | `f5493ff04` | Feature/lock report corrected; qualified coherent selection and cancellation/commit custody remain unresolved. |
+| B3-09 | `e683aa024` | 35 UI cases pass; actual class-22 dispatcher and immutable viewed-decision binding are missing. |
+
+Reserve unpublished migration V214 for B1 and V215 for B2. Package authors
+must not switch Root's checkout or delete the shared Cargo lock file. Release
+the lock with `flock(LOCK_UN)`/descriptor close only. The three authorized
+external author chats could not be identified in the available chat inventory;
+review corrections are supplied in the user conversation for forwarding.
+
+Root bundles source-accepted corrections before the next expensive native
+build. Composition acceptance explicitly enables `postgres,skills-db`;
+package-default Clippy does not reach these gated modules. No incoming package
+is marked complete from its report or source review. Exact findings and cheap
+UI/baseline checks are in the
+[incoming-package review](validation/2026-11-13-bob-incoming-package-review.md).
 
 ### Historical follow-up — 2026-11-12, native failures and strict lint before release
 
