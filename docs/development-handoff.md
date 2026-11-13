@@ -25,8 +25,8 @@ Current local Main includes prepared rc.7 metadata, the two preserved external
 installer additions, reviewed W-02 manifest/visibility/Atomic corrections,
 W-03 private local snapshot/offline installation, W-04 explicit chat-fixture
 private refusal and direct native-PG test dependencies, and W-05's dependency
-corrections. Two genuine offline resolver passes remove 32
-and 69 orphan lock packages without retained version/checksum updates. An
+corrections. Genuine offline resolver passes remove 32, 69 and two orphan lock
+packages without retained version/checksum updates. An
 intermediate unintended TUI membership loss is corrected before acceptance:
 actual metadata retains the identical 64-member set and TUI library/example.
 Legacy YAML tests keep their dev dependency.
@@ -50,6 +50,18 @@ local `speedup2.md` plan remains untracked. Do not alter frozen Root inputs.
 Default local Rust remains 1.98.1; named 1.100.0 matches GitHub's new stable.
 Project MSRV remains 1.96. No new Modal job or image activation is implied.
 All three Bob plans, general Pure approval and full private N/R/Q/T remain open.
+
+### Final manifest follow-up
+
+Root's actual Rust 1.100 workspace/all-targets Clippy run exits zero in
+209.190 seconds with unchanged source and no Rust diagnostics. Cargo still
+reports two Root manifest warnings; `-D warnings` does not make those Cargo
+warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
+`315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
+`md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
+and the same 64-member set. Total orphan pruning is 103 packages. The final
+warning-free, changed-feature and native acceptance checks remain pending;
+the earlier successful compiler run is not relabelled warning-free.
 
 ## Historical — 2026-11-13 rc.5 published; rc.6 native runner repair prepared
 

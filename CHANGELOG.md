@@ -16,11 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecated test-support Atomic operation with checked compare-and-exchange,
   preserving overflow rejection, memory ordering and the declared Rust 1.96 minimum.
   Add concurrent counter regressions; retain existing tests and public exports.
-  Remove 25 unused direct dependency edges and retain legacy YAML parsing
+  Remove 27 unused direct dependency edges and retain legacy YAML parsing
   as a test dependency. Bind the workflow ledger dependency to its existing
   PostgreSQL feature; explicitly preserve standalone TUI workspace membership
-  and existing compatibility feature names. Two offline resolver passes prune
-  101 unreachable lockfile packages without changing retained package versions
+  and existing compatibility feature names. Offline resolver passes prune
+  103 unreachable lockfile packages without changing retained package versions
   or checksums; keep PostgreSQL binary extraction, integrity checks and SQL
   extension support.
 - **Build tooling**: Parse supported Cargo global/toolchain options before

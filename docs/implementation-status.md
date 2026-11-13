@@ -30,12 +30,24 @@ manifest audit is integrated, including correction of unintended automatic TUI
 membership loss; actual strict/native acceptance remains pending. Installer file
 operations pass seventeen cases with the systemd-only validator explicitly
 unavailable on macOS. The first dependency repair preserves legacy YAML tests
-and the two offline resolver passes remove 32 then 69 unreachable lock revisions
+and offline resolver passes remove 32, 69 and two unreachable lock revisions
 without retained package updates. Metadata verifies the identical 64-member set,
 including the standalone TUI library/example.
 Changed fixture source bytes retain checksum coverage and require a new exact
 qualification identity; prior native receipts are not relabelled. rc.7 publication
 is pending. See [the current handoff](development-handoff.md).
+
+### Final manifest follow-up
+
+Root's actual Rust 1.100 workspace/all-targets Clippy run exits zero in
+209.190 seconds with unchanged source and no Rust diagnostics. Cargo still
+reports two Root manifest warnings; `-D warnings` does not make those Cargo
+warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
+`315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
+`md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
+and the same 64-member set. Total orphan pruning is 103 packages. The final
+warning-free, changed-feature and native acceptance checks remain pending;
+the earlier successful compiler run is not relabelled warning-free.
 
 ## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 

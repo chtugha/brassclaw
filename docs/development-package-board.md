@@ -76,7 +76,7 @@ packages are source-idle. See [the bounded review](validation/2026-11-13-speedup
   native caller acceptance remains pending. No production fallback/default added.
 - **W-05**, `01a1d2df-5347-76d1-b2fa-f102bb409d4b`, worktree `2d4d`: first
   nine dependency causes `c698241d7` integrated; YAML is retained for tests.
-  Root's two offline resolutions remove 32 then 69 orphan packages without
+  Root's offline resolutions remove 32, 69 and two orphan packages without
   retained version/checksum updates. The eighteen-edge follow-up `bc78c0bfa`
   and explicit TUI membership correction `55828a04` are integrated; actual
   metadata preserves all 64 original members and the TUI library/example.
@@ -89,6 +89,18 @@ The user's separate Speedup2 work uses its own branch/worktree and must coordina
 native Cargo and shared build entry points. It does not authorize concurrent
 edits to Root's frozen compiler inputs or an additional implementation owner.
 All three Bob plans/general Pure/full private N/R/Q/T remain open.
+
+### Final manifest follow-up
+
+Root's actual Rust 1.100 workspace/all-targets Clippy run exits zero in
+209.190 seconds with unchanged source and no Rust diagnostics. Cargo still
+reports two Root manifest warnings; `-D warnings` does not make those Cargo
+warnings fatal. Source-audited `fs4`/`md-5` removal `7c1e9b2bd` integrates as
+`315cf871c`. A genuine offline resolver removes exactly `fs4 0.6.6` and
+`md-5 0.10.6`, preserving PostgreSQL's `md-5 0.11.0`, all retained identities
+and the same 64-member set. Total orphan pruning is 103 packages. The final
+warning-free, changed-feature and native acceptance checks remain pending;
+the earlier successful compiler run is not relabelled warning-free.
 
 ### Historical follow-up — 2026-11-12, native failures and strict lint before release
 
