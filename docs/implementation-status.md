@@ -63,9 +63,11 @@ B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
 readers, coherent qualified validator selection, full interrupted/cold recovery and
-the actual class-21/22 prepared-view decision path. B3-09's 41 UI tests pass; the same
-11 pre-existing provider tests fail on both source trees. Neither result grants
-component approval. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
+the actual class-21/22 prepared-view decision path. B3-09's 41 UI tests pass.
+B3-R02 now repairs the eleven previously failing provider-harness cases; all
+109 connected Node cases and Run-67's 28 native static/router cases pass, with
+verified input identity and exact embedded payload bytes. This grants no
+component approval, browser/issuer or full product acceptance. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
 records source facts, owner corrections and the required combined acceptance.
 B2's shared structural owner and explicit nil/zero checks are corrected in
 source; `/1` strictness, original limits, complete base structure and formatting

@@ -68,6 +68,22 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
+**B3-R02 UI baseline accepted:** `6fd7dcb33`/handoff `3dc94344d` repairs the
+provider test loader with actual status/helper dependencies. All 109 connected
+Node cases pass, including the preserved fifteen plus eight new component cases.
+Root verifies 361 actual Node inputs and Run-67 passes warning-free native
+compilation plus all 28 static/router cases, exact embedded asset bytes and
+source/image guards. The assigned harness repair is complete; full B3-12,
+native Auth, browser and complete Bob acceptance remain open.
+
+**Active continuation:** B2-R01 chat `01a1d689-537c-7701-bf3a-1fb8d157879f`
+owns the four old B2 findings in worktree `71a0`. Root additionally finds the
+unaccepted Q codec already assigns incompatible `/2` semantics; the plan requires
+one compatible owner or a distinct explicit successor. Resolve that seam before
+publishing the B2 schema; preserve Q originals and avoid parallel `/2` meanings.
+Root reserves local Cargo and final acceptance. The package board records both
+fresh chats and their exact source boundaries.
+
 **B3 validator-original preparation accepted:** candidate `8632c5d8b` includes
 package `a069f5df3`; all five B3 code blobs match the package. Run-65 strict
 Rust 1.100 full-feature/all-targets Clippy passes without warnings in 116.736
@@ -92,8 +108,11 @@ closed. This is neither full Bob completion nor platform/deployment acceptance.
 
 Tests write their data/logs/TMPDIR below SSDE; their launcher checks that volume
 and the system free-space reserve. The compilation disk gate remains unchanged;
-the current target's utilization requires capacity recovery before another Cargo
-run. Never rerun consumed cleanup scripts. Keep current native caches and images.
+the compilation gate remains binding before Cargo. Before Run-67 a new one-use
+cache audit/cleanup reclaims 6,758,400,000 bytes and reaches 89.37% utilization,
+preserving current graphs and actual originals. Its receipt is under
+`b2r01-capacity-recovery-20261113`. Never rerun consumed cleanup scripts; recheck
+capacity for the next batch.
 
 **Historical Run-64 failure:** candidate `b1b1fd0b0` on
 `codex/b3-06-corrected-integration-20261113` contains reviewed `473027913` and

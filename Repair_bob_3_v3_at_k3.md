@@ -741,15 +741,20 @@ file/template change and no remote compilation is required by this plan.
 
 - [ ] **B3-12 — Batch validation and record actual completion.**
 
-**Remaining observed UI baseline — 2026-11-13:** the existing
-`provider-components.test.mjs` suite passes four and fails eleven cases on both
-the pre-panel Main baseline and the B3-09 branch. Its VM loader strips imports
-but omits the actual `ProviderBootstrapStatus`/`ProviderAuthStatus` dependencies.
-Repair the existing test/dependency loading and preserve its provider grouping,
-auth state and callback assertions; do not suppress, skip or replace the failing
-cases with fabricated successful authentication. Run the corrected actual
-component cases and their relevant imported-component coverage. This explicit
-remaining B3-12 item is not closed by the unrelated inspection-panel checks.
+**Observed UI baseline repaired — 2026-11-13:** B3-R02 source `6fd7dcb33`
+loads the actual ProviderBootstrapStatus/ProviderAuthStatus and related module
+namespaces through the existing render harness. Import/export drift fails
+explicitly. The original fifteen tests remain; eight new actual component cases
+cover missing and negative observations, provider identity and original refresh
+projections. The connected Node batch passes all 109 cases with zero failures or
+skips, including all 23 component cases. Root verifies 361 actual Node inputs.
+Run-67 compiles the actual embedded asset and passes all 28 existing native
+static/router cases without warnings, with unchanged inputs and exact payload
+proof. See [the bounded handoff](docs/validation/2026-11-13-b3-r02-provider-ui-handoff.md)
+and `target/validation/bob-native-repair-20261105/run-67-b3r02-static/accepted.json`.
+This closes the eleven-failure harness baseline only. B3-12's complete matrix,
+issuer/browser/native Auth, broader product/release and full Bob acceptance
+remain open. The patch changes no production JS or authentication decision.
 
 **Scoped linker gate accepted — 2026-11-05:** C-00's shared test-profile change
 is integrated as `e212e0ba2`. An actual Apple ARM64 native link completed without

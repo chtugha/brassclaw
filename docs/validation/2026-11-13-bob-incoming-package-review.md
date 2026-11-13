@@ -8,6 +8,34 @@ three Bob plans remain binding; reports and structural parsing grant no approval
 Main's reviewed compatibility checkpoint is `d24a87508`. Review corrections go
 back to the existing package owners, not a second implementation service.
 
+## B3-R02 continuation acceptance — 2026-11-13
+
+Source `6fd7dcb33`, handoff `3dc94344d`, repairs the existing provider VM harness
+with actual AuthStatus/BootstrapStatus/component namespaces and real provider
+helper predicates. Root reviews the complete diff: no production JS change,
+removed assertion, successful-auth stub or Q1/Q2 shortcut. All fifteen original
+cases remain and eight new parent/status cases cover missing/negative states
+and original provider/refresh references.
+
+The package's actual connected Node batch passes 109 cases without skips. Root
+verifies all 361 captured static/package inputs against the tested hashes and
+reuses that exact result. Run-67 builds the actual native static package in
+3.37 seconds (whole guarded batch 5.280 seconds), with no warnings, then passes
+all 28 existing asset/router cases. The generated asset table and native image
+contain the exact changed test payload, SHA256
+`ce0e6174d2997fceb5571892cd419f27bb93ec01e70b45f942c8a658bb640634`.
+[Scoped acceptance](../../target/validation/bob-native-repair-20261105/run-67-b3r02-static/accepted.json)
+keeps actual source/artifact and reused Node evidence distinct. This closes the
+assigned baseline harness defect; it is not browser, issuer/native Auth, whole
+application rebuild, full B3-12 or Bob completion.
+
+Before that build Root audits and retires only three old Composition sessions
+and four identical executable duplicates whose originals remain archived. The
+canonical CLI/worker, newest Composition sessions, libraries, fingerprints,
+source and receipts stay intact. Capacity moves from 92.13% to 89.37%, freeing
+6,758,400,000 bytes. The separate one-use capacity receipt is preserved under
+`b2r01-capacity-recovery-20261113`; no consumed cleanup is rerun.
+
 ## Source identities and ownership
 
 | Package | Branch | Latest inspected commit |

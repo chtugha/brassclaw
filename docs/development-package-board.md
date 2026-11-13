@@ -40,6 +40,33 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
+### Active continuation packages — 2026-11-13
+
+Latest user instruction renews the two-package-chat/supervisor workflow through
+completion of all three Bob plans. Root stays on Main `1bc98c0d2` for source
+review, native acceptance and integration; unrelated working changes are preserved.
+The prior external B2 author chat remains unavailable in the app inventory. Its
+unaccepted branch is preserved; B2-R01 takes explicit ownership of its reviewed
+corrections in a fresh isolated worktree, without a competing implementation.
+
+| Package | Chat / worktree | Bounded responsibility |
+| --- | --- | --- |
+| B2-R01 | `01a1d689-537c-7701-bf3a-1fb8d157879f`, local; `/Users/ollama/.codex/worktrees/71a0/brassclaw` | Integrate the final unaccepted B2 draft `e0be06d8f` into its own branch; repair historical `/1` strictness, original-limit propagation/single parse, complete wire/static step validation, real fixtures and formatting. Shared structural owner stays Skills; V215 reserved, V214 untouched. Source/PG tests authored; native acceptance owned by Root. |
+| B3-R02 | `01a1d689-c38f-7be3-8d16-11880642f3b2`, local; `/Users/ollama/.codex/worktrees/c530/brassclaw` | Accepted source `6fd7dcb33`, handoff `3dc94344d`: all 109 connected Node tests pass, 361 input hashes verified, and Run-67 native compilation/28 static-router cases pass warning-free with exact embedded test-asset proof. No production JS/Auth changes. The assigned baseline repair is complete; full B3-12 remains open. |
+
+Both chats must read all four ground-truth guides, future v3.5 plan, current
+policy/status and applicable owner/crate docs. No local Cargo, nested delegation,
+Main changes or paid Modal jobs: the successor image remains unactivated.
+Questions/technical seams return to Root through their chat/handoff; Root reads
+and resolves them. Root reviews complete coherent deltas before bundling builds.
+Before Run-67, Root audits and retires three old Composition cache sessions
+and four hash-verified archived executable duplicates. Required current graphs,
+artifacts, canonical CLI/worker and evidence remain unchanged. Capacity recovery
+reclaims 6,758,400,000 bytes and reaches 89.37% utilization; the one-use receipt
+is `target/validation/bob-native-repair-20261105/b2r01-capacity-recovery-20261113/`.
+Never rerun that consumed cleaner. Recheck the normal disk gate before Cargo.
+Neither package assignment nor a checkpoint commit closes a full Bob plan.
+
 ## Current release compatibility follow-up — 2026-11-13
 
 User priority places the external Speedup2 integration before the next compiler
