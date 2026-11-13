@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecated test-support Atomic operation with checked compare-and-exchange,
   preserving overflow rejection, memory ordering and the declared Rust 1.96 minimum.
   Add concurrent counter regressions; retain existing tests and public exports.
+  Remove eight unused direct dependency edges and retain legacy YAML parsing
+  as a test dependency. Prune 32 unreachable lockfile packages without changing
+  retained package versions or checksums; keep the existing PostgreSQL binary
+  extraction, integrity checks and SQL extension support.
 - **Test integration**: Restore explicit private-work refusal in the historical
   chat-only test driver and declare the shared native PostgreSQL fixture's direct
   test dependencies. No production driver fallback or successful private-work
