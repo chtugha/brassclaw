@@ -277,7 +277,7 @@ WorkingDirectory=$reborn_home
 Environment=BRASSCLAW_REBORN_HOME=$reborn_home
 Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev
 EnvironmentFile=/etc/brassclaw/secrets.env
-ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 127.0.0.1 --port 3000
+ExecStart=$INSTALL_DIR/$BINARY_NAME serve --host 0.0.0.0 --port 3000
 Restart=on-failure
 RestartSec=5
 KillSignal=SIGINT

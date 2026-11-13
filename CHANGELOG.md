@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **install.sh: listen on `0.0.0.0` by default**: New systemd service installs
+  now bind to all interfaces instead of loopback only, making the WebUI reachable
+  from other hosts on the network. Existing service units are preserved unchanged
+  by the installer; update `/etc/systemd/system/brassclaw.service` manually if
+  needed.
+
 - **install.sh: `--local-dir` flag**: Pass `--local-dir <path>` to install from
   a pre-downloaded GitHub release artifact directory instead of fetching from
   the network. The script verifies SHA-256 checksums, infers the version from
