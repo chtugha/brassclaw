@@ -73,14 +73,17 @@ remains available through `cargo clean -p package_name` under the local lock.
 The local launcher recognizes an optional leading `+toolchain`, then the
 Cargo global switches `--offline`, `--locked`, `--frozen`, `-v`/`-vv`,
 `--verbose`, `-q`/`--quiet` and split/inline `--color auto|always|never`.
-It rejects aliases, external/unknown subcommands, special top-level actions,
+It rejects aliases, external/unknown subcommands, unparsed top-level actions,
 `--config`, `-C`, `-Z` and target/build/artifact-directory overrides. Unsupported
 forms fail before execution; direct Cargo remains available to the supervisor
 under the native lock. Package cleanup parses every argument and requires a
 nonempty `-p foo`, `-pfoo`, `-p=foo`, `--package foo` or `--package=foo` value;
 `--` cannot hide a package selector. Compilation checks both the canonical target
 volume and the source/validation volume against the existing 15 GiB/90% limits.
-Settings inspection starts no Cargo process.
+Standalone `--help`/`-h`, `--version`/`-V` and `--list` are supported after
+these globals. Local subcommand options such as standalone test
+`--manifest-path` remain direct arguments; this is separate from the restricted
+remote grammar. Settings inspection starts no Cargo process.
 
 CI derives immutable release/seed inputs from the existing literal Rust
 `include_str!`/`include_bytes!` declarations and checks release-inventory coverage.
