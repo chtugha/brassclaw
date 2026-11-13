@@ -85,8 +85,10 @@ passes direct Rustfmt at the prior checkpoint. Latest `f97bd0e3d` corrects
 same-pool manual-fixture worker/teardown races. Its isolated candidate fails actual
 Run-60 full-feature Clippy (exit 101, unchanged source): the production prepare
 callee remains test-only and confirmation has an incompatible action-result
-type. New `530a6855f` corrects these and the test-only bridge reachability in
-source; its new strict/native validation remains pending after the active B1 gate.
+type. New `530a6855f` corrects these and the test-only bridge reachability;
+actual Run-63 on candidate `a490247b2` then fails on the reconciler's unused
+MontyCatalogueProvider import (exit 101, unchanged source). Remove it before the
+next strict/native gate. B3 and the embedded release-note addition remain outside Main.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,

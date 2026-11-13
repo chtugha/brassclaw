@@ -79,13 +79,22 @@ are retained under Run-62. Native test image SHA-256:
 `73932313718fc77904c171af2b9cf06b4219a46c552e23300a4c87b8cc065e0b`.
 All owned validation is terminal and source freeze released. B1-06 remains open
 for qualified producers/full-Q1/exact-view Q2/routes; keep its authored guard.
-The release-note edit is pending in the working tree: CHANGELOG is embedded and
-must be compiled with the next B3 batch, not claimed against Run-62's old bytes.
+The release-note edit is retained in B3 candidate `a490247b2`: CHANGELOG is
+embedded and must be compiled with that batch, not claimed against Run-62's old bytes.
 
 Two incoming runtime packages remain **unaccepted into Main**: B2-02
 `e0be06d8f` (source `78147448b`), B3-06 `530a6855f` (report `e6e51253a`).
-The separate failed B3 candidate `3dd52ec6e` remains preserved; the corrected
-B3 source is reviewed and its new strict/native gate follows this checkpoint.
+The old failed B3 candidate `3dd52ec6e` remains preserved. Corrected source is
+squashed with embedded B1/B3 release notes into the separate local candidate
+`codex/b3-06-corrected-integration-20261113` at `a490247b2`. Actual Run-63 strict
+full-feature Clippy fails (exit 101, 62.697 seconds, unchanged source) on one
+observed unused import, MontyCatalogueProvider at reconciler line 15. Remove it
+in the package; preserve actual preparation/error propagation and do not suppress.
+No native build is started. The eighteen-case runner is prepared under /private/tmp
+for the next strict pass, reusing the unchanged Run-62 worker/current codegen cache.
+Root returns to Main, owned jobs terminal and source freeze released. Never rerun
+the two consumed Run-62 cache cleanup scripts/manifests; their archives live in
+Run-62 capacity-recovery. Keep all current Composition/native graphs.
 B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
