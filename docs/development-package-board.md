@@ -83,6 +83,27 @@ V-01 continues the concrete interruption-custody follow-up in its private
 worktree; V-03 starts from `bc2bf6089`. Release remains pending their connected
 review and necessary acceptance, not a claim of full Bob completion.
 
+### 2026-11-13 repair checkpoint — scoped packages accepted/source-idle
+
+Validated runtime `f8b1f01a7` includes V-01 original cancellation/admission custody,
+V-02 lint/callers and V-03 real CLI contracts/process-temp isolation. All 20
+original diagnostics are closed; final full-feature Composition strict lint and
+applicable CLI all-targets strict lint pass. Actual original native regressions,
+four new admission cases, function-subject retention, Source1 and all **83 CLI
+integration cases** (70 smoke, five extension, eight lifecycle) pass. Required
+source/canonical/retained image guards pass; no active build/test or freeze.
+
+V-01's safe diagnostic `9559235b1`/`226b34526` is integrated as
+`44cce2bf8`/`f8b1f01a7`. The original Pure regression now passes; previous 503
+remains unreproduced/unexplained. Its measured 875–1312 ms Source-positive read
+performs one full required qualification walk. No semantic shortcut is accepted.
+The private additional bridge `0dd07900d` remains unintegrated; a future shared
+exact-reader optimization belongs to B2-04/B2-07 and requires all existing guards.
+V-01/V-02/V-03 are source-idle; this acceptance grants no new package, Cargo,
+Modal or private-stack integration. Root owns normal reviewed Main/tag publication.
+All three Bob plans/general Pure/full private N/R/Q/T remain open; see the
+[exact repair receipt](validation/2026-11-12-native-cancellation-and-clippy-repair.md).
+
 ### Checkpoint terminal — 2026-11-12
 
 The application, normal worker and Composition harness build warning-free from

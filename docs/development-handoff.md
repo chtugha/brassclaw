@@ -1,4 +1,67 @@
-## Latest — 2026-11-12 native repair and four GitHub CLI smoke failures
+## Latest — 2026-11-13 rc.5 validated repair checkpoint
+
+Validated runtime source is `f8b1f01a7d7dc64008086450da535c5228ba4dc6`, with
+`1.7.0-rc.5` metadata already committed in `c91042365`. The following documentation
+commit changes only four unembedded development reports. All owned builds/tests
+are terminal; no source freeze, Cargo or paid Modal job remains active.
+
+Actual local acceptance:
+
+- All 20 original Composition Clippy diagnostics are closed. Final Run-56 strict
+  library check passes on the actual full feature set, zero warnings, 80.244 s
+  including source/artifact verification. The existing CLI all-targets strict
+  check remains applicable to unchanged CLI source.
+- The original two Run-52 native regressions pass, with original lock/assertions
+  preserved. PostgreSQL cancellation has a concrete custody repair; Source1's
+  earlier latency cause remains unproven. Do not attribute its pass to logging.
+- Run-54c passes all four new original-admission tests, function-subject retention,
+  Source1, five extension and eight PostgreSQL lifecycle cases. Complete smoke
+  passes **70/70**, zero failures/ignored, including the four real provider/Recipe
+  contracts. Terminal source/canonical/retained artifact guards pass.
+- Run-55 compiles warning-free and passes the original Pure Return, same-original
+  readback, Python-exception and contract-defect regression, without approval.
+  Its prior Run-54c 503 is **not reproduced or causally explained**. Four settled
+  reads take 875/886/1312/941 ms of the captured 2000 ms; most cost is complete
+  positive Source verification. Pool wait is zero; terminal reread is 1–2 ms.
+- Applicable real PG/transport/architecture evidence is retained separately;
+  these results do not establish full-workspace/platform/deployment acceptance.
+
+V-01/V-02/V-03 scoped source work is idle/accepted. V-01 found no duplicate whole
+qualification walk and no justified small semantic optimization. It preserves
+private **unintegrated** diagnostic bridge `0dd07900d` on `226b34526`; do not merge
+it or compile again solely to profile an already passing read. The expensive
+path includes structural receipt/eight approvals, twelve own checker contexts,
+W fixtures/oracles/report, parser proof and selected pins/bytes. Removing those
+checks is not a repair. Any later optimization belongs to existing B2-04/B2-07
+revision/retained readers: exact original bytes/preparation/complete graph,
+coherent transaction/owner, all independent evidence, recursive/wire/capacity
+limits and rejection guards. No global UUID-approved cache, timeout increase,
+generic retry, latest lookup or new Pure service.
+
+Current runtime image hashes (Run-55): Composition harness
+`4868491f73ed67105205062ea75b01f1f4874baff5145c0a8284d98b970dc3d7`;
+application `3c56d6b619af7831675a5a0f13dee4e7679909af84f03db8d11c52bcbd68a112`;
+normal worker `54b76c128948fc8422ee58ee86d089a1dfc0ff62e8eba856ebb0a93910851d8b`.
+The final strict check preserves all images. Run-55 capacity cleanup removes only
+59 superseded/metadata-analysis sessions, preserving nine current codegen
+snapshots and 57,995 other cache files. Never rerun consumed cleanup manifests.
+
+Release operation: publish the reviewed Main commits and annotated `v1.7.0-rc.5`
+tag normally, verify remote identities and GitHub release status. No force push.
+The remote preflight has no divergent Main commits and no rc.5 tag. Record actual
+publication receipts in `/private/tmp/brassclaw-supervisor-current-20261105.md`.
+Release CI, general Pure approval, full private N/R/Q/T and all three Bob plans
+remain distinct scopes; do not claim completion from this checkpoint.
+
+After the checkpoint, continue only through the existing package/owner index;
+preserve private branches and old receipts. Root is supervisor, with fresh
+bounded implementation chats and at most two active implementers. Do not stage
+unowned `.DS_Store`, `.bob/skills`, `speedup*.md` or the human-owned combined-build
+plan. No new implementation package or private-stack integration is qualified
+by this repair receipt. See the [repair report](validation/2026-11-12-native-cancellation-and-clippy-repair.md),
+[implementation status](implementation-status.md) and [package board](development-package-board.md).
+
+## Historical — 2026-11-12 native repair and four GitHub CLI smoke failures
 
 Root remains supervisor; two active implementation owners are V-01
 (`01a1d1b4-f9ce-7612-a55e-14c3e2613ff5`, `e57e`) and V-03

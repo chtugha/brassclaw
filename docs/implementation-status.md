@@ -1,4 +1,34 @@
-## 2026-11-12 — Native repair acceptance and CLI smoke follow-up in progress
+## 2026-11-13 — rc.5 local repair acceptance complete; full Bob/Pure scope open
+
+Validated runtime source `f8b1f01a7` includes reviewed native custody, original-
+admission and CLI contract repairs, prepared `1.7.0-rc.5` metadata and safe
+historical-read observations. All 20 original strict-Clippy findings are closed;
+final full-feature Composition strict Clippy passes warning-free with unchanged
+source/artifacts (Run-56). Applicable CLI all-targets strict lint is retained.
+
+Both original native regressions pass, preserving the real pool-one lock and
+assertions; PostgreSQL cancellation has an actual owned acknowledgement repair.
+Source1's previous latency cause remains unproven. Run-54c additionally passes
+four new original-admission tests, function-subject retention, Source1, five
+extension and eight lifecycle cases. The complete CLI smoke program passes all
+70 cases, zero failures/ignored, with terminal source and artifact guards.
+
+Run-55's original Pure regression passes with those same guards, but its prior
+503 is not reproduced or causally explained. Four settled reads spend 875–1312
+ms of the captured 2000-ms deadline, chiefly in required complete positive Source
+qualification. No redundant whole walk or justified small optimization is found;
+checks/deadlines remain intact. Any shared exact-reader optimization belongs to
+existing B2-04/B2-07, with all transaction/identity/evidence/limit guards preserved.
+The extra private profiling bridge is unintegrated and unaccepted.
+
+This is scoped local macOS repair acceptance, not new GitHub/Linux, full workspace,
+platform, deployment, general Pure approval or private N/R/Q/T acceptance. All
+three Bob plans remain open. No owned build/test or source freeze remains active.
+See the [repair record](validation/2026-11-12-native-cancellation-and-clippy-repair.md)
+and [current handoff](development-handoff.md) for actual receipts and publication
+continuity. Preserve every earlier failed guard/native receipt separately.
+
+## Historical 2026-11-12 — Native repair acceptance and CLI smoke follow-up in progress
 
 Run-53a at runtime source `2645a8853` closes all 20 original strict Composition
 Clippy diagnostics, with zero warnings. PostgreSQL all-targets strict Clippy,
