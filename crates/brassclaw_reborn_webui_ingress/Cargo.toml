@@ -56,6 +56,8 @@ brassclaw_reborn_composition = { path = "../brassclaw_reborn_composition", featu
 
 brassclaw_embedded_postgres = { path = "../brassclaw_embedded_postgres" }
 brassclaw_pg = { path = "../brassclaw_pg" }
+# The shared native PostgreSQL fixture also migrates to exact schema versions.
+refinery = { version = "0.8", features = ["tokio-postgres"] }
 tokio-postgres = "0.7"
 brassclaw_secrets = { path = "../brassclaw_secrets" }
 tempfile = "3"
