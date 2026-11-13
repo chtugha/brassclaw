@@ -70,6 +70,24 @@ The launcher enforces the existing local compilation disk thresholds and refuses
 whole-target cleanup, which would destroy retained evidence. Package cleanup
 remains available through `cargo clean -p package_name` under the local lock.
 
+The local launcher recognizes an optional leading `+toolchain`, then the
+Cargo global switches `--offline`, `--locked`, `--frozen`, `-v`/`-vv`,
+`--verbose`, `-q`/`--quiet` and split/inline `--color auto|always|never`.
+It rejects aliases, external/unknown subcommands, special top-level actions,
+`--config`, `-C`, `-Z` and target/build/artifact-directory overrides. Unsupported
+forms fail before execution; direct Cargo remains available to the supervisor
+under the native lock. Package cleanup parses every argument and requires a
+nonempty `-p foo`, `-pfoo`, `-p=foo`, `--package foo` or `--package=foo` value;
+`--` cannot hide a package selector. Compilation checks both the canonical target
+volume and the source/validation volume against the existing 15 GiB/90% limits.
+Settings inspection starts no Cargo process.
+
+CI derives immutable release/seed inputs from the existing literal Rust
+`include_str!`/`include_bytes!` declarations and checks release-inventory coverage.
+An inventory entry marked `development-only` may still be compiled into a binary.
+Unembedded development documents remain docs-only; the installer job always runs
+the Python build-helper suites and shell scope regressions, without a cloud job.
+
 For an independently authorized, eligible remote build, this example reserves
 eight cores but permits sixteen, with sixteen Cargo jobs:
 

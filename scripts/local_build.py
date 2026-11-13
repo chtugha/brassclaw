@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -12,19 +13,80 @@ from build_settings import load_settings
 from modal_source_sync import ROOT, cargo_lock
 
 
-def _cargo_subcommand(command):
-    """Return the Cargo subcommand from a command list, skipping toolchain options.
+# Cargo's global grammar: https://doc.rust-lang.org/cargo/commands/cargo.html
+# This launcher deliberately rejects aliases, external subcommands, config/-C/-Z
+# and special top-level actions. Direct Cargo under the native lock remains
+# available for forms outside this bounded launcher grammar.
+COMPILE_COMMANDS = {"build", "check", "clippy", "test", "run", "bench", "doc",
+                    "rustc", "rustdoc", "fix", "install", "package", "publish"}
+INSPECT_COMMANDS = {"metadata", "tree", "pkgid", "locate-project", "fetch", "verify-project"}
+GLOBAL_SWITCHES = {"--offline", "--locked", "--frozen", "--verbose", "--quiet", "-q"}
 
-    A leading ``+toolchain`` element (e.g. ``+1.100.0``) shifts the subcommand
-    to position 2.  Without a toolchain option the subcommand is at position 1.
-    Returns ``None`` when the list is too short to contain a subcommand.
-    """
-    if not command or command[0] != "cargo":
+
+def _cargo_subcommand(command):
+    if not command:
         return None
-    # command[1] is either a "+toolchain" specifier or the subcommand itself.
-    if len(command) >= 2 and command[1].startswith("+"):
-        return command[2] if len(command) >= 3 else None
-    return command[1] if len(command) >= 2 else None
+    if command[0] != "cargo" or any(not isinstance(arg, str) or not arg or "\0" in arg for arg in command):
+        raise ValueError("Supply a direct cargo command")
+    index = 1
+    if len(command) > index and command[index].startswith("+"):
+        if command[index] == "+":
+            raise ValueError("Missing toolchain")
+        index += 1
+    while index < len(command) and command[index].startswith("-"):
+        arg = command[index]
+        if arg in GLOBAL_SWITCHES or re.fullmatch(r"-v{1,2}", arg):
+            index += 1
+        elif arg == "--color" or arg.startswith("--color="):
+            if arg == "--color":
+                index += 1
+                value = command[index] if index < len(command) else ""
+            else:
+                value = arg.split("=", 1)[1]
+            if value not in {"auto", "always", "never"}:
+                raise ValueError("Invalid/missing Cargo --color value")
+            index += 1
+        else:
+            raise ValueError(f"Unsupported Cargo global option: {arg}")
+    if index >= len(command) or command[index] not in COMPILE_COMMANDS | INSPECT_COMMANDS | {"clean"}:
+        raise ValueError("Unsupported Cargo subcommand/alias")
+    # These options can redirect target custody even after a real subcommand.
+    for arg in command[index + 1:]:
+        if (arg.split("=", 1)[0] in {"--target-dir", "--artifact-dir", "--build-dir", "--out-dir", "--config"}
+                or arg.startswith(("-Z", "-C"))):
+            raise ValueError("Use the canonical CARGO_TARGET_DIR; Cargo config/directory overrides are unsupported")
+    if command[index] == "clean":
+        _validate_package_clean(command[index + 1:])
+    return command[index]
+
+
+def _validate_package_clean(args):
+    # Parse *all* clean arguments. A bare -p or a -p occurring after -- is no
+    # proof of package selection. Attached -pfoo and both long forms are valid.
+    packages = []
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        flag, sep, value = arg.partition("=")
+        if arg in GLOBAL_SWITCHES or arg in {"-v", "-vv", "--release", "--doc", "--dry-run"}:
+            index += 1
+            continue
+        if arg.startswith("-p") and not arg.startswith("--") and arg != "-p":
+            flag, sep, value = "-p", "=", arg[2:].removeprefix("=")
+        if flag not in {"-p", "--package", "--target", "--profile", "--color"}:
+            raise ValueError(f"Unsupported package cleanup argument: {arg}")
+        if not sep:
+            index += 1
+            value = args[index] if index < len(args) else ""
+        if not value or value.startswith(("-", "+")):
+            raise ValueError("Missing package cleanup option value")
+        if flag in {"-p", "--package"}:
+            packages.append(value)
+        if flag == "--color" and value not in {"auto", "always", "never"}:
+            raise ValueError("Invalid Cargo --color value")
+        index += 1
+    if not packages:
+        raise ValueError("Whole-target cleanup would remove retained evidence; select a package")
 
 
 def run_local(command, jobs, *, show_settings=False):
@@ -32,12 +94,7 @@ def run_local(command, jobs, *, show_settings=False):
         command = command[1:]
     if command and (len(command) < 2 or command[0] != "cargo"):
         raise ValueError("Supply a direct cargo command")
-    if any(arg.split("=", 1)[0] == "--target-dir" for arg in command):
-        raise ValueError("Use the canonical CARGO_TARGET_DIR from host configuration")
     subcommand = _cargo_subcommand(command)
-    if subcommand == "clean" and not any(
-            arg.split("=", 1)[0] in {"-p", "--package"} for arg in command):
-        raise ValueError("Whole-target cleanup would remove retained evidence; select a package")
     environment = os.environ.copy()
     if jobs != "inherit":
         if type(jobs) is not int or jobs <= 0:
@@ -55,7 +112,7 @@ def run_local(command, jobs, *, show_settings=False):
     if not command:
         raise ValueError("Supply a direct cargo command or --show-settings")
     with cargo_lock():
-        if subcommand in {"build", "check", "clippy", "test", "run", "bench"}:
+        if subcommand in COMPILE_COMMANDS:
             # Disk gate: Cargo-volume (canonical target directory).
             destination = Path(settings["target_dir"])
             while not destination.exists():

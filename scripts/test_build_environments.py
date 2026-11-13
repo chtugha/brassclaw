@@ -188,6 +188,54 @@ class LocalRunnerTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "local build space"):
                 local_build.run_local(["cargo", "+1.100.0", "check", "--locked"], "inherit")
 
+    def test_global_options_keep_compile_disk_guards_before_subprocess(self):
+        tight = SimpleNamespace(total=100 * 1024**3, used=96 * 1024**3, free=4 * 1024**3)
+        prefixes = [[], ["+1.100.0"], ["--offline"], ["-v"],
+                    ["+1.100.0", "-v", "--locked"], ["--color", "never", "--frozen"],
+                    ["--color=auto", "-vv"]]
+        for prefix in prefixes:
+            with self.subTest(prefix=prefix), \
+                    patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                    patch.object(local_build.shutil, "disk_usage", return_value=tight), \
+                    patch.object(local_build.subprocess, "run") as execute:
+                with self.assertRaisesRegex(RuntimeError, "local build space"):
+                    local_build.run_local(["cargo", *prefix, "check", "--locked"], "inherit")
+                execute.assert_not_called()
+
+    def test_whole_clean_and_uninterpretable_forms_never_execute(self):
+        commands = [
+            ["cargo", "-v", "clean"], ["cargo", "+1.100.0", "-v", "clean"],
+            ["cargo", "--offline", "clean"], ["cargo", "clean", "-p"],
+            ["cargo", "clean", "--package="], ["cargo", "clean", "--", "-p", "foo"],
+            ["cargo", "clean", "-p", "--release"], ["cargo", "clean", "-p", "foo", "--package"],
+            ["cargo", "--color", "clean"], ["cargo", "--", "clean", "-p", "foo"],
+            ["cargo", "--unknown", "check"], ["cargo", "b"], ["cargo", "custom-alias"],
+            ["cargo", "--config", "build.target-dir='/tmp/other'", "check"],
+            ["cargo", "check", "--config=build.target-dir='/tmp/other'"],
+            ["cargo", "-C", "/tmp", "check"], ["cargo", "-Zunstable-options", "check"],
+            ["cargo", "check", "--target-dir", "/tmp/other"],
+            ["cargo", "check", "--target-dir=/tmp/other"],
+            ["cargo", "check", "--build-dir=/tmp/other"],
+            ["CARGO_TARGET_DIR=/tmp/other", "cargo", "check"],
+        ]
+        for command in commands:
+            with self.subTest(command=command), patch.object(local_build.subprocess, "run") as execute:
+                with self.assertRaises(ValueError):
+                    local_build.run_local(command, "inherit")
+                execute.assert_not_called()
+
+    def test_package_clean_value_forms_are_direct_and_locked(self):
+        for option in (["-p", "foo"], ["-pfoo"], ["-p=foo"], ["--package", "foo"],
+                       ["--package=foo"], ["-p", "foo", "-pbar", "--profile=test"]):
+            command = ["cargo", "+1.100.0", "--offline", "-v", "clean", *option]
+            with self.subTest(option=option), \
+                    patch.object(local_build, "cargo_lock", return_value=nullcontext()) as lock, \
+                    patch.object(local_build.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as execute:
+                self.assertEqual(local_build.run_local(command, "inherit"), 0)
+                lock.assert_called_once_with()
+                self.assertEqual(execute.call_args.args[0], command)
+                self.assertNotIn("shell", execute.call_args.kwargs)
+
     def test_target_override_whole_cleanup_and_shell_are_rejected(self):
         for command in (["cargo", "build", "--target-dir=/tmp/other"], ["cargo", "clean"],
                         ["sh", "-c", "cargo build"]):
