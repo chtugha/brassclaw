@@ -1079,7 +1079,7 @@ async fn ws_send_with_timeout(
 /// and permission settings.
 /// UUID-keyed global policy settings. Authentication stays at the existing
 /// product boundary; no tenant/user/project role selects a permission record.
-pub async fn list_instance_tool_settings(
+pub(crate) async fn list_instance_tool_settings(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<
@@ -1090,7 +1090,7 @@ pub async fn list_instance_tool_settings(
         state.services().list_instance_tool_settings(caller).await?,
     ))
 }
-pub async fn update_instance_tool_setting(
+pub(crate) async fn update_instance_tool_setting(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(tool_id): Path<uuid::Uuid>,
@@ -1105,7 +1105,7 @@ pub async fn update_instance_tool_setting(
     ))
 }
 
-pub async fn list_tools(
+pub(crate) async fn list_tools(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<RebornListCapabilitiesResponse>, WebUiV2HttpError> {
@@ -1120,7 +1120,7 @@ pub async fn list_tools(
 ///
 /// Body shape: [`RebornUpdateCapabilityPermissionRequest`] (path `capability_id`
 /// overrides body value).
-pub async fn update_tool_permission(
+pub(crate) async fn update_tool_permission(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(capability_id): Path<String>,
@@ -1140,7 +1140,7 @@ pub async fn update_tool_permission(
 /// is required — Recipes are scoped per `(user_id, project_id)` in the
 /// engine `Store`. Without a wired `RecipeStore` (e.g. the libsql
 /// feature off), this handler returns 501.
-pub async fn list_recipes(
+pub(crate) async fn list_recipes(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<RecipeListQuery>,
@@ -1155,7 +1155,7 @@ pub async fn list_recipes(
 /// `GET /api/webchat/v2/tool-skills`
 ///
 /// List the caller's ToolSkill library.
-pub async fn list_tool_skills(
+pub(crate) async fn list_tool_skills(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<RecipeListQuery>,
@@ -1171,7 +1171,7 @@ pub async fn list_tool_skills(
 ///
 /// Fetch one Recipe by id. Returns 404 when the id is unknown so the
 /// WebUI's detail pane can show a friendly "no longer exists" banner.
-pub async fn get_recipe(
+pub(crate) async fn get_recipe(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((project_id, recipe_id)): Path<(String, String)>,
@@ -1186,7 +1186,7 @@ pub async fn get_recipe(
 /// `GET /api/webchat/v2/tool-skills/{skill_id}`
 ///
 /// Fetch one ToolSkill by id.
-pub async fn get_tool_skill(
+pub(crate) async fn get_tool_skill(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((project_id, skill_id)): Path<(String, String)>,
@@ -1203,7 +1203,7 @@ pub async fn get_tool_skill(
 /// List validation-queue rows for the requested queue bucket.
 /// Defaults to `manual` (Q2) when `?q=` is absent so existing callers
 /// continue seeing the Q2 review tab items.
-pub async fn list_validation_queue(
+pub(crate) async fn list_validation_queue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<ValidationQueueQuery>,
@@ -1220,7 +1220,7 @@ pub async fn list_validation_queue(
 ///
 /// Count rows by validation status. Used for tab badges ("N items
 /// pending review", "M rejected").
-pub async fn count_validation_queue(
+pub(crate) async fn count_validation_queue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<ValidationCountQuery>,
@@ -1236,7 +1236,7 @@ pub async fn count_validation_queue(
 ///
 /// Record a Recipe execution outcome (success/failure) — drives the
 /// Wilson lower-bound + tier counters via the engine `MetricRecorder`.
-pub async fn record_recipe_outcome(
+pub(crate) async fn record_recipe_outcome(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((project_id, recipe_id)): Path<(String, String)>,
@@ -1258,7 +1258,7 @@ pub async fn record_recipe_outcome(
 /// `"default"` when omitted so settings-tab callers that operate in the
 /// default scope don't have to pass it explicitly.
 #[derive(Debug, Deserialize)]
-pub struct RecipeListQuery {
+pub(crate) struct RecipeListQuery {
     #[serde(default = "default_project_id")]
     pub project_id: String,
 }
@@ -1266,7 +1266,7 @@ pub struct RecipeListQuery {
 /// Query parameters for `GET /api/webchat/v2/validation-queue`.
 /// `q` selects the queue bucket; omitting it defaults to `manual` (Q2).
 #[derive(Debug, Deserialize)]
-pub struct ValidationQueueQuery {
+pub(crate) struct ValidationQueueQuery {
     #[serde(default = "default_project_id")]
     pub project_id: String,
     pub q: Option<ValidationQueueFilter>,
@@ -1274,7 +1274,7 @@ pub struct ValidationQueueQuery {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct ValidationCountQuery {
+pub(crate) struct ValidationCountQuery {
     #[serde(default = "default_project_id")]
     pub project_id: String,
     pub status: String,
@@ -1285,24 +1285,24 @@ fn default_project_id() -> String {
 }
 
 #[derive(Debug, Deserialize)]
-pub struct RecordOutcomeRequestBody {
+pub(crate) struct RecordOutcomeRequestBody {
     pub success: bool,
 }
 
 /// Path + query params shared by generalized component routes.
 #[derive(Debug, Deserialize)]
-pub struct ComponentPath {
+pub(crate) struct ComponentPath {
     pub class_code: u16,
     pub component_id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PostTurnReviewsQuery {
+pub(crate) struct PostTurnReviewsQuery {
     pub after: Option<String>,
 }
 
-pub async fn list_post_turn_reviews(
+pub(crate) async fn list_post_turn_reviews(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<PostTurnReviewsQuery>,
@@ -1314,7 +1314,7 @@ pub async fn list_post_turn_reviews(
             .await?,
     ))
 }
-pub async fn inspect_post_turn_review(
+pub(crate) async fn inspect_post_turn_review(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(attempt): Path<String>,
@@ -1326,7 +1326,7 @@ pub async fn inspect_post_turn_review(
             .await?,
     ))
 }
-pub async fn reconcile_post_turn_review(
+pub(crate) async fn reconcile_post_turn_review(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(attempt): Path<String>,
@@ -1340,7 +1340,7 @@ pub async fn reconcile_post_turn_review(
     ))
 }
 
-pub async fn record_review_disposition(
+pub(crate) async fn record_review_disposition(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(attempt): Path<String>,
@@ -1397,7 +1397,7 @@ pub(crate) async fn get_original_pure_case(
     ))
 }
 
-pub async fn get_component_revision_head(
+pub(crate) async fn get_component_revision_head(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(component_id): Path<String>,
@@ -1410,7 +1410,7 @@ pub async fn get_component_revision_head(
     ))
 }
 
-pub async fn get_component_review_submission(
+pub(crate) async fn get_component_review_submission(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(submission_id): Path<String>,
@@ -1439,7 +1439,7 @@ pub(crate) async fn prepare_component_deployment(
     ))
 }
 
-pub async fn catalogue_sources(
+pub(crate) async fn catalogue_sources(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(generation): Path<String>,
@@ -1452,13 +1452,13 @@ pub async fn catalogue_sources(
     ))
 }
 
-pub async fn catalogue_status(
+pub(crate) async fn catalogue_status(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<brassclaw_product_workflow::CatalogueActivationStatus>, WebUiV2HttpError> {
     Ok(Json(state.services().catalogue_status(caller).await?))
 }
-pub async fn reconcile_catalogue(
+pub(crate) async fn reconcile_catalogue(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(activation_id): Path<String>,
@@ -1485,7 +1485,7 @@ pub(crate) async fn activate_catalogue(
 }
 
 /// Exact immutable usage view, mounted only for the instance operator.
-pub async fn prepare_association_review(
+pub(crate) async fn prepare_association_review(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(skill_id): Path<String>,
@@ -1499,7 +1499,7 @@ pub async fn prepare_association_review(
     ))
 }
 
-pub async fn approve_association(
+pub(crate) async fn approve_association(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(skill_id): Path<String>,
@@ -1520,7 +1520,7 @@ pub async fn approve_association(
 /// codes 10 (Orchestrator) and 50 (Scaffold) the handler checks the
 /// LLM audit-clean flag first and returns `403` if the audit hasn't run
 /// or flagged issues.
-pub async fn validate_component(
+pub(crate) async fn validate_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1584,7 +1584,7 @@ pub async fn validate_component(
 ///
 /// Generalized reject — moves a component to `rejected` (Q3 if
 /// `review_attempts < 3`, else Q4).
-pub async fn reject_component(
+pub(crate) async fn reject_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1612,7 +1612,7 @@ pub async fn reject_component(
 ///
 /// Send a component from Q2 to Q3 (revision queue). `feedback` body is
 /// required — becomes the revision mission's context prompt.
-pub async fn send_component_to_revision(
+pub(crate) async fn send_component_to_revision(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1651,7 +1651,7 @@ pub async fn send_component_to_revision(
 /// Recipe path requires a `rejected` row and atomically sets `pending` plus its
 /// validator tag; this handler adds no Q4-only condition. This action does not
 /// requeue a validator, establish Q1/Q2 approval or activate the component.
-pub async fn re_review_component(
+pub(crate) async fn re_review_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1678,7 +1678,7 @@ pub async fn re_review_component(
 ///
 /// Q4 wipe — zeroes creation-process provenance fields and marks the
 /// component as `garbage`. Thread messages/steps/events are never wiped.
-pub async fn delete_component(
+pub(crate) async fn delete_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1698,7 +1698,7 @@ pub async fn delete_component(
 ///
 /// Returns the LLM code-audit status for Orchestrator (10) / Scaffold (50)
 /// components. All other classes return `"not_applicable"`.
-pub async fn get_component_audit_status(
+pub(crate) async fn get_component_audit_status(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ComponentPath {
@@ -1718,7 +1718,7 @@ pub async fn get_component_audit_status(
 ///
 /// Returns the current interceptor configuration snapshot (mode, base prompt
 /// assembly info, persona, prewarm timestamp).
-pub async fn get_interceptor_config(
+pub(crate) async fn get_interceptor_config(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<InterceptorConfigSnapshot>, WebUiV2HttpError> {
@@ -1729,7 +1729,7 @@ pub async fn get_interceptor_config(
 /// `POST /api/webchat/v2/interceptor/config`
 ///
 /// Update editable interceptor configuration fields (persona text).
-pub async fn update_interceptor_config(
+pub(crate) async fn update_interceptor_config(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpdateInterceptorConfigRequest>,
@@ -1746,10 +1746,10 @@ pub async fn update_interceptor_config(
 /// List named prefix-cache entries for the caller's scope.
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PrefixSourcesQuery {
+pub(crate) struct PrefixSourcesQuery {
     pub generation: Option<String>,
 }
-pub async fn list_prefix_sources(
+pub(crate) async fn list_prefix_sources(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -1762,7 +1762,7 @@ pub async fn list_prefix_sources(
             .await?,
     ))
 }
-pub async fn register_prefix_source(
+pub(crate) async fn register_prefix_source(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -1776,7 +1776,7 @@ pub async fn register_prefix_source(
     ))
 }
 
-pub async fn prefix_model_designs(
+pub(crate) async fn prefix_model_designs(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
@@ -1789,10 +1789,10 @@ pub async fn prefix_model_designs(
 }
 #[derive(serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct PrefixModelSetupDraftQuery {
+pub(crate) struct PrefixModelSetupDraftQuery {
     revision: Option<u64>,
 }
-pub async fn get_prefix_model_setup_draft(
+pub(crate) async fn get_prefix_model_setup_draft(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(specification): Path<String>,
@@ -1805,7 +1805,7 @@ pub async fn get_prefix_model_setup_draft(
             .await?,
     ))
 }
-pub async fn update_prefix_model_setup_draft(
+pub(crate) async fn update_prefix_model_setup_draft(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(specification): Path<String>,
@@ -1818,7 +1818,7 @@ pub async fn update_prefix_model_setup_draft(
             .await?,
     ))
 }
-pub async fn capture_prefix_model(
+pub(crate) async fn capture_prefix_model(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::CapturePrefixModelRequest>,
@@ -1830,7 +1830,7 @@ pub async fn capture_prefix_model(
             .await?,
     )?))
 }
-pub async fn get_prefix_model_artifacts(
+pub(crate) async fn get_prefix_model_artifacts(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, artifact_set)): Path<(String, String)>,
@@ -1843,7 +1843,7 @@ pub async fn get_prefix_model_artifacts(
     ))
 }
 
-pub async fn retain_prefix_model_artifacts(
+pub(crate) async fn retain_prefix_model_artifacts(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::RetainPrefixModelArtifactsRequest>,
@@ -1856,7 +1856,7 @@ pub async fn retain_prefix_model_artifacts(
     ))
 }
 
-pub async fn get_prefix_pair_cases(
+pub(crate) async fn get_prefix_pair_cases(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, proposal)): Path<(String, String)>,
@@ -1869,7 +1869,7 @@ pub async fn get_prefix_pair_cases(
     ))
 }
 
-pub async fn check_prefix_pair_cases(
+pub(crate) async fn check_prefix_pair_cases(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, proposal, job)): Path<(String, String, String)>,
@@ -1882,7 +1882,7 @@ pub async fn check_prefix_pair_cases(
     ))
 }
 
-pub async fn get_prefix_model_setup_job(
+pub(crate) async fn get_prefix_model_setup_job(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, revision, job)): Path<(String, u64, String)>,
@@ -1895,7 +1895,7 @@ pub async fn get_prefix_model_setup_job(
     )?))
 }
 
-pub async fn get_prefix_pair_job(
+pub(crate) async fn get_prefix_pair_job(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, proposal, job)): Path<(String, String, String)>,
@@ -1908,7 +1908,7 @@ pub async fn get_prefix_pair_job(
     ))
 }
 
-pub async fn get_prefix_pair_acceptance(
+pub(crate) async fn get_prefix_pair_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((specification, proposal)): Path<(String, String)>,
@@ -1927,7 +1927,7 @@ pub async fn get_prefix_pair_acceptance(
             .await?,
     ))
 }
-pub async fn reconcile_prefix_pair_acceptance(
+pub(crate) async fn reconcile_prefix_pair_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceDecision>,
@@ -1940,7 +1940,7 @@ pub async fn reconcile_prefix_pair_acceptance(
             .await?,
     ))
 }
-pub async fn prepare_prefix_pair_acceptance(
+pub(crate) async fn prepare_prefix_pair_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceSelection>,
@@ -1953,7 +1953,7 @@ pub async fn prepare_prefix_pair_acceptance(
     ))
 }
 
-pub async fn prepare_prefix_acceptance(
+pub(crate) async fn prepare_prefix_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::PrefixAcceptanceSelection>,
@@ -1965,7 +1965,7 @@ pub async fn prepare_prefix_acceptance(
             .await?,
     ))
 }
-pub async fn approve_prefix_acceptance(
+pub(crate) async fn approve_prefix_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::PrefixAcceptanceDecision>,
@@ -1977,7 +1977,7 @@ pub async fn approve_prefix_acceptance(
             .await?,
     ))
 }
-pub async fn approve_prefix_pair_acceptance(
+pub(crate) async fn approve_prefix_pair_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::PrefixPairAcceptanceDecision>,
@@ -1989,7 +1989,7 @@ pub async fn approve_prefix_pair_acceptance(
             .await?,
     ))
 }
-pub async fn activate_prefix_acceptance(
+pub(crate) async fn activate_prefix_acceptance(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::ActivatePrefixAcceptanceRequest>,
@@ -2001,7 +2001,7 @@ pub async fn activate_prefix_acceptance(
             .await?,
     ))
 }
-pub async fn retain_prefix_pair_construction(
+pub(crate) async fn retain_prefix_pair_construction(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(request): Json<brassclaw_product_workflow::RetainPrefixDesignProposalRequest>,
@@ -2014,7 +2014,7 @@ pub async fn retain_prefix_pair_construction(
     ))
 }
 
-pub async fn retain_prefix_design(
+pub(crate) async fn retain_prefix_design(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -2028,7 +2028,7 @@ pub async fn retain_prefix_design(
     ))
 }
 
-pub async fn list_prefix_generations(
+pub(crate) async fn list_prefix_generations(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -2040,7 +2040,7 @@ pub async fn list_prefix_generations(
             .await?,
     )?))
 }
-pub async fn get_prefix_job(
+pub(crate) async fn get_prefix_job(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, job)): Path<(String, String)>,
@@ -2049,7 +2049,7 @@ pub async fn get_prefix_job(
         &state.services().get_prefix_job(caller, &name, &job).await?,
     )?))
 }
-pub async fn measure_prefix(
+pub(crate) async fn measure_prefix(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, job)): Path<(String, String)>,
@@ -2062,7 +2062,7 @@ pub async fn measure_prefix(
             .await?,
     )?))
 }
-pub async fn get_prefix_generation(
+pub(crate) async fn get_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((name, generation)): Path<(String, String)>,
@@ -2074,7 +2074,7 @@ pub async fn get_prefix_generation(
             .await?,
     )?))
 }
-pub async fn import_prefix_generation(
+pub(crate) async fn import_prefix_generation(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -2088,7 +2088,7 @@ pub async fn import_prefix_generation(
     )?))
 }
 
-pub async fn list_prefixes(
+pub(crate) async fn list_prefixes(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<serde_json::Value>, WebUiV2HttpError> {
@@ -2109,7 +2109,7 @@ pub async fn list_prefixes(
 ///
 /// Assemble the named prefix bundle, optionally pre-warm the Sempai gateway,
 /// and record the result.  Rate-limited to 1/min per caller.
-pub async fn regenerate_prefix(
+pub(crate) async fn regenerate_prefix(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(name): Path<String>,
@@ -2129,16 +2129,16 @@ pub async fn regenerate_prefix(
 
 mod prefix_revision_wire;
 
-pub mod reduction_rules;
-pub mod safety;
-pub mod tokens;
+pub(crate) mod reduction_rules;
+pub(crate) mod safety;
+pub(crate) mod tokens;
 
 // ── Phase 6 — Settings UI handlers ───────────────────────────────────────────
 
 /// `GET /api/settings/skills`
 ///
 /// List skills for the Settings UI 10-tab editor.
-pub async fn get_settings_skills(
+pub(crate) async fn get_settings_skills(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2149,7 +2149,7 @@ pub async fn get_settings_skills(
 /// `GET /api/settings/tools`
 ///
 /// List tools for the Settings UI.
-pub async fn get_settings_tools(
+pub(crate) async fn get_settings_tools(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2160,7 +2160,7 @@ pub async fn get_settings_tools(
 /// `GET /api/settings/extensions`
 ///
 /// List extensions for the Settings UI.
-pub async fn get_settings_extensions(
+pub(crate) async fn get_settings_extensions(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2171,7 +2171,7 @@ pub async fn get_settings_extensions(
 /// `GET /api/settings/actions`
 ///
 /// List actions for the Settings UI.
-pub async fn get_settings_actions(
+pub(crate) async fn get_settings_actions(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2182,7 +2182,7 @@ pub async fn get_settings_actions(
 /// `GET /api/settings/orchestrators`
 ///
 /// List orchestrators for the Settings UI.
-pub async fn get_settings_orchestrators(
+pub(crate) async fn get_settings_orchestrators(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2193,7 +2193,7 @@ pub async fn get_settings_orchestrators(
 /// `GET /api/settings/scaffolds`
 ///
 /// List scaffolds for the Settings UI.
-pub async fn get_settings_scaffolds(
+pub(crate) async fn get_settings_scaffolds(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2215,7 +2215,7 @@ pub async fn get_settings_recipes(
 /// `GET /api/settings/tool-skills`
 ///
 /// List ToolSkills (class 13) for the Settings UI Catalog.
-pub async fn get_settings_tool_skills(
+pub(crate) async fn get_settings_tool_skills(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2226,7 +2226,7 @@ pub async fn get_settings_tool_skills(
 /// `GET /api/settings/python-code`
 ///
 /// List PythonCode (class 22) for the Settings UI Catalog.
-pub async fn get_settings_python_code(
+pub(crate) async fn get_settings_python_code(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2237,7 +2237,7 @@ pub async fn get_settings_python_code(
 /// `GET /api/settings/extension-catalogues`
 ///
 /// List ExtensionCatalogues (class 23) for the Settings UI Catalog.
-pub async fn get_settings_extension_catalogues(
+pub(crate) async fn get_settings_extension_catalogues(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SettingsListResponse>, WebUiV2HttpError> {
@@ -2253,7 +2253,7 @@ pub async fn get_settings_extension_catalogues(
 /// Read the catalog's cross-reference graph — every component as a node,
 /// every `step_descriptions` include, ToolSkill tool binding and
 /// `dependency_registry` entry as an edge.
-pub async fn get_settings_component_graph(
+pub(crate) async fn get_settings_component_graph(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<brassclaw_product_workflow::SettingsComponentGraph>, WebUiV2HttpError> {
@@ -2267,7 +2267,7 @@ pub async fn get_settings_component_graph(
 /// `GET /api/settings/{component_type}/{id}`
 ///
 /// Read one catalog component in full for the Settings UI detail pane.
-pub async fn get_settings_component(
+pub(crate) async fn get_settings_component(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path((component_type, id)): Path<(String, String)>,
@@ -2284,7 +2284,7 @@ pub async fn get_settings_component(
 /// Return all allowed config keys (agent.*, heartbeat.*, sandbox.*, routines.*,
 /// safety.*, skills.*, search.*, channels.*, tunnel.*) for the Agent and
 /// Networking settings tabs.
-pub async fn get_settings_config(
+pub(crate) async fn get_settings_config(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<brassclaw_product_workflow::SettingsConfigResponse>, WebUiV2HttpError> {
@@ -2296,7 +2296,7 @@ pub async fn get_settings_config(
 ///
 /// Write (or delete when value is empty) a single allowed config key.
 /// Returns 400 when the key prefix is not in the allowed list.
-pub async fn put_settings_config_key(
+pub(crate) async fn put_settings_config_key(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     axum::extract::Path(key): axum::extract::Path<String>,
@@ -2309,7 +2309,7 @@ pub async fn put_settings_config_key(
 /// `GET /api/settings/monty-vm`
 ///
 /// Get the current Monty VM settings.
-pub async fn get_settings_monty_vm(
+pub(crate) async fn get_settings_monty_vm(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<MontyVmSettingsResponse>, WebUiV2HttpError> {
@@ -2321,7 +2321,7 @@ pub async fn get_settings_monty_vm(
 ///
 /// Update Monty VM settings. Most fields are immediate-write;
 /// `active_orchestrator_id` is gated to `Validated` orchestrators only.
-pub async fn put_settings_monty_vm(
+pub(crate) async fn put_settings_monty_vm(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     body: Result<Json<UpdateMontyVmSettingsRequest>, axum::extract::rejection::JsonRejection>,
@@ -2339,7 +2339,7 @@ pub async fn put_settings_monty_vm(
 /// Get the operator-level security-settings config — the per-layer
 /// `Auto`/`ForceOn`/`ForceOff` overrides backed by `reborn_security_settings`
 /// (V068). Tenant-scoped (operator-level); the caller is auth-gated only.
-pub async fn get_settings_security(
+pub(crate) async fn get_settings_security(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SecurityModeConfig>, WebUiV2HttpError> {
@@ -2352,7 +2352,7 @@ pub async fn get_settings_security(
 /// Upsert the operator-level security-settings config (full replacement of the
 /// six per-layer overrides). Tenant-scoped (operator-level); the caller is
 /// auth-gated only.
-pub async fn put_settings_security(
+pub(crate) async fn put_settings_security(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<SecurityModeConfig>,
@@ -2368,7 +2368,7 @@ pub async fn put_settings_security(
 ///
 /// Restart the Monty VM via the kernel-owned lifecycle manager.
 /// Optional `force=true` body aborts in-flight turns before restarting.
-pub async fn post_settings_monty_vm_restart(
+pub(crate) async fn post_settings_monty_vm_restart(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     body: Option<Json<MontyVmRestartRequest>>,
@@ -2382,7 +2382,7 @@ pub async fn post_settings_monty_vm_restart(
 ///
 /// Get the live Monty VM state: running/draining/restarting/stopped/error,
 /// the current orchestrator version, and the settings hash.
-pub async fn get_settings_monty_vm_status(
+pub(crate) async fn get_settings_monty_vm_status(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<MontyVmStatusResponse>, WebUiV2HttpError> {
@@ -2392,7 +2392,7 @@ pub async fn get_settings_monty_vm_status(
 
 /// Path params for `PUT /api/chat/preferences/{key}`.
 #[derive(Debug, Deserialize)]
-pub struct ChatPreferencePath {
+pub(crate) struct ChatPreferencePath {
     pub key: String,
 }
 
@@ -2400,7 +2400,7 @@ pub struct ChatPreferencePath {
 ///
 /// Persist a per-user chat preference. The only key defined in Phase 6
 /// is `ai_before_user` (boolean). Stored in `reborn_user_preferences`.
-pub async fn put_chat_preference(
+pub(crate) async fn put_chat_preference(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(ChatPreferencePath { key }): Path<ChatPreferencePath>,
@@ -2417,7 +2417,7 @@ pub async fn put_chat_preference(
 
 /// Query params for `GET /api/settings/intent-inputs`.
 #[derive(Debug, Deserialize)]
-pub struct IntentInputsQuery {
+pub(crate) struct IntentInputsQuery {
     pub project_id: String,
     /// Optional filter: only return inputs for this component UUID.
     pub component_id: Option<String>,
@@ -2425,14 +2425,14 @@ pub struct IntentInputsQuery {
 
 /// Path params for `DELETE /api/settings/intent-inputs/{class_code}/{component_id}`.
 #[derive(Debug, Deserialize)]
-pub struct IntentInputsDeletePath {
+pub(crate) struct IntentInputsDeletePath {
     pub class_code: u16,
     pub component_id: String,
 }
 
 /// Query params for DELETE (project_id required).
 #[derive(Debug, Deserialize)]
-pub struct IntentInputsDeleteQuery {
+pub(crate) struct IntentInputsDeleteQuery {
     pub project_id: String,
 }
 
@@ -2440,7 +2440,7 @@ pub struct IntentInputsDeleteQuery {
 ///
 /// List intent examples stored in `reborn_intent_inputs` for the caller's scope.
 /// Optionally filter by `component_id` (UUID string).
-pub async fn list_intent_inputs(
+pub(crate) async fn list_intent_inputs(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Query(query): Query<IntentInputsQuery>,
@@ -2457,7 +2457,7 @@ pub async fn list_intent_inputs(
 /// Upsert a single intent input row. Idempotent: re-seeding the same
 /// (input_text, input_class, component_id) tuple updates `source` and resets
 /// `needs_review`; score is not reset.
-pub async fn upsert_intent_input(
+pub(crate) async fn upsert_intent_input(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<brassclaw_product_workflow::UpsertIntentInputRequest>,
@@ -2470,7 +2470,7 @@ pub async fn upsert_intent_input(
 ///
 /// Purge all intent inputs for a component (called on Q4 wipe).
 /// Returns the count of deleted rows.
-pub async fn delete_intent_inputs(
+pub(crate) async fn delete_intent_inputs(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(IntentInputsDeletePath {
@@ -2490,14 +2490,14 @@ pub async fn delete_intent_inputs(
 
 /// Path params for `GET /api/webchat/v2/docus/:id` and `PUT /api/webchat/v2/docus/:id`.
 #[derive(Debug, Deserialize)]
-pub struct DocusIdPath {
+pub(crate) struct DocusIdPath {
     pub id: String,
 }
 
 /// `GET /api/webchat/v2/docus`
 ///
 /// List all `reborn_docus` rows for the tenant. Used by the Docs settings tab.
-pub async fn list_docus(
+pub(crate) async fn list_docus(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<DocusListResponse>, WebUiV2HttpError> {
@@ -2508,7 +2508,7 @@ pub async fn list_docus(
 /// `GET /api/webchat/v2/docus/:id`
 ///
 /// Fetch one `reborn_docus` row by UUID. Returns 404 when the id is unknown.
-pub async fn get_docus(
+pub(crate) async fn get_docus(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(DocusIdPath { id }): Path<DocusIdPath>,
@@ -2540,7 +2540,7 @@ pub async fn get_docus(
 /// Update the content of a `reborn_docus` row. Submits the updated row to
 /// the validation queue (`validation_status = 'pending'`). Never writes
 /// `'validated'` directly.
-pub async fn update_docus(
+pub(crate) async fn update_docus(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(DocusIdPath { id }): Path<DocusIdPath>,
@@ -2563,7 +2563,7 @@ pub async fn update_docus(
 
 /// Response type for `POST /api/webchat/v2/pure-component-approvals`.
 #[derive(Debug, serde::Serialize)]
-pub struct PureComponentApprovalResponse {
+pub(crate) struct PureComponentApprovalResponse {
     /// Root of the exact retained decision; this response creates no approval.
     pub root_id: uuid::Uuid,
 }
@@ -2574,7 +2574,7 @@ pub struct PureComponentApprovalResponse {
 /// The request body must be the raw JSON text of the declaration.
 /// Returns its root UUID. Approval creation belongs to the trusted review owner;
 /// this compatibility endpoint cannot create evidence or choose provenance.
-pub async fn submit_pure_component_approval(
+pub(crate) async fn submit_pure_component_approval(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     body: String,
@@ -2591,7 +2591,7 @@ pub async fn submit_pure_component_approval(
 /// `GET /api/settings/mcp-server`
 ///
 /// Get current MCP server settings (port, auto_start).
-pub async fn get_settings_mcp_server(
+pub(crate) async fn get_settings_mcp_server(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<McpServerSettingsResponse>, WebUiV2HttpError> {
@@ -2603,7 +2603,7 @@ pub async fn get_settings_mcp_server(
 ///
 /// Update MCP server settings (port, auto_start).
 /// Port change requires a restart to take effect if the server is running.
-pub async fn put_settings_mcp_server(
+pub(crate) async fn put_settings_mcp_server(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpdateMcpServerSettingsRequest>,
@@ -2619,7 +2619,7 @@ pub async fn put_settings_mcp_server(
 ///
 /// Get the live status of the Orchestrator MCP Server
 /// (running/stopped/error, port, endpoint URL).
-pub async fn get_settings_mcp_server_status(
+pub(crate) async fn get_settings_mcp_server_status(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<McpServerStatusResponse>, WebUiV2HttpError> {
@@ -2631,7 +2631,7 @@ pub async fn get_settings_mcp_server_status(
 ///
 /// Start the Orchestrator MCP Server. No-op if already running.
 /// Optional body: `{ "port": 9090 }` overrides port for this session only.
-pub async fn post_settings_mcp_server_start(
+pub(crate) async fn post_settings_mcp_server_start(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     body: Option<Json<McpServerStartRequest>>,
@@ -2644,7 +2644,7 @@ pub async fn post_settings_mcp_server_start(
 /// `POST /api/settings/mcp-server/stop`
 ///
 /// Stop the Orchestrator MCP Server. No-op if already stopped.
-pub async fn post_settings_mcp_server_stop(
+pub(crate) async fn post_settings_mcp_server_stop(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<McpServerActionResponse>, WebUiV2HttpError> {

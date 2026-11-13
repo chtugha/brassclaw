@@ -74,10 +74,10 @@ pub trait InstanceToolSettings: Send + Sync {
 
 pub(crate) mod revision_wire {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
-    pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(crate) fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&value.to_string())
     }
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
         let text = String::deserialize(deserializer)?;
         parse(&text).map_err(D::Error::custom)
     }
@@ -95,7 +95,7 @@ pub(crate) mod revision_wire {
 
     // Opt-in inbound compatibility only. The existing Tool policy decoder
     // remains string-only, and shared DTO serialization remains numeric.
-    pub fn deserialize_compatible<'de, D: Deserializer<'de>>(
+    pub(crate) fn deserialize_compatible<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<u64, D::Error> {
         struct Revision;
@@ -121,14 +121,17 @@ pub(crate) mod revision_wire {
 mod output_bytes_wire {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
-    pub fn serialize<S: Serializer>(value: &Option<u64>, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(crate) fn serialize<S: Serializer>(
+        value: &Option<u64>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         match value {
             Some(value) => serializer.serialize_some(&value.to_string()),
             None => serializer.serialize_none(),
         }
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<u64>, D::Error> {
         let value = Option::<String>::deserialize(deserializer)?;

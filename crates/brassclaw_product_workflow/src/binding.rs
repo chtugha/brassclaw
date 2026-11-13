@@ -87,7 +87,7 @@ pub enum ProductConversationRouteKind {
 /// Whether an inbound user message may create a new product conversation
 /// binding, or must target a conversation that the product has already linked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ProductConversationBindingCreationPolicy {
+pub(crate) enum ProductConversationBindingCreationPolicy {
     CreateAllowed,
     ExistingOnly,
 }
@@ -106,7 +106,7 @@ impl ResolveBindingRequest {
     }
 }
 
-pub fn binding_profile_for_trigger(
+pub(crate) fn binding_profile_for_trigger(
     trigger: ProductTriggerReason,
 ) -> (
     ProductConversationRouteKind,

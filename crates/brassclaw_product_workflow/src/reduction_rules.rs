@@ -58,12 +58,12 @@ use crate::error::ProductWorkflowError;
 /// keys consumed by the orchestrator Python and the CPython reference
 /// implementation; they intentionally duplicate `default.py`'s
 /// `REDUCE_TYPE_*` constants.
-pub mod rule_type {
-    pub const TRUNCATE: &str = "truncate";
-    pub const SUMMARIZE: &str = "summarize";
-    pub const DROP: &str = "drop";
-    pub const PRIORITY: &str = "priority";
-    pub const HISTORY_COMPACT: &str = "history_compact";
+mod rule_type {
+    pub(super) const TRUNCATE: &str = "truncate";
+    pub(super) const SUMMARIZE: &str = "summarize";
+    pub(super) const DROP: &str = "drop";
+    pub(super) const PRIORITY: &str = "priority";
+    pub(super) const HISTORY_COMPACT: &str = "history_compact";
 }
 
 /// Maximum number of rules stored per `(user_id, project_id)`. The
@@ -76,13 +76,13 @@ pub const REDUCTION_RULES_MAX_PER_USER: usize = 64;
 /// — and exist only to prevent a misconfigured rule from blowing the array
 /// it lives in. Limits are validated at every code path that ingests rules
 /// from outside the trusted host boundary.
-pub const REDUCTION_RULE_FIELDS_MAX: usize = 16;
-pub const REDUCTION_RULE_FIELD_NAME_MAX_BYTES: usize = 64;
-pub const REDUCTION_RULE_KEEP_RECENT_N_MAX: u32 = 4096;
-pub const REDUCTION_RULE_MAX_CHARS_MAX: u32 = 1_048_576; // 1 MiB
+const REDUCTION_RULE_FIELDS_MAX: usize = 16;
+const REDUCTION_RULE_FIELD_NAME_MAX_BYTES: usize = 64;
+const REDUCTION_RULE_KEEP_RECENT_N_MAX: u32 = 4096;
+const REDUCTION_RULE_MAX_CHARS_MAX: u32 = 1_048_576; // 1 MiB
 /// `priority` (rule ordering): 0 runs first. `u32` so wiring can preserve
 /// caller order even when the storage layer doesn't pin ordering.
-pub const REDUCTION_RULE_PRIORITY_MAX: u32 = 65_535;
+const REDUCTION_RULE_PRIORITY_MAX: u32 = 65_535;
 
 /// The five reduction rule variants. Marked `#[non_exhaustive]` so adding a
 /// new variant in a future crate release doesn't accidentally deserialize
@@ -719,7 +719,7 @@ pub fn sort_for_storage(rules: &mut [ReductionRuleConfigView]) {
 /// Set equal to the rule id's natural-insertion spot in the existing
 /// sort order `sort_for_storage`, so authored rules mix into the
 /// operator's library without re-ordering pre-existing entries.
-pub const fn sort_for_storage_default_priority() -> u32 {
+pub(crate) const fn sort_for_storage_default_priority() -> u32 {
     100
 }
 

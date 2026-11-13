@@ -47,7 +47,7 @@ fn require_project_id(caller: &WebUiAuthenticatedCaller) -> Result<&str, WebUiV2
 /// is sorted with ascending `priority` so a subsequent `PUT` round-trips
 /// byte-for-byte. Empty arrays are returned (not `404`) when no rules
 /// are configured — operators seeing an empty list is a normal state.
-pub async fn list_reduction_rules(
+pub(crate) async fn list_reduction_rules(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<ReductionRulesResponse>, WebUiV2HttpError> {
@@ -68,7 +68,7 @@ pub async fn list_reduction_rules(
 /// after the storage write succeeds; if the invalidation hook fails
 /// (e.g. closed channel), the storage row is still authoritative and the
 /// next cache miss will reread it.
-pub async fn replace_reduction_rules(
+pub(crate) async fn replace_reduction_rules(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<ReductionRulesRequest>,
@@ -94,7 +94,7 @@ pub async fn replace_reduction_rules(
 /// the boundary keeps the no-project guard symmetric with the list and
 /// replace endpoints so a wildcard caller never reaches the facade,
 /// preserving the orchestrator cache's `(project_id, user_id)` invariant.
-pub async fn author_reduction_rule(
+pub(crate) async fn author_reduction_rule(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<AuthorReductionRuleRequest>,

@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-
-pub fn legacy_capability_fixture_to_v2(manifest: &str) -> String {
+pub(crate) fn legacy_capability_fixture_to_v2(manifest: &str) -> String {
     if manifest.contains("schema_version") {
         return manifest.to_string();
     }

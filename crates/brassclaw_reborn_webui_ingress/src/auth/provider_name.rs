@@ -36,7 +36,7 @@ pub enum OAuthProviderNameError {
 }
 
 /// Maximum number of characters allowed in an OAuth provider name.
-pub const OAUTH_PROVIDER_NAME_MAX_LEN: usize = 32;
+const OAUTH_PROVIDER_NAME_MAX_LEN: usize = 32;
 
 impl OAuthProviderName {
     fn validate(raw: &str) -> Result<(), OAuthProviderNameError> {
