@@ -22,3 +22,6 @@ brassclaw_reborn_event_store = { path = "../brassclaw_reborn_event_store" }
 serde_json = "1"
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

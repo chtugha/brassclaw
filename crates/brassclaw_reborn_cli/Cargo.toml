@@ -6,7 +6,6 @@ rust-version = "1.96"
 description = "Standalone BrassClaw Reborn binary"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -95,3 +94,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "brassclaw-reborn"
 path = "src/main.rs"
+
+[lints]
+workspace = true

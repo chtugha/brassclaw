@@ -24,3 +24,6 @@ brassclaw_events = { path = "../brassclaw_events" }
 brassclaw_filesystem = { path = "../brassclaw_filesystem" }
 brassclaw_resources = { path = "../brassclaw_resources" }
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

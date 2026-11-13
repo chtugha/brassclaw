@@ -24,3 +24,6 @@ brassclaw_event_projections = { path = "../brassclaw_event_projections" }
 brassclaw_reborn_event_store = { path = "../brassclaw_reborn_event_store" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "time"] }
+
+[lints]
+workspace = true

@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Canonical Reborn identity resolver: maps OAuth and external-channel actors to stable UserIds"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 

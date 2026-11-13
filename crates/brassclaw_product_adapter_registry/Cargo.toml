@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "ProductAdapter host-api projection for BrassClaw Reborn extension manifests"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -22,3 +21,6 @@ toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+
+[lints]
+workspace = true
