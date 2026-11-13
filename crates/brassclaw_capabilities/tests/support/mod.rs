@@ -14,13 +14,13 @@ use chrono::Utc;
 use serde_json::json;
 
 #[derive(Default)]
-pub struct RecordingDispatcher {
+pub(crate) struct RecordingDispatcher {
     request: Mutex<Option<CapabilityDispatchRequest>>,
     dispatch_count: AtomicUsize,
 }
 
 impl RecordingDispatcher {
-    pub fn take_request(&self) -> CapabilityDispatchRequest {
+    pub(crate) fn take_request(&self) -> CapabilityDispatchRequest {
         self.request
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -28,14 +28,14 @@ impl RecordingDispatcher {
             .unwrap()
     }
 
-    pub fn has_request(&self) -> bool {
+    pub(crate) fn has_request(&self) -> bool {
         self.request
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .is_some()
     }
 
-    pub fn dispatch_count(&self) -> usize {
+    pub(crate) fn dispatch_count(&self) -> usize {
         self.dispatch_count.load(Ordering::SeqCst)
     }
 }
@@ -69,7 +69,7 @@ impl CapabilityDispatcher for RecordingDispatcher {
     }
 }
 
-pub struct ApprovalAuthorizer;
+pub(crate) struct ApprovalAuthorizer;
 
 #[async_trait]
 impl TrustAwareCapabilityDispatchAuthorizer for ApprovalAuthorizer {
@@ -97,7 +97,7 @@ impl TrustAwareCapabilityDispatchAuthorizer for ApprovalAuthorizer {
     }
 }
 
-pub struct MismatchedApprovalAuthorizer;
+pub(crate) struct MismatchedApprovalAuthorizer;
 
 #[async_trait]
 impl TrustAwareCapabilityDispatchAuthorizer for MismatchedApprovalAuthorizer {
@@ -135,7 +135,7 @@ impl TrustAwareCapabilityDispatchAuthorizer for MismatchedApprovalAuthorizer {
     }
 }
 
-pub struct ObligatingAuthorizer;
+pub(crate) struct ObligatingAuthorizer;
 
 #[async_trait]
 impl TrustAwareCapabilityDispatchAuthorizer for ObligatingAuthorizer {
@@ -152,7 +152,7 @@ impl TrustAwareCapabilityDispatchAuthorizer for ObligatingAuthorizer {
     }
 }
 
-pub fn registry_with_echo_capability() -> ExtensionRegistry {
+pub(crate) fn registry_with_echo_capability() -> ExtensionRegistry {
     let manifest = ExtensionManifest::parse(
         ECHO_MANIFEST,
         ManifestSource::InstalledLocal,
@@ -169,7 +169,7 @@ pub fn registry_with_echo_capability() -> ExtensionRegistry {
     registry
 }
 
-pub fn registry_with_github_comment_capability() -> ExtensionRegistry {
+pub(crate) fn registry_with_github_comment_capability() -> ExtensionRegistry {
     let manifest = ExtensionManifest::parse(
         GITHUB_COMMENT_MANIFEST,
         ManifestSource::InstalledLocal,
@@ -186,7 +186,7 @@ pub fn registry_with_github_comment_capability() -> ExtensionRegistry {
     registry
 }
 
-pub fn execution_context(grants: CapabilitySet) -> ExecutionContext {
+pub(crate) fn execution_context(grants: CapabilitySet) -> ExecutionContext {
     ExecutionContext::local_default(
         UserId::new("user").unwrap(),
         ExtensionId::new("caller").unwrap(),
@@ -198,18 +198,18 @@ pub fn execution_context(grants: CapabilitySet) -> ExecutionContext {
     .unwrap()
 }
 
-pub fn dispatch_grant() -> CapabilityGrant {
+pub(crate) fn dispatch_grant() -> CapabilityGrant {
     capability_grant_with_effects(vec![EffectKind::DispatchCapability])
 }
 
-pub fn spawn_grant() -> CapabilityGrant {
+pub(crate) fn spawn_grant() -> CapabilityGrant {
     capability_grant_with_effects(vec![
         EffectKind::DispatchCapability,
         EffectKind::SpawnProcess,
     ])
 }
 
-pub fn capability_grant_with_effects(allowed_effects: Vec<EffectKind>) -> CapabilityGrant {
+pub(crate) fn capability_grant_with_effects(allowed_effects: Vec<EffectKind>) -> CapabilityGrant {
     CapabilityGrant {
         id: CapabilityGrantId::new(),
         capability: capability_id(),
@@ -227,14 +227,14 @@ pub fn capability_grant_with_effects(allowed_effects: Vec<EffectKind>) -> Capabi
     }
 }
 
-pub fn trust_decision() -> TrustDecision {
+pub(crate) fn trust_decision() -> TrustDecision {
     trust_decision_with_effects(vec![
         EffectKind::DispatchCapability,
         EffectKind::SpawnProcess,
     ])
 }
 
-pub fn trust_decision_with_effects(allowed_effects: Vec<EffectKind>) -> TrustDecision {
+pub(crate) fn trust_decision_with_effects(allowed_effects: Vec<EffectKind>) -> TrustDecision {
     TrustDecision {
         effective_trust: EffectiveTrustClass::user_trusted(),
         authority_ceiling: AuthorityCeiling {
@@ -246,15 +246,15 @@ pub fn trust_decision_with_effects(allowed_effects: Vec<EffectKind>) -> TrustDec
     }
 }
 
-pub fn capability_id() -> CapabilityId {
+pub(crate) fn capability_id() -> CapabilityId {
     CapabilityId::new("echo.say").unwrap()
 }
 
-pub fn github_comment_capability_id() -> CapabilityId {
+pub(crate) fn github_comment_capability_id() -> CapabilityId {
     CapabilityId::new("github.comment_issue").unwrap()
 }
 
-pub fn extension_id() -> ExtensionId {
+pub(crate) fn extension_id() -> ExtensionId {
     ExtensionId::new("echo").unwrap()
 }
 

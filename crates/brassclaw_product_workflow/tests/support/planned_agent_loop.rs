@@ -72,7 +72,7 @@ use tokio::task::JoinHandle;
 use tokio::time::{sleep, timeout};
 use tokio_util::sync::CancellationToken;
 
-pub struct ProductLiveAgentLoopHarness {
+pub(crate) struct ProductLiveAgentLoopHarness {
     binding_service: FakeConversationBindingService,
     binding: ResolvedBinding,
     thread_scope: ThreadScope,
@@ -94,7 +94,7 @@ pub struct ProductLiveAgentLoopHarness {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProductLiveAgentLoopHarnessConfig {
+pub(crate) struct ProductLiveAgentLoopHarnessConfig {
     pub assistant_reply: String,
     pub tenant_id: String,
     pub user_id: String,
@@ -127,7 +127,7 @@ impl Default for ProductLiveAgentLoopHarnessConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct HarnessCapabilityConfig {
+pub(crate) struct HarnessCapabilityConfig {
     pub capability_id: String,
     pub result_ref: String,
     pub safe_summary: String,
@@ -135,12 +135,12 @@ pub struct HarnessCapabilityConfig {
 }
 
 #[derive(Debug, Clone)]
-pub struct HostRuntimeCapabilityConfig {
+pub(crate) struct HostRuntimeCapabilityConfig {
     pub capability_id: String,
     pub input: serde_json::Value,
 }
 
-pub fn capability_call_response(
+pub(crate) fn capability_call_response(
     capability_id: impl Into<String>,
     input_ref: impl Into<String>,
 ) -> HostManagedModelResponse {
@@ -159,7 +159,7 @@ pub fn capability_call_response(
 }
 
 impl ProductLiveAgentLoopHarness {
-    pub async fn new(config: ProductLiveAgentLoopHarnessConfig) -> Self {
+    pub(crate) async fn new(config: ProductLiveAgentLoopHarnessConfig) -> Self {
         let binding_service = FakeConversationBindingService::new();
         let user_id = UserId::new(config.user_id).expect("valid harness user id");
         let binding = ResolvedBinding {
@@ -348,28 +348,28 @@ impl ProductLiveAgentLoopHarness {
         }
     }
 
-    pub fn model_requests(&self) -> Vec<HostManagedModelRequest> {
+    pub(crate) fn model_requests(&self) -> Vec<HostManagedModelRequest> {
         self.model_requests
             .lock()
             .expect("harness model requests lock poisoned")
             .clone()
     }
 
-    pub fn capability_invocations(&self) -> Vec<CapabilityInvocation> {
+    pub(crate) fn capability_invocations(&self) -> Vec<CapabilityInvocation> {
         self.capability_invocations
             .lock()
             .expect("harness capability invocation lock poisoned")
             .clone()
     }
 
-    pub fn capability_results(&self) -> Vec<serde_json::Value> {
+    pub(crate) fn capability_results(&self) -> Vec<serde_json::Value> {
         self.capability_results
             .lock()
             .expect("harness capability results lock poisoned")
             .clone()
     }
 
-    pub async fn wait_for_model_request_count(&self, expected: usize) {
+    pub(crate) async fn wait_for_model_request_count(&self, expected: usize) {
         timeout(Duration::from_secs(3), async {
             loop {
                 if self
@@ -388,20 +388,20 @@ impl ProductLiveAgentLoopHarness {
         .expect("harness model gateway should receive request count");
     }
 
-    pub fn release_model(&self) {
+    pub(crate) fn release_model(&self) {
         if let Some(release) = &self.model_release {
             release.cancel();
         }
     }
 
-    pub fn user_message(&self, event_suffix: &str, text: &str) -> ProductInboundEnvelope {
+    pub(crate) fn user_message(&self, event_suffix: &str, text: &str) -> ProductInboundEnvelope {
         let envelope = user_message_envelope(event_suffix, text);
         self.binding_service
             .program_binding(envelope.source_binding_key(), self.binding.clone());
         envelope
     }
 
-    pub async fn accept_user_message(
+    pub(crate) async fn accept_user_message(
         &self,
         envelope: &ProductInboundEnvelope,
     ) -> Result<InboundTurnOutcome, brassclaw_product_workflow::ProductWorkflowError> {
@@ -413,7 +413,7 @@ impl ProductLiveAgentLoopHarness {
         service.accept_user_message(envelope).await
     }
 
-    pub async fn wait_for_terminal(&self, run_id: TurnRunId) -> TurnRunState {
+    pub(crate) async fn wait_for_terminal(&self, run_id: TurnRunId) -> TurnRunState {
         let scope = self.turn_scope();
         timeout(Duration::from_secs(3), async {
             loop {
@@ -435,7 +435,7 @@ impl ProductLiveAgentLoopHarness {
         .expect("harness run should reach a terminal state")
     }
 
-    pub async fn cancel_run(&self, run_id: TurnRunId) -> TurnStatus {
+    pub(crate) async fn cancel_run(&self, run_id: TurnRunId) -> TurnStatus {
         self.composition
             .coordinator
             .cancel_run(CancelRunRequest {
@@ -451,7 +451,7 @@ impl ProductLiveAgentLoopHarness {
             .status
     }
 
-    pub async fn wait_for_cancellation_observed(&self, run_id: TurnRunId) {
+    pub(crate) async fn wait_for_cancellation_observed(&self, run_id: TurnRunId) {
         timeout(Duration::from_secs(3), async {
             loop {
                 if self
@@ -467,7 +467,7 @@ impl ProductLiveAgentLoopHarness {
         .expect("harness cancellation factory should observe run cancellation");
     }
 
-    pub async fn thread_history(&self) -> Vec<ThreadMessageRecord> {
+    pub(crate) async fn thread_history(&self) -> Vec<ThreadMessageRecord> {
         self.thread_service
             .list_thread_history(ThreadHistoryRequest {
                 scope: self.thread_scope.clone(),
@@ -478,7 +478,7 @@ impl ProductLiveAgentLoopHarness {
             .messages
     }
 
-    pub async fn shutdown(self) {
+    pub(crate) async fn shutdown(self) {
         self.worker_cancel.cancel();
         self.worker_handle
             .await
@@ -973,7 +973,7 @@ impl MontyTurnDriverPort for WrappingMontyDriver {
 /// Build a canonical `MontyTurnDriverPort` suitable for harness tests.
 /// Uses the default loop family config (unbounded token budget) so all
 /// stage-level behavior is exercised exactly as in production.
-pub fn harness_monty_driver() -> Arc<dyn MontyTurnDriverPort> {
+pub(crate) fn harness_monty_driver() -> Arc<dyn MontyTurnDriverPort> {
     let family_registry = build_loop_family_registry_with_full_config(LoopFamilyConfig::default())
         .expect("harness loop family registry must build");
     let build = default_planned_driver(family_registry).expect("harness planned driver must build");
