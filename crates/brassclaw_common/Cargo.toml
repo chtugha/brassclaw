@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Shared types, paths, and platform helpers used across the BrassClaw workspace"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 
 [package.metadata.dist]
@@ -24,3 +23,6 @@ serde_json = { version = "1", features = ["unbounded_depth"] }
 serde_stacker = "0.1.14"
 thiserror = "2"
 tracing = "0.1"
+
+[lints]
+workspace = true

@@ -7,7 +7,6 @@ rust-version = "1.92"
 description = "Resource reservation governor for BrassClaw Reborn"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -39,3 +38,6 @@ windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem"] }
 tokio = { version = "1", features = ["test-util"] }
 rust_decimal_macros = "1"
 tempfile = "3"
+
+[lints]
+workspace = true

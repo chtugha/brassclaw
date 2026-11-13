@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Memory document service adapters for BrassClaw Reborn"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -63,3 +62,6 @@ tempfile = "3"
 # preemptive races against `replace_document_chunks_if_current`
 # (PR #3180 invariant 6).
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread"] }
+
+[lints]
+workspace = true

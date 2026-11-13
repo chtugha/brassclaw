@@ -20,18 +20,18 @@ exclude = [
     "crates/brassclaw_safety/fuzz",
 ]
 
-# Maintainability guardrails against dead/speculative public API
-# (the "Theme 1" anti-pattern from the maintainability audit: accessors,
-# `_dyn` variants, and getters with zero callers that needlessly expand the
-# stable surface). These are `warn`, not `deny`, and are *opted into*
-# per-crate via `[lints] workspace = true` so they do not flood the build
-# with pre-existing noise across the whole workspace. Currently scoped to the
-# hook/reborn crates.
+# Shared maintainability guardrails for first-party workspace packages without
+# a specialized package policy. Those members use `[lints] workspace = true`;
+# fix warning causes in their owning code instead of opting out to hide them.
+# `brassclaw_monty_host` retains its explicit package-wide `unsafe_code = "forbid"`:
+# Cargo cannot combine local lint settings with workspace inheritance, and that
+# guard must continue to cover all current and future package targets.
 #
-# - `unreachable_pub`: flags `pub` items that are not reachable outside their
-#   crate — the classic "this should be `pub(crate)`" smell.
-# - `dead_code`: warn on never-used items (this is the rustc default, declared
-#   here so it survives any future `#![allow(dead_code)]` creep at the crate root).
+# - `unreachable_pub`: flags public items that are not reachable outside their
+#   crate; keep visibility consistent with the actual supported API.
+# - `dead_code`: flags unused items so their purpose and callers are reviewed.
+# - `unexpected_cfgs`: checks configuration names and values; `disabled` is an
+#   existing recognized configuration name, not a blanket lint exemption.
 [workspace.lints.rust]
 unreachable_pub = "warn"
 dead_code = "warn"
@@ -45,7 +45,6 @@ rust-version = "1.96"
 description = "Secure personal AI assistant that protects your data and expands its capabilities on the fly"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 default-run = "brassclaw"
 
@@ -258,9 +257,6 @@ security-framework = "3"
 [target.'cfg(target_os = "linux")'.dependencies]
 secret-service = { version = "4", features = ["rt-tokio-crypto-rust"] }
 zbus = "4"
-
-[build-dependencies]
-serde_json = "1"
 
 [dev-dependencies]
 tokio-test = "0.4"

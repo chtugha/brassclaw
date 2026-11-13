@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Multi-provider LLM integration with retry, failover, circuit breaker, and response caching"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -61,3 +60,6 @@ insta = { version = "1.46.3", features = ["yaml"] }
 tempfile = "3"
 tokio = { version = "1", features = ["full", "test-util"] }
 tracing-test = "0.2"
+
+[lints]
+workspace = true

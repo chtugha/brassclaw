@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Embedding-provider trait, LRU caching decorator, and URL check utilities (S10 refactor — concrete impls moved to brassclaw_reborn_composition)"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -30,3 +29,6 @@ url = "2"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
+
+[lints]
+workspace = true

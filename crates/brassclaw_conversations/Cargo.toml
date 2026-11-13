@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Conversation binding and session thread contracts for BrassClaw Reborn"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -33,3 +32,6 @@ default = []
 [dev-dependencies]
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
+
+[lints]
+workspace = true

@@ -9,3 +9,6 @@ description = "Shared envelope helper that wraps untrusted prompt content with a
 thiserror = "2"
 
 [dev-dependencies]
+
+[lints]
+workspace = true

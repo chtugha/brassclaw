@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Skill component types, validation, and DB-backed storage for BrassClaw"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 
 [package.metadata.dist]

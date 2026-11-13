@@ -6,7 +6,6 @@ publish = false
 description = "Embedded PostgreSQL lifecycle management for brassclaw (download, initdb, pg_ctl, health check)."
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 
 [lints]

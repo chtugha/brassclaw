@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Boot configuration contracts for the standalone BrassClaw Reborn binary"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -23,3 +22,6 @@ toml = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
+
+[lints]
+workspace = true

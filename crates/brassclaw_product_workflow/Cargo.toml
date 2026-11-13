@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Product-facing workflow facade for BrassClaw Reborn (#3280)"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -62,3 +61,6 @@ brassclaw_telegram_v2_adapter = { path = "../brassclaw_telegram_v2_adapter" }
 tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 tokio-util = { version = "0.7", features = ["rt"] }
+
+[lints]
+workspace = true

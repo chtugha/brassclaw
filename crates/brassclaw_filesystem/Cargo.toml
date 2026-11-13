@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Scoped filesystem service for BrassClaw Reborn"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -33,3 +32,6 @@ tempfile = "3"
 tokio = { version = "1", features = ["macros", "rt"] }
 tracing-test = { version = "0.2", features = ["no-env-filter"] }
 uuid = { version = "1", features = ["v4"] }
+
+[lints]
+workspace = true

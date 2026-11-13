@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "First-party userland extension implementations for BrassClaw"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -29,3 +28,6 @@ tracing = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt"] }
+
+[lints]
+workspace = true

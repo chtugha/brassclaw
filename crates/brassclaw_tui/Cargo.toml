@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Modular Ratatui-based TUI for BrassClaw"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -32,3 +31,6 @@ image = { version = "0.25", default-features = false, features = ["png"], option
 [dev-dependencies]
 tokio = { version = "1", features = ["full"] }
 tempfile = "3"
+
+[lints]
+workspace = true

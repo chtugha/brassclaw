@@ -6,7 +6,6 @@ rust-version = "1.92"
 description = "Product-adapter contracts for BrassClaw Reborn (#3269)"
 authors = ["NEAR AI <support@near.ai>"]
 license = "MIT OR Apache-2.0"
-homepage = "https://github.com/chtugha/brassclaw"
 repository = "https://github.com/chtugha/brassclaw"
 publish = false
 
@@ -43,3 +42,6 @@ tokio = { version = "1", features = ["rt", "sync", "time"] }
 tokio = { version = "1", features = ["macros", "rt", "sync"] }
 # Enable test-support feature for integration tests so fakes module is compiled.
 brassclaw_product_adapters = { path = ".", features = ["test-support"] }
+
+[lints]
+workspace = true
