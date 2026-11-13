@@ -423,13 +423,19 @@ function ValidatorReviewPanelInner({ item, onDone }) {
 }
 
 /**
- * Public guard wrapper. Returns null for excluded classes without calling any
- * hooks, so the inner component's hooks are always called in stable order.
+ * Public guard wrapper. Returns null for excluded classes without entering
+ * any hook scope, so the inner component's hooks are always called in a
+ * stable order inside their own React component boundary.
+ *
+ * React element creation (`html\`<${ValidatorReviewPanelInner}/>\``) establishes
+ * a separate fiber/component instance for the inner function. This guarantees
+ * that toggling between an included and excluded class never disrupts the hook
+ * call sequence of ValidatorReviewPanelInner.
  *
  * @param {object} item - Queue row item from fetchValidationQueue.
  * @param {function?} onDone - Called after a successful approve/reject.
  */
 export function ValidatorReviewPanel({ item, onDone }) {
   if (!REVIEW_PANEL_CLASSES.has(item?.class_code)) return null;
-  return ValidatorReviewPanelInner({ item, onDone });
+  return html`<${ValidatorReviewPanelInner} item=${item} onDone=${onDone} />`;
 }

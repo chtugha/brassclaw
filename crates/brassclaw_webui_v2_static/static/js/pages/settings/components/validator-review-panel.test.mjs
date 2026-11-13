@@ -214,14 +214,25 @@ function fixture({
 
   vm.createContext(context);
   vm.runInContext(
-    source + "\nglobalThis.renderPanel = ValidatorReviewPanel;",
+    source +
+      "\nglobalThis.renderPanel = ValidatorReviewPanel;" +
+      "\nglobalThis.renderPanelInner = ValidatorReviewPanelInner;",
     context
   );
 
   return {
+    // render() uses the guard wrapper — returns null for excluded classes,
+    // returns the inner template node (not the rendered output) for included
+    // classes. Use for class-exclusion tests only.
     render() {
       cursorState = 0;
       return context.renderPanel({ item });
+    },
+    // renderContent() calls the inner function directly for included classes
+    // so static-vm test traversal can reach all displayed values.
+    renderContent() {
+      cursorState = 0;
+      return context.renderPanelInner({ item });
     },
     pack,
     t,
@@ -325,7 +336,7 @@ for (const classCode of [0, 1, 2, 3, 10, 13, 16, 23, 50]) {
 
 test("class-21 bound item shows subject checksum and approve/reject buttons", () => {
   const f = fixture({ classCode: 21, originalState: "bound" });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.notEqual(tree, null);
   const pack = f.pack;
   // Title is shown
@@ -349,7 +360,7 @@ test("class-21 bound item shows subject checksum and approve/reject buttons", ()
 test("class-21 unbound item shows prerequisitesMissing and disables approve/reject", () => {
   for (const state of ["unresolved", "legacy_unresolved", "missing_queue"]) {
     const f = fixture({ classCode: 21, originalState: state });
-    const tree = f.render();
+    const tree = f.renderContent();
     assert.ok(
       visible(tree, f.pack["validatorReview.prerequisitesMissing"]),
       `state ${state} must show prerequisites message`
@@ -364,7 +375,7 @@ test("class-21 unbound item shows prerequisitesMissing and disables approve/reje
 
 test("class-22 bound item shows subject checksum and approve/reject buttons", () => {
   const f = fixture({ classCode: 22, originalState: "bound" });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.notEqual(tree, null);
   assert.ok(visible(tree, "sha256:abc123"), "subject checksum must be visible");
   const approve = button(tree, f.t("validationQueue.validate"));
@@ -377,7 +388,7 @@ test("class-22 bound item shows subject checksum and approve/reject buttons", ()
 
 test("class-22 non-q2_manual queue code shows no review actions", () => {
   const f = fixture({ classCode: 22, queueCode: "auto", originalState: "bound" });
-  const tree = f.render();
+  const tree = f.renderContent();
   // Panel still renders (shows subject), but no Q2ReviewActions
   assert.notEqual(tree, null);
   // Approve button must not appear for non-manual queue
@@ -392,7 +403,7 @@ test("approved review status shows historical subject warning", () => {
     originalState: "bound",
     viewOverride: makeView({ reviewStatus: "approved", classCode: 21 }),
   });
-  const tree = f.render();
+  const tree = f.renderContent();
   // The historical status must appear alongside the actual review status
   assert.ok(
     visible(tree, f.pack["validatorReview.historicalSubject"]),
@@ -403,7 +414,7 @@ test("approved review status shows historical subject warning", () => {
 
 test("pending review status does not show historical subject warning", () => {
   const f = fixture({ classCode: 21, originalState: "bound" }); // default reviewStatus: "pending"
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.equal(
     visible(tree, f.pack["validatorReview.historicalSubject"]),
     false,
@@ -419,7 +430,7 @@ test("item with no submission_id shows noSubmission message", () => {
     originalState: "bound",
     submissionId: "",
   });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.ok(
     visible(tree, f.pack["validatorReview.noSubmission"]),
     "noSubmission must be visible when submission_id is absent"
@@ -432,7 +443,7 @@ test("item with null submission_id shows noSubmission message", () => {
   const f = fixture({ classCode: 21, originalState: "bound" });
   // Override item's submission_id to null
   f.item.original_review.submission_id = null;
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.ok(visible(tree, f.pack["validatorReview.noSubmission"]));
 });
 
@@ -444,7 +455,7 @@ test("loadFailed error message is shown when query fails", () => {
     originalState: "bound",
     queryError: { message: "Network timeout" },
   });
-  const tree = f.render();
+  const tree = f.renderContent();
   // The rendered value is the interpolated translation, not the template key.
   const interpolated = f.t("validatorReview.loadFailed", { message: "Network timeout" });
   assert.notEqual(interpolated, "validatorReview.loadFailed", "key must translate");
@@ -458,7 +469,7 @@ test("loadFailed error message is shown when query fails", () => {
 
 test("loading state shows skeleton without buttons", () => {
   const f = fixture({ classCode: 21, originalState: "bound", queryLoading: true });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.notEqual(tree, null);
   assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
   assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
@@ -468,7 +479,7 @@ test("loading state shows skeleton without buttons", () => {
 
 test("new draft hint is visible when review actions are shown", () => {
   const f = fixture({ classCode: 21, originalState: "bound" });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.ok(
     visible(tree, f.pack["validatorReview.newDraftHint"]),
     "new draft hint must always be shown with review actions"
@@ -485,7 +496,7 @@ test("submission ID is visible in the subject view", () => {
     submissionId: "my-exact-sub-id",
     viewOverride: makeView({ submissionId: "my-exact-sub-id", classCode: 21 }),
   });
-  const tree = f2.render();
+  const tree = f2.renderContent();
   assert.ok(
     visible(tree, "my-exact-sub-id"),
     "submissionId from the view must be visible"
@@ -496,7 +507,7 @@ test("submission ID is visible in the subject view", () => {
 
 test("de bound class-21 item shows translated title and approve/reject labels", () => {
   const f = fixture({ language: "de", classCode: 21, originalState: "bound" });
-  const tree = f.render();
+  const tree = f.renderContent();
   const pack = f.pack;
   assert.ok(
     visible(tree, pack["validatorReview.title"]),
@@ -521,7 +532,7 @@ test("work status is shown when present in submission view", () => {
     originalState: "bound",
     viewOverride: viewWithWork,
   });
-  const tree = f.render();
+  const tree = f.renderContent();
   const workMsg = f.pack["componentSubmission.work.structural_observations_confirmed"];
   assert.ok(workMsg, "work status key must exist in en pack");
   assert.ok(
@@ -539,7 +550,7 @@ test("catalogue_activated = true shows the activated notice", () => {
     originalState: "bound",
     viewOverride: viewActivated,
   });
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.ok(
     visible(tree, f.pack["validatorReview.catalogueActivated"]),
     "catalogue activated label must be shown"
@@ -548,7 +559,7 @@ test("catalogue_activated = true shows the activated notice", () => {
 
 test("catalogue_activated = false does not show the activated notice", () => {
   const f = fixture({ classCode: 21, originalState: "bound" }); // default: false
-  const tree = f.render();
+  const tree = f.renderContent();
   assert.equal(
     visible(tree, f.pack["validatorReview.catalogueActivated"]),
     false,
