@@ -55,7 +55,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Bob inspection slice accepted; remaining packages open
 
-B1-06 `3f802f79c`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `e4b6adedb`
+B1-06 `01cc4499a` (report `8b6f96a63`), B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `e4b6adedb`
 remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
@@ -68,12 +68,14 @@ B2's shared structural owner and explicit nil/zero checks are corrected in
 source; `/1` strictness, original limits, complete base structure and formatting
 still require correction. This does not establish new runtime support.
 B1's earlier `b48d45b7c` checkpoint closes its unsupported authored writer.
-Latest `3f802f79c` removes that guard, subject binding and format tests without
-qualified replacements and is rejected; it does not repair B2's selection reader.
+Rejected `3f802f79c` removed that protection without qualified replacements;
+`01cc4499a` restores it and corrects the duplicate revision fixture. The actual
+reported checksum-block lint remains; the new V214 fixture needs a real revision,
+valid authored Q2 reference and failed-run case before native execution.
 Candidate integration `8cdbd5f7` on
 the supervisor's central integration branch fails actual full-feature strict
-Clippy at writer line 687; fixture allocation and V214 coverage corrections
-remain. Those source changes are absent from Main. B3-06 removes the faulty draft
+Clippy at writer line 687; the newer fixture-allocation fix is source-reviewed,
+while V214 coverage corrections remain. Those source changes are absent from Main. B3-06 removes the faulty draft
 selector and bounds writes. Its latest source corrects Send/read custody and
 passes direct Rustfmt; the ACK test still reads back through a separate healthy
 pool, so actual same-capacity-one-pool recovery and strict lint/native acceptance

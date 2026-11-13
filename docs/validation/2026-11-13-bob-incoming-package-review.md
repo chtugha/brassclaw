@@ -11,7 +11,7 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `3f802f79c`, rejected regression from `b48d45b7c` |
+| B1-06 | `codex/b1-06-approval-writer` | `01cc4499a`, report `8b6f96a63`; restored guard, remaining lint/DB fixture findings |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
 | B3-06 | `codex/b3-06-durable-q1-work-wt` | `e4b6adedb`, report `ec5a821af` |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
@@ -67,6 +67,38 @@ B1 evidence/declaration scope, not duplicate Recipe-step or retained-selection
 coverage. The unchanged package report still describes the removed guards and
 binding as present and needs correction. No Cargo run or integration is justified
 for this known-regressed source. The existing candidate retains `b48d45b7c`.
+
+### B1-06 `01cc4499a`, report `8b6f96a63` — restored, still not accepted
+
+The net comparison against `b48d45b7c` confirms the authored guard, authored
+format handling and Q1 subject-binding checks are restored. The subject-binding
+fixture now obtains its sole revision from `submit()` and uses `sub.candidate`;
+the earlier duplicate allocation is corrected. The new unknown-field and
+duplicate-stage-UUID cases remain evidence/declaration checks, not B2 selection
+coverage. No ineffective `_limits` parameter remains.
+
+Two connected corrections are still necessary before spending another build:
+
+- Run-58's actual `clippy::collapsible_if` was the nested legacy-checksum check
+  in `validate_evidence_declaration()` at old line 687, now line 679. That block
+  is unchanged. The modified `detect_evidence_format()` conditions are different
+  code and do not resolve the observed diagnostic. Collapse the actual reported
+  condition while preserving checksum validation and both format branches.
+- The new direct V214 test references a random root UUID without staging a
+  corresponding revision. Its seed-success INSERT therefore fails V200's
+  `(root_id, root_version)` foreign key. Its authored-negative INSERT also passes
+  SQL NULL for q2_ref despite a non-null UUID in the JSON: V200 independently
+  raises CHECK_VIOLATION for that row, so checking only SQLSTATE does not isolate
+  V214. Stage one real class-22 revision, use its exact identity/checksum and
+  a non-null matching authored q2_ref; assert the specific V214 error as well as
+  its SQLSTATE. Add the missing genuine `succeeded=false` run fixture with valid
+  submission/evidence references. Keep seed exemption as a successful actual
+  INSERT. These controlled low-level constraint fixtures do not qualify authored
+  approval or reopen the writer.
+
+No new Cargo run is justified for these source-visible failures. Main and the
+previous B1 candidate remain unchanged. General B1 producer qualification stays
+open; restoration of the guard is not activation.
 
 B3-06 `ad1ea1b90` removes the production draft selector and incompatible checksum
 read, and explicitly defers absent selections. Its write now has a deadline and
