@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.7] - 2026-11-13
+
+- **Cargo 1.100 compatibility**: Inherit the existing workspace lint policy in
+  first-party packages, remove redundant homepage metadata and the unused root
+  build dependency. Correct internal visibility and expose the already documented
+  PendingGate read-model API without activating a new workflow. Replace a
+  deprecated test-support Atomic operation with checked compare-and-exchange,
+  preserving overflow rejection, memory ordering and the declared Rust 1.96 minimum.
+  Add concurrent counter regressions; retain existing tests and public exports.
+- **Test integration**: Restore explicit private-work refusal in the historical
+  chat-only test driver and declare the shared native PostgreSQL fixture's direct
+  test dependencies. No production driver fallback or successful private-work
+  acknowledgement is introduced.
+
 - **install.sh: listen on `0.0.0.0` by default**: New systemd service installs
   now bind to all interfaces instead of loopback only, making the WebUI reachable
   from other hosts on the network. Existing service units are preserved unchanged
@@ -14,10 +28,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   needed.
 
 - **install.sh: `--local-dir` flag**: Pass `--local-dir <path>` to install from
-  a pre-downloaded GitHub release artifact directory instead of fetching from
-  the network. The script verifies SHA-256 checksums, infers the version from
-  the checksum file where possible, and skips the download step entirely.
-  `--local-dir` and `-v`/`--version` are mutually exclusive.
+  a local artifact directory without downloading. Snapshot both binaries and
+  digest-only checksum files into private installer storage, reject linked or
+  non-regular assets, then verify and stage that snapshot. Preserve operator
+  files and existing pair rollback. Optional `-v` is only an operator-supplied
+  display label; otherwise report an unknown version. Local hashes establish
+  byte integrity, not release provenance. Manual local installation needs no
+  curl; systemd readiness retains its existing loopback HTTP check.
 
 ## [1.7.0-rc.6] - 2026-11-13
 
