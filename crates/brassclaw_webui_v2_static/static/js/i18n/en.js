@@ -1890,6 +1890,7 @@ registerPack("en", {
   "validatorReview.prerequisitesMissing": "Prerequisites are missing — the original must be in state 'bound' before human Q2 approval can proceed.",
   "validatorReview.staleViewConflict": "The component state changed since this view was loaded. Reload the queue and re-review before approving.",
   "validatorReview.newDraftHint": "To create a corrected draft: use the component submission panel with the observed predecessor CAS. The active approved revision is read-only.",
+  "validatorReview.actionNotConnected": "Human Q2 approval for this component class is not yet connected. The subject is shown for inspection only. This will be wired when B1-06 connects the approval writer.",
 
   // Settings — Reliability tab (Phase 6).
   "reliability.title": "Reliability overview",

@@ -2015,203 +2015,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
         ))
     }
 
-    /// Graduate (approve) or reject a class-22 (PythonCode) component that has
-    /// passed Q1 and is waiting for human Q2.
-    ///
-    /// **Approve (`new_status = "validated"`):** delegates to
-    /// `ValidationQueueStore::approve` with `q2_actor = Some("human")`, which
-    /// runs the full graduation transaction:
-    ///  - Verifies the original binding and subject_checksum under a lock.
-    ///  - Flips `reborn_python_code.validation_status = 'validated'`.
-    ///  - Writes the graduation receipt.
-    ///  - Removes the queue row.
-    ///
-    /// **Reject (`new_status = "rejected"`):** locks the queue row,
-    /// updates its state (3 = Q3 / 4 = Q4 based on the rejection threshold),
-    /// records feedback, and sets `reborn_python_code.validation_status =
-    /// 'rejected'` — all in one transaction.
-    ///
-    /// Any other `new_status` value is rejected: only "validated" and "rejected"
-    /// are connected for class 22 on this facade. "review_requested" (Q3
-    /// send-to-revision) is not wired here.
-    async fn update_python_code_validation_status(
-        &self,
-        user_id: &str,
-        project_id: &str,
-        component_id: &str,
-        new_status: &str,
-        feedback: Option<&str>,
-    ) -> Result<
-        brassclaw_product_workflow::UpdateValidationStatusResponse,
-        brassclaw_product_workflow::RecipeStoreError,
-    > {
-        let id: Uuid = component_id.parse().map_err(|e| {
-            brassclaw_product_workflow::RecipeStoreError::Invalid(format!(
-                "invalid python_code component_id UUID: {e}"
-            ))
-        })?;
-        let scope = ComponentScope {
-            tenant_id: self.tenant_id.clone(),
-            user_id: user_id.to_string(),
-            agent_id: self.agent_id.clone(),
-            project_id: project_id.to_string(),
-        };
-        let python_code = crate::pg_python_code_store::PgPythonCodeStore::new(
-            Arc::clone(&self.inner.pool),
-        );
-
-        match new_status {
-            "validated" => {
-                // Full graduation path: subject_checksum verified inside approve().
-                self.queue_store
-                    .approve(&scope, id, Some("human"))
-                    .await
-                    .map_err(|error| match error {
-                        ValidationQueueError::Pool { reason }
-                        | ValidationQueueError::Db { reason } => {
-                            brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
-                        }
-                        other => brassclaw_product_workflow::RecipeStoreError::Invalid(
-                            other.to_string(),
-                        ),
-                    })?;
-                // Read back the new status for the response.
-                let pc = python_code
-                    .get(
-                        &scope.tenant_id,
-                        user_id,
-                        &scope.agent_id,
-                        project_id,
-                        id,
-                    )
-                    .await
-                    .map_err(|e| {
-                        brassclaw_product_workflow::RecipeStoreError::Unavailable(
-                            e.to_string(),
-                        )
-                    })?;
-                let new_status_read = pc
-                    .map(|r| r.validation_status)
-                    .unwrap_or_else(|| "validated".to_string());
-                Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
-                    id: component_id.to_string(),
-                    item_type: brassclaw_product_workflow::RecipeKind::Component,
-                    previous_status: "auto_passed".to_string(),
-                    new_status: new_status_read,
-                    review_attempts: 0,
-                })
-            }
-            "rejected" => {
-                // Rejection: update queue state and component status together.
-                let mut client = self.inner.pool.get().await.map_err(|e| {
-                    brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-                })?;
-                let tx = client.transaction().await.map_err(|e| {
-                    brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-                })?;
-                // Verify component exists before taking queue locks.
-                let current_status: Option<String> = tx
-                    .query_opt(
-                        "SELECT validation_status FROM reborn_python_code
-                         WHERE id = $1 AND tenant_id = $2 AND user_id = $3
-                           AND agent_id = $4 AND project_id = $5 AND class_code = 22",
-                        &[
-                            &id,
-                            &scope.tenant_id,
-                            &scope.user_id,
-                            &scope.agent_id,
-                            &scope.project_id,
-                        ],
-                    )
-                    .await
-                    .map_err(|e| {
-                        brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-                    })?
-                    .map(|row| row.get(0));
-                let previous_status = current_status.ok_or_else(|| {
-                    brassclaw_product_workflow::RecipeStoreError::NotFound(
-                        component_id.to_string(),
-                    )
-                })?;
-                let queue_row = self
-                    .queue_store
-                    .lock_for_rejection(&tx, &scope, id)
-                    .await
-                    .map_err(|error| match error {
-                        ValidationQueueError::Pool { reason }
-                        | ValidationQueueError::Db { reason } => {
-                            brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
-                        }
-                        other => brassclaw_product_workflow::RecipeStoreError::Invalid(
-                            other.to_string(),
-                        ),
-                    })?;
-                if queue_row
-                    .as_ref()
-                    .is_some_and(|r| r.component_class != 22)
-                {
-                    return Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
-                        "PythonCode review queue class mismatch".into(),
-                    ));
-                }
-                let in_q2 = queue_row
-                    .as_ref()
-                    .is_some_and(|r| r.state == crate::validation_queue::STATE_Q1_PASSED);
-                if in_q2 {
-                    self.queue_store
-                        .reject_in_transaction(
-                            &tx,
-                            &scope,
-                            id,
-                            feedback.unwrap_or_default(),
-                        )
-                        .await
-                        .map_err(|error| match error {
-                            ValidationQueueError::Pool { reason }
-                            | ValidationQueueError::Db { reason } => {
-                                brassclaw_product_workflow::RecipeStoreError::Unavailable(reason)
-                            }
-                            other => brassclaw_product_workflow::RecipeStoreError::Invalid(
-                                other.to_string(),
-                            ),
-                        })?;
-                }
-                if previous_status != "rejected" {
-                    tx.execute(
-                        "UPDATE reborn_python_code
-                         SET validation_status = 'rejected', updated_at = now()
-                         WHERE id = $1 AND tenant_id = $2 AND user_id = $3
-                           AND agent_id = $4 AND project_id = $5 AND class_code = 22",
-                        &[
-                            &id,
-                            &scope.tenant_id,
-                            &scope.user_id,
-                            &scope.agent_id,
-                            &scope.project_id,
-                        ],
-                    )
-                    .await
-                    .map_err(|e| {
-                        brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-                    })?;
-                }
-                tx.commit().await.map_err(|e| {
-                    brassclaw_product_workflow::RecipeStoreError::Unavailable(e.to_string())
-                })?;
-                Ok(brassclaw_product_workflow::UpdateValidationStatusResponse {
-                    id: component_id.to_string(),
-                    item_type: brassclaw_product_workflow::RecipeKind::Component,
-                    previous_status,
-                    new_status: "rejected".to_string(),
-                    review_attempts: 0,
-                })
-            }
-            other => Err(brassclaw_product_workflow::RecipeStoreError::Invalid(
-                format!("unsupported PythonCode review transition: {other}"),
-            )),
-        }
-    }
-
     async fn update_component_validation_status(
         &self,
         user_id: &str,
@@ -2235,16 +2038,6 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 )
                 .await
             }
-            22 => {
-                self.update_python_code_validation_status(
-                    user_id,
-                    project_id,
-                    component_id,
-                    new_status,
-                    feedback,
-                )
-                .await
-            }
             13 => {
                 self.update_skill_validation_status(
                     user_id,
@@ -2256,6 +2049,13 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 .await
             }
             _ => {
+                // B3-09: class-22 (PythonCode) Q2 approval requires the
+                // immutable pure-approval writer from B1-06: submission-linked,
+                // Q1/behaviour/Q2 bound, with transactional comparison against
+                // the displayed submission_id + subject_checksum. That writer
+                // is not yet wired here. This facade returns Err(Invalid) for
+                // class 22 until B1-06 connects the approval path and this
+                // match arm is updated under that contract.
                 tracing::debug!(
                     class_code,
                     component_id,

@@ -123,6 +123,7 @@ registerPack("de", {
   "validatorReview.prerequisitesMissing": "Voraussetzungen fehlen — das Original muss den Status 'bound' haben, bevor die menschliche Q2-Freigabe erfolgen kann.",
   "validatorReview.staleViewConflict": "Der Komponentenstatus hat sich seit dem Laden dieser Ansicht geändert. Bitte die Queue neu laden und erneut prüfen, bevor freigegeben wird.",
   "validatorReview.newDraftHint": "Für einen korrigierten Entwurf: Das Einreichungsformular mit dem beobachteten Vorgänger-CAS verwenden. Die aktive freigegebene Revision ist schreibgeschützt.",
+  "validatorReview.actionNotConnected": "Die menschliche Q2-Freigabe für diese Komponentenklasse ist noch nicht angebunden. Das Subjekt wird nur zur Inspektion angezeigt. Die Anbindung erfolgt, wenn B1-06 den Freigabe-Writer verbindet.",
 
   "onboarding.codexSignInSempai": "Für Sempai anmelden",
   "onboarding.codexNewConfirm": "Eine neue Anmeldung für diesen Provider und diese Rolle starten? Die bisherige Anmeldung bleibt gespeichert.",

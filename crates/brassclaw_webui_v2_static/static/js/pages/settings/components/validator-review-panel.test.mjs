@@ -310,6 +310,7 @@ for (const language of ["en", "de"]) {
       "validatorReview.prerequisitesMissing",
       "validatorReview.staleViewConflict",
       "validatorReview.newDraftHint",
+      "validatorReview.actionNotConnected",
     ];
     for (const key of required) {
       assert.ok(key in pack, `${language} missing key: ${key}`);
@@ -371,28 +372,34 @@ test("class-21 unbound item shows prerequisitesMissing and disables approve/reje
   }
 });
 
-// ── Class 22 (PythonCode) full review flow ────────────────────────────────────
+// ── Class 22 (PythonCode) subject inspection — Q2 writer not yet connected ───
 
-test("class-22 bound item shows subject checksum and approve/reject buttons", () => {
+test("class-22 bound item shows subject checksum and actionNotConnected notice", () => {
   const f = fixture({ classCode: 22, originalState: "bound" });
   const tree = f.renderContent();
   assert.notEqual(tree, null);
+  // Subject is shown for inspection.
   assert.ok(visible(tree, "sha256:abc123"), "subject checksum must be visible");
-  const approve = button(tree, f.t("validationQueue.validate"));
-  assert.ok(approve, "approve button must exist for class 22");
-  assert.equal(prop(approve, "disabled"), false);
-  const reject = button(tree, f.t("validationQueue.reject"));
-  assert.ok(reject, "reject button must exist for class 22");
-  assert.equal(prop(reject, "disabled"), false);
+  // No approve/reject buttons — backend writer not connected.
+  assert.equal(button(tree, f.t("validationQueue.validate")), undefined,
+    "approve button must not appear while class-22 writer is unconnected");
+  assert.equal(button(tree, f.t("validationQueue.reject")), undefined,
+    "reject button must not appear while class-22 writer is unconnected");
+  // Explicit notice shown instead.
+  assert.ok(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    "actionNotConnected notice must be visible for class 22"
+  );
 });
 
-test("class-22 non-q2_manual queue code shows no review actions", () => {
+test("class-22 non-q2_manual queue code shows no review section", () => {
   const f = fixture({ classCode: 22, queueCode: "auto", originalState: "bound" });
   const tree = f.renderContent();
-  // Panel still renders (shows subject), but no Q2ReviewActions
+  // Panel renders the subject, but no review section at all for non-manual.
   assert.notEqual(tree, null);
-  // Approve button must not appear for non-manual queue
   assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+  assert.equal(visible(tree, f.pack["validatorReview.actionNotConnected"]), false,
+    "actionNotConnected only appears on q2_manual items");
 });
 
 // ── Historical subject labeling ───────────────────────────────────────────────

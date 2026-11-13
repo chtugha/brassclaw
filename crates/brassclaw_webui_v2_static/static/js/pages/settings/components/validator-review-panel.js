@@ -57,15 +57,22 @@ function reviewStatusTone(status) {
 }
 
 /**
+ * Classes for which the backend Q2 approval writer is currently connected.
+ * Class 22 (PythonCode) is tracked under B1-06 and is NOT connected yet;
+ * it shows the subject for inspection but no approve/reject buttons.
+ */
+const CONNECTED_Q2_CLASSES = new Set([21]);
+
+/**
  * Returns true when the item is eligible for the Q2 review section —
- * class 21/22, q2_manual queue, and has a linked submission. The subject may
- * still be unbound (prerequisitesMissing = true) in which case the action
- * buttons are disabled but the prerequisite warning is still shown.
+ * q2_manual queue with a linked submission AND a connected backend writer.
+ * The subject may still be unbound (prerequisitesMissing = true) in which
+ * case the action buttons are disabled but the prerequisite warning is shown.
  */
 function isEligibleForReview(item) {
   return (
     item.queue_code === "q2_manual" &&
-    REVIEW_PANEL_CLASSES.has(item.class_code) &&
+    CONNECTED_Q2_CLASSES.has(item.class_code) &&
     typeof item.original_review?.submission_id === "string" &&
     item.original_review.submission_id.length > 0
   );
@@ -174,12 +181,17 @@ function ValidatorReviewPanelInner({ item, onDone }) {
 
   const isBusy = approveMutation.isPending || rejectMutation.isPending;
   const trimmedFeedback = feedback.trim();
-  // Prerequisites missing: original_review must be "bound".
-  // canShowActions: show the review section whenever the item is eligible
-  // (class 21/22, q2_manual, has submission_id). prerequisitesMissing controls
-  // whether the buttons are enabled or a warning is shown instead.
+  // canShowActions: show approve/reject only when the backend writer is
+  // connected (CONNECTED_Q2_CLASSES, currently class 21 only). Class 22 shows
+  // the subject for inspection but no action buttons until B1-06 connects.
   const canShowActions = isEligibleForReview(item);
   const prerequisitesMissing = item.original_review?.state !== "bound";
+  // notYetConnected: show the "writer not connected" notice for classes that
+  // are in the subject panel (REVIEW_PANEL_CLASSES) but not wired for Q2.
+  const notYetConnected =
+    item.queue_code === "q2_manual" &&
+    REVIEW_PANEL_CLASSES.has(item.class_code) &&
+    !CONNECTED_Q2_CLASSES.has(item.class_code);
 
   if (!hasSubmission) {
     return html`
@@ -332,6 +344,13 @@ function ValidatorReviewPanelInner({ item, onDone }) {
             </summary>
             <${CodeBlock} value=${view.review_selection_bytes} maxHeight="12rem" />
           </details>` : null}
+
+      ${notYetConnected
+          ? html`<${Section} title=${t("validatorReview.reviewActions")}>
+              <p className="text-xs text-[var(--v2-text-muted)]">
+                ${t("validatorReview.actionNotConnected")}
+              </p>
+            <//>` : null}
 
       ${canShowActions
           ? html`<${Section} title=${t("validatorReview.reviewActions")}>

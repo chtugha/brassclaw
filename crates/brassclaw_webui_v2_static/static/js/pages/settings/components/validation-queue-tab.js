@@ -167,10 +167,11 @@ function QueueRow({ item }) {
   const originalState = item.original_review?.state;
   const originalBlocked = originalState && originalState !== "bound";
   const isQ2 = item.queue_code === "q2_manual";
-  // Class 21 (Recipe) and 22 (PythonCode) both have a connected Q2 approve/
-  // reject path through the typed B1 class/profile dispatcher (B3-09 req 4).
-  // Other classes either lack a connected writer or use the LLM-audit path.
-  const showQ2Actions = isQ2 && (item.class_code === 21 || item.class_code === 22);
+  // The current facade only supports the Recipe manual action. Listing an
+  // original for other classes does not create their B2 approval writer.
+  // Class-22 (PythonCode) Q2 wiring is tracked under B1-06; until that
+  // writer is connected the approve/reject buttons are not shown for class 22.
+  const showQ2Actions = isQ2 && item.class_code === 21;
   const auditBlocked =
     LLM_AUDIT_CLASS_CODES.has(item.class_code) &&
     item.llm_audit_status !== "clean" &&
