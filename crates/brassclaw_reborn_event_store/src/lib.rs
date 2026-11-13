@@ -235,10 +235,9 @@ mod postgres_backed {
                 "host=localhost hostaddr=10.0.0.5 user=brassclaw password=private-password sslmode=disable",
                 "postgresql:///db?host=db.internal&user=brassclaw&sslmode=disable",
             ] {
-                let error = build_pool(SecretString::from(dsn))
-                    .await
-                    .err()
-                    .expect("remote plaintext rejected");
+                let Err(error) = build_pool(SecretString::from(dsn)).await else {
+                    panic!("remote plaintext rejected");
+                };
                 assert!(matches!(
                     error,
                     RebornEventStoreError::RemotePostgresClearTextDisabled

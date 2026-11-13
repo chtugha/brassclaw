@@ -184,9 +184,11 @@ mod tests {
                 5002,
             ),
         ] {
-            let mut policy = MontyExecutionLimits::default();
-            policy.max_catalogue_components_per_recipe = count;
-            policy.max_catalogue_bytes = 134217728;
+            let mut policy = MontyExecutionLimits {
+                max_catalogue_components_per_recipe: count,
+                max_catalogue_bytes: 134217728,
+                ..MontyExecutionLimits::default()
+            };
             policy.max_value_nodes += 7;
             let inner = serde_json::to_string(&policy).unwrap();
             let legacy_wire = Wire {
