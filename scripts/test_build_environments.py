@@ -3,6 +3,7 @@
 import argparse
 from contextlib import nullcontext
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -304,17 +305,36 @@ class ControllerTests(SourceFixture):
         self.assertEqual(json.loads((directory / "state.json").read_text())["state"], "completed")
 
     def test_resources_and_snapshot_are_submitted_under_remote_not_local_lock(self):
+        self._run_transport()
+
+    def test_run_download_failure_is_pending_and_status_retries_original_collection_only(self):
+        self._run_transport(fail_download=True)
+
+    def test_test_preparation_pins_normalized_command_worker_and_subject_in_transport(self):
+        self._run_transport(test_mode=True)
+
+    def _run_transport(self, fail_download=False, test_mode=False):
         # Mock SDK transport only. This does not execute/qualify a remote worker.
         (self.root / "scripts").mkdir()
         (self.root / "scripts/modal_build_worker.py").write_text("# fixture identity\n")
+        if test_mode:
+            for name in ("modal_build_worker.py", "modal_source_sync.py"):
+                (self.root / "scripts" / name).write_bytes(Path(__file__).with_name(name).read_bytes())
+            package = self.root / "crates/brassclaw_reborn_composition"
+            (package / "src").mkdir(parents=True)
+            (package / "Cargo.toml").write_text('[package]\nname="brassclaw_reborn_composition"\nversion="0.1.0"\n')
+            (package / "src/lib.rs").write_text("// transport fixture; no compilation\n")
         manifest = sync.capture(self.root, self.base / "source.tar.gz")
         manifest["source_archive"] = sync.BASE_SOURCE_PATH
         manifest_bytes = encoded(manifest)
         records = self.base / "records"
         records.mkdir()
         (records / "image-apple.json").write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
-                                                               "environment": "brassclaw", "image_id": "im-test"}))
+                                                               "environment": "brassclaw", "image_id": "im-test",
+                                                               "worker_identity": modal_build.worker_identity(),
+                                                               "supported_modes": [modal_build.APPLE_TEST_MODE]}))
         resources, submitted = {}, {}
+        spawns = []
         remote_files = {sync.MANIFEST_PATH: manifest_bytes, sync.BASE_MANIFEST_PATH: manifest_bytes}
 
         class App:
@@ -324,11 +344,23 @@ class ControllerTests(SourceFixture):
                 resources.update(kwargs)
                 def decorate(function):
                     def spawn(original):
+                        spawns.append(original["job_id"])
                         submitted.update(original)
                         result = {**{key: original[key] for key in
                                       ("job_id", "command", "manifest_sha256", "image_id")},
                                   "returncode": 0, "artifacts": {}}
                         prefix = f'/cache/jobs/{original["job_id"]}'
+                        if test_mode:
+                            result.update({key: original[key] for key in
+                                           ("mode", "original_command", "worker_identity", "test_subject")})
+                            body = b"transport fixture only; no native executable"
+                            result["artifacts"] = {"composition-fixture": {
+                                "sha256": hashlib.sha256(body).hexdigest(), "size": len(body),
+                                "mode": original["mode"], "image_id": original["image_id"],
+                                "manifest_sha256": original["manifest_sha256"], "target_triple": original["target_triple"],
+                                "features": original["test_subject"]["features"], "profile": {"test": True},
+                                "target": {"name": "brassclaw_reborn_composition", "kind": ["lib"]}}}
+                            remote_files[prefix + "/artifacts/composition-fixture"] = body
                         remote_files[prefix + "/completed.json"] = encoded(result)
                         remote_files[prefix + "/image-provenance.json"] = b"{}"
                         remote_files[prefix + "/cargo.log"] = b"SDK fixture; no Cargo executed\n"
@@ -339,7 +371,12 @@ class ControllerTests(SourceFixture):
             def run(self, **kwargs):
                 return nullcontext()
 
-        volume = SimpleNamespace(read_file=lambda path: [remote_files[path]])
+        failing = {"enabled": fail_download}
+        def read_file(path):
+            if failing["enabled"] and path.endswith("/cargo.log"):
+                raise OSError("collection transport interrupted")
+            return [remote_files[path]]
+        volume = SimpleNamespace(read_file=read_file)
         sdk = SimpleNamespace(App=lambda *a, **kw: App(), enable_output=nullcontext,
                               Volume=SimpleNamespace(from_name=lambda *a, **kw: volume),
                               Image=SimpleNamespace(from_id=lambda value: SimpleNamespace(object_id=value)))
@@ -359,7 +396,31 @@ class ControllerTests(SourceFixture):
                 patch.object(modal_build, "rust_version", return_value="1.96.0"), \
                 patch.object(modal_build, "sync_source", side_effect=check_sync_lock) as upload, \
                 sync.cargo_lock():
-            self.assertEqual(modal_build.run(arguments(cpu_limit=16, jobs=16)), 0)
+            if not fail_download:
+                options = dict(cpu_limit=16, jobs=16)
+                if test_mode:
+                    from test_modal_build_worker import test_command
+                    options["cargo"] = [*test_command(), "--message-format=json-render-diagnostics"]
+                self.assertEqual(modal_build.run(arguments(**options)), 0)
+            else:
+                with self.assertRaisesRegex(OSError, "collection transport"):
+                    modal_build.run(arguments(cpu_limit=16, jobs=16))
+                state_path = records / "jobs" / submitted["job_id"] / "state.json"
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual(state["state"], "collection_pending")
+                self.assertEqual(state["remote_state"], "completed")
+                self.assertNotIn("collection", state)
+                self.assertTrue(state_path.with_name("completed.json").exists())
+                failing["enabled"] = False
+                modal_build.status(SimpleNamespace(job_id=submitted["job_id"], volume="changed"))
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual((state["state"], state["collection"]), ("completed", "verified"))
+                self.assertEqual(spawns, [submitted["job_id"]])
+        if test_mode:
+            self.assertEqual(submitted["command"][-1], "--message-format=json")
+            self.assertEqual(submitted["original_command"][-1], "--message-format=json-render-diagnostics")
+            self.assertEqual(submitted["worker_identity"], modal_build.worker_identity())
+            self.assertEqual(submitted["test_subject"]["target_name"], "brassclaw_reborn_composition")
         upload.assert_called_once_with("brassclaw", "brassclaw-build")
         self.assertEqual(resources["cpu"], (8, 16))
         self.assertEqual(resources["memory"], (32768, 32768))
@@ -367,6 +428,95 @@ class ControllerTests(SourceFixture):
         self.assertEqual(submitted["jobs"], 16)
         self.assertEqual(submitted["lock_scope"], "modal")
         self.assertEqual(submitted["manifest_sha256"], __import__("hashlib").sha256(manifest_bytes).hexdigest())
+
+
+class CollectionBoundaryTests(unittest.TestCase):
+    """Real temp-file custody with synthetic transport; no compiler/target execution."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name).resolve()
+        self.original = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe",
+                         "command": ["cargo", "build", "--locked"], "manifest_sha256": "a" * 64,
+                         "image_id": "im-fixture"}
+        self.body = b"fixture bytes are not a genuine native artifact"
+        self.result = {**self.original, "returncode": 0, "artifacts": {"brassclaw-reborn": {
+            "sha256": hashlib.sha256(self.body).hexdigest(), "size": len(self.body)}}}
+        self.files = {"completed.json": encoded(self.result), "image-provenance.json": b"{}",
+                      "cargo.log": b"fixture stdout log", "brassclaw-reborn": self.body}
+        self.volume = SimpleNamespace(read_file=lambda path: [self.files[path.rsplit("/", 1)[-1]]])
+
+    def test_verified_atomic_copy_preserves_old_bytes_on_transfer_or_hash_failure(self):
+        destination = self.directory / "brassclaw-reborn"
+        destination.write_bytes(b"old verified copy")
+        self.files["brassclaw-reborn"] = b"corrupt transfer"
+        with self.assertRaisesRegex(ValueError, "checksum/size"):
+            modal_build.collect_result(self.volume, self.directory, self.original, self.result)
+        self.assertEqual(destination.read_bytes(), b"old verified copy")
+        self.assertEqual(list(self.directory.glob(".download-*")), [])
+        self.files["brassclaw-reborn"] = self.body
+        modal_build.collect_result(self.volume, self.directory, self.original, self.result)
+        self.assertEqual(destination.read_bytes(), self.body)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o500)
+        self.assertEqual((self.directory / "cargo.log").read_bytes(), b"fixture stdout log")
+
+    def test_retained_job_or_original_identity_mismatch_rejects_before_publish(self):
+        wrong = {**self.result, "image_id": "im-other"}
+        with self.assertRaisesRegex(ValueError, "retained original"):
+            modal_build.collect_result(self.volume, self.directory, self.original, wrong)
+        self.assertFalse((self.directory / "brassclaw-reborn").exists())
+
+    def test_original_product_activation_never_qualifies_new_test_mode(self):
+        with self.assertRaisesRegex(ValueError, "DEACTIVATED"):
+            modal_build.require_activation("apple", modal_build.APPLE_TEST_MODE)
+
+    def test_volume_remote_error_does_not_reclassify_completed_job_as_terminal_failure(self):
+        class TransportRemoteError(Exception):
+            pass
+        directory = self.directory / "jobs" / self.original["job_id"]
+        directory.mkdir(parents=True)
+        original = {**self.original, "volume": "original-volume", "environment": "brassclaw"}
+        state = {"state": "collection_pending", "remote_state": "completed", "job_id": original["job_id"],
+                 "function_call_id": "fc-original"}
+        (directory / "state.json").write_bytes(encoded(state))
+        (directory / "request.json").write_bytes(encoded(original))
+        def read_file(path):
+            raise TransportRemoteError("Volume unavailable; not a FunctionCall result")
+        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=lambda *a, **kw: SimpleNamespace(read_file=read_file)),
+                              exception=SimpleNamespace(RemoteError=TransportRemoteError, FunctionTimeoutError=TimeoutError))
+        with patch.dict(sys.modules, {"modal": sdk}), \
+                patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.object(modal_build, "modal_lock", return_value=nullcontext()):
+            with self.assertRaises(TransportRemoteError):
+                modal_build.status(SimpleNamespace(job_id=original["job_id"]))
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_legacy_product_activation_keeps_only_original_product_scope(self):
+        image = {"image_id": "im-original-product"}
+        record = {"active": True, "image_id": image["image_id"], "job_id": self.original["job_id"]}
+        (self.directory / "image-apple.json").write_bytes(encoded(image))
+        (self.directory / "activation-apple.json").write_bytes(encoded(record))
+        with patch.object(modal_build, "records_root", return_value=self.directory):
+            self.assertEqual(modal_build.require_activation("apple", modal_build.APPLE_BUILD_MODE), record)
+            with self.assertRaisesRegex(ValueError, "test mode is DEACTIVATED"):
+                modal_build.require_activation("apple", modal_build.APPLE_TEST_MODE)
+
+    def test_old_image_and_unsupported_modes_reject_before_sdk_import_or_sync(self):
+        from test_modal_build_worker import test_command
+        image = self.directory / "image-apple.json"
+        image.write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
+                                      "environment": "brassclaw", "image_id": "im-old-product"}))
+        with patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.dict(sys.modules, {"modal": None}), patch.object(modal_build, "sync_source") as upload:
+            with self.assertRaisesRegex(ValueError, "exact worker/image"):
+                modal_build.run(arguments(cargo=test_command()))
+            for flags in (["--doc"], ["--profile=release"], ["--", "filter"], ["--test=other"]):
+                with self.subTest(flags=flags), self.assertRaises(ValueError):
+                    modal_build.run(arguments(cargo=[*test_command(), *flags]))
+            upload.assert_not_called()
+
 
 
 if __name__ == "__main__":

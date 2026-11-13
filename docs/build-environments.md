@@ -144,9 +144,11 @@ controller host writing the same Volume under this contract.
 Each result retains its own exact command, source manifest, image, resources and
 artifact identities. Native tests use their existing database/runtime locks;
 supported remote execution needs equivalent fixture custody and compatible
-artifacts. The current Apple controller still supports CLI dev/release builds
-only; the [combined-build plan](../combined-building_v3_at_bob3.md) describes
-future extensions. User permission does not make test transport implemented.
+artifacts. Normal Apple offloading still supports CLI dev/release builds
+only; the qualification-only test preparation described below does not activate
+a test mode; the [combined-build plan](../combined-building_v3_at_bob3.md) describes
+future extensions. User permission alone does not establish test transport
+qualification.
 Different snapshots establish
 different claims; remote compilation cannot certify a newer native test result.
 Screen can keep either launcher running detached; it does not replace these
@@ -163,3 +165,60 @@ through this controller on the qualified image, followed by native startup and
 embedded-byte checks. That live run used the unchanged eight-core settings;
 it does not establish sixteen-core scaling or burst utilization. No separate
 verification-only paid build was run.
+
+## Qualification-only Apple library test preparation
+
+Source support now prepares one bounded command shape through the existing
+controller/worker: `cargo test --locked --no-run --lib -p
+brassclaw_reborn_composition --target aarch64-apple-darwin`. This is compile and
+artifact transport preparation only. No new compiler image was built or
+qualified for this mode by the source change. Ordinary test offloading remains
+**DEACTIVATED**, including with an existing product-build activation. The
+existing `--qualification` route still needs a separately authorized, necessary
+qualification job and a newly prepared exact worker/image. CLI `accept-native`
+and `activate` reject test receipts; a native test/fixture qualification and its
+activation path remain open.
+
+The controller accepts split and `=` forms for its declared value options.
+It supports the default test profile and explicit `--profile test` /
+`--profile=test`. Cargo itself also accepts other profiles and `--release`;
+this bounded preparation rejects them before admission. It also rejects
+`--doc`, bin/integration/bench/example/all-target selection, test-name filters,
+`--` forwarding and custom library harnesses. Named composition features,
+`--all-features` and `--no-default-features` use the captured manifest's explicit
+local feature closure; unresolved/implicit feature forms are rejected. An
+unexpected Cargo feature selection fails collection rather than exporting a
+possibly incompatible program. This is not qualification of every feature set.
+
+For this mode only, omitted message format and the supported JSON forms `json`,
+`json,json-diagnostic-short`, `json,json-diagnostic-rendered-ansi` and
+`json-render-diagnostics` normalize to exactly `--message-format=json` **before**
+admission. Repeated, human or unknown formats are rejected. Requests and results
+retain both the original command and actual normalized invocation. The worker
+logs the entire merged stdout/stderr stream while reading Cargo artifact and
+build-finished JSON messages. Only that invocation's exact package ID, source
+manifest, library target, `profile.test`, features and executable path can
+supply the single required test artifact. Cargo-selected `fresh=true` artifacts
+are eligible; cache globs and mtimes never select a test binary. Missing,
+ambiguous, wrong-profile/target or unexpected test artifacts fail closed.
+
+The executable must be a regular, non-symlink Mach-O arm64 executable within the
+canonical image/Apple-target `debug/deps` directory. The job retains a private
+snapshot and hashes that snapshot, together with image/source/worker identities.
+A synchronized repository never replaces `/opt/brassclaw` in an immutable image.
+New image preparation records the embedded worker/source-sync byte identities
+and supported preparation modes; test admission requires an exact match, and
+the executing worker checks its own bytes. Legacy product image/activation
+records remain valid only for their original product scope.
+
+`run` and `status` use one artifact collector, original job UUID, Volume and
+environment. Downloads stage privately, check size/SHA-256 and rename atomically.
+After a returned remote result, a download failure leaves `collection_pending`
+with `remote_state=completed`. The existing unresolved-job gate conservatively
+blocks new remote synchronization until collection finishes. `status <UUID>`
+recollects the original durable completion, artifacts and logs without Cargo or
+job replay, including after SDK result-handle expiry. Local state becomes
+`completed` / `collection=verified` only after all required transfers succeed.
+That state means verified byte collection; it does not certify native test
+execution, fixtures, shared services, companion workers, compile-time paths or
+product acceptance. Darwin test binaries are never executed on Linux.
