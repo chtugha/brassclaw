@@ -15,7 +15,7 @@ from modal_source_sync import ROOT, cargo_lock
 
 # Cargo's global grammar: https://doc.rust-lang.org/cargo/commands/cargo.html
 # This launcher deliberately rejects aliases, external subcommands, config/-C/-Z
-# and special top-level actions. Direct Cargo under the native lock remains
+# and effectful/unparsed top-level actions. Direct Cargo under the native lock remains
 # available for forms outside this bounded launcher grammar.
 COMPILE_COMMANDS = {"build", "check", "clippy", "test", "run", "bench", "doc",
                     "rustc", "rustdoc", "fix", "install", "package", "publish"}
@@ -35,6 +35,10 @@ def _cargo_subcommand(command):
         index += 1
     while index < len(command) and command[index].startswith("-"):
         arg = command[index]
+        if arg in {"--help", "-h", "--version", "-V", "--list"}:
+            if index != len(command) - 1:
+                raise ValueError("Top-level Cargo inspection must be the final argument")
+            return arg
         if arg in GLOBAL_SWITCHES or re.fullmatch(r"-v{1,2}", arg):
             index += 1
         elif arg == "--color" or arg.startswith("--color="):

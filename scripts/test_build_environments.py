@@ -236,6 +236,35 @@ class LocalRunnerTests(unittest.TestCase):
                 self.assertEqual(execute.call_args.args[0], command)
                 self.assertNotIn("shell", execute.call_args.kwargs)
 
+    def test_existing_standalone_manifest_gates_keep_local_subcommand_options(self):
+        for subcommand, manifest in (("clippy", "tests/monty_control/Cargo.toml"),
+                                    ("test", "tests/monty_v1_upgrade/Cargo.toml"),
+                                    ("test", "tests/monty_legacy_baseline/Cargo.toml")):
+            command = ["cargo", "+1.100.0", "--offline", subcommand,
+                       "--manifest-path", manifest, "--locked", "--",
+                       *(["-D", "warnings"] if subcommand == "clippy" else ["--list"])]
+            with self.subTest(manifest=manifest), \
+                    patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                    patch.object(local_build.shutil, "disk_usage", return_value=self._ample_disk()) as disk, \
+                    patch.object(local_build.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as execute:
+                self.assertEqual(local_build.run_local(command, "inherit"), 0)
+                self.assertEqual(execute.call_args.args[0], command)
+                self.assertEqual(disk.call_count, 2)
+
+    def test_top_level_inspection_and_show_settings_do_not_require_disk_or_cargo(self):
+        for command in (["cargo", "--help"], ["cargo", "--version"],
+                        ["cargo", "+1.100.0", "-v", "--version"], ["cargo", "--list"]):
+            with self.subTest(command=command), \
+                    patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                    patch.object(local_build.shutil, "disk_usage") as disk, \
+                    patch.object(local_build.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as execute:
+                self.assertEqual(local_build.run_local(command, "inherit"), 0)
+                execute.assert_called_once()
+                disk.assert_not_called()
+        with patch.object(local_build.subprocess, "run") as execute:
+            self.assertEqual(local_build.run_local([], "inherit", show_settings=True), 0)
+            execute.assert_not_called()
+
     def test_target_override_whole_cleanup_and_shell_are_rejected(self):
         for command in (["cargo", "build", "--target-dir=/tmp/other"], ["cargo", "clean"],
                         ["sh", "-c", "cargo build"]):
