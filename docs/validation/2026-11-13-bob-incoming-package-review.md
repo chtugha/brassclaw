@@ -13,7 +13,7 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `d41db6c37`; guarded repair accepted as Main `3cd63dfc3`, full B1-06 open |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `530a6855f`, report `e6e51253a`; Run-60 causes corrected in source, new validation pending |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `530a6855f`, report `e6e51253a`; Run-63 fails on one unused trait import |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### B1 guarded repair accepted — full B1-06 remains open
@@ -354,17 +354,35 @@ not compiler-observed dead-code diagnostics: type errors prevented full lint
 acceptance. No native or PG tests ran. Main remains `981fbb4db`; Root has returned
 to Main, leaving the failed candidate preserved and the source freeze released.
 
-### B3-06 `530a6855f`, report `e6e51253a` — corrected source, next gate pending
+### B3-06 `530a6855f`, report `e6e51253a` — actual Run-63 lint failure
 
 The package exposes the existing verified prepare operation in production,
 normalizes only the confirmation caller's successful return to unit, restores
 test-only factory/provider bridges and removes the now-unused split-pool test
 entry point and forwarding layer. The reviewed diff preserves the underlying
 subject/selection/worker/captured-limit/input checks. This addresses the actual
-Run-60 causes and connected reachability findings in source. Root's current B1
-native candidate does not include it. New B3 strict compilation and five-case
-PostgreSQL acceptance follow after the active B1 gate; no new compiler or runtime
-pass is inferred from this source review.
+Run-60 causes and connected reachability findings in source. After accepting B1,
+Root squashes this final B3 source onto Main `8413264ea` in isolated candidate
+`codex/b3-06-corrected-integration-20261113`, `a490247b2`, including the embedded
+B1/B3 release notes. Main still excludes both B3 and those new changelog bytes.
+
+Actual Run-63 full-feature all-targets strict Rust 1.100 Clippy exits 101 in
+62.697 seconds, unchanged source. The observed diagnostic is `unused_imports`
+for `crate::global_task_factory::MontyCatalogueProvider` at
+`review_work_reconciliation.rs:15`. Remove that import from the package: this
+module calls the concrete catalogue method and no longer needs that trait.
+No suppression or artificial call is needed. The earlier missing-prepare and
+action-result diagnostics do not recur, but this is not full lint acceptance.
+
+Complete receipts remain in
+`target/validation/bob-native-repair-20261105/run-63-b306-corrected-clippy/`.
+No new native build/test has started. Root returns to accepted Main, releasing
+the source freeze and preserving the failed candidate. The prepared next native
+batch reuses the unchanged, hash-verified Run-62 worker and current incremental
+graphs; it will compile the combined Composition/embedded release notes once,
+then exercise eleven B1 cases, five B3 cases, the existing native seed checker
+and the existing live retained structural-Q1 case. It waits for a corrected
+strict pass; these eighteen cases are planned, not claimed as executed.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.
