@@ -68,8 +68,8 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Four external package branches remain **unmerged**: B1-06 `266bea0d7`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `f5493ff04`, B3-09 `e683aa024`. Review corrections return
+Four external package branches remain **unmerged**: B1-06 `c0cdb7ccd`, B2-02
+`e0be06d8f` (source `78147448b`), B3-06 `6655c63e0`, B3-09 `ff186d9b8`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Root stays on Main and preserves unrelated human
 working changes. Package chats must not switch that checkout or unlink the
@@ -84,6 +84,13 @@ The actual class-22 dispatcher, immutable viewed-decision binding, B2 historical
 strictness/original limits/base validation and B3 qualified selection/commit
 custody remain review blockers. B2's shared-owner and explicit nil/zero checks
 are corrected in source; its direct Rustfmt check fails, and Cargo is not run.
+B1 now closes unsupported authored approval creation; full producers and typed Q2
+remain open. B3-06's coherent reads/write guard are corrected, but its new checksum
+read conflicts with the TEXT schema and it still selects unqualified heads without
+bounded resolution or real lost-ACK coverage. B3-09's React boundary is corrected;
+its new backend helper has a trait-implementation error and substitutes legacy
+graduation for the required immutable decision. Its revised 35 UI cases pass;
+B1/B3-06 direct formatter checks pass. No new Cargo/native acceptance is claimed.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
 Before native continuation, collect accepted package corrections and compile

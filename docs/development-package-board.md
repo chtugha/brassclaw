@@ -113,10 +113,10 @@ The four externally prepared package branches remain separate from Main:
 
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
-| B1-06 | `266bea0d7` | Q1 stage binding corrected; own Pure behavior/Q2 producer and decision binding remain open. |
+| B1-06 | `c0cdb7ccd` | Unsupported authored creation closed; unused test helper/future activation instructions need correction; full B1 remains open. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
-| B3-06 | `f5493ff04` | Feature/lock report corrected; qualified coherent selection and cancellation/commit custody remain unresolved. |
-| B3-09 | `e683aa024` | 35 UI cases pass; actual class-22 dispatcher and immutable viewed-decision binding are missing. |
+| B3-06 | `6655c63e0` (`8f46752d6` source) | Coherent reads/write guard corrected; checksum SQL type, qualified selection, bounded resolution and actual lost-ACK cases remain open. |
+| B3-09 | `ff186d9b8` | React boundary corrected and 35 UI cases pass; new Rust helper has a trait-implementation error and bypasses the required immutable decision contract. |
 
 Reserve unpublished migration V214 for B1 and V215 for B2. Package authors
 must not switch Root's checkout or delete the shared Cargo lock file. Release

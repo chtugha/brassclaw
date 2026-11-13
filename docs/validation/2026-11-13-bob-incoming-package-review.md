@@ -10,10 +10,10 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `266bea0d7a3ea577e7cfe43d241dd908b477ebf6` |
+| B1-06 | `codex/b1-06-approval-writer` | `c0cdb7ccd6c9e3fba9da37995411aeecb25442d7` |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `f5493ff046db0cb689966bd5e9604a7d4fde3d74` |
-| B3-09 | `codex/b3-09-webui-review-panels` | `e683aa024702ac3849a0790987ed866c81760549` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `6655c63e0fecd61498096494ad4efee64023f02b` |
+| B3-09 | `codex/b3-09-webui-review-panels` | `ff186d9b8fc5cb449feffa01d4ed2c734cfedca0` |
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.
@@ -50,6 +50,29 @@ No additional installed human Q2 is needed for genuine shipped seeds.
 B1-06 still owns the class/profile decision dispatcher, displayed-subject and
 evidence CAS, trustworthy producer linkage and the atomic approval/link write.
 The package must not be marked complete from these narrower writer changes.
+
+### B1 follow-up `d70f23958` / `825591821`, report `c0cdb7ccd`
+
+The writer now explicitly rejects authored declarations before database access.
+This closes the unsupported authored creation path while preserving the controlled
+seed path and existing public read APIs. It is a bounded repair checkpoint, not
+completion of B1-06 or general Pure approval. The dormant subject-binding code
+below the guard is not evidence of supported approval execution.
+
+Remaining owner corrections concern an unused `legacy_evidence_json` test helper
+and the future activation instructions. The actual selection table is
+`reborn_component_validator_selections`, not
+`reborn_retained_validator_selections`. Rejecting only `preparation-only` would
+still admit the Source-only `qualified-pure-source-prerequisite` profile;
+`source_qualification() == None` also does not prove complete Q1. Reopening needs
+a positively authenticated complete qualification from the existing owner.
+Trusted pure/workflow Q2 writing remains B1-06, with B3-09 consuming that interface.
+
+All eight listed tests, including the three ordinary `#[test]` functions, are
+inside the `postgres,skills-db`-gated module. The handoff's unit selectors without
+features may select zero tests. Root's direct Rust 1.100 formatter check passes
+on the writer and test file with unchanged source. No Cargo, PostgreSQL run or
+full B1 acceptance is claimed.
 
 ## B2-02 — `/2` reader and retention, initial `27267af66` review
 
@@ -139,6 +162,35 @@ It tests idempotency; it does not cut an ACK or cancel an in-flight commit.
 Retain that useful case under its actual scope and add genuine PostgreSQL fault
 acceptance through the existing ACK-cut/transaction test support.
 
+### B3-06 follow-up `8f46752d6`, report `6655c63e0`
+
+The five allocation-head reads now share RepeatableRead, and the write uses
+the existing EvidenceClient guard with recycling only after acknowledged commit.
+These source changes address mixed-read snapshots and uncertain connection
+recycling. They do not establish qualified selection or bounded reconciliation.
+
+Further source findings returned to the owner:
+
+- The new checksum query reads `reborn_component_revisions.checksum` into
+  `Vec<u8>`. V101 and the current revision-store reader define that column as
+  hex `TEXT`; this typed `Row::get` is incompatible and can panic. Reuse the
+  checked revision reader rather than duplicating a wrong wire conversion.
+- The same transaction still selects `last_version` allocation heads. Coherent
+  drafts are not qualified packaged references. No check establishes the
+  provenance claimed in the method comment. B1-07/B2-04 own the actual qualified
+  selector; absent support must remain explicit rather than use draft heads.
+- `bootstrap_evidence::io::acquire` supplies custody only. It does not apply the
+  acknowledged Store deadline. The write/readback calls remain outside the
+  reconciler timeout without a replacement bounded original-resolution contract.
+- The new BEFORE-INSERT trigger exercises a real statement failure/rollback,
+  not lost COMMIT acknowledgement. The remaining comment claiming Case 3b
+  covers real lost ACK is incorrect. Keep the rollback test, restrict its fault
+  to the exact submission, and add genuine held/lost-ACK acceptance through the
+  existing `AckCutTransport` support.
+
+Root's direct Rust 1.100 formatter check passes on both changed Rust files with
+unchanged source. No Rust compilation or PostgreSQL execution occurs here.
+
 ## B3-09 — displayed review and actual mutation path
 
 The panel reads the original immutable submission, which is the correct
@@ -160,6 +212,40 @@ with B1. Reuse its trusted writers rather than creating a generic status-only
 approval shortcut. Test real HTTP/store behavior for class 21/22, changed views,
 rejection and unknown acknowledgement as applicable. Static render fixtures do
 not establish those backend properties.
+
+### B3-09 follow-up `ff186d9b8`
+
+The wrapper now constructs a React element for the inner component, correcting
+the missing component boundary. Root reruns the changed panel/queue fixtures:
+35 pass, zero fail/skip. They exercise static rendering, not actual React
+rerender lifecycle or backend decisions. The unchanged provider baseline is
+reused rather than rerun.
+
+The added Rust class-22 helper is not accepted:
+
+1. `update_python_code_validation_status` is placed inside `impl RecipeStore for
+   PgRecipeStoreFacade`, but the trait declares no such method. This is a
+   source-visible compilation error; use an appropriate existing implementation
+   boundary, without inventing an unnecessary trait requirement.
+2. `ValidationQueueStore::approve` performs legacy mutable graduation and writes
+   its receipt. It does not supply B1's qualified immutable Pure approval and
+   submission link. A `human` string or queue status cannot substitute for the
+   trusted typed decision writer. Keep unsupported profiles closed.
+3. Requests still carry no expected original view. After one review is completed
+   and a successor review of the same UUID is prepared, an old browser can approve
+   the new internally consistent review. Server-side internal consistency alone
+   cannot detect that the operator viewed the earlier subject. Bind the actual
+   displayed original/evidence/base identity through the existing decision surface.
+4. The new helper maps `ReviewChanged` to `RecipeStoreError::Invalid`; the actual
+   services mapper converts that to HTTP 400. The claimed 409 path is not preserved.
+5. The rejection branch still writes `rejected` without a matching Q2 row. Reject
+   absent/wrong review state rather than mutate an unrelated approved projection.
+   Return actual decision metadata: fixed previous status/attempt counts and the
+   missing-readback fallback to `validated` do not prove success.
+
+B1-06 owns the trusted backend dispatcher and immutable decision transaction;
+B3-09 owns presentation/client wiring. Return these corrections to their owners
+before full-feature compilation; the UI pass does not qualify the Rust change.
 
 ## Actual checks and next acceptance
 
