@@ -216,6 +216,10 @@ def run(args):
                     try:
                         result = call.get(timeout=5)
                         break
+                    except (modal.exception.FunctionTimeoutError, modal.exception.RemoteError):
+                        # A terminal Function result is never an empty poll.
+                        # Leave run; status reconciles any durable worker receipt.
+                        raise
                     except TimeoutError:
                         continue
                 # Remote termination and verified local collection are distinct.
@@ -339,20 +343,29 @@ def status(args):
             result = json.loads(b"".join(volume.read_file(
                 f'/cache/jobs/{original["job_id"]}/completed.json')))
         else:
+            terminal_error = None
             try:
                 result = modal.FunctionCall.from_id(state["function_call_id"]).get(timeout=0)
+            except (modal.exception.FunctionTimeoutError, modal.exception.RemoteError) as error:
+                terminal_error = error
             except TimeoutError:
                 print(json.dumps(state, indent=2))
                 return
-            except (modal.exception.FunctionTimeoutError, modal.exception.RemoteError) as error:
-                # Only actual terminal FunctionCall errors establish this state.
+            if terminal_error is not None:
+                # A function can fail after the worker persisted its completion.
+                # Volume reads are outside the FunctionCall exception handler:
+                # transport failure cannot establish a missing worker receipt.
                 write_record(path.with_name("terminal.json"), {
                     "function_call_id": state["function_call_id"], "job_id": state["job_id"],
-                    "remote_result_exception": type(error).__name__, "message": str(error)})
-                state.update(state="failed", reason="terminal remote result without a worker completion receipt")
-                write_record(path, state)
-                print(json.dumps(state, indent=2))
-                return
+                    "remote_result_exception": type(terminal_error).__name__, "message": str(terminal_error)})
+                try:
+                    result = json.loads(b"".join(volume.read_file(
+                        f'/cache/jobs/{original["job_id"]}/completed.json')))
+                except FileNotFoundError:
+                    state.update(state="failed", reason="terminal remote result without a worker completion receipt")
+                    write_record(path, state)
+                    print(json.dumps(state, indent=2))
+                    return
         state.update(state="collection_pending", remote_state="completed")
         write_record(path, state)
         collect_result(volume, path.parent, original, result)

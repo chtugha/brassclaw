@@ -22,6 +22,27 @@ from modal_build_worker import encoded
 from test_modal_source_sync import SourceFixture
 
 
+# Modal 1.6.3: FunctionTimeoutError -> modal TimeoutError -> Error.
+# The SDK TimeoutError is distinct from Python's built-in poll TimeoutError.
+class SDKError(Exception):
+    pass
+
+
+class SDKTimeoutError(SDKError):
+    pass
+
+
+class SDKFunctionTimeoutError(SDKTimeoutError):
+    pass
+
+
+class SDKRemoteError(SDKError):
+    pass
+
+
+SDK_EXCEPTIONS = SimpleNamespace(FunctionTimeoutError=SDKFunctionTimeoutError, RemoteError=SDKRemoteError)
+
+
 def arguments(**overrides):
     values = dict(config=None, platform="apple", environment="brassclaw", volume="brassclaw-build",
                   qualification=True, confirmed_modal=True, estimated_local_secs=600,
@@ -313,7 +334,13 @@ class ControllerTests(SourceFixture):
     def test_test_preparation_pins_normalized_command_worker_and_subject_in_transport(self):
         self._run_transport(test_mode=True)
 
-    def _run_transport(self, fail_download=False, test_mode=False):
+    def test_run_terminal_sdk_timeout_exits_polling(self):
+        self._run_transport(terminal_error=SDKFunctionTimeoutError("function terminated"))
+
+    def test_run_builtin_poll_timeout_continues_to_result(self):
+        self._run_transport(poll_once=True)
+
+    def _run_transport(self, fail_download=False, test_mode=False, terminal_error=None, poll_once=False):
         # Mock SDK transport only. This does not execute/qualify a remote worker.
         (self.root / "scripts").mkdir()
         (self.root / "scripts/modal_build_worker.py").write_text("# fixture identity\n")
@@ -334,7 +361,7 @@ class ControllerTests(SourceFixture):
                                                                "worker_identity": modal_build.worker_identity(),
                                                                "supported_modes": [modal_build.APPLE_TEST_MODE]}))
         resources, submitted = {}, {}
-        spawns = []
+        spawns, gets = [], []
         remote_files = {sync.MANIFEST_PATH: manifest_bytes, sync.BASE_MANIFEST_PATH: manifest_bytes}
 
         class App:
@@ -364,7 +391,16 @@ class ControllerTests(SourceFixture):
                         remote_files[prefix + "/completed.json"] = encoded(result)
                         remote_files[prefix + "/image-provenance.json"] = b"{}"
                         remote_files[prefix + "/cargo.log"] = b"SDK fixture; no Cargo executed\n"
-                        return SimpleNamespace(object_id="fc-test", get=lambda **kwargs: result)
+                        def get(**kwargs):
+                            gets.append(kwargs)
+                            if len(gets) > 2:
+                                raise AssertionError("Terminal result was polled repeatedly")
+                            if terminal_error is not None:
+                                raise terminal_error
+                            if poll_once and len(gets) == 1:
+                                raise TimeoutError("ordinary empty poll")
+                            return result
+                        return SimpleNamespace(object_id="fc-test", get=get)
                     return SimpleNamespace(spawn=spawn)
                 return decorate
 
@@ -377,7 +413,8 @@ class ControllerTests(SourceFixture):
                 raise OSError("collection transport interrupted")
             return [remote_files[path]]
         volume = SimpleNamespace(read_file=read_file)
-        sdk = SimpleNamespace(App=lambda *a, **kw: App(), enable_output=nullcontext,
+        sdk = SimpleNamespace(exception=SDK_EXCEPTIONS,
+                              App=lambda *a, **kw: App(), enable_output=nullcontext,
                               Volume=SimpleNamespace(from_name=lambda *a, **kw: volume),
                               Image=SimpleNamespace(from_id=lambda value: SimpleNamespace(object_id=value)))
         env = {"BRASSCLAW_CARGO_LOCK": str(self.base / "local.lock"),
@@ -396,7 +433,16 @@ class ControllerTests(SourceFixture):
                 patch.object(modal_build, "rust_version", return_value="1.96.0"), \
                 patch.object(modal_build, "sync_source", side_effect=check_sync_lock) as upload, \
                 sync.cargo_lock():
-            if not fail_download:
+            if terminal_error is not None:
+                with self.assertRaises(type(terminal_error)):
+                    modal_build.run(arguments(cpu_limit=16, jobs=16))
+                self.assertEqual(len(gets), 1, "terminal Function result must immediately leave run")
+                state_path = records / "jobs" / submitted["job_id"] / "state.json"
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual(state["state"], "unresolved")
+                self.assertNotIn("collection", state)
+                self.assertFalse(state_path.with_name("completed.json").exists())
+            elif not fail_download:
                 options = dict(cpu_limit=16, jobs=16)
                 if test_mode:
                     from test_modal_build_worker import test_command
@@ -416,6 +462,8 @@ class ControllerTests(SourceFixture):
                 state = json.loads(state_path.read_bytes())
                 self.assertEqual((state["state"], state["collection"]), ("completed", "verified"))
                 self.assertEqual(spawns, [submitted["job_id"]])
+        if poll_once:
+            self.assertEqual(len(gets), 2)
         if test_mode:
             self.assertEqual(submitted["command"][-1], "--message-format=json")
             self.assertEqual(submitted["original_command"][-1], "--message-format=json-render-diagnostics")
@@ -447,11 +495,13 @@ class CollectionBoundaryTests(unittest.TestCase):
                       "cargo.log": b"fixture stdout log", "brassclaw-reborn": self.body}
         self.volume = SimpleNamespace(read_file=lambda path: [self.files[path.rsplit("/", 1)[-1]]])
 
-    def status_fixture(self, state_name="unresolved"):
+    def status_fixture(self, state_name="unresolved", call_error=None):
         directory = self.directory / "jobs" / self.original["job_id"]
         directory.mkdir(parents=True)
         original = {**self.original, "volume": "original-volume", "environment": "brassclaw"}
         state = {"state": state_name, "job_id": original["job_id"]}  # Spawn answer/handle lost.
+        if call_error is not None:
+            state["function_call_id"] = "fc-original"
         (directory / "state.json").write_bytes(encoded(state))
         (directory / "request.json").write_bytes(encoded(original))
         reads, selected = [], []
@@ -467,15 +517,66 @@ class CollectionBoundaryTests(unittest.TestCase):
         def from_name(name, **kwargs):
             selected.append((name, kwargs))
             return SimpleNamespace(read_file=read_file)
-        # Intentionally no FunctionCall/App/spawn surface: recovery must work
-        # solely from the original durable Volume receipt and byte snapshots.
-        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=from_name))
+        # Without call_error there is no FunctionCall/App/spawn surface:
+        # handleless recovery uses only the original durable Volume snapshots.
+        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=from_name), exception=SDK_EXCEPTIONS)
+        if call_error is not None:
+            def get(**kwargs):
+                raise call_error
+            sdk.FunctionCall = SimpleNamespace(from_id=lambda value: SimpleNamespace(get=get))
         def invoke():
             with patch.dict(sys.modules, {"modal": sdk}), \
                     patch.object(modal_build, "records_root", return_value=self.directory), \
                     patch.object(modal_build, "modal_lock", return_value=nullcontext()):
                 modal_build.status(SimpleNamespace(job_id=original["job_id"], volume="wrong-current-volume"))
         return directory, state, reads, selected, invoke
+
+    def assert_terminal_receipt_recovery(self, error):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=error)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        observed = json.loads((directory / "terminal.json").read_bytes())
+        self.assertEqual(observed["remote_result_exception"], type(error).__name__)
+
+    def test_terminal_sdk_timeout_recovers_successful_worker_receipt(self):
+        self.assertTrue(issubclass(SDKFunctionTimeoutError, SDKTimeoutError))
+        self.assertFalse(issubclass(SDKFunctionTimeoutError, TimeoutError))
+        self.assert_terminal_receipt_recovery(SDKFunctionTimeoutError("terminal SDK timeout"))
+
+    def test_terminal_remote_error_recovers_successful_worker_receipt(self):
+        self.assert_terminal_receipt_recovery(SDKRemoteError("return failed after durable completion"))
+
+    def test_builtin_poll_timeout_leaves_status_running_without_claiming_terminal(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=TimeoutError("poll"))
+        invoke()
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertEqual(reads, [])
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_terminal_sdk_error_with_confirmed_missing_receipt_is_failed_without_collection(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKFunctionTimeoutError("terminal"))
+        del self.files["completed.json"]
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "failed")
+        self.assertNotIn("collection", recovered)
+        self.assertFalse((directory / "completed.json").exists())
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_terminal_result_with_volume_transport_error_stays_unconfirmed_then_recovers(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKRemoteError("terminal Function result"))
+        self.files["completed.json"] = SDKRemoteError("Volume transport unavailable")
+        with self.assertRaisesRegex(SDKRemoteError, "Volume transport"):
+            invoke()
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+        # Keep the terminal Function result but restore its original durable data.
+        self.files["completed.json"] = encoded(self.result)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
 
     def test_lost_spawn_handle_recovers_from_original_durable_job_receipt(self):
         directory, state, reads, selected, invoke = self.status_fixture("submitting")

@@ -222,7 +222,14 @@ unconfirmed. Canonical regular local artifact files are reused only after size
 and SHA-256 verification; corrupt, missing or symlink copies are fetched again
 from the original job. Repeated status calls therefore do not retransmit a valid
 large binary. No Cargo or job replay occurs, including after SDK result-handle
-expiry. Local state becomes
+expiry. Terminal FunctionTimeoutError/RemoteError results leave the run polling
+loop; ordinary Python poll TimeoutError continues polling. Status checks the
+original durable worker completion before classifying a terminal SDK result as
+failed: a valid completion uses the same collector even if the function failed
+after persisting it. Confirmed absent receipts permit terminal failure; Volume
+transport failures leave collection unconfirmed. The terminal receipt records
+the SDK exception and can coexist with a reconciled successful worker result.
+Local state becomes
 `completed` / `collection=verified` only after all required transfers succeed.
 That state means verified byte collection; it does not certify native test
 execution, fixtures, shared services, companion workers, compile-time paths or
