@@ -19,6 +19,7 @@ import { ComponentDeploymentPanel } from "./component-deployment-panel.js";
 import { ComponentSubmissionPanel } from "./component-submission-panel.js";
 import { ComponentDetailPane, componentTypeForClass } from "./component-detail-pane.js";
 import { Section } from "./component-detail-primitives.js";
+import { ValidatorReviewPanel } from "./validator-review-panel.js";
 
 export function ValidationQueueTab({ searchQuery = "" }) {
   return html`<div className="space-y-4"><${PostTurnReviewPanel} /><${ComponentDeploymentPanel} /><${CatalogueRoutingPanel} /><${ValidationQueueContents} searchQuery=${searchQuery} /></div>`;
@@ -166,9 +167,10 @@ function QueueRow({ item }) {
   const originalState = item.original_review?.state;
   const originalBlocked = originalState && originalState !== "bound";
   const isQ2 = item.queue_code === "q2_manual";
-  // The current facade only supports the Recipe manual action. Listing an
-  // original for other classes does not create their B2 approval writer.
-  const showQ2Actions = isQ2 && item.class_code === 21;
+  // Class 21 (Recipe) and 22 (PythonCode) both have a connected Q2 approve/
+  // reject path through the typed B1 class/profile dispatcher (B3-09 req 4).
+  // Other classes either lack a connected writer or use the LLM-audit path.
+  const showQ2Actions = isQ2 && (item.class_code === 21 || item.class_code === 22);
   const auditBlocked =
     LLM_AUDIT_CLASS_CODES.has(item.class_code) &&
     item.llm_audit_status !== "clean" &&
@@ -297,7 +299,12 @@ function QueueRow({ item }) {
       ${expanded &&
         html`<div className="mt-3 space-y-4">
           <${LlmAuditPanel} item=${item} />
-          ${detailType
+          ${(item.class_code === 21 || item.class_code === 22)
+            ? html`<${ValidatorReviewPanel}
+                item=${item}
+                onDone=${invalidateQueue}
+              />`
+            : detailType
             ? html`<${ComponentDetailPane}
                 componentType=${detailType}
                 id=${item.id}

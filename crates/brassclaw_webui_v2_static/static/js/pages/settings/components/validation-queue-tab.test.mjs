@@ -108,16 +108,28 @@ for (const language of ["en", "de"]) {
     });
   }
 }
-for (const classCode of [1, 22]) {
-  test(`joint class ${classCode} shows the missing action and offers no partial Q2 button`, () => {
-    const f = fixture({ state: "joint_unsupported", classCode }); const tree = f.render();
-    assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
-    assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
-    assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
-    assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
-    assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
-  });
-}
+// Class 1 (Skill): no Q2 writer connected — shows actionUnavailable and no buttons.
+test("joint class 1 shows the missing action and offers no partial Q2 button", () => {
+  const f = fixture({ state: "joint_unsupported", classCode: 1 }); const tree = f.render();
+  assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
+  assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
+  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+  assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
+  assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
+});
+// Class 22 (PythonCode): Q2 writer now connected (B3-09). joint_unsupported blocks
+// the original (originalBlocked=true) so buttons exist but are disabled.
+test("joint class 22 shows the original message and offers disabled Q2 buttons", () => {
+  const f = fixture({ state: "joint_unsupported", classCode: 22 }); const tree = f.render();
+  assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
+  // actionUnavailable is not shown for class 22 — the action is now connected.
+  assert.equal(visible(tree, f.pack["validationQueue.original.actionUnavailable"]), false);
+  // Buttons exist but are disabled because the original is blocked.
+  const approveBtn = button(tree, f.t("validationQueue.validate"));
+  assert.ok(approveBtn, "validate button must exist for class 22");
+  assert.equal(prop(approveBtn, "disabled"), true, "validate must be disabled when original is blocked");
+  assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
+});
 test("a bound Recipe Q2 row keeps its existing approval affordance without claiming backend success", () => {
   const f = fixture({ state: "bound" }); const tree = f.render();
   const approve = button(tree, f.t("validationQueue.validate"));
