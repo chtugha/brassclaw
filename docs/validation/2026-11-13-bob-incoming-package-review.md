@@ -1,8 +1,9 @@
 # Incoming Bob package review — 2026-11-13
 
 This is a supervisor source-review and bounded acceptance checkpoint. The
-inspection-only B3-09 slice is accepted into Main; the other packages remain
-unaccepted and no complete Bob step is claimed. The four component guides and the
+guarded B1-06 repair, bounded B3-06 validator-original preparation and
+inspection-only B3-09 slice are accepted for Main. B2-02 remains unaccepted,
+and no complete Bob step is claimed. The four component guides and the
 three Bob plans remain binding; reports and structural parsing grant no approval.
 Main's reviewed compatibility checkpoint is `d24a87508`. Review corrections go
 back to the existing package owners, not a second implementation service.
@@ -13,7 +14,7 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `d41db6c37`; guarded repair accepted as Main `3cd63dfc3`, full B1-06 open |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `473027913`, report `e6e51253a`; Run-64 fails on test helper type |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `a069f5df3`, report `e6e51253a`; bounded candidate `8632c5d8b` accepted by Run-65/66 |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### B1 guarded repair accepted — full B1-06 remains open
@@ -24,7 +25,46 @@ candidate `codex/b1-06-reviewed-integration-20261113`, commit `3cd63dfc3`. Thus 
 reverted intermediate `3f802f79c` commit is not added to the integration ancestry.
 The three source/migration blobs match the package tip exactly. B3/B2 are absent.
 
-Current B3 successor: `473027913` removes the actual unused import. Root reviews
+### B3 validator-original preparation accepted — full B3-06/07 remains open
+
+Latest B3 successor: `a069f5df3` corrects the helper's crate-root type. Candidate
+`8632c5d8b` matches all five package code blobs and includes the embedded release
+notes. Run-65 strict Rust 1.100 full-feature/all-targets Clippy passes in 116.736
+seconds (batch 122.054); Run-66 native Rust 1.98.1 test-program compilation passes
+in 696.795 seconds (batch 703.576). Both have zero warnings and unchanged inputs.
+The current Composition image is
+`b514831339984637375a2f7838093274b448eaba694b5c0c15d0358863eb285d`.
+
+The original native invocation passes all eleven B1 cases, but the five B3 cases
+fail at runtime startup. Root's packaging omitted the verified reused worker
+beside the retained executable. `installed_worker()` correctly requires this
+trusted companion; no PATH or caller-controlled fallback is added. The original
+failed receipt remains unchanged. `packaging-correction.json` records staging
+worker `6fa024c3faf3a57d7c64b1f64df16eee4db75993ad927b22c2a220dbdcfb0ee9`
+beside the executable without recompilation or product-source changes.
+
+The continuation under `packaging-corrected-native-acceptance` passes all seven
+cases in 1595.174 seconds: the five B3 production-path cases plus native seed
+compatibility and live structural-Q1 evidence persistence. Eleven unchanged
+passing B1 results are reused separately. Source and artifact guards pass; the
+post-run [aggregate acceptance](../../target/validation/bob-native-repair-20261105/run-66-b306-native/accepted.json)
+records eighteen passing cases and preserves the original failed receipt.
+
+The ACK-cut case uses the real production entry point and the same capacity-1
+pool for write and recovery; it verifies the persisted checksum, one cut, a new
+backend session and no duplicate. Rollback and repeated-request cases pass.
+The test-only preflight checks its actual SSDE write volume and system reserve;
+Cargo's target-volume compilation gate is unchanged. No warning suppression,
+product fallback or extra worker compilation was introduced.
+
+Root accepts this bounded runtime slice and compiled release notes for Main;
+all owned checks are terminal and the freeze is released. Full B3-06/07,
+qualified B1-07/B2-04 selection, full-Q1/behavior/human-Q2 and cold recovery remain
+open. B1's authored writer guard stays closed. B2's four review findings remain
+with its owner. Only unembedded development/status/plan prose changes follow
+this acceptance, with scope classification and whitespace review.
+
+Historical B3 predecessor: `473027913` removes the actual unused import. Root reviews
 that exact delta, updates the isolated corrected candidate with Main's current
 unembedded status and cherry-picks the fix as `b1b1fd0b0`. All five changed B3
 code blobs match the package tip exactly. Actual Run-64 strict Clippy exits 101

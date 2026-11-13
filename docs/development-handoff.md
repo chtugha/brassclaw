@@ -68,7 +68,34 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-**Latest B3 gate terminal:** candidate `b1b1fd0b0` on
+**B3 validator-original preparation accepted:** candidate `8632c5d8b` includes
+package `a069f5df3`; all five B3 code blobs match the package. Run-65 strict
+Rust 1.100 full-feature/all-targets Clippy passes without warnings in 116.736
+seconds. Run-66 native test-program compilation passes without warnings in
+696.795 seconds. The combined acceptance covers eighteen cases: eleven unchanged
+passing B1 results plus seven passing continuation results (five B3 cases,
+existing seed compatibility and live structural-Q1 evidence). Source and image
+guards pass; the separate post-run `run-66-b306-native/accepted.json` binds them.
+
+Root's first test package omitted its verified companion worker. That original
+five-case startup failure remains preserved. Staging the exact worker beside the
+retained executable fixes the package without product changes or recompilation.
+The seven-case continuation passes in 1595.174 seconds. Its real capacity-1 pool
+ACK-cut test resolves the committed original and verifies a new backend session;
+rollback and repeated-request cases also pass. No tests are ignored.
+
+All owned validation is terminal and source freeze is released. Root integrates
+the reviewed runtime slice and already-compiled B1/B3 CHANGELOG additions into
+Main. Full B3-06/07, qualified production selection, full-Q1/behavior/human-Q2 and
+cold recovery remain open under their existing owners. B1's authored writer stays
+closed. This is neither full Bob completion nor platform/deployment acceptance.
+
+Tests write their data/logs/TMPDIR below SSDE; their launcher checks that volume
+and the system free-space reserve. The compilation disk gate remains unchanged;
+the current target's utilization requires capacity recovery before another Cargo
+run. Never rerun consumed cleanup scripts. Keep current native caches and images.
+
+**Historical Run-64 failure:** candidate `b1b1fd0b0` on
 `codex/b3-06-corrected-integration-20261113` contains reviewed `473027913` and
 the embedded B1/B3 release notes. Run-64 strict full-feature all-targets Clippy
 exits 101 in 115.515 seconds, source unchanged. The import issue is gone and the
@@ -91,22 +118,15 @@ are retained under Run-62. Native test image SHA-256:
 `73932313718fc77904c171af2b9cf06b4219a46c552e23300a4c87b8cc065e0b`.
 All owned validation is terminal and source freeze released. B1-06 remains open
 for qualified producers/full-Q1/exact-view Q2/routes; keep its authored guard.
-The release-note edit is retained in B3 candidate `a490247b2`: CHANGELOG is
-embedded and must be compiled with that batch, not claimed against Run-62's old bytes.
+The B1/B3 release-note bytes are now compiled and covered by Run-66; Run-62's
+old embedded bytes remain historical and are not relabelled.
 
-Two incoming runtime packages remain **unaccepted into Main**: B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `530a6855f` (report `e6e51253a`).
-The old failed B3 candidate `3dd52ec6e` remains preserved. Corrected source is
-squashed with embedded B1/B3 release notes into the separate local candidate
-`codex/b3-06-corrected-integration-20261113` at `a490247b2`. Actual Run-63 strict
-full-feature Clippy fails (exit 101, 62.697 seconds, unchanged source) on one
-observed unused import, MontyCatalogueProvider at reconciler line 15. Remove it
-in the package; preserve actual preparation/error propagation and do not suppress.
-No native build is started. The eighteen-case runner is prepared under /private/tmp
-for the next strict pass, reusing the unchanged Run-62 worker/current codegen cache.
-Root returns to Main, owned jobs terminal and source freeze released. Never rerun
-the two consumed Run-62 cache cleanup scripts/manifests; their archives live in
-Run-62 capacity-recovery. Keep all current Composition/native graphs.
+B2-02 `e0be06d8f` (source `78147448b`) remains unaccepted. Its `/1` strictness,
+original limits, base structure and formatting corrections must return through
+its owner. B3's earlier failed candidates and Run-60/63/64 diagnostics remain
+historical, superseded by the accepted Run-65/66 slice above. V214 is reserved
+for B1 and V215 for B2. Never rerun the consumed Run-62 cache-cleanup scripts;
+their archives remain under Run-62 capacity-recovery.
 B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is

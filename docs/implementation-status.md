@@ -53,15 +53,16 @@ Run-57-r1 default workspace/all-targets strict check passes on `d24a87508` in
 unchanged source. The next compatibility command stops before Cargo at the
 disk gate; this is not a whole-batch or native acceptance pass.
 
-### Bob inspection slice accepted; remaining packages open
+### Bob repair slices accepted; remaining owner work open
 
 B1-06's guarded repair `d41db6c37` is accepted as Main `3cd63dfc3`;
 full B1-06 producer/Q2/route integration remains open. B2-02 `e0be06d8f` (source
-`78147448b`) and B3-06 `473027913` remain unaccepted incoming runtime work.
+`78147448b`) remains unaccepted. B3-06's bounded validator-original preparation
+slice through `a069f5df3` is accepted with the scope recorded below.
 B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
-readers, coherent qualified validator selection, cancelled/unknown commits and
+readers, coherent qualified validator selection, full interrupted/cold recovery and
 the actual class-21/22 prepared-view decision path. B3-09's 41 UI tests pass; the same
 11 pre-existing provider tests fail on both source trees. Neither result grants
 component approval. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
@@ -79,20 +80,25 @@ worker/native test programs link warning-free with retained unwind sections;
 all eleven B1 cases and the existing native seed-checker compatibility case pass,
 with unchanged source/images and no ignored tests. That guarded source and V214
 are now in Main; positive authored approval remains closed.
-Earlier failed candidate receipts are historical. B3-06 removes the faulty draft
-selector and bounds writes. Its latest source corrects Send/read custody and
-passes direct Rustfmt at the prior checkpoint. Latest `f97bd0e3d` corrects
-same-pool manual-fixture worker/teardown races. Its isolated candidate fails actual
-Run-60 full-feature Clippy (exit 101, unchanged source): the production prepare
-callee remains test-only and confirmation has an incompatible action-result
-type. New `530a6855f` corrects these and the test-only bridge reachability;
-actual Run-63 on candidate `a490247b2` then fails on the reconciler's unused
-MontyCatalogueProvider import (exit 101, unchanged source). Remove it before the
-next strict/native gate. `473027913` removes it; actual Run-64 on `b1b1fd0b0`
-emits the production artifact, then fails E0425 in the test helper's
-`super::RebornRuntime` type at line 836 (exit 101, unchanged source). Correct
-that type before the next gate. Native/eighteen-case acceptance has not started;
-B3 and the embedded release-note addition remain outside Main.
+B3-06's reviewed candidate `8632c5d8b` passes Run-65 strict Rust 1.100
+full-feature/all-targets Clippy (116.736 seconds) and Run-66 native Rust 1.98.1
+test-program compilation (696.795 seconds), without warnings. Eighteen selected
+cases are accepted: eleven B1 results plus five B3 cases, the native seed
+compatibility regression and live structural-Q1 evidence persistence. Source,
+application/worker hashes and retained unwind sections pass their guards.
+
+Root's first retained package omitted the companion worker, causing five B3
+startup failures. Those failures remain preserved; staging the same verified
+worker requires no product change or rebuild. The seven-case continuation passes
+in 1595.174 seconds. `run-66-b306-native/accepted.json` aggregates eleven unchanged
+passing results with those seven results; it does not relabel the failed batch.
+
+The accepted slice defers absent selection, prepares existing retained originals,
+resolves repeated requests, survives a genuine rollback and recovers a lost
+COMMIT ACK through the same capacity-1 pool. It does not create qualified
+production selections or establish full-Q1/behavior/human-Q2. Full B3-06/07 and
+cold recovery remain open. All owned validation is terminal; source freeze is
+released. The B1/B3 CHANGELOG additions were compiled with Run-66.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,

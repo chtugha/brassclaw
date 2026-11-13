@@ -301,6 +301,25 @@ prove no hidden auth-repair replay.
 
 - [ ] **B3-06 — Persist original review work atomically with submission.**
 
+**Scoped implementation acceptance — 2026-11-13:** the bounded preparation slice
+through package `a069f5df3`, reviewed candidate `8632c5d8b`, passes strict
+full-feature/all-targets Clippy (Run-65) and native compilation (Run-66), without
+warnings. Eleven B1 regressions, five B3 production-path cases and two existing
+native seed/live structural-Q1 regressions pass. The B3 cases cover deferral
+without selection, preparation without a wake, repeated original-ID readback,
+real PostgreSQL rollback/retry and a genuine lost COMMIT ACK with write/readback
+through the same capacity-1 pool. Source/image guards pass. Root's original
+missing-companion test packaging failure is retained; staging the verified worker
+fixes that package without product edits or recompilation. See the
+[exact review and aggregate receipt](docs/validation/2026-11-13-bob-incoming-package-review.md).
+
+This checkbox stays open: B1-07/B2-04 still own qualified production selection
+and the full-Q1 prerequisite/producers; the steps below still require all actual
+submission/authoring callers, immutable admission/preparation linkage and safe
+legacy handling. B3-07 owns full dispatch/interruption/cold recovery. Controlled
+retained-selection fixtures and structural evidence do not establish full
+Q1/behavior/human-Q2, positive authored activation or complete Bob acceptance.
+
 1. B1-02 owns the exact submission/subject/candidate/check-set binding. Extend
    the existing review/turn/task admission transaction participant to retain its
    executable work identity, original selected B2 graph and supported status.
