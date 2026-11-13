@@ -191,7 +191,7 @@ pub(crate) enum RetryScope {
 ///   budget, then aborts the run.
 /// - Retries `ContextOverflow` at iteration scope with `ShrinkContext`.
 #[derive(Debug, Clone, Copy)]
-pub struct DefaultRecoveryStrategy {
+pub(crate) struct DefaultRecoveryStrategy {
     /// Max retries per error class before giving up. Default `2`.
     pub max_attempts_per_class: u32,
 }

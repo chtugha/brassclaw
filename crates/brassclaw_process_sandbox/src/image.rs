@@ -89,17 +89,6 @@ fn reject_empty_or_dot_component(image: &str) -> std::result::Result<(), String>
     Ok(())
 }
 
-/// Convenience shim: returns `Err(ProcessSandboxPlanError::InvalidDockerImageReference)`
-/// wrapping `reason`. Callers in plan-validating contexts use this so the
-/// plan-error context is preserved alongside the canonical reason string.
-#[allow(dead_code)]
-pub fn validate_reference_for_plan(
-    image: &str,
-) -> std::result::Result<(), super::ProcessSandboxPlanError> {
-    validate_reference(image)
-        .map_err(|reason| super::ProcessSandboxPlanError::InvalidDockerImageReference { reason })
-}
-
 #[cfg(test)]
 mod tests {
     use super::validate_reference;

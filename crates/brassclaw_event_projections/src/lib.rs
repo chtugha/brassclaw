@@ -32,8 +32,12 @@ use thiserror::Error;
 
 pub use brassclaw_events::EventCursor;
 
-#[allow(dead_code)]
 mod pending_gate_projection;
+pub use pending_gate_projection::{
+    PENDING_GATE_PROJECTION_CONSUMER_ID, PendingGateKind, PendingGateProjection,
+    PendingGateProjectionCursorStore, PendingGateProjectionKey, PendingGateProjectionReplay,
+    PendingGateProjectionRow, PendingGateProjectionSink,
+};
 mod runtime_projection;
 use runtime_projection::{RuntimeProjectionState, capability_activity_transition_for_entry};
 

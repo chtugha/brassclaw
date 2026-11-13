@@ -15,7 +15,7 @@ use crate::router::WebUiV2State;
 /// `GET /api/webchat/v2/providers/:provider_id/tokens`
 ///
 /// Fetch the token settings for a specific provider.
-pub async fn get_provider_token_settings(
+pub(crate) async fn get_provider_token_settings(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(provider_id): Path<String>,
@@ -31,7 +31,7 @@ pub async fn get_provider_token_settings(
 /// `PUT /api/webchat/v2/providers/:provider_id/tokens`
 ///
 /// Update the token settings for a specific provider.
-pub async fn update_provider_token_settings(
+pub(crate) async fn update_provider_token_settings(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Path(provider_id): Path<String>,

@@ -17,7 +17,7 @@ use crate::router::WebUiV2State;
 /// `GET /api/webchat/v2/safety/sensitive-paths`
 ///
 /// Fetch the current sensitive path patterns configuration.
-pub async fn get_sensitive_paths(
+pub(crate) async fn get_sensitive_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
@@ -28,7 +28,7 @@ pub async fn get_sensitive_paths(
 /// `PUT /api/webchat/v2/safety/sensitive-paths`
 ///
 /// Update the sensitive path patterns configuration.
-pub async fn update_sensitive_paths(
+pub(crate) async fn update_sensitive_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpdateSafetyConfigRequest>,
@@ -43,7 +43,7 @@ pub async fn update_sensitive_paths(
 /// `GET /api/webchat/v2/safety/workspace-rules`
 ///
 /// Fetch the current workspace file protection rules.
-pub async fn get_workspace_rules(
+pub(crate) async fn get_workspace_rules(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
@@ -54,7 +54,7 @@ pub async fn get_workspace_rules(
 /// `PUT /api/webchat/v2/safety/workspace-rules`
 ///
 /// Update the workspace file protection rules.
-pub async fn update_workspace_rules(
+pub(crate) async fn update_workspace_rules(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpdateSafetyConfigRequest>,
@@ -69,7 +69,7 @@ pub async fn update_workspace_rules(
 /// `GET /api/webchat/v2/safety/blocked-paths`
 ///
 /// Fetch the current blocked device/process paths.
-pub async fn get_blocked_paths(
+pub(crate) async fn get_blocked_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
 ) -> Result<Json<SafetyConfigResponse>, WebUiV2HttpError> {
@@ -80,7 +80,7 @@ pub async fn get_blocked_paths(
 /// `PUT /api/webchat/v2/safety/blocked-paths`
 ///
 /// Update the blocked device/process paths.
-pub async fn update_blocked_paths(
+pub(crate) async fn update_blocked_paths(
     State(state): State<WebUiV2State>,
     Extension(caller): Extension<WebUiAuthenticatedCaller>,
     Json(body): Json<UpdateSafetyConfigRequest>,

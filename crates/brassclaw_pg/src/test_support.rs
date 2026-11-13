@@ -700,10 +700,7 @@ async fn relay(
                             continue;
                         }
                     } else if control.clear(arm.generation, None)? {
-                        cut.fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
-                            value.checked_add(1)
-                        })
-                        .map_err(|_| io::Error::other("ACK cut counter exhausted"))?;
+                        record_ack_cut(&cut)?;
                         to_client.shutdown().await?;
                         return Ok(());
                     }
@@ -732,9 +729,65 @@ async fn relay(
     result
 }
 
+fn record_ack_cut(cut: &AtomicUsize) -> io::Result<()> {
+    let mut observed = cut.load(Ordering::Acquire);
+    loop {
+        let next = observed
+            .checked_add(1)
+            .ok_or_else(|| io::Error::other("ACK cut counter exhausted"))?;
+        match cut.compare_exchange_weak(observed, next, Ordering::AcqRel, Ordering::Acquire) {
+            Ok(_) => return Ok(()),
+            Err(current) => observed = current,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ack_cut_counter_rejects_overflow_without_changing_the_count() {
+        let cut = AtomicUsize::new(usize::MAX - 1);
+        record_ack_cut(&cut).unwrap();
+        assert_eq!(cut.load(Ordering::Acquire), usize::MAX);
+        let error = record_ack_cut(&cut).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "ACK cut counter exhausted");
+        assert_eq!(cut.load(Ordering::Acquire), usize::MAX);
+    }
+
+    #[test]
+    fn concurrent_ack_cuts_count_each_success_once() {
+        let cut = AtomicUsize::new(0);
+        std::thread::scope(|threads| {
+            for _ in 0..8 {
+                threads.spawn(|| {
+                    for _ in 0..1_000 {
+                        record_ack_cut(&cut).unwrap();
+                    }
+                });
+            }
+        });
+        assert_eq!(cut.load(Ordering::Acquire), 8_000);
+    }
+
+    #[test]
+    fn concurrent_ack_cuts_stop_at_the_counter_limit() {
+        let cut = AtomicUsize::new(usize::MAX - 3);
+        let succeeded = std::thread::scope(|threads| {
+            let attempts: Vec<_> = (0..8)
+                .map(|_| threads.spawn(|| record_ack_cut(&cut).is_ok()))
+                .collect();
+            attempts
+                .into_iter()
+                .map(|attempt| attempt.join().unwrap())
+                .filter(|succeeded| *succeeded)
+                .count()
+        });
+        assert_eq!(succeeded, 3);
+        assert_eq!(cut.load(Ordering::Acquire), usize::MAX);
+    }
 
     #[tokio::test]
     async fn postgres_literal_loopbacks_resolve_without_domain_lookup() {

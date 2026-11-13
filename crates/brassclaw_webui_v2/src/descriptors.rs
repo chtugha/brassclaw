@@ -136,7 +136,7 @@ pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_DRAFT: &str =
     "webui.v2.get_prefix_model_setup_draft";
 pub const WEBUI_V2_ROUTE_UPDATE_PREFIX_MODEL_SETUP_DRAFT: &str =
     "webui.v2.update_prefix_model_setup_draft";
-pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_DRAFT: &str =
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_DRAFT: &str =
     "/api/webchat/v2/prefix-model-specifications/{specification}/setup-draft";
 pub const WEBUI_V2_ROUTE_CAPTURE_PREFIX_MODEL: &str = "webui.v2.capture_prefix_model";
 pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_MODEL_ARTIFACTS: &str =
@@ -175,7 +175,7 @@ pub const WEBUI_V2_PATTERN_PREFIX_PAIR_CASES: &str =
     "/api/webchat/v2/prefix-model-designs/proposals/{specification}/{proposal}/cases";
 pub const WEBUI_V2_ROUTE_CHECK_PREFIX_PAIR_CASES: &str = "webui.v2.check_prefix_pair_cases";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_MODEL_SETUP_JOB: &str = "webui.v2.get_prefix_model_setup_job";
-pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_JOB: &str =
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_MODEL_SETUP_JOB: &str =
     "/api/webchat/v2/prefix-model-designs/{specification}/setups/{revision}/jobs/{job}";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_PAIR_JOB: &str = "webui.v2.get_prefix_pair_job";
 pub const WEBUI_V2_PATTERN_PREFIX_PAIR_JOB: &str =
@@ -184,38 +184,43 @@ pub const WEBUI_V2_ROUTE_RETAIN_PREFIX_PAIR_CONSTRUCTION: &str =
     "webui.v2.retain_prefix_pair_construction";
 pub const WEBUI_V2_PATTERN_PREFIX_PAIR_CONSTRUCTION: &str =
     "/api/webchat/v2/prefix-model-designs/proposals";
-pub const WEBUI_V2_PATTERN_PREFIX_MODEL_DESIGNS: &str = "/api/webchat/v2/prefix-model-designs";
-pub const WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS: &str =
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_MODEL_DESIGNS: &str =
+    "/api/webchat/v2/prefix-model-designs";
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_MODEL_SPECIFICATIONS: &str =
     "/api/webchat/v2/prefix-model-specifications";
-pub const WEBUI_V2_PATTERN_PREFIX_DESIGN_PROPOSALS: &str =
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_DESIGN_PROPOSALS: &str =
     "/api/webchat/v2/prefixes/{name}/design-proposals";
 pub const WEBUI_V2_ROUTE_LIST_PREFIX_SOURCES: &str = "webui.v2.list_prefix_sources";
 pub const WEBUI_V2_ROUTE_REGISTER_PREFIX_SOURCE: &str = "webui.v2.register_prefix_source";
-pub const WEBUI_V2_PATTERN_PREFIX_SOURCES: &str = "/api/webchat/v2/prefixes/{name}/sources";
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_SOURCES: &str = "/api/webchat/v2/prefixes/{name}/sources";
 pub const WEBUI_V2_ROUTE_LIST_PREFIX_GENERATIONS: &str = "webui.v2.list_prefix_generations";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_GENERATION: &str = "webui.v2.get_prefix_generation";
 pub const WEBUI_V2_ROUTE_GET_PREFIX_JOB: &str = "webui.v2.get_prefix_job";
 pub const WEBUI_V2_ROUTE_MEASURE_PREFIX: &str = "webui.v2.measure_prefix";
-pub const WEBUI_V2_PATTERN_PREFIX_JOB: &str = "/api/webchat/v2/prefixes/{name}/jobs/{job}";
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_JOB: &str = "/api/webchat/v2/prefixes/{name}/jobs/{job}";
 pub const WEBUI_V2_ROUTE_IMPORT_PREFIX_GENERATION: &str = "webui.v2.import_prefix_generation";
-pub const WEBUI_V2_PATTERN_PREFIX_GENERATIONS: &str = "/api/webchat/v2/prefixes/{name}/generations";
-pub const WEBUI_V2_PATTERN_PREFIX_GENERATION: &str =
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_GENERATIONS: &str =
+    "/api/webchat/v2/prefixes/{name}/generations";
+pub(crate) const WEBUI_V2_PATTERN_PREFIX_GENERATION: &str =
     "/api/webchat/v2/prefixes/{name}/generations/{generation}";
 pub const WEBUI_V2_ROUTE_LIST_PREFIXES: &str = "webui.v2.list_prefixes";
 pub const WEBUI_V2_ROUTE_REGENERATE_PREFIX: &str = "webui.v2.regenerate_prefix";
 // Automation sub-resource URL patterns.
 // Note: WEBUI_V2_PATTERN_LIST_AUTOMATIONS ("/api/webchat/v2/automations") is reused for GET + POST.
-pub const WEBUI_V2_PATTERN_AUTOMATION_ID: &str = "/api/webchat/v2/automations/{automation_id}";
-pub const WEBUI_V2_PATTERN_AUTOMATION_STATE: &str =
+pub(crate) const WEBUI_V2_PATTERN_AUTOMATION_ID: &str =
+    "/api/webchat/v2/automations/{automation_id}";
+pub(crate) const WEBUI_V2_PATTERN_AUTOMATION_STATE: &str =
     "/api/webchat/v2/automations/{automation_id}/state";
-pub const WEBUI_V2_PATTERN_AUTOMATION_FIRE: &str =
+pub(crate) const WEBUI_V2_PATTERN_AUTOMATION_FIRE: &str =
     "/api/webchat/v2/automations/{automation_id}/fire";
-pub const WEBUI_V2_PATTERN_AUTOMATION_RUNS: &str =
+pub(crate) const WEBUI_V2_PATTERN_AUTOMATION_RUNS: &str =
     "/api/webchat/v2/automations/{automation_id}/runs";
 
-pub const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str = "/api/webchat/v2/interceptor/config";
-pub const WEBUI_V2_PATTERN_LIST_PREFIXES: &str = "/api/webchat/v2/prefixes";
-pub const WEBUI_V2_PATTERN_REGENERATE_PREFIX: &str = "/api/webchat/v2/prefixes/{name}/regenerate";
+pub(crate) const WEBUI_V2_PATTERN_GET_INTERCEPTOR_CONFIG: &str =
+    "/api/webchat/v2/interceptor/config";
+pub(crate) const WEBUI_V2_PATTERN_LIST_PREFIXES: &str = "/api/webchat/v2/prefixes";
+pub(crate) const WEBUI_V2_PATTERN_REGENERATE_PREFIX: &str =
+    "/api/webchat/v2/prefixes/{name}/regenerate";
 
 // Phase 6 — Settings UI routes (10-tab editor).
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_SKILLS: &str = "webui.v2.get_settings_skills";
@@ -245,31 +250,32 @@ pub const WEBUI_V2_ROUTE_LIST_INTENT_INPUTS: &str = "webui.v2.list_intent_inputs
 pub const WEBUI_V2_ROUTE_UPSERT_INTENT_INPUT: &str = "webui.v2.upsert_intent_input";
 pub const WEBUI_V2_ROUTE_DELETE_INTENT_INPUTS: &str = "webui.v2.delete_intent_inputs";
 
-pub const WEBUI_V2_PATTERN_SETTINGS_SKILLS: &str = "/api/settings/skills";
-pub const WEBUI_V2_PATTERN_SETTINGS_TOOLS: &str = "/api/settings/tools";
-pub const WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS: &str = "/api/settings/extensions";
-pub const WEBUI_V2_PATTERN_SETTINGS_ACTIONS: &str = "/api/settings/actions";
-pub const WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS: &str = "/api/settings/orchestrators";
-pub const WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS: &str = "/api/settings/scaffolds";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_SKILLS: &str = "/api/settings/skills";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_TOOLS: &str = "/api/settings/tools";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_EXTENSIONS: &str = "/api/settings/extensions";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_ACTIONS: &str = "/api/settings/actions";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_ORCHESTRATORS: &str = "/api/settings/orchestrators";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_SCAFFOLDS: &str = "/api/settings/scaffolds";
 pub const WEBUI_V2_PATTERN_SETTINGS_RECIPES: &str = "/api/settings/recipes";
-pub const WEBUI_V2_PATTERN_SETTINGS_TOOL_SKILLS: &str = "/api/settings/tool-skills";
-pub const WEBUI_V2_PATTERN_SETTINGS_PYTHON_CODE: &str = "/api/settings/python-code";
-pub const WEBUI_V2_PATTERN_SETTINGS_EXTENSION_CATALOGUES: &str =
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_TOOL_SKILLS: &str = "/api/settings/tool-skills";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_PYTHON_CODE: &str = "/api/settings/python-code";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_EXTENSION_CATALOGUES: &str =
     "/api/settings/extension-catalogues";
 /// Cross-reference graph of the whole catalog. One path segment, so it does
 /// not collide with the two-segment component-detail wildcard below.
-pub const WEBUI_V2_PATTERN_SETTINGS_COMPONENT_GRAPH: &str = "/api/settings/component-graph";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_COMPONENT_GRAPH: &str = "/api/settings/component-graph";
 /// Detail read for one catalog component. The static settings patterns above
 /// take routing precedence over this two-segment wildcard, so `monty-vm/status`
 /// and friends keep resolving to their own handlers.
-pub const WEBUI_V2_PATTERN_SETTINGS_COMPONENT: &str = "/api/settings/{component_type}/{id}";
-pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
-pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str = "/api/settings/monty-vm/restart";
-pub const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
-pub const WEBUI_V2_PATTERN_SETTINGS_SECURITY: &str = "/api/settings/security";
-pub const WEBUI_V2_PATTERN_CHAT_PREFERENCE: &str = "/api/chat/preferences/{key}";
-pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-inputs";
-pub const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_COMPONENT: &str = "/api/settings/{component_type}/{id}";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM: &str = "/api/settings/monty-vm";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_RESTART: &str =
+    "/api/settings/monty-vm/restart";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MONTY_VM_STATUS: &str = "/api/settings/monty-vm/status";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_SECURITY: &str = "/api/settings/security";
+pub(crate) const WEBUI_V2_PATTERN_CHAT_PREFERENCE: &str = "/api/chat/preferences/{key}";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS: &str = "/api/settings/intent-inputs";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_INTENT_INPUTS_DELETE: &str =
     "/api/settings/intent-inputs/{class_code}/{component_id}";
 
 // Phase V — Orchestrator MCP Server settings tab.
@@ -281,70 +287,79 @@ pub const WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_START: &str =
     "webui.v2.post_settings_mcp_server_start";
 pub const WEBUI_V2_ROUTE_POST_SETTINGS_MCP_SERVER_STOP: &str =
     "webui.v2.post_settings_mcp_server_stop";
-pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER: &str = "/api/settings/mcp-server";
-pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS: &str = "/api/settings/mcp-server/status";
-pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START: &str = "/api/settings/mcp-server/start";
-pub const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP: &str = "/api/settings/mcp-server/stop";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER: &str = "/api/settings/mcp-server";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STATUS: &str =
+    "/api/settings/mcp-server/status";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_START: &str =
+    "/api/settings/mcp-server/start";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_MCP_SERVER_STOP: &str = "/api/settings/mcp-server/stop";
 
 // Agent + Networking config persistence.
 pub const WEBUI_V2_ROUTE_GET_SETTINGS_CONFIG: &str = "webui.v2.get_settings_config";
 pub const WEBUI_V2_ROUTE_PUT_SETTINGS_CONFIG_KEY: &str = "webui.v2.put_settings_config_key";
-pub const WEBUI_V2_PATTERN_SETTINGS_CONFIG: &str = "/api/settings/config";
-pub const WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY: &str = "/api/settings/config/{key}";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_CONFIG: &str = "/api/settings/config";
+pub(crate) const WEBUI_V2_PATTERN_SETTINGS_CONFIG_KEY: &str = "/api/settings/config/{key}";
 
 // Phase P Step 10 — Docs settings tab.
 pub const WEBUI_V2_ROUTE_LIST_DOCUS: &str = "webui.v2.list_docus";
 pub const WEBUI_V2_ROUTE_GET_DOCUS: &str = "webui.v2.get_docus";
 pub const WEBUI_V2_ROUTE_UPDATE_DOCUS: &str = "webui.v2.update_docus";
-pub const WEBUI_V2_PATTERN_LIST_DOCUS: &str = "/api/webchat/v2/docus";
-pub const WEBUI_V2_PATTERN_GET_DOCUS: &str = "/api/webchat/v2/docus/{id}";
+pub(crate) const WEBUI_V2_PATTERN_LIST_DOCUS: &str = "/api/webchat/v2/docus";
+pub(crate) const WEBUI_V2_PATTERN_GET_DOCUS: &str = "/api/webchat/v2/docus/{id}";
 
 // Pure-component approval submission.
 pub const WEBUI_V2_ROUTE_SUBMIT_PURE_COMPONENT_APPROVAL: &str =
     "webui.v2.submit_pure_component_approval";
-pub const WEBUI_V2_PATTERN_SUBMIT_PURE_COMPONENT_APPROVAL: &str =
+pub(crate) const WEBUI_V2_PATTERN_SUBMIT_PURE_COMPONENT_APPROVAL: &str =
     "/api/webchat/v2/pure-component-approvals";
 
-pub const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
-pub const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
-pub const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
-pub const WEBUI_V2_PATTERN_SEND_MESSAGE: &str = "/api/webchat/v2/threads/{thread_id}/messages";
-pub const WEBUI_V2_PATTERN_GET_TIMELINE: &str = "/api/webchat/v2/threads/{thread_id}/timeline";
-pub const WEBUI_V2_PATTERN_STREAM_EVENTS: &str = "/api/webchat/v2/threads/{thread_id}/events";
-pub const WEBUI_V2_PATTERN_STREAM_EVENTS_WS: &str = "/api/webchat/v2/threads/{thread_id}/ws";
-pub const WEBUI_V2_PATTERN_CANCEL_RUN: &str =
+pub(crate) const WEBUI_V2_PATTERN_CREATE_THREAD: &str = "/api/webchat/v2/threads";
+pub(crate) const WEBUI_V2_PATTERN_LIST_THREADS: &str = "/api/webchat/v2/threads";
+pub(crate) const WEBUI_V2_PATTERN_DELETE_THREAD: &str = "/api/webchat/v2/threads/{thread_id}";
+pub(crate) const WEBUI_V2_PATTERN_SEND_MESSAGE: &str =
+    "/api/webchat/v2/threads/{thread_id}/messages";
+pub(crate) const WEBUI_V2_PATTERN_GET_TIMELINE: &str =
+    "/api/webchat/v2/threads/{thread_id}/timeline";
+pub(crate) const WEBUI_V2_PATTERN_STREAM_EVENTS: &str =
+    "/api/webchat/v2/threads/{thread_id}/events";
+pub(crate) const WEBUI_V2_PATTERN_STREAM_EVENTS_WS: &str = "/api/webchat/v2/threads/{thread_id}/ws";
+pub(crate) const WEBUI_V2_PATTERN_CANCEL_RUN: &str =
     "/api/webchat/v2/threads/{thread_id}/runs/{run_id}/cancel";
-pub const WEBUI_V2_PATTERN_RESOLVE_GATE: &str =
+pub(crate) const WEBUI_V2_PATTERN_RESOLVE_GATE: &str =
     "/api/webchat/v2/threads/{thread_id}/runs/{run_id}/gates/{gate_ref}/resolve";
-pub const WEBUI_V2_PATTERN_LIST_AUTOMATIONS: &str = "/api/webchat/v2/automations";
-pub const WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS: &str = "/api/webchat/v2/channels/connectable";
-pub const WEBUI_V2_PATTERN_LIST_EXTENSIONS: &str = "/api/webchat/v2/extensions";
-pub const WEBUI_V2_PATTERN_LIST_EXTENSION_REGISTRY: &str = "/api/webchat/v2/extensions/registry";
-pub const WEBUI_V2_PATTERN_INSTALL_EXTENSION: &str = "/api/webchat/v2/extensions/install";
-pub const WEBUI_V2_PATTERN_ACTIVATE_EXTENSION: &str =
+pub(crate) const WEBUI_V2_PATTERN_LIST_AUTOMATIONS: &str = "/api/webchat/v2/automations";
+pub(crate) const WEBUI_V2_PATTERN_LIST_CONNECTABLE_CHANNELS: &str =
+    "/api/webchat/v2/channels/connectable";
+pub(crate) const WEBUI_V2_PATTERN_LIST_EXTENSIONS: &str = "/api/webchat/v2/extensions";
+pub(crate) const WEBUI_V2_PATTERN_LIST_EXTENSION_REGISTRY: &str =
+    "/api/webchat/v2/extensions/registry";
+pub(crate) const WEBUI_V2_PATTERN_INSTALL_EXTENSION: &str = "/api/webchat/v2/extensions/install";
+pub(crate) const WEBUI_V2_PATTERN_ACTIVATE_EXTENSION: &str =
     "/api/webchat/v2/extensions/{package_id}/activate";
-pub const WEBUI_V2_PATTERN_REMOVE_EXTENSION: &str =
+pub(crate) const WEBUI_V2_PATTERN_REMOVE_EXTENSION: &str =
     "/api/webchat/v2/extensions/{package_id}/remove";
-pub const WEBUI_V2_PATTERN_SETUP_EXTENSION: &str = "/api/webchat/v2/extensions/{package_id}/setup";
-pub const WEBUI_V2_PATTERN_GET_LLM_CONFIG: &str = "/api/webchat/v2/llm/providers";
-pub const WEBUI_V2_PATTERN_UPSERT_LLM_PROVIDER: &str = "/api/webchat/v2/llm/providers";
-pub const WEBUI_V2_PATTERN_DELETE_LLM_PROVIDER: &str =
+pub(crate) const WEBUI_V2_PATTERN_SETUP_EXTENSION: &str =
+    "/api/webchat/v2/extensions/{package_id}/setup";
+pub(crate) const WEBUI_V2_PATTERN_GET_LLM_CONFIG: &str = "/api/webchat/v2/llm/providers";
+pub(crate) const WEBUI_V2_PATTERN_UPSERT_LLM_PROVIDER: &str = "/api/webchat/v2/llm/providers";
+pub(crate) const WEBUI_V2_PATTERN_DELETE_LLM_PROVIDER: &str =
     "/api/webchat/v2/llm/providers/{provider_id}/delete";
-pub const WEBUI_V2_PATTERN_SET_ACTIVE_LLM: &str = "/api/webchat/v2/llm/active";
-pub const WEBUI_V2_PATTERN_TEST_LLM_CONNECTION: &str = "/api/webchat/v2/llm/test-connection";
-pub const WEBUI_V2_PATTERN_LIST_LLM_MODELS: &str = "/api/webchat/v2/llm/list-models";
-pub const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/nearai/login";
-pub const WEBUI_V2_PATTERN_START_NEARAI_WALLET_LOGIN: &str =
+pub(crate) const WEBUI_V2_PATTERN_SET_ACTIVE_LLM: &str = "/api/webchat/v2/llm/active";
+pub(crate) const WEBUI_V2_PATTERN_TEST_LLM_CONNECTION: &str = "/api/webchat/v2/llm/test-connection";
+pub(crate) const WEBUI_V2_PATTERN_LIST_LLM_MODELS: &str = "/api/webchat/v2/llm/list-models";
+pub(crate) const WEBUI_V2_PATTERN_START_NEARAI_LOGIN: &str = "/api/webchat/v2/llm/nearai/login";
+pub(crate) const WEBUI_V2_PATTERN_START_NEARAI_WALLET_LOGIN: &str =
     "/api/webchat/v2/llm/nearai/wallet/start";
-pub const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str = "/api/webchat/v2/llm/nearai/wallet";
-pub const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
+pub(crate) const WEBUI_V2_PATTERN_COMPLETE_NEARAI_WALLET_LOGIN: &str =
+    "/api/webchat/v2/llm/nearai/wallet";
+pub(crate) const WEBUI_V2_PATTERN_START_CODEX_LOGIN: &str = "/api/webchat/v2/llm/codex/login";
 pub const WEBUI_V2_PATTERN_CODEX_LOGIN_STATUS: &str =
     "/api/webchat/v2/llm/codex/login/{mutation_id}";
-pub const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
+pub(crate) const WEBUI_V2_PATTERN_LIST_TOOLS: &str = "/api/webchat/v2/tools";
 pub const WEBUI_V2_PATTERN_LIST_INSTANCE_TOOL_SETTINGS: &str = "/api/settings/tool-policies";
 pub const WEBUI_V2_PATTERN_UPDATE_INSTANCE_TOOL_SETTING: &str =
     "/api/settings/tool-policies/{tool_id}";
-pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
+pub(crate) const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
     "/api/webchat/v2/tools/{capability_id}/permission";
 
 // Phase 7 — Recipe-Skill-Tool learning pipeline.
@@ -353,29 +368,31 @@ pub const WEBUI_V2_PATTERN_UPDATE_TOOL_PERMISSION: &str =
 // queue surfaces post-extraction rows that need an operator review pass,
 // and the outcome endpoint feeds back into the engine `MetricRecorder`
 // for Wilson lower-bound + tier reclassifications.
-pub const WEBUI_V2_PATTERN_LIST_RECIPES: &str = "/api/webchat/v2/recipes";
-pub const WEBUI_V2_PATTERN_LIST_TOOL_SKILLS: &str = "/api/webchat/v2/tool-skills";
-pub const WEBUI_V2_PATTERN_GET_RECIPE: &str = "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
-pub const WEBUI_V2_PATTERN_GET_TOOL_SKILL: &str =
+pub(crate) const WEBUI_V2_PATTERN_LIST_RECIPES: &str = "/api/webchat/v2/recipes";
+pub(crate) const WEBUI_V2_PATTERN_LIST_TOOL_SKILLS: &str = "/api/webchat/v2/tool-skills";
+pub(crate) const WEBUI_V2_PATTERN_GET_RECIPE: &str =
+    "/api/webchat/v2/recipes/{project_id}/{recipe_id}";
+pub(crate) const WEBUI_V2_PATTERN_GET_TOOL_SKILL: &str =
     "/api/webchat/v2/tool-skills/{project_id}/{skill_id}";
-pub const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
+pub(crate) const WEBUI_V2_PATTERN_RECORD_RECIPE_OUTCOME: &str =
     "/api/webchat/v2/recipes/{project_id}/{recipe_id}/outcomes";
-pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
-pub const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str = "/api/webchat/v2/validation-queue/count";
+pub(crate) const WEBUI_V2_PATTERN_VALIDATION_QUEUE: &str = "/api/webchat/v2/validation-queue";
+pub(crate) const WEBUI_V2_PATTERN_VALIDATION_QUEUE_COUNT: &str =
+    "/api/webchat/v2/validation-queue/count";
 
 // Generalized component routes — `{class_code}` is the integer class code
 // (e.g. 0=Tool, 1=Skill/Rusty, 21=Recipe).
-pub const WEBUI_V2_PATTERN_VALIDATE_COMPONENT: &str =
+pub(crate) const WEBUI_V2_PATTERN_VALIDATE_COMPONENT: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}/validate";
-pub const WEBUI_V2_PATTERN_REJECT_COMPONENT: &str =
+pub(crate) const WEBUI_V2_PATTERN_REJECT_COMPONENT: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}/reject";
-pub const WEBUI_V2_PATTERN_SEND_COMPONENT_TO_REVISION: &str =
+pub(crate) const WEBUI_V2_PATTERN_SEND_COMPONENT_TO_REVISION: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}/send-to-revision";
-pub const WEBUI_V2_PATTERN_RE_REVIEW_COMPONENT: &str =
+pub(crate) const WEBUI_V2_PATTERN_RE_REVIEW_COMPONENT: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}/re-review";
-pub const WEBUI_V2_PATTERN_DELETE_COMPONENT: &str =
+pub(crate) const WEBUI_V2_PATTERN_DELETE_COMPONENT: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}";
-pub const WEBUI_V2_PATTERN_GET_COMPONENT_AUDIT_STATUS: &str =
+pub(crate) const WEBUI_V2_PATTERN_GET_COMPONENT_AUDIT_STATUS: &str =
     "/api/webchat/v2/components/{class_code}/{component_id}/audit-status";
 
 /// Return the canonical [`IngressRouteDescriptor`] set for the WebChat v2

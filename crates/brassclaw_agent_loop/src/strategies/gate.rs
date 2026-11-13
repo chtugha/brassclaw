@@ -33,7 +33,7 @@ fn _gate_handling_strategy_object_safe(_: &dyn GateHandlingStrategy) {}
 /// `LoopExit::Blocked`. Loop families that want skip-and-continue or abort
 /// semantics swap this strategy.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DefaultGateHandlingStrategy;
+pub(crate) struct DefaultGateHandlingStrategy;
 
 #[async_trait]
 impl GateHandlingStrategy for DefaultGateHandlingStrategy {

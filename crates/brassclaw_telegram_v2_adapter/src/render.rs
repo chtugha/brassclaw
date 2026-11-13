@@ -24,7 +24,7 @@ pub enum TelegramRenderError {
 /// canonical reply target binding ref using the convention
 /// `tg:<chat_id>:<topic_id>:<reply_message_id>`. The `topic_id` segment is
 /// optional; absence is encoded as `_`.
-pub fn parse_reply_target(
+fn parse_reply_target(
     target: &ReplyTargetBindingRef,
 ) -> Result<TelegramReplyTarget, TelegramRenderError> {
     let raw = target.as_str();
@@ -98,14 +98,15 @@ pub fn parse_reply_target(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TelegramReplyTarget {
+struct TelegramReplyTarget {
     pub chat_id: i64,
     pub topic_id: Option<i64>,
     pub reply_message_id: Option<i64>,
 }
 
-#[allow(dead_code)] // reserved for Telegram inbound reply-target construction once v2 adapter wiring stores outbound targets
-pub fn build_reply_target_binding(
+/// Construct canonical reply-target data for the adapter and rendering tests.
+#[cfg(test)]
+pub(crate) fn build_reply_target_binding(
     chat_id: i64,
     topic_id: Option<i64>,
     reply_message_id: Option<i64>,
