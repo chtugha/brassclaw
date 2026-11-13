@@ -69,7 +69,7 @@ before Cargo starts; no whole-batch/native pass is claimed.
 ### Incoming Bob review checkpoint
 
 Four external package branches remain **unmerged**: B1-06 `266bea0d7`, B2-02
-`27267af66`, B3-06 `f5493ff04`, B3-09 `e683aa024`. Review corrections return
+`e0be06d8f` (source `78147448b`), B3-06 `f5493ff04`, B3-09 `e683aa024`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Root stays on Main and preserves unrelated human
 working changes. Package chats must not switch that checkout or unlink the
@@ -80,8 +80,10 @@ B3-09's 35 selected Node UI cases pass. The provider suite fails the same
 11/15 cases on Main and the package branch: missing `ProviderBootstrapStatus`
 or `ProviderAuthStatus` in its VM context. This establishes the baseline failure,
 not permission to ignore it. Panel rendering does not establish backend approval.
-The actual class-22 dispatcher, immutable viewed-decision binding, B2 store
-validation and B3 qualified selection/commit custody remain review blockers.
+The actual class-22 dispatcher, immutable viewed-decision binding, B2 historical
+strictness/original limits/base validation and B3 qualified selection/commit
+custody remain review blockers. B2's shared-owner and explicit nil/zero checks
+are corrected in source; its direct Rustfmt check fails, and Cargo is not run.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 
 Before native continuation, collect accepted package corrections and compile

@@ -114,7 +114,7 @@ The four externally prepared package branches remain separate from Main:
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
 | B1-06 | `266bea0d7` | Q1 stage binding corrected; own Pure behavior/Q2 producer and decision binding remain open. |
-| B2-02 | `27267af66` | Strict JSON/private parsed fields improved; reference validation and the connected store reader still need correction. |
+| B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
 | B3-06 | `f5493ff04` | Feature/lock report corrected; qualified coherent selection and cancellation/commit custody remain unresolved. |
 | B3-09 | `e683aa024` | 35 UI cases pass; actual class-22 dispatcher and immutable viewed-decision binding are missing. |
 

@@ -11,7 +11,7 @@ back to the existing package owners, not a second implementation service.
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `266bea0d7a3ea577e7cfe43d241dd908b477ebf6` |
-| B2-02 | `codex/b2-02-retained-selection-v2` | `27267af66e0c2a5118442d18c4109fb898f04c37` |
+| B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
 | B3-06 | `codex/b3-06-durable-q1-work-wt` | `f5493ff046db0cb689966bd5e9604a7d4fde3d74` |
 | B3-09 | `codex/b3-09-webui-review-panels` | `e683aa024702ac3849a0790987ed866c81760549` |
 
@@ -51,7 +51,7 @@ B1-06 still owns the class/profile decision dispatcher, displayed-subject and
 evidence CAS, trustworthy producer linkage and the atomic approval/link write.
 The package must not be marked complete from these narrower writer changes.
 
-## B2-02 — `/2` reader and retention
+## B2-02 — `/2` reader and retention, initial `27267af66` review
 
 `0c6ef93ec` improves duplicate-key/resource rejection, closed objects,
 functional-step membership and immutable parsed fields. These fixes are useful,
@@ -74,6 +74,45 @@ references use their existing hex-checksum codec; the shared native reference
 type uses a byte-array checksum. Preserve each documented wire representation
 rather than conflating them. Neither structural parsing nor a profile label
 establishes approval or compatibility.
+
+### Follow-up `78147448b`, report `e0be06d8f`
+
+The owner moves the shared structural contract into `brassclaw_skills`, reused
+by the Engine adapter and review-selection store without a crate cycle.
+Explicit post-deserialization checks now reject nil UUIDs and zero versions in
+implementation/own-root references. Parsed records retain private fields and
+binary checksum values. These source corrections close the corresponding initial
+findings; no unit/native pass is claimed.
+
+The complete four-file follow-up and its test sources are inspected. Integration
+remains blocked by the following connected findings:
+
+1. The shared `/1` branch returns after checking the tag, while the store removes
+   its previous unknown-top-level-field rejection. Preserve the strict historical
+   `/1` schema, including rejection of `/2` extensions under a `/1` tag, and test
+   the actual retention path.
+2. The first parse and builder hardcode `REVISION_LIMITS`. The store applies its
+   acknowledged/original limits only during a second complete parse. Pass the
+   applicable limits into the shared contract from the start and reuse the parsed
+   result rather than rejecting eligible originals or decoding twice. Existing
+   bounded historical behavior and explicit capacity classification remain.
+3. Base Recipe/variant/component and invocation-layout values remain opaque;
+   duplicate step-order entries are not rejected. Keep database graph/evidence
+   authentication in its actual owner, but validate the full wire shape and
+   static reference/step invariants in the structural owner. Unit positive
+   fixtures currently use native byte-array Recipe checksums and variants without
+   the actual retained step link, rather than the existing serializer's wire
+   shape. Use genuine supported serialized examples, including hex checksums for
+   base references, and negative cases isolating each invariant.
+4. Root's direct `rustup run 1.100.0 rustfmt --check --edition 2024` over the new
+   contract, Engine adapter and changed store exits 1. The full 699-line output
+   is retained at `/private/tmp/brassclaw-b2-02-78147448b-rustfmt-review.log`.
+   This is a formatting check only; no Cargo or product execution occurred.
+
+`cargo test -p brassclaw_skills selection_contract_tests` selects the new unit
+tests. PostgreSQL retention/migration acceptance still needs `db-store` consumers
+and the real backend. Neither a default-feature unit run nor a roundtrip fixture
+can replace those cases. V215 remains reserved and unexecuted by this review.
 
 ## B3-06 — original preparation and cancellation
 

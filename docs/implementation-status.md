@@ -55,7 +55,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Incoming Bob packages remain unmerged
 
-B1-06 `266bea0d7`, B2-02 `27267af66`, B3-06 `f5493ff04` and B3-09
+B1-06 `266bea0d7`, B2-02 `e0be06d8f` (source `78147448b`), B3-06 `f5493ff04` and B3-09
 `e683aa024` are reviewed incoming work, not implemented Main boundaries. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
 readers, coherent qualified validator selection, cancelled/unknown commits and
@@ -63,6 +63,9 @@ the actual class-22/stale-view decision path. B3-09's 35 UI tests pass; the same
 11 pre-existing provider tests fail on both source trees. Neither result grants
 component approval. The [incoming-package review](validation/2026-11-13-bob-incoming-package-review.md)
 records source facts, owner corrections and the required combined acceptance.
+B2's shared structural owner and explicit nil/zero checks are corrected in
+source; `/1` strictness, original limits, complete base structure and formatting
+still require correction. This does not establish new runtime support.
 
 ## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 
