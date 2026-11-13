@@ -72,7 +72,7 @@ def _validate_package_clean(args):
     while index < len(args):
         arg = args[index]
         flag, sep, value = arg.partition("=")
-        if arg in GLOBAL_SWITCHES or arg in {"-v", "-vv", "--release", "--doc", "--dry-run"}:
+        if arg in GLOBAL_SWITCHES or arg in {"-v", "-vv", "--release", "--dry-run"}:
             index += 1
             continue
         if arg.startswith("-p") and not arg.startswith("--") and arg != "-p":

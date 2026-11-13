@@ -20,10 +20,10 @@ def embedded_paths(root=ROOT):
     paths = set()
     for name in OWNERS:
         owner = root / "crates/brassclaw_reborn_composition/src" / name
-        for relative in re.findall(r'include_(?:str|bytes)!\(\s*"([^"\n]+)"\s*\)', owner.read_text()):
+        for relative in re.findall(r'include_(?:str|bytes)!\(\s*"([^"\n]+)"\s*\)', owner.read_text(encoding="utf-8")):
             path = (owner.parent / relative).resolve().relative_to(root.resolve()).as_posix()
             paths.add(path)
-    inventory = json.loads((root / "scripts/prefix/release-reference-inventory.json").read_text())
+    inventory = json.loads((root / "scripts/prefix/release-reference-inventory.json").read_text(encoding="utf-8"))
     if inventory["format"] != "brassclaw-prefix-source-inventory/1":
         raise ValueError("Unsupported release inventory")
     missing = {entry["path"] for entry in inventory["sources"]} - paths

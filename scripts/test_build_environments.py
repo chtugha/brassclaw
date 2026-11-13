@@ -206,6 +206,8 @@ class LocalRunnerTests(unittest.TestCase):
         commands = [
             ["cargo", "-v", "clean"], ["cargo", "+1.100.0", "-v", "clean"],
             ["cargo", "--offline", "clean"], ["cargo", "clean", "-p"],
+            ["cargo", "clean", "--doc", "-p", "foo"],
+            ["cargo", "clean", "--package=foo", "--doc"],
             ["cargo", "clean", "--package="], ["cargo", "clean", "--", "-p", "foo"],
             ["cargo", "clean", "-p", "--release"], ["cargo", "clean", "-p", "foo", "--package"],
             ["cargo", "--color", "clean"], ["cargo", "--", "clean", "-p", "foo"],

@@ -78,8 +78,9 @@ It rejects aliases, external/unknown subcommands, unparsed top-level actions,
 forms fail before execution; direct Cargo remains available to the supervisor
 under the native lock. Package cleanup parses every argument and requires a
 nonempty `-p foo`, `-pfoo`, `-p=foo`, `--package foo` or `--package=foo` value;
-`--` cannot hide a package selector. Compilation checks both the canonical target
-volume and the source/validation volume against the existing 15 GiB/90% limits.
+`--` cannot hide a package selector. `clean --doc` is rejected even with `-p`: Cargo
+documents removal of the target doc directory without a package-only guarantee.
+Compilation checks both the canonical target volume and the source/validation volume against the existing 15 GiB/90% limits.
 Standalone `--help`/`-h`, `--version`/`-V` and `--list` are supported after
 these globals. Local subcommand options such as standalone test
 `--manifest-path` remain direct arguments; this is separate from the restricted
