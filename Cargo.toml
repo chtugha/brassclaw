@@ -291,6 +291,7 @@ brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0"
 # itself is already a root dep via the `postgres` (default) feature.
 # Native record fixtures also compile when the root postgres feature is off.
 tokio-postgres = "0.7"
+refinery = { version = "0.8", features = ["tokio-postgres"] }
 brassclaw_embedded_postgres = { path = "crates/brassclaw_embedded_postgres", version = "0.1.0" }
 brassclaw_pg = { path = "crates/brassclaw_pg", version = "0.1.0" }
 
