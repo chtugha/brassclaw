@@ -8,6 +8,16 @@ has_reborn_tests=false
 
 is_docs_only_path() {
   local path="$1"
+  # Root-level markdown files that are embedded via include_str!() in compiled
+  # binaries require a recompile on change and must NOT be treated as docs-only.
+  case "$path" in
+    AGENTS.md|CLAUDE.md|CHANGELOG.md|skills.md|recipe.md|tools.md|toolskills.md)
+      return 1
+      ;;
+    README.md|CONTRIBUTING.md|SECURITY.md|mythbuster.md|Prefixless_redefine_at_K3.md)
+      return 1
+      ;;
+  esac
   case "$path" in
     docs/*|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md)
       return 0
@@ -65,6 +75,15 @@ is_shared_test_path() {
 
 is_reborn_test_path() {
   local path="$1"
+  # Embedded root markdown files: changing them requires recompiling Reborn binaries.
+  case "$path" in
+    AGENTS.md|CLAUDE.md|CHANGELOG.md|skills.md|recipe.md|tools.md|toolskills.md)
+      return 0
+      ;;
+    README.md|CONTRIBUTING.md|SECURITY.md|mythbuster.md|Prefixless_redefine_at_K3.md)
+      return 0
+      ;;
+  esac
   case "$path" in
     docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/browser/*|tests/e2e/scenarios/test_reborn_*)
       return 0
@@ -103,6 +122,9 @@ is_code_path() {
       return 0
       ;;
     scripts/check_no_panics.py|scripts/check_gateway_boundaries.py|scripts/check-version-bumps.sh|scripts/reborn-e2e-rust.sh|scripts/ci/*)
+      return 0
+      ;;
+    scripts/local_build.py|scripts/modal_build.py|scripts/modal_source_sync.py|scripts/modal_build_worker.py|scripts/testsystem.py)
       return 0
       ;;
     .github/workflows/*.yml|.github/dependabot.yml|.github/labeler.yml)

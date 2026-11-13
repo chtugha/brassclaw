@@ -71,11 +71,38 @@ class WorkerTests(SourceFixture):
     def test_only_compilation_and_static_analysis_commands_are_accepted(self):
         worker.validate_command(["cargo", "clippy", "--locked", "--tests", "--", "-D", "warnings"])
         worker.validate_command(["cargo", "build", "--locked", "-p", "brassclaw"])
+        # cargo test --locked without --no-run must still be rejected.
         for command in (["cargo", "test", "--locked"], ["cargo", "run", "--locked"],
                         ["cargo", "bench", "--locked"], ["cargo", "build", "--locked", "--tests"],
                         ["cargo", "build", "--locked", "--all-targets"], ["cargo", "check"]):
             with self.subTest(command=command), self.assertRaises(ValueError):
                 worker.validate_command(command)
+
+    def test_test_no_run_is_accepted_and_requires_locked_and_no_run(self):
+        # Basic --no-run acceptance.
+        worker.validate_command(["cargo", "test", "--locked", "--no-run",
+                                 "-p", "brassclaw_reborn_composition",
+                                 "--target", "aarch64-apple-darwin"])
+        # --no-run with features and lib.
+        worker.validate_command(["cargo", "test", "--locked", "--no-run", "--lib",
+                                 "--features", "postgres,skills-db",
+                                 "-p", "brassclaw_reborn_composition"])
+        # Test filter strings after "--" are accepted.
+        worker.validate_command(["cargo", "test", "--locked", "--no-run",
+                                 "-p", "brassclaw_reborn_composition", "--", "my_test"])
+        # cargo test --locked without --no-run is still rejected.
+        with self.assertRaisesRegex(ValueError, "--no-run"):
+            worker.validate_command(["cargo", "test", "--locked",
+                                     "-p", "brassclaw_reborn_composition"])
+        # Flag after "--" separator must be rejected.
+        with self.assertRaises(ValueError):
+            worker.validate_command(["cargo", "test", "--locked", "--no-run",
+                                     "-p", "brassclaw_reborn_composition", "--", "-v"])
+        # --message-format must not be allowed for remote worker.
+        with self.assertRaises(ValueError):
+            worker.validate_command(["cargo", "test", "--locked", "--no-run",
+                                     "--message-format=json",
+                                     "-p", "brassclaw_reborn_composition"])
 
 
 if __name__ == "__main__":

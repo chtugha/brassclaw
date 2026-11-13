@@ -45,23 +45,41 @@ def load_record(path):
 def validate_command(command, target=None):
     if not isinstance(command, list) or not all(isinstance(arg, str) and "\0" not in arg for arg in command):
         raise ValueError("Cargo command must be an argument list")
-    if len(command) < 2 or command[0] != "cargo" or command[1] not in {"build", "check", "clippy"}:
-        raise ValueError("Only direct cargo build/check/clippy are permitted; no test execution")
+    if len(command) < 2 or command[0] != "cargo" or command[1] not in {"build", "check", "clippy", "test"}:
+        raise ValueError("Only direct cargo build/check/clippy/test(--no-run) are permitted")
     if "--locked" not in command:
         raise ValueError("Remote Cargo requires --locked")
+    if command[1] == "test" and "--no-run" not in command:
+        raise ValueError("Remote cargo test requires --no-run; direct test execution is not permitted")
     switches = {"--locked", "--offline", "--frozen", "--release", "--lib", "--bins",
                 "--all-features", "--no-default-features", "--verbose", "-v", "-vv"}
     values = {"-p", "--package", "--bin", "--features", "-F", "--profile", "--target"}
     if command[1] in {"check", "clippy"}:
         switches |= {"--tests", "--all-targets", "--benches"}
         values |= {"--test", "--bench"}
+    if command[1] == "test":
+        # --no-run and --doc are the only permitted test-specific switches;
+        # --lib and --bins are already in the global switches set above.
+        switches |= {"--no-run", "--doc"}
+        values |= {"--test", "--bench"}
     args = iter(command[2:])
     targets = []
+    after_separator = False
     for arg in args:
+        if after_separator:
+            # Free test-filter strings after "--" for cargo test.
+            if arg.startswith("-"):
+                raise ValueError(f"Test filter after '--' must not be a flag: {arg}")
+            if arg == "--":
+                raise ValueError("Only one '--' separator is permitted")
+            continue
         if arg == "--" and command[1] == "clippy":
             if list(args) != ["-D", "warnings"]:
                 raise ValueError("Only -D warnings may be forwarded to Clippy")
             break
+        if arg == "--" and command[1] == "test":
+            after_separator = True
+            continue
         flag, sep, inline = arg.partition("=")
         if flag in switches and not sep:
             continue
@@ -274,8 +292,11 @@ def run_build(storage, request, commit):
                   "started_at": started, "duration_secs": time.time() - started,
                   "toolchain": load_record("/opt/brassclaw/toolchain.json") if Path("/opt/brassclaw/toolchain.json").exists() else None}
         artifacts = {}
-        if code == 0 and request.get("target_triple") == "aarch64-apple-darwin":
-            profile = "release" if "--release" in request["command"] else "debug"
+        command = request["command"]
+        apple_target = request.get("target_triple") == "aarch64-apple-darwin"
+        if code == 0 and apple_target and command[1] == "build":
+            # Product binary collector: only for explicit 'build' on Apple target.
+            profile = "release" if "--release" in command else "debug"
             binary = cache / "target" / request["target_triple"] / profile / "brassclaw-reborn"
             if binary.exists():
                 shape = subprocess.check_output(["file", str(binary)], text=True)
@@ -300,6 +321,27 @@ def run_build(storage, request, commit):
                     if header != struct.pack("<II", 0xfeedfacf, 0x0100000c):
                         raise ValueError("pgvector is not Mach-O arm64")
                 artifacts[str(pg.relative_to(cache / "target"))] = {"sha256": digest_file(pg), "size": pg.stat().st_size}
+        elif code == 0 and apple_target and command[1] == "test" and "--no-run" in command:
+            # Test binary collector: only for Apple --no-run test builds.
+            # --message-format=json is not permitted in the remote worker (stdout is
+            # streamed to a log file).  Locate test binaries via mtime-sorted glob.
+            deps_dir = cache / "target" / request["target_triple"] / "debug" / "deps"
+            candidates = sorted(
+                (p for p in deps_dir.glob("*") if p.is_file() and not p.suffix and os.access(p, os.X_OK)),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                artifact_dir = job / "artifacts"
+                artifact_dir.mkdir(exist_ok=True)
+                for binary in candidates:
+                    shutil.copy2(binary, artifact_dir / binary.name)
+                    artifacts[binary.name] = {
+                        "sha256": digest_file(binary),
+                        "size": binary.stat().st_size,
+                        "profile": "test",
+                        "mtime": binary.stat().st_mtime,
+                    }
         result["artifacts"] = artifacts
         temporary_result = job / "completed.json.tmp"
         temporary_result.write_bytes(encoded(result))

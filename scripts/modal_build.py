@@ -92,10 +92,29 @@ def run(args):
     target = "aarch64-apple-darwin" if args.platform == "apple" else "x86_64-unknown-linux-gnu"
     validate_command(command, target)
     if args.platform == "apple":
-        if (command[1] != "build" or "brassclaw_reborn_cli" not in command
-                or "brassclaw-reborn" not in command
-                or any(arg.split("=", 1)[0] == "--profile" for arg in command)):
-            raise ValueError("The qualified Apple path builds -p brassclaw_reborn_cli --bin brassclaw-reborn using dev or --release")
+        if command[1] == "build":
+            if ("brassclaw_reborn_cli" not in command
+                    or "brassclaw-reborn" not in command
+                    or any(arg.split("=", 1)[0] == "--profile" for arg in command)):
+                raise ValueError("The qualified Apple path builds -p brassclaw_reborn_cli --bin brassclaw-reborn using dev or --release")
+        elif command[1] == "test":
+            # SP-07: Apple remote test build.
+            # --no-run is required; --profile is not a valid cargo test flag (use
+            # cargo test without --profile for the default test profile).
+            pkg_flags = [i for i, a in enumerate(command) if a in ("-p", "--package")]
+            has_no_run = "--no-run" in command
+            has_package = any(
+                i + 1 < len(command) and command[i + 1] == "brassclaw_reborn_composition"
+                for i in pkg_flags
+            )
+            has_target = "--target" in command
+            if not has_no_run or not has_package or not has_target:
+                raise ValueError(
+                    "The qualified Apple test path requires --no-run, "
+                    "-p brassclaw_reborn_composition and --target aarch64-apple-darwin"
+                )
+        else:
+            raise ValueError("Only build or test are permitted for Apple platform")
     if not args.qualification:
         require_activation(args.platform)
     if (not args.confirmed_modal or not math.isfinite(args.estimated_local_secs)

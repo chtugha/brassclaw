@@ -146,15 +146,47 @@ class LockTests(unittest.TestCase):
 
 
 class LocalRunnerTests(unittest.TestCase):
+    def _ample_disk(self):
+        """Return a disk_usage-like namespace with plenty of free space."""
+        total = 500 * 1024**3
+        used = 100 * 1024**3
+        return SimpleNamespace(total=total, used=used, free=total - used)
+
     def test_direct_cargo_keeps_target_and_uses_only_local_jobs(self):
         with patch.dict(os.environ, {"CARGO_TARGET_DIR": "/tmp/canonical", "CARGO_BUILD_JOBS": "2"}), \
                 patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                patch.object(local_build.shutil, "disk_usage", return_value=self._ample_disk()), \
                 patch.object(local_build.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run:
             self.assertEqual(local_build.run_local(["cargo", "metadata", "--no-deps"], 4), 0)
             self.assertEqual(run.call_args.args[0], ["cargo", "metadata", "--no-deps"])
             self.assertEqual(run.call_args.kwargs["env"]["CARGO_TARGET_DIR"], "/tmp/canonical")
             self.assertEqual(run.call_args.kwargs["env"]["CARGO_BUILD_JOBS"], "4")
             self.assertEqual(os.environ["CARGO_BUILD_JOBS"], "2")
+
+    def test_disk_gate_checks_both_volumes(self):
+        tight = SimpleNamespace(total=100 * 1024**3, used=96 * 1024**3, free=4 * 1024**3)
+        ample = self._ample_disk()
+        # Cargo-volume tight → rejected.
+        with patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                patch.object(local_build.shutil, "disk_usage", side_effect=[tight, ample]):
+            with self.assertRaisesRegex(RuntimeError, "local build space"):
+                local_build.run_local(["cargo", "build", "--locked"], "inherit")
+        # Artifact-volume tight → rejected.
+        with patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                patch.object(local_build.shutil, "disk_usage", side_effect=[ample, tight]):
+            with self.assertRaisesRegex(RuntimeError, "artifact volume"):
+                local_build.run_local(["cargo", "build", "--locked"], "inherit")
+
+    def test_toolchain_option_does_not_skip_disk_gate(self):
+        # cargo +1.100.0 check must still trigger the disk gate (the defect in
+        # the original implementation was that command[1] == "+1.100.0", which is
+        # not in the set of subcommand names, so the gate was silently skipped).
+        tight = SimpleNamespace(total=100 * 1024**3, used=96 * 1024**3, free=4 * 1024**3)
+        ample = self._ample_disk()
+        with patch.object(local_build, "cargo_lock", return_value=nullcontext()), \
+                patch.object(local_build.shutil, "disk_usage", side_effect=[tight, ample]):
+            with self.assertRaisesRegex(RuntimeError, "local build space"):
+                local_build.run_local(["cargo", "+1.100.0", "check", "--locked"], "inherit")
 
     def test_target_override_whole_cleanup_and_shell_are_rejected(self):
         for command in (["cargo", "build", "--target-dir=/tmp/other"], ["cargo", "clean"],

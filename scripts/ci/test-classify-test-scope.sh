@@ -197,7 +197,7 @@ has_reborn_tests=false"
 
 assert_scope \
   "docs only" \
-  "README.md" \
+  "docs/overview.md" \
   "docs_only=true
 has_core_code=false
 has_legacy_tests=false
@@ -278,4 +278,50 @@ for path in \
 has_core_code=true
 has_legacy_tests=false
 has_reborn_tests=true"
+done
+
+# SP-13: build scripts must be classified as code paths (not docs-only).
+for path in \
+  scripts/local_build.py \
+  scripts/modal_build.py \
+  scripts/modal_source_sync.py \
+  scripts/modal_build_worker.py \
+  scripts/testsystem.py; do
+  assert_scope "build script is code: $path" "$path" \
+    "docs_only=false
+has_core_code=true
+has_legacy_tests=true
+has_reborn_tests=false"
+done
+
+# SP-13: embedded root markdown files must NOT be docs-only; they require recompile.
+for path in \
+  AGENTS.md \
+  CLAUDE.md \
+  CHANGELOG.md \
+  skills.md \
+  recipe.md \
+  tools.md \
+  toolskills.md \
+  README.md \
+  CONTRIBUTING.md \
+  SECURITY.md \
+  mythbuster.md \
+  Prefixless_redefine_at_K3.md; do
+  assert_scope "embedded root markdown is not docs-only: $path" "$path" \
+    "docs_only=false
+has_core_code=false
+has_legacy_tests=false
+has_reborn_tests=true"
+done
+
+# Non-embedded local working files remain docs-only.
+for path in \
+  speedup2.md \
+  speedup.md; do
+  assert_scope "local working file stays docs-only: $path" "$path" \
+    "docs_only=true
+has_core_code=false
+has_legacy_tests=false
+has_reborn_tests=false"
 done
