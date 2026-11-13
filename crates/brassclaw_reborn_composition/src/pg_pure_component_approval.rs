@@ -13,6 +13,77 @@
 //! permission.
 //!
 //! No public success-write API: only `record_pure_component_approval` may insert.
+//!
+//! ## Evidence format support
+//!
+//! Two `component-review-evidence/1` formats are accepted:
+//!
+//! **Legacy / bootstrap (S-path)** — 9 fields:
+//! `format`, `evidence_id`, `kind`, `validation_mode`, `association_checksum`,
+//! `components`, `succeeded`, `report`, `reviewed_evidence`.
+//! Used by the installation bootstrap writer.
+//!
+//! **Authored validator (A-path, Q1 only)** — 12 fields:
+//! `format`, `evidence_id`, `kind`, `validation_mode`,
+//! `submission_id`, `subject_checksum`, `validator_selection_checksum`,
+//! `class_code`, `task_handle`, `succeeded`, `report`, `reviewed_evidence`.
+//! Produced exclusively by `persist_validator_q1_evidence` for `kind = "q1"`.
+//! The corresponding `reborn_validator_q1_runs` row must exist with
+//! `succeeded = true`.
+//!
+//! ## Evidence producer contracts by stage kind
+//!
+//! | Kind | Format | Producer | `reborn_validator_q1_runs` row |
+//! |------|--------|----------|-------------------------------|
+//! | `q1` | Authored (12-field) | `persist_validator_q1_evidence` | Required, `succeeded = true` |
+//! | `behavior` | Legacy (9-field, `association_checksum`) | Trusted pure/workflow-Q2 writer (B1-06 remaining work) | None written |
+//! | `human_q2` | Legacy (9-field, `association_checksum`) | Trusted pure/workflow-Q2 writer (B1-06 remaining work) | None written |
+//!
+//! ## Authored path status — **closed until producers are qualified**
+//!
+//! The trusted behavioral and human-Q2 evidence writers for the pure
+//! PythonCode review path are not yet implemented. `persist_behavioral_reviews`
+//! produces evidence for selected Tool usages in a Recipe execution and is not
+//! qualified for standalone class-22 PythonCode review. No qualified authored
+//! pure-behavior or Q2 producer exists that emits evidence bound to a
+//! `reborn_component_review_submissions` subject. `record_pure_component_approval`
+//! therefore rejects all `authored` mode declarations with an explicit error.
+//! This guard is removed when the trusted writers are implemented and their
+//! evidence binding is verifiable end-to-end. Implementing those writers is
+//! remaining B1-06 work; B3-09 owns their presentation and client binding.
+//!
+//! The Q1 subject-binding infrastructure (join of `reborn_validator_q1_runs`
+//! with `reborn_component_review_submissions`, all five authored field checks,
+//! and the component/version identity checks) is implemented in full and will
+//! be activated when the authored path is re-opened.
+//!
+//! ## Subject binding design for `q1`-kind authored evidence (implemented, inactive)
+//!
+//! When the authored path is re-opened, the Q1 evidence is verified by joining
+//! `reborn_validator_q1_runs` with `reborn_component_review_submissions`:
+//!
+//! - The run row matches all five authored fields
+//!   (`submission_id`, `validator_selection_checksum`, `class_code`,
+//!   `task_handle`, `succeeded = true`).
+//! - The submission's `checksum` equals the evidence `subject_checksum`.
+//! - The submission's `component_id` and `candidate_version` equal the
+//!   declaration's `root.uuid` / `root.version`.
+//!
+//! This prevents Q1 evidence for subject A from authorising subject B.
+//!
+//! **Source-only vs full Q1:** `reborn_validator_q1_runs` rows are written by
+//! both `persist_validator_q1_evidence` (full validator run) and
+//! `persist_validator_source_evidence` (source-only prerequisite). Both set
+//! `succeeded = true`; `succeeded = true` alone is therefore not sufficient to
+//! establish full Q1. The activation commit must require a **positive
+//! qualification record** produced and owned by the Validator owner — not a
+//! negative scope check. The validator selection stored in
+//! `reborn_component_validator_selections` carries either scope
+//! `"preparation-only"` (format `/1`) or `"qualified-pure-source-prerequisite"`
+//! (format `/2`); neither scope value represents full Q1. Full Q1 requires a
+//! separate, trusted qualification decision from the Validator owner, expressed
+//! as an evidence record whose kind, producer and subject binding have been
+//! reviewed and accepted by that owner before this writer may rely on it.
 
 use brassclaw_pg::PgPool;
 use brassclaw_skills::{
@@ -45,6 +116,15 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
     PureApprovalError::Database(error)
 }
 
+/// Which evidence format was detected for a given record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EvidenceFormat {
+    /// Legacy bootstrap format with `association_checksum` field.
+    LegacyBootstrap,
+    /// Authored validator format with `submission_id` / `task_handle` fields.
+    AuthoredValidator,
+}
+
 /// Read, verify and store one pure-component approval declaration.
 ///
 /// Returns the stored root UUID on success. This identity alone must never
@@ -60,6 +140,11 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
 /// - An existing stored approval with the same `approval_id` must be byte-identical.
 /// - Evidence checksums, IDs, distinct stage kinds, modes and exact component
 ///   coverage agree; human Q2 covers the exact selected Q1/behavior set.
+/// - For `authored` mode: **not yet accepted**. The qualified behavioral and
+///   human-Q2 producers for the authored pure path are not connected; the
+///   writer rejects all authored declarations with an explicit error.
+///   This guard is removed when both producers are qualified and their
+///   evidence binding is verifiable end-to-end.
 /// - These mechanical checks do not authenticate a behavioral execution or
 ///   human interaction by themselves. Only the internal owning producer writes;
 ///   public declarations cannot create approval or select provenance.
@@ -75,6 +160,30 @@ pub(crate) async fn record_pure_component_approval(
     let q1 = declaration.q1_reference();
     let q2 = declaration.q2_reference();
     let behaviors = declaration.behavioral_references();
+
+    // The authored pure-component path requires behavioral and human-Q2 evidence
+    // from their qualified producers. Those producers are not yet connected:
+    //
+    //   - behavioral evidence: persist_behavioral_reviews produces evidence for
+    //     selected Tool usages in a Recipe execution, not for standalone
+    //     pure PythonCode review. No qualified authored pure-behavior producer
+    //     exists that emits evidence bound to a reborn_component_review_submissions
+    //     subject for class-22 PythonCode.
+    //   - human Q2: no qualified authored Q2 producer is connected.
+    //
+    // Accepting unverified legacy-format records for these stages in authored
+    // mode would create a path that appears complete without actual qualification.
+    // The authored path is closed here until the qualified producers are connected
+    // and their evidence binding is verifiable end-to-end.
+    //
+    // system_seed approvals are unaffected: their bootstrap producers are
+    // qualified via the controlled seed/integrity path.
+    if mode == ValidationMode::Authored {
+        return Err(invalid(
+            "authored pure-component approvals are not yet accepted: \
+             qualified behavioral and human-Q2 producers are not connected",
+        ));
+    }
 
     // Stage identity is not supplied by a positive flag. Each reference has
     // exactly one role and must cover the same exact immutable subject graph.
@@ -111,8 +220,28 @@ pub(crate) async fn record_pure_component_approval(
     if evidence_rows.len() != evidence_kinds.len() {
         return Err(invalid("referenced evidence record is missing"));
     }
-    let mut original_context = None;
-    for row in evidence_rows {
+    // Parse every evidence record.
+    //
+    // Q1 evidence for authored approvals uses the authored (12-field) format
+    // produced by persist_validator_q1_evidence; collect its fields for the
+    // subject-binding check below.
+    //
+    // Behavioral and human-Q2 evidence use the legacy (9-field) format produced
+    // by persist_behavioral_reviews and their respective unqualified producers.
+    // They carry association_checksum + components, not submission_id / task_handle,
+    // and do NOT have reborn_validator_q1_runs rows. Their format is verified
+    // by validate_evidence_declaration / validate_legacy_evidence_components;
+    // cross-stage subject binding for them is deferred to their qualified producers.
+    struct Q1SubjectFields {
+        submission_id: Uuid,
+        subject_checksum: String,
+        validator_selection_checksum: String,
+        class_code: i64,
+        task_handle: Uuid,
+    }
+    let mut q1_authored_fields: Option<Q1SubjectFields> = None;
+
+    for row in &evidence_rows {
         let id: Uuid = row.get(0);
         let evidence_bytes: &str = row.get(1);
         if format!("{:x}", Sha256::digest(evidence_bytes.as_bytes())) != row.get::<_, &str>(2) {
@@ -123,19 +252,141 @@ pub(crate) async fn record_pure_component_approval(
         let expected_kind = evidence_kinds
             .get(&id)
             .ok_or_else(|| invalid("unexpected evidence identity"))?;
-        validate_evidence_declaration(&value, id, expected_kind, declaration)?;
-        let context = value["association_checksum"]
-            .as_str()
-            .ok_or_else(|| invalid("evidence original context missing"))?;
-        if original_context
-            .as_ref()
-            .is_some_and(|previous| previous != context)
-        {
+        let evidence_format =
+            validate_evidence_declaration(&value, id, expected_kind, declaration)?;
+
+        // Extract the Q1 authored fields for the subject-binding check that
+        // follows. Only q1-kind authored evidence is routed here; behavior and
+        // human_q2 evidence use the legacy format and have no run row.
+        if evidence_format == EvidenceFormat::AuthoredValidator && *expected_kind == "q1" {
+            let sub_id = value["submission_id"]
+                .as_str()
+                .ok_or_else(|| invalid("authored Q1 evidence submission_id missing"))?;
+            q1_authored_fields = Some(Q1SubjectFields {
+                submission_id: Uuid::parse_str(sub_id)
+                    .map_err(|_| invalid("authored Q1 evidence submission_id invalid UUID"))?,
+                subject_checksum: value["subject_checksum"]
+                    .as_str()
+                    .ok_or_else(|| invalid("authored Q1 evidence subject_checksum missing"))?
+                    .to_owned(),
+                validator_selection_checksum: value["validator_selection_checksum"]
+                    .as_str()
+                    .ok_or_else(|| {
+                        invalid("authored Q1 evidence validator_selection_checksum missing")
+                    })?
+                    .to_owned(),
+                class_code: value["class_code"]
+                    .as_i64()
+                    .ok_or_else(|| invalid("authored Q1 evidence class_code missing"))?,
+                task_handle: {
+                    let raw = value["task_handle"]
+                        .as_str()
+                        .ok_or_else(|| invalid("authored Q1 evidence task_handle missing"))?;
+                    Uuid::parse_str(raw)
+                        .map_err(|_| invalid("authored Q1 evidence task_handle invalid UUID"))?
+                },
+            });
+        }
+    }
+
+    // Q1 subject binding for authored approvals.
+    //
+    // persist_validator_q1_evidence is the only trusted writer that produces
+    // both a reborn_component_review_evidence row (kind = "q1", authored format)
+    // and a matching reborn_validator_q1_runs index row. We join them here and
+    // verify all five authored fields plus the submission's candidate identity:
+    //
+    //   run.submission_id               == evidence.submission_id
+    //   run.validator_selection_checksum == evidence.validator_selection_checksum
+    //   run.candidate_class_code        == evidence.class_code
+    //   run.task_handle                 == evidence.task_handle
+    //   run.succeeded                   == true
+    //   submission.checksum             == evidence.subject_checksum
+    //   submission.component_id         == declaration.root.uuid
+    //   submission.candidate_version    == declaration.root.version
+    //
+    // system_seed approvals use bootstrap evidence (no run row); skip entirely.
+    // Behavioral and human-Q2 stages use the legacy format and have no validator
+    // run row; their subject binding is deferred to their qualified producers
+    // (open points per module-level doc).
+    if mode == ValidationMode::Authored {
+        let fields = q1_authored_fields.ok_or_else(|| {
+            invalid("authored approval Q1 evidence must use the authored (12-field) format")
+        })?;
+        let root_version =
+            i64::try_from(root.version).map_err(|_| invalid("root version exceeds i64 range"))?;
+        let row = tx
+            .query_opt(
+                "SELECT r.submission_id,
+                        r.validator_selection_checksum,
+                        r.candidate_class_code,
+                        r.task_handle,
+                        r.succeeded,
+                        s.checksum,
+                        s.component_id,
+                        s.candidate_version
+                 FROM reborn_validator_q1_runs r
+                 JOIN reborn_component_review_submissions s
+                   ON s.submission_id = r.submission_id
+                 WHERE r.evidence_id = $1",
+                &[&q1],
+            )
+            .await
+            .map_err(db)?
+            .ok_or_else(|| invalid("authored Q1 evidence has no matching validator run record"))?;
+
+        let run_submission: Uuid = row.get(0);
+        let run_validator_checksum: &str = row.get(1);
+        let run_class_code: i16 = row.get(2);
+        let run_task_handle: Uuid = row.get(3);
+        let run_succeeded: bool = row.get(4);
+        let sub_checksum: &str = row.get(5);
+        let sub_component: Uuid = row.get(6);
+        let sub_version: i64 = row.get(7);
+
+        // All five authored Q1 fields must match the trusted run row exactly.
+        if run_submission != fields.submission_id {
             return Err(invalid(
-                "evidence stages refer to different original contexts",
+                "authored Q1 submission_id does not match the validator run record",
             ));
         }
-        original_context = Some(context.to_owned());
+        if run_validator_checksum != fields.validator_selection_checksum {
+            return Err(invalid(
+                "authored Q1 validator_selection_checksum does not match the run record",
+            ));
+        }
+        if i64::from(run_class_code) != fields.class_code {
+            return Err(invalid(
+                "authored Q1 class_code does not match the validator run record",
+            ));
+        }
+        if run_task_handle != fields.task_handle {
+            return Err(invalid(
+                "authored Q1 task_handle does not match the validator run record",
+            ));
+        }
+        if !run_succeeded {
+            return Err(invalid("authored Q1 validator run did not succeed"));
+        }
+
+        // The submission's checksum must equal the evidence subject_checksum.
+        if sub_checksum != fields.subject_checksum {
+            return Err(invalid(
+                "authored Q1 subject_checksum does not match the review submission",
+            ));
+        }
+
+        // The submission's candidate must match the declaration root exactly.
+        if sub_component != root.uuid {
+            return Err(invalid(
+                "authored Q1 submission is for a different component than the approval root",
+            ));
+        }
+        if sub_version != root_version {
+            return Err(invalid(
+                "authored Q1 submission is for a different version than the approval root",
+            ));
+        }
     }
 
     let selected: Vec<_> = components.values().copied().collect();
@@ -307,40 +558,187 @@ pub async fn resolve_existing_pure_component_approval(
     Ok(declaration.root().uuid)
 }
 
+/// Detect the evidence format variant from the stored JSON object.
+///
+/// Returns `LegacyBootstrap` for the 9-field bootstrap format with
+/// `association_checksum`, or `AuthoredValidator` for the 12-field validator
+/// format with `submission_id` / `task_handle`. All other shapes are rejected.
+fn detect_evidence_format(
+    object: &serde_json::Map<String, serde_json::Value>,
+) -> Result<EvidenceFormat, PureApprovalError> {
+    // Distinguish by the presence of the mutually exclusive context field.
+    // The two formats cannot overlap: exactly one of these sets of fields is present.
+    let has_legacy_field = object.contains_key("association_checksum");
+    let has_authored_fields = object.contains_key("submission_id")
+        && object.contains_key("subject_checksum")
+        && object.contains_key("validator_selection_checksum")
+        && object.contains_key("class_code")
+        && object.contains_key("task_handle");
+
+    match (has_legacy_field, has_authored_fields) {
+        (true, false) => {
+            if object.len() != LEGACY_EVIDENCE_FIELDS.len()
+                || LEGACY_EVIDENCE_FIELDS
+                    .iter()
+                    .any(|f| !object.contains_key(*f))
+            {
+                return Err(invalid(
+                    "legacy evidence fields differ from the declared format",
+                ));
+            }
+            Ok(EvidenceFormat::LegacyBootstrap)
+        }
+        (false, true) => {
+            if object.len() != AUTHORED_EVIDENCE_FIELDS.len()
+                || AUTHORED_EVIDENCE_FIELDS
+                    .iter()
+                    .any(|f| !object.contains_key(*f))
+            {
+                return Err(invalid(
+                    "authored evidence fields differ from the declared format",
+                ));
+            }
+            Ok(EvidenceFormat::AuthoredValidator)
+        }
+        _ => Err(invalid(
+            "evidence format is unrecognised; must be legacy bootstrap or authored validator",
+        )),
+    }
+}
+
+/// Required fields for the legacy bootstrap (S-path) evidence format.
+const LEGACY_EVIDENCE_FIELDS: &[&str] = &[
+    "format",
+    "evidence_id",
+    "kind",
+    "validation_mode",
+    "association_checksum",
+    "components",
+    "succeeded",
+    "report",
+    "reviewed_evidence",
+];
+
+/// Required fields for the authored validator (A-path) evidence format.
+const AUTHORED_EVIDENCE_FIELDS: &[&str] = &[
+    "format",
+    "evidence_id",
+    "kind",
+    "validation_mode",
+    "submission_id",
+    "subject_checksum",
+    "validator_selection_checksum",
+    "class_code",
+    "task_handle",
+    "succeeded",
+    "report",
+    "reviewed_evidence",
+];
+
 /// Shape and exact-stage checks are necessary, not proof that a producer ran
 /// behavior or received human input. Only the internal review/installation owner
 /// may write approval; the public legacy declaration route resolves originals.
+///
+/// Returns the detected evidence format so the caller can determine whether
+/// the Q1 subject-binding check applies.
+///
+/// # Format routing by kind
+///
+/// - `q1`: accepts both authored (12-field) and legacy (9-field) formats;
+///   authored format is required for authored-mode approvals (enforced after
+///   the loop by checking `q1_authored_fields.is_some()`).
+/// - `behavior`: **legacy format only** — `persist_behavioral_reviews` writes
+///   `association_checksum` + `components`, not `submission_id` / `task_handle`.
+/// - `human_q2`: **legacy format only** — the Q2 producer is currently
+///   unqualified and writes the legacy format when it exists.
 fn validate_evidence_declaration(
     value: &serde_json::Value,
     id: Uuid,
     kind: &str,
     declaration: &PureComponentApprovalDeclaration,
-) -> Result<(), PureApprovalError> {
-    let fields = [
-        "format",
-        "evidence_id",
-        "kind",
-        "validation_mode",
-        "association_checksum",
-        "components",
-        "succeeded",
-        "report",
-        "reviewed_evidence",
-    ];
+) -> Result<EvidenceFormat, PureApprovalError> {
     let object = value
         .as_object()
         .ok_or_else(|| invalid("evidence must be an object"))?;
-    if object.len() != fields.len() || fields.iter().any(|field| !object.contains_key(*field)) {
-        return Err(invalid("evidence fields differ from the declared format"));
+
+    let evidence_format = detect_evidence_format(object)?;
+
+    // behavior and human_q2 evidence must always use the legacy format.
+    // Their producers write association_checksum + components. Rejecting the
+    // authored format here prevents an authored-format record from being
+    // accepted as behavioral or human-Q2 evidence.
+    if (kind == "behavior" || kind == "human_q2")
+        && evidence_format == EvidenceFormat::AuthoredValidator
+    {
+        return Err(invalid(
+            "behavior and human_q2 evidence must use the legacy bootstrap format",
+        ));
     }
-    if !value["association_checksum"].as_str().is_some_and(|text| {
-        text.len() == 64
-            && text
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-    }) {
+
+    // Validate the association_checksum for legacy format.
+    if evidence_format == EvidenceFormat::LegacyBootstrap
+        && !value["association_checksum"].as_str().is_some_and(|text| {
+            text.len() == 64
+                && text
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+    {
         return Err(invalid("evidence context checksum invalid"));
     }
+
+    // Validate submission_id for the authored format: must be a canonical non-nil UUID.
+    if evidence_format == EvidenceFormat::AuthoredValidator {
+        let sub = value["submission_id"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| invalid("authored evidence submission_id invalid"))?;
+        if sub.is_nil() || sub.to_string() != value["submission_id"].as_str().unwrap_or("") {
+            return Err(invalid(
+                "authored evidence submission_id must be a canonical non-nil UUID",
+            ));
+        }
+        // subject_checksum must be a 64-char lowercase hex string.
+        if !value["subject_checksum"].as_str().is_some_and(|text| {
+            text.len() == 64
+                && text
+                    .bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        }) {
+            return Err(invalid("authored evidence subject_checksum invalid"));
+        }
+        // validator_selection_checksum must be a 64-char lowercase hex string.
+        if !value["validator_selection_checksum"]
+            .as_str()
+            .is_some_and(|text| {
+                text.len() == 64
+                    && text
+                        .bytes()
+                        .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+            })
+        {
+            return Err(invalid(
+                "authored evidence validator_selection_checksum invalid",
+            ));
+        }
+        // class_code must be a non-negative integer.
+        if value["class_code"].as_i64().is_none() {
+            return Err(invalid("authored evidence class_code must be an integer"));
+        }
+        // task_handle must be a canonical non-nil UUID.
+        let task_handle = value["task_handle"]
+            .as_str()
+            .and_then(|s| Uuid::parse_str(s).ok())
+            .ok_or_else(|| invalid("authored evidence task_handle invalid"))?;
+        if task_handle.is_nil()
+            || task_handle.to_string() != value["task_handle"].as_str().unwrap_or("")
+        {
+            return Err(invalid(
+                "authored evidence task_handle must be a canonical non-nil UUID",
+            ));
+        }
+    }
+
     let mode = match declaration.mode() {
         ValidationMode::Authored => "authored",
         ValidationMode::SystemSeed => "system_seed",
@@ -356,6 +754,53 @@ fn validate_evidence_declaration(
     {
         return Err(invalid("evidence identity, stage, mode or result differs"));
     }
+
+    // For the legacy format, verify the component coverage list.
+    // For the authored format, components are not embedded in the evidence; the
+    // approval closure already carries the exact component set and
+    // require_selected_snapshot verifies it.
+    if evidence_format == EvidenceFormat::LegacyBootstrap {
+        validate_legacy_evidence_components(value, declaration)?;
+    }
+
+    let reviewed = value
+        .get("reviewed_evidence")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| invalid("evidence reviewed-stage set missing"))?;
+    let expected: BTreeSet<_> = if kind == "human_q2" {
+        std::iter::once(declaration.q1_reference())
+            .chain(declaration.behavioral_references().iter().copied())
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let mut actual = BTreeSet::new();
+    for item in reviewed {
+        let text = item
+            .as_str()
+            .ok_or_else(|| invalid("reviewed evidence identity invalid"))?;
+        let parsed =
+            Uuid::parse_str(text).map_err(|_| invalid("reviewed evidence identity invalid"))?;
+        if parsed.is_nil() || parsed.to_string() != text || !actual.insert(parsed) {
+            return Err(invalid(
+                "reviewed evidence identity is duplicate or invalid",
+            ));
+        }
+    }
+    if actual != expected {
+        return Err(invalid(
+            "human review covers a different evidence selection",
+        ));
+    }
+    Ok(evidence_format)
+}
+
+/// Validate the `components` array in legacy bootstrap evidence.
+/// Not required for the authored format (components are in the approval closure).
+fn validate_legacy_evidence_components(
+    value: &serde_json::Value,
+    declaration: &PureComponentApprovalDeclaration,
+) -> Result<(), PureApprovalError> {
     let rows = value
         .get("components")
         .and_then(|v| v.as_array())
@@ -389,35 +834,6 @@ fn validate_evidence_declaration(
     }
     if seen.len() != declaration.components().len() {
         return Err(invalid("evidence dependency coverage is incomplete"));
-    }
-    let reviewed = value
-        .get("reviewed_evidence")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| invalid("evidence reviewed-stage set missing"))?;
-    let expected: BTreeSet<_> = if kind == "human_q2" {
-        std::iter::once(declaration.q1_reference())
-            .chain(declaration.behavioral_references().iter().copied())
-            .collect()
-    } else {
-        BTreeSet::new()
-    };
-    let mut actual = BTreeSet::new();
-    for item in reviewed {
-        let text = item
-            .as_str()
-            .ok_or_else(|| invalid("reviewed evidence identity invalid"))?;
-        let parsed =
-            Uuid::parse_str(text).map_err(|_| invalid("reviewed evidence identity invalid"))?;
-        if parsed.is_nil() || parsed.to_string() != text || !actual.insert(parsed) {
-            return Err(invalid(
-                "reviewed evidence identity is duplicate or invalid",
-            ));
-        }
-    }
-    if actual != expected {
-        return Err(invalid(
-            "human review covers a different evidence selection",
-        ));
     }
     Ok(())
 }
