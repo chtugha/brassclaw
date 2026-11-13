@@ -286,9 +286,12 @@ class InstallerTests(unittest.TestCase):
         self.run_shell('loopback_url "https://example.com"', expected=1)
         self.run_shell('parse_args -v ../../other', expected=1)
 
-    def test_fresh_service_uses_policy_compatible_loopback_listener(self):
+    def test_fresh_service_uses_policy_compatible_network_listener(self):
         unit = self.run_shell('render_systemd_unit brassclaw /var/lib/brassclaw/.brassclaw/reborn /var/lib/brassclaw')
-        self.assertIn('serve --host 127.0.0.1 --port 3000', unit.stdout)
+        # local_dev resolves HostWorkspace/DirectLogged/ScrubbedEnv; it does
+        # not trigger serve's trusted-laptop non-loopback refusal. Keep the
+        # explicit profile paired with the installer's network listener.
+        self.assertIn('serve --host 0.0.0.0 --port 3000', unit.stdout)
         self.assertIn('Environment=BRASSCLAW_RUNTIME_PROFILE=local_dev', unit.stdout)
 
     @unittest.skipUnless(shutil.which("systemd-analyze"), "systemd unit validator is unavailable")
