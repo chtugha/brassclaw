@@ -222,7 +222,11 @@ unconfirmed. Canonical regular local artifact files are reused only after size
 and SHA-256 verification; corrupt, missing or symlink copies are fetched again
 from the original job. Repeated status calls therefore do not retransmit a valid
 large binary. No Cargo or job replay occurs, including after SDK result-handle
-expiry. Terminal FunctionTimeoutError/RemoteError results leave the run polling
+expiry. If an ACK was lost while local state is still running/unresolved,
+OutputExpiredError from the known FunctionCall also triggers this same original
+receipt reconciliation. Expiry with a missing or transport-unverified receipt
+stays unresolved; it never establishes a failed compilation or verified local
+collection. Terminal FunctionTimeoutError/RemoteError results leave the run polling
 loop; ordinary Python poll TimeoutError continues polling. Status checks the
 original durable worker completion before classifying a terminal SDK result as
 failed: a valid completion uses the same collector even if the function failed

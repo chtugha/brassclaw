@@ -36,11 +36,16 @@ class SDKFunctionTimeoutError(SDKTimeoutError):
     pass
 
 
+class SDKOutputExpiredError(SDKTimeoutError):
+    pass
+
+
 class SDKRemoteError(SDKError):
     pass
 
 
-SDK_EXCEPTIONS = SimpleNamespace(FunctionTimeoutError=SDKFunctionTimeoutError, RemoteError=SDKRemoteError)
+SDK_EXCEPTIONS = SimpleNamespace(FunctionTimeoutError=SDKFunctionTimeoutError,
+                                 OutputExpiredError=SDKOutputExpiredError, RemoteError=SDKRemoteError)
 
 
 def arguments(**overrides):
@@ -539,6 +544,45 @@ class CollectionBoundaryTests(unittest.TestCase):
         self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
         observed = json.loads((directory / "terminal.json").read_bytes())
         self.assertEqual(observed["remote_result_exception"], type(error).__name__)
+
+    def test_expired_result_after_lost_ack_recovers_original_worker_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("ACK lost, SDK output expired"))
+        self.assertNotIn("remote_state", state)
+        self.assertFalse((directory / "completed.json").exists())
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertNotIn("reason", recovered)
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_expired_result_missing_receipt_stays_unresolved_without_failed_compile_claim(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("expired"))
+        del self.files["completed.json"]
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "unresolved")
+        self.assertNotIn("collection", recovered)
+        self.assertNotIn("returncode", recovered)
+        self.assertFalse((directory / "terminal.json").exists())
+        self.assertFalse((directory / "completed.json").exists())
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_expired_result_volume_failure_stays_unresolved_and_retries_original_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("expired"))
+        self.files["completed.json"] = SDKRemoteError("Volume unavailable after expiry")
+        with self.assertRaisesRegex(SDKRemoteError, "Volume unavailable"):
+            invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "unresolved")
+        self.assertNotIn("collection", recovered)
+        self.assertNotIn("returncode", recovered)
+        self.assertFalse((directory / "terminal.json").exists())
+        self.files["completed.json"] = encoded(self.result)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
 
     def test_terminal_sdk_timeout_recovers_successful_worker_receipt(self):
         self.assertTrue(issubclass(SDKFunctionTimeoutError, SDKTimeoutError))
