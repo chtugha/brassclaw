@@ -3,6 +3,7 @@
 import argparse
 from contextlib import nullcontext
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
@@ -19,6 +20,32 @@ import modal_build
 import modal_source_sync as sync
 from modal_build_worker import encoded
 from test_modal_source_sync import SourceFixture
+
+
+# Modal 1.6.3: FunctionTimeoutError -> modal TimeoutError -> Error.
+# The SDK TimeoutError is distinct from Python's built-in poll TimeoutError.
+class SDKError(Exception):
+    pass
+
+
+class SDKTimeoutError(SDKError):
+    pass
+
+
+class SDKFunctionTimeoutError(SDKTimeoutError):
+    pass
+
+
+class SDKOutputExpiredError(SDKTimeoutError):
+    pass
+
+
+class SDKRemoteError(SDKError):
+    pass
+
+
+SDK_EXCEPTIONS = SimpleNamespace(FunctionTimeoutError=SDKFunctionTimeoutError,
+                                 OutputExpiredError=SDKOutputExpiredError, RemoteError=SDKRemoteError)
 
 
 def arguments(**overrides):
@@ -304,17 +331,42 @@ class ControllerTests(SourceFixture):
         self.assertEqual(json.loads((directory / "state.json").read_text())["state"], "completed")
 
     def test_resources_and_snapshot_are_submitted_under_remote_not_local_lock(self):
+        self._run_transport()
+
+    def test_run_download_failure_is_pending_and_status_retries_original_collection_only(self):
+        self._run_transport(fail_download=True)
+
+    def test_test_preparation_pins_normalized_command_worker_and_subject_in_transport(self):
+        self._run_transport(test_mode=True)
+
+    def test_run_terminal_sdk_timeout_exits_polling(self):
+        self._run_transport(terminal_error=SDKFunctionTimeoutError("function terminated"))
+
+    def test_run_builtin_poll_timeout_continues_to_result(self):
+        self._run_transport(poll_once=True)
+
+    def _run_transport(self, fail_download=False, test_mode=False, terminal_error=None, poll_once=False):
         # Mock SDK transport only. This does not execute/qualify a remote worker.
         (self.root / "scripts").mkdir()
         (self.root / "scripts/modal_build_worker.py").write_text("# fixture identity\n")
+        if test_mode:
+            for name in ("modal_build_worker.py", "modal_source_sync.py"):
+                (self.root / "scripts" / name).write_bytes(Path(__file__).with_name(name).read_bytes())
+            package = self.root / "crates/brassclaw_reborn_composition"
+            (package / "src").mkdir(parents=True)
+            (package / "Cargo.toml").write_text('[package]\nname="brassclaw_reborn_composition"\nversion="0.1.0"\n')
+            (package / "src/lib.rs").write_text("// transport fixture; no compilation\n")
         manifest = sync.capture(self.root, self.base / "source.tar.gz")
         manifest["source_archive"] = sync.BASE_SOURCE_PATH
         manifest_bytes = encoded(manifest)
         records = self.base / "records"
         records.mkdir()
         (records / "image-apple.json").write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
-                                                               "environment": "brassclaw", "image_id": "im-test"}))
+                                                               "environment": "brassclaw", "image_id": "im-test",
+                                                               "worker_identity": modal_build.worker_identity(),
+                                                               "supported_modes": [modal_build.APPLE_TEST_MODE]}))
         resources, submitted = {}, {}
+        spawns, gets = [], []
         remote_files = {sync.MANIFEST_PATH: manifest_bytes, sync.BASE_MANIFEST_PATH: manifest_bytes}
 
         class App:
@@ -324,23 +376,50 @@ class ControllerTests(SourceFixture):
                 resources.update(kwargs)
                 def decorate(function):
                     def spawn(original):
+                        spawns.append(original["job_id"])
                         submitted.update(original)
                         result = {**{key: original[key] for key in
                                       ("job_id", "command", "manifest_sha256", "image_id")},
                                   "returncode": 0, "artifacts": {}}
                         prefix = f'/cache/jobs/{original["job_id"]}'
+                        if test_mode:
+                            result.update({key: original[key] for key in
+                                           ("mode", "original_command", "worker_identity", "test_subject")})
+                            body = b"transport fixture only; no native executable"
+                            result["artifacts"] = {"composition-fixture": {
+                                "sha256": hashlib.sha256(body).hexdigest(), "size": len(body),
+                                "mode": original["mode"], "image_id": original["image_id"],
+                                "manifest_sha256": original["manifest_sha256"], "target_triple": original["target_triple"],
+                                "features": original["test_subject"]["features"], "profile": {"test": True},
+                                "target": {"name": "brassclaw_reborn_composition", "kind": ["lib"]}}}
+                            remote_files[prefix + "/artifacts/composition-fixture"] = body
                         remote_files[prefix + "/completed.json"] = encoded(result)
                         remote_files[prefix + "/image-provenance.json"] = b"{}"
                         remote_files[prefix + "/cargo.log"] = b"SDK fixture; no Cargo executed\n"
-                        return SimpleNamespace(object_id="fc-test", get=lambda **kwargs: result)
+                        def get(**kwargs):
+                            gets.append(kwargs)
+                            if len(gets) > 2:
+                                raise AssertionError("Terminal result was polled repeatedly")
+                            if terminal_error is not None:
+                                raise terminal_error
+                            if poll_once and len(gets) == 1:
+                                raise TimeoutError("ordinary empty poll")
+                            return result
+                        return SimpleNamespace(object_id="fc-test", get=get)
                     return SimpleNamespace(spawn=spawn)
                 return decorate
 
             def run(self, **kwargs):
                 return nullcontext()
 
-        volume = SimpleNamespace(read_file=lambda path: [remote_files[path]])
-        sdk = SimpleNamespace(App=lambda *a, **kw: App(), enable_output=nullcontext,
+        failing = {"enabled": fail_download}
+        def read_file(path):
+            if failing["enabled"] and path.endswith("/cargo.log"):
+                raise OSError("collection transport interrupted")
+            return [remote_files[path]]
+        volume = SimpleNamespace(read_file=read_file)
+        sdk = SimpleNamespace(exception=SDK_EXCEPTIONS,
+                              App=lambda *a, **kw: App(), enable_output=nullcontext,
                               Volume=SimpleNamespace(from_name=lambda *a, **kw: volume),
                               Image=SimpleNamespace(from_id=lambda value: SimpleNamespace(object_id=value)))
         env = {"BRASSCLAW_CARGO_LOCK": str(self.base / "local.lock"),
@@ -359,7 +438,42 @@ class ControllerTests(SourceFixture):
                 patch.object(modal_build, "rust_version", return_value="1.96.0"), \
                 patch.object(modal_build, "sync_source", side_effect=check_sync_lock) as upload, \
                 sync.cargo_lock():
-            self.assertEqual(modal_build.run(arguments(cpu_limit=16, jobs=16)), 0)
+            if terminal_error is not None:
+                with self.assertRaises(type(terminal_error)):
+                    modal_build.run(arguments(cpu_limit=16, jobs=16))
+                self.assertEqual(len(gets), 1, "terminal Function result must immediately leave run")
+                state_path = records / "jobs" / submitted["job_id"] / "state.json"
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual(state["state"], "unresolved")
+                self.assertNotIn("collection", state)
+                self.assertFalse(state_path.with_name("completed.json").exists())
+            elif not fail_download:
+                options = dict(cpu_limit=16, jobs=16)
+                if test_mode:
+                    from test_modal_build_worker import test_command
+                    options["cargo"] = [*test_command(), "--message-format=json-render-diagnostics"]
+                self.assertEqual(modal_build.run(arguments(**options)), 0)
+            else:
+                with self.assertRaisesRegex(OSError, "collection transport"):
+                    modal_build.run(arguments(cpu_limit=16, jobs=16))
+                state_path = records / "jobs" / submitted["job_id"] / "state.json"
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual(state["state"], "collection_pending")
+                self.assertEqual(state["remote_state"], "completed")
+                self.assertNotIn("collection", state)
+                self.assertTrue(state_path.with_name("completed.json").exists())
+                failing["enabled"] = False
+                modal_build.status(SimpleNamespace(job_id=submitted["job_id"], volume="changed"))
+                state = json.loads(state_path.read_bytes())
+                self.assertEqual((state["state"], state["collection"]), ("completed", "verified"))
+                self.assertEqual(spawns, [submitted["job_id"]])
+        if poll_once:
+            self.assertEqual(len(gets), 2)
+        if test_mode:
+            self.assertEqual(submitted["command"][-1], "--message-format=json")
+            self.assertEqual(submitted["original_command"][-1], "--message-format=json-render-diagnostics")
+            self.assertEqual(submitted["worker_identity"], modal_build.worker_identity())
+            self.assertEqual(submitted["test_subject"]["target_name"], "brassclaw_reborn_composition")
         upload.assert_called_once_with("brassclaw", "brassclaw-build")
         self.assertEqual(resources["cpu"], (8, 16))
         self.assertEqual(resources["memory"], (32768, 32768))
@@ -367,6 +481,271 @@ class ControllerTests(SourceFixture):
         self.assertEqual(submitted["jobs"], 16)
         self.assertEqual(submitted["lock_scope"], "modal")
         self.assertEqual(submitted["manifest_sha256"], __import__("hashlib").sha256(manifest_bytes).hexdigest())
+
+
+class CollectionBoundaryTests(unittest.TestCase):
+    """Real temp-file custody with synthetic transport; no compiler/target execution."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name).resolve()
+        self.original = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe",
+                         "command": ["cargo", "build", "--locked"], "manifest_sha256": "a" * 64,
+                         "image_id": "im-fixture"}
+        self.body = b"fixture bytes are not a genuine native artifact"
+        self.result = {**self.original, "returncode": 0, "artifacts": {"brassclaw-reborn": {
+            "sha256": hashlib.sha256(self.body).hexdigest(), "size": len(self.body)}}}
+        self.files = {"completed.json": encoded(self.result), "image-provenance.json": b"{}",
+                      "cargo.log": b"fixture stdout log", "brassclaw-reborn": self.body}
+        self.volume = SimpleNamespace(read_file=lambda path: [self.files[path.rsplit("/", 1)[-1]]])
+
+    def status_fixture(self, state_name="unresolved", call_error=None):
+        directory = self.directory / "jobs" / self.original["job_id"]
+        directory.mkdir(parents=True)
+        original = {**self.original, "volume": "original-volume", "environment": "brassclaw"}
+        state = {"state": state_name, "job_id": original["job_id"]}  # Spawn answer/handle lost.
+        if call_error is not None:
+            state["function_call_id"] = "fc-original"
+        (directory / "state.json").write_bytes(encoded(state))
+        (directory / "request.json").write_bytes(encoded(original))
+        reads, selected = [], []
+        def read_file(path):
+            self.assertTrue(path.startswith(f'/cache/jobs/{original["job_id"]}/'))
+            reads.append(path)
+            name = path.rsplit("/", 1)[-1]
+            if name not in self.files:
+                raise FileNotFoundError(path)
+            if isinstance(self.files[name], Exception):
+                raise self.files[name]
+            return [self.files[name]]
+        def from_name(name, **kwargs):
+            selected.append((name, kwargs))
+            return SimpleNamespace(read_file=read_file)
+        # Without call_error there is no FunctionCall/App/spawn surface:
+        # handleless recovery uses only the original durable Volume snapshots.
+        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=from_name), exception=SDK_EXCEPTIONS)
+        if call_error is not None:
+            def get(**kwargs):
+                raise call_error
+            sdk.FunctionCall = SimpleNamespace(from_id=lambda value: SimpleNamespace(get=get))
+        def invoke():
+            with patch.dict(sys.modules, {"modal": sdk}), \
+                    patch.object(modal_build, "records_root", return_value=self.directory), \
+                    patch.object(modal_build, "modal_lock", return_value=nullcontext()):
+                modal_build.status(SimpleNamespace(job_id=original["job_id"], volume="wrong-current-volume"))
+        return directory, state, reads, selected, invoke
+
+    def assert_terminal_receipt_recovery(self, error):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=error)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        observed = json.loads((directory / "terminal.json").read_bytes())
+        self.assertEqual(observed["remote_result_exception"], type(error).__name__)
+
+    def test_expired_result_after_lost_ack_recovers_original_worker_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("ACK lost, SDK output expired"))
+        self.assertNotIn("remote_state", state)
+        self.assertFalse((directory / "completed.json").exists())
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertNotIn("reason", recovered)
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_expired_result_missing_receipt_stays_unresolved_without_failed_compile_claim(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("expired"))
+        del self.files["completed.json"]
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "unresolved")
+        self.assertNotIn("collection", recovered)
+        self.assertNotIn("returncode", recovered)
+        self.assertFalse((directory / "terminal.json").exists())
+        self.assertFalse((directory / "completed.json").exists())
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_expired_result_volume_failure_stays_unresolved_and_retries_original_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKOutputExpiredError("expired"))
+        self.files["completed.json"] = SDKRemoteError("Volume unavailable after expiry")
+        with self.assertRaisesRegex(SDKRemoteError, "Volume unavailable"):
+            invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "unresolved")
+        self.assertNotIn("collection", recovered)
+        self.assertNotIn("returncode", recovered)
+        self.assertFalse((directory / "terminal.json").exists())
+        self.files["completed.json"] = encoded(self.result)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+
+    def test_terminal_sdk_timeout_recovers_successful_worker_receipt(self):
+        self.assertTrue(issubclass(SDKFunctionTimeoutError, SDKTimeoutError))
+        self.assertFalse(issubclass(SDKFunctionTimeoutError, TimeoutError))
+        self.assert_terminal_receipt_recovery(SDKFunctionTimeoutError("terminal SDK timeout"))
+
+    def test_terminal_remote_error_recovers_successful_worker_receipt(self):
+        self.assert_terminal_receipt_recovery(SDKRemoteError("return failed after durable completion"))
+
+    def test_builtin_poll_timeout_leaves_status_running_without_claiming_terminal(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=TimeoutError("poll"))
+        invoke()
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertEqual(reads, [])
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_terminal_sdk_error_with_confirmed_missing_receipt_is_failed_without_collection(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKFunctionTimeoutError("terminal"))
+        del self.files["completed.json"]
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual(recovered["state"], "failed")
+        self.assertNotIn("collection", recovered)
+        self.assertFalse((directory / "completed.json").exists())
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_terminal_result_with_volume_transport_error_stays_unconfirmed_then_recovers(self):
+        directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKRemoteError("terminal Function result"))
+        self.files["completed.json"] = SDKRemoteError("Volume transport unavailable")
+        with self.assertRaisesRegex(SDKRemoteError, "Volume transport"):
+            invoke()
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertFalse((directory / "brassclaw-reborn").exists())
+        # Keep the terminal Function result but restore its original durable data.
+        self.files["completed.json"] = encoded(self.result)
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+
+    def test_lost_spawn_handle_recovers_from_original_durable_job_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("submitting")
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        self.assertEqual(selected, [("original-volume", {"environment_name": "brassclaw"})])
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_missing_or_transport_failed_receipt_without_handle_stays_unconfirmed(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        for error in (FileNotFoundError("receipt absent"), OSError("Volume transport unavailable")):
+            self.files["completed.json"] = error
+            with self.subTest(error=error), self.assertRaises(type(error)):
+                invoke()
+            self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+            self.assertFalse((directory / "completed.json").exists())
+            self.assertFalse((directory / "terminal.json").exists())
+            self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_repeated_status_reuses_verified_local_bytes_and_repairs_corrupt_or_missing_copy(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        invoke()
+        binary = directory / "brassclaw-reborn"
+        original_stat = binary.stat()
+        artifact_path = f'/cache/jobs/{self.original["job_id"]}/artifacts/brassclaw-reborn'
+        self.assertEqual(reads.count(artifact_path), 1)
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 1, "verified bytes must not be downloaded again")
+        self.assertEqual((binary.stat().st_ino, binary.stat().st_mtime_ns),
+                         (original_stat.st_ino, original_stat.st_mtime_ns))
+        # Same-size corruption must trigger a hash check, not just size reuse.
+        binary.chmod(0o600)
+        binary.write_bytes(b"x" * len(self.body))
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 2)
+        self.assertEqual(binary.read_bytes(), self.body)
+        binary.unlink()
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 3)
+        self.assertEqual(binary.read_bytes(), self.body)
+
+    def test_symlink_local_artifact_is_replaced_without_following_its_target(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        outside = self.directory / "outside-original-bytes"
+        outside.write_bytes(self.body)
+        binary = directory / "brassclaw-reborn"
+        binary.symlink_to(outside)
+        invoke()
+        self.assertFalse(binary.is_symlink())
+        self.assertEqual(binary.read_bytes(), self.body)
+        self.assertEqual(outside.read_bytes(), self.body)
+        self.assertEqual(sum(path.endswith("/artifacts/brassclaw-reborn") for path in reads), 1)
+
+    def test_verified_atomic_copy_preserves_old_bytes_on_transfer_or_hash_failure(self):
+        destination = self.directory / "brassclaw-reborn"
+        destination.write_bytes(b"old verified copy")
+        self.files["brassclaw-reborn"] = b"corrupt transfer"
+        with self.assertRaisesRegex(ValueError, "checksum/size"):
+            modal_build.collect_result(self.volume, self.directory, self.original, self.result)
+        self.assertEqual(destination.read_bytes(), b"old verified copy")
+        self.assertEqual(list(self.directory.glob(".download-*")), [])
+        self.files["brassclaw-reborn"] = self.body
+        modal_build.collect_result(self.volume, self.directory, self.original, self.result)
+        self.assertEqual(destination.read_bytes(), self.body)
+        self.assertEqual(destination.stat().st_mode & 0o777, 0o500)
+        self.assertEqual((self.directory / "cargo.log").read_bytes(), b"fixture stdout log")
+
+    def test_retained_job_or_original_identity_mismatch_rejects_before_publish(self):
+        wrong = {**self.result, "image_id": "im-other"}
+        with self.assertRaisesRegex(ValueError, "retained original"):
+            modal_build.collect_result(self.volume, self.directory, self.original, wrong)
+        self.assertFalse((self.directory / "brassclaw-reborn").exists())
+
+    def test_original_product_activation_never_qualifies_new_test_mode(self):
+        with self.assertRaisesRegex(ValueError, "DEACTIVATED"):
+            modal_build.require_activation("apple", modal_build.APPLE_TEST_MODE)
+
+    def test_volume_remote_error_does_not_reclassify_completed_job_as_terminal_failure(self):
+        class TransportRemoteError(Exception):
+            pass
+        directory = self.directory / "jobs" / self.original["job_id"]
+        directory.mkdir(parents=True)
+        original = {**self.original, "volume": "original-volume", "environment": "brassclaw"}
+        state = {"state": "collection_pending", "remote_state": "completed", "job_id": original["job_id"],
+                 "function_call_id": "fc-original"}
+        (directory / "state.json").write_bytes(encoded(state))
+        (directory / "request.json").write_bytes(encoded(original))
+        def read_file(path):
+            raise TransportRemoteError("Volume unavailable; not a FunctionCall result")
+        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=lambda *a, **kw: SimpleNamespace(read_file=read_file)),
+                              exception=SimpleNamespace(RemoteError=TransportRemoteError, FunctionTimeoutError=TimeoutError))
+        with patch.dict(sys.modules, {"modal": sdk}), \
+                patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.object(modal_build, "modal_lock", return_value=nullcontext()):
+            with self.assertRaises(TransportRemoteError):
+                modal_build.status(SimpleNamespace(job_id=original["job_id"]))
+        self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_legacy_product_activation_keeps_only_original_product_scope(self):
+        image = {"image_id": "im-original-product"}
+        record = {"active": True, "image_id": image["image_id"], "job_id": self.original["job_id"]}
+        (self.directory / "image-apple.json").write_bytes(encoded(image))
+        (self.directory / "activation-apple.json").write_bytes(encoded(record))
+        with patch.object(modal_build, "records_root", return_value=self.directory):
+            self.assertEqual(modal_build.require_activation("apple", modal_build.APPLE_BUILD_MODE), record)
+            with self.assertRaisesRegex(ValueError, "test mode is DEACTIVATED"):
+                modal_build.require_activation("apple", modal_build.APPLE_TEST_MODE)
+
+    def test_old_image_and_unsupported_modes_reject_before_sdk_import_or_sync(self):
+        from test_modal_build_worker import test_command
+        image = self.directory / "image-apple.json"
+        image.write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
+                                      "environment": "brassclaw", "image_id": "im-old-product"}))
+        with patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.dict(sys.modules, {"modal": None}), patch.object(modal_build, "sync_source") as upload:
+            with self.assertRaisesRegex(ValueError, "exact worker/image"):
+                modal_build.run(arguments(cargo=test_command()))
+            for flags in (["--doc"], ["--profile=release"], ["--", "filter"], ["--test=other"]):
+                with self.subTest(flags=flags), self.assertRaises(ValueError):
+                    modal_build.run(arguments(cargo=[*test_command(), *flags]))
+            upload.assert_not_called()
+
 
 
 if __name__ == "__main__":

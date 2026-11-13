@@ -6,7 +6,11 @@ The compiler host is Linux/amd64; the artifact target is
 Use only the `brassclaw` Modal environment and `brassclaw-build` Volume.
 
 The image is a prerequisite, not proof of a working BrassClaw build or activation.
-The current Apple controller supports CLI dev/release product compilation only.
+Normal Apple offloading supports CLI dev/release product compilation only.
+The [qualification-only composition library test preparation](build-environments.md#qualification-only-apple-library-test-preparation)
+is source support with normal test activation closed. It requires a newly
+prepared exact worker/image and real future native test/fixture qualification;
+old product-build evidence cannot qualify that mode.
 The user's 2026-11-12 permission also covers time-saving Modal test builds,
 tests and other development work, but those modes require their real connected
 controller/worker/runner support before use; see the
