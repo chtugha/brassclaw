@@ -180,6 +180,11 @@ pub fn trace_fixture_runtime_dispatch() -> tracing::subscriber::DefaultGuard {
 /// - `Some(id)` → resumed after approval/dependent-run block →
 ///   `AgentLoopDriver::resume` with the real checkpoint id so the driver can
 ///   reload the `BeforeBlock` state it stored during the initial run.
+///
+/// The harness binds only the chat transcript admission participant. It has no
+/// private-original reconciliation owner or private Work executor. Both private
+/// entry points fail explicitly, even if private records appear in the shared
+/// test database; neither may acknowledge or settle those records.
 struct LegacyPlannedDriverFixture {
     default_driver: Arc<dyn AgentLoopDriver>,
     subagent_driver: Arc<dyn AgentLoopDriver>,
@@ -256,6 +261,21 @@ impl LegacyPlannedDriverFixture {
 
 #[async_trait]
 impl MontyTurnDriverPort for LegacyPlannedDriverFixture {
+    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "legacy chat fixture has no private original owner".into(),
+        })
+    }
+
+    async fn drive_private(
+        &self,
+        _claimed: Arc<brassclaw_turns::private_work::ClaimedPrivateWork>,
+    ) -> Result<(), AgentLoopDriverError> {
+        Err(AgentLoopDriverError::Unavailable {
+            reason: "legacy chat fixture cannot execute private Work".into(),
+        })
+    }
+
     async fn drive_turn(
         &self,
         handoff: MontyTaskHandoff,
