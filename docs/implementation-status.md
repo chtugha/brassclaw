@@ -1,4 +1,43 @@
-## 2026-11-13 — Release CI runner correction prepared as rc.6
+## 2026-11-13 — Prioritized Speedup2 source integration complete
+
+Root's complete review rejects the original cache-glob Remote artifact export
+and identifies real global-Cargo guard and embedded-document classifier gaps.
+Corrected W-06 local/CI source through `dd277b7ab` is integrated and actually
+passes 23/5/6/80 Python cases, 69 named scope cases plus all 298 current embedded
+inputs, actionlint and whitespace. Guards retain the canonical target/lock and
+existing thresholds. Standalone test manifests and inspection remain supported.
+Corrected Remote source through `9b8421013` merges as `9bb386191`; Root's actual
+45/11/6/80 helper cases pass on the integrated source. Exact invocation artifacts,
+verified local-byte reuse and original-only recovery replace unsafe cache-glob
+selection. Normal test offloading remains disabled pending real image/native
+qualification. This is tooling acceptance, not cloud/native/product-plan
+completion. See
+[the exact review and open scope](validation/2026-11-13-speedup2-local-ci-review.md).
+
+## 2026-11-13 — rc.6 publication complete; rc.7 compatibility follow-up open
+
+All native rc.6 release builds and publication pass in GitHub run `43348645122`;
+all twelve assets are published. The approved branch-protection correction uses
+actual Reborn/Code Style rollups bound to GitHub Actions, preserving other rules.
+Rust 1.100 exposes manifest and visibility diagnostics absent from older local
+strict evidence. Reviewed W-02/W-03/W-04/W-05 corrections are integrated with
+prepared rc.7 metadata; no full-v3 or deployed support follows.
+
+The full-workspace/all-targets Rust 1.100 Clippy diagnostic compiles successfully
+(215.073 s, unchanged source), but has six remaining Rust lints and eighteen
+unused dependency warnings. Six source repairs are integrated; the remaining
+manifest audit is integrated, including correction of unintended automatic TUI
+membership loss; actual strict/native acceptance remains pending. Installer file
+operations pass seventeen cases with the systemd-only validator explicitly
+unavailable on macOS. The first dependency repair preserves legacy YAML tests
+and the two offline resolver passes remove 32 then 69 unreachable lock revisions
+without retained package updates. Metadata verifies the identical 64-member set,
+including the standalone TUI library/example.
+Changed fixture source bytes retain checksum coverage and require a new exact
+qualification identity; prior native receipts are not relabelled. rc.7 publication
+is pending. See [the current handoff](development-handoff.md).
+
+## Historical 2026-11-13 — Release CI runner correction prepared as rc.6
 
 The rc.5 checkpoint is pushed/tagged at `e466ed46c`. Actual GitHub Release run
 `43347099426` cancels the Intel job before execution because macOS 14 images are

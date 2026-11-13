@@ -31,11 +31,27 @@ retagged/forced. The new release will build the actual new version/embedded
 release bytes on the supported native runners. Earlier rc.5 native/CLI receipts
 remain scoped to their original source/artifacts; unchanged Rust implementation
 logic is reused, not claimed as new rc.6 exact-byte runtime qualification.
-Real hosted results and release assets remain pending the new tag run.
+Actual hosted run [43348645122](https://github.com/chtugha/brassclaw/actions/runs/43348645122)
+now passes all three native Build jobs, their uploads and Create Release. The
+published [rc.6 prerelease](https://github.com/chtugha/brassclaw/releases/tag/v1.7.0-rc.6)
+has all twelve application/worker/checksum assets. The superseded rc.5 run is
+cancelled deliberately; it is not relabelled a successful compilation.
 
-The previous push also reports absent required contexts `build`/`test`. Read-only
-GitHub inspection confirms these classic branch-protection names, whereas current
-workflows provide `Tests (Reborn)` and `Code Style (fmt + clippy)` rollups. No
-protection is disabled, green status fabricated or repository setting changed.
-This preexisting configuration concern is separate from runner recovery and
-remains explicit; successful push is not successful CI.
+The previous push reports absent required contexts `build`/`test`. With the
+user's explicit approval, Root replaces only those obsolete required contexts
+with `Tests (Reborn)` and `Code Style (fmt + clippy)`, both bound to the verified
+GitHub Actions app ID 15368. Fresh REST readback verifies the exact pair and
+unchanged `strict: false`; complete before/after protection comparison verifies
+all other rules unchanged. No green status is fabricated. Correct check names
+are not evidence that their current runs passed.
+
+The successful hosted builds use Rust 1.100.0, whereas the original local strict
+repair receipts use 1.98.1. ANSI-normalized actual logs from all three rc.6 Build
+jobs contain the same 93 manifest causes: fifty missing workspace-lint
+inheritances, forty-two redundant homepage declarations and one unused Root
+build dependency. Including 59 summaries, each log has 152 warning lines.
+An initial raw-log scan missed warnings separated by ANSI escapes; Root corrects
+that observation and preserves the actual logs. Empty/incomplete CLI log output
+is not warning-free evidence. W-02 and subsequent repairs are being validated
+for rc.7; its full-workspace diagnostic compilation is not yet strict/native
+acceptance. See [the current handoff](../development-handoff.md).

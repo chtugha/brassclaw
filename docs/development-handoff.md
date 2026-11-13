@@ -1,4 +1,57 @@
-## Latest — 2026-11-13 rc.5 published; rc.6 native runner repair prepared
+## Latest — 2026-11-13 rc.6 published; rc.7 compatibility repairs under validation
+
+**Priority Speedup2 source integration completed:** Root reviews
+external `04565b6f8`, preserves its failed counterprobes and integrates corrected
+W-06 commits `65a14e513`/`1f3c132e6`/`dd277b7ab` by fast-forward. Main now has
+bounded global-Cargo parsing, both disk gates, protected package cleanup and CI
+coverage over 298 actual embedded inputs. Root's 23/5/6/80 Python suites, 69 scope
+cases plus complete input coverage, actionlint and whitespace pass. No compiler
+or cloud job is used for the local/CI tooling checks. Corrected Remote source
+through `9b8421013` merges as `9bb386191`: exact Cargo artifact attribution,
+original-only recovery and verified local-byte reuse replace the unsafe cache
+glob. Root's merged-source 45/11/6/80 Python cases pass. Normal test offloading
+remains disabled pending exact-image/native qualification. W-05's follow-up
+`bc78c0bfa` and explicit TUI membership correction `55828a04` are also integrated.
+See [the exact review](validation/2026-11-13-speedup2-local-ci-review.md).
+
+Release `v1.7.0-rc.6` at `fb3a1f624` is published. All three native GitHub
+builds and publication pass in run `43348645122`; the release has all twelve
+application/worker/checksum assets. macOS 14 runner allocation is repaired.
+The user-approved branch protection now requires `Tests (Reborn)` and
+`Code Style (fmt + clippy)`, both bound to GitHub Actions app 15368. All other
+protection fields are verified unchanged; this does not fabricate passing checks.
+
+Current local Main includes prepared rc.7 metadata, the two preserved external
+installer additions, reviewed W-02 manifest/visibility/Atomic corrections,
+W-03 private local snapshot/offline installation, W-04 explicit chat-fixture
+private refusal and direct native-PG test dependencies, and W-05's dependency
+corrections. Two genuine offline resolver passes remove 32
+and 69 orphan lock packages without retained version/checksum updates. An
+intermediate unintended TUI membership loss is corrected before acceptance:
+actual metadata retains the identical 64-member set and TUI library/example.
+Legacy YAML tests keep their dev dependency.
+The complete installer suite passes seventeen cases; one real systemd-validator
+case is unavailable on macOS and remains explicitly skipped.
+
+Actual Rust 1.100 full-workspace/all-targets Clippy diagnostic completes in
+215.073 seconds with unchanged source. This is compilation evidence, not strict
+acceptance: it reports six remaining Composition Clippy warnings and eighteen
+further unused manifest edges. W-02's six source repairs are reviewed/integrated;
+W-05's eighteen-edge audit and membership correction are integrated; final
+manifest/compiler acceptance is pending. No final strict pass, native acceptance
+or rc.7 release is claimed yet.
+
+A moved unchanged Pure fixture test module changes its complete file checksum,
+`original-pure-seed-manifest/1` and derived reservation identity. Preserve old
+originals and evidence; new bytes require their applicable native qualification.
+Root retains integration/validation; package chats use separate worktrees.
+The user's separate Speedup2 agent must also use its own branch/worktree; the
+local `speedup2.md` plan remains untracked. Do not alter frozen Root inputs.
+Default local Rust remains 1.98.1; named 1.100.0 matches GitHub's new stable.
+Project MSRV remains 1.96. No new Modal job or image activation is implied.
+All three Bob plans, general Pure approval and full private N/R/Q/T remain open.
+
+## Historical — 2026-11-13 rc.5 published; rc.6 native runner repair prepared
 
 Main/tag rc.5 publication succeeds atomically: `e466ed46c69a77ae73e4502c68101c3d3f57a86d`;
 annotated tag object `7a0777e9637a7d74d1557956e73a423d696f3555` dereferences to it.

@@ -16,10 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecated test-support Atomic operation with checked compare-and-exchange,
   preserving overflow rejection, memory ordering and the declared Rust 1.96 minimum.
   Add concurrent counter regressions; retain existing tests and public exports.
-  Remove eight unused direct dependency edges and retain legacy YAML parsing
-  as a test dependency. Prune 32 unreachable lockfile packages without changing
-  retained package versions or checksums; keep the existing PostgreSQL binary
-  extraction, integrity checks and SQL extension support.
+  Remove 25 unused direct dependency edges and retain legacy YAML parsing
+  as a test dependency. Bind the workflow ledger dependency to its existing
+  PostgreSQL feature; explicitly preserve standalone TUI workspace membership
+  and existing compatibility feature names. Two offline resolver passes prune
+  101 unreachable lockfile packages without changing retained package versions
+  or checksums; keep PostgreSQL binary extraction, integrity checks and SQL
+  extension support.
+- **Build tooling**: Parse supported Cargo global/toolchain options before
+  applying local cleanup and disk guards; check both build and artifact volumes.
+  Derive CI scope from the actual embedded inputs, including translated READMEs,
+  and run the existing build-helper tests in installer CI. Prepare a bounded
+  Apple library-test artifact protocol using exact Cargo JSON rather than cache
+  globs or file timestamps. Recover only original remote job results after
+  interrupted collection, lost acknowledgements or expired SDK output; verify
+  and reuse existing local artifact bytes. New test offloading remains disabled
+  pending exact-image and native test qualification; no measured speedup or
+  completed combined-build implementation is claimed.
 - **Test integration**: Restore explicit private-work refusal in the historical
   chat-only test driver and declare the shared native PostgreSQL fixture's direct
   test dependencies. No production driver fallback or successful private-work

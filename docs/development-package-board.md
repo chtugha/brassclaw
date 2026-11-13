@@ -40,7 +40,57 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
-### Active follow-up — 2026-11-12, native failures and strict lint before release
+## Current release compatibility follow-up — 2026-11-13
+
+User priority places the external Speedup2 integration before the next compiler
+batch. **W-06**, `01a1d2fa-413a-76b2-a47a-f0953f25fd36`, isolated worktree
+`f8e4`, supplies the corrected safe local/CI checkpoint through `dd277b7ab`.
+Root reviews and fast-forwards it into Main: 23/5/6/80 Python cases, 69 scopes
+plus all 298 embedded inputs, actionlint and whitespace pass on integrated
+source. Corrected Remote controller/worker source through `9b8421013` merges as
+`9bb386191`; Root's actual 45/11/6/80 merged-source helper cases pass. Exact
+artifact attribution and original-result recovery are source accepted; normal
+test offloading stays disabled pending real image/native qualification. No paid
+job/image/activation or general combined-runner implementation is claimed. W-05
+follow-up and its actual resolver membership correction are integrated; both
+packages are source-idle. See [the bounded review](validation/2026-11-13-speedup2-local-ci-review.md).
+
+- **W-01**, `01a1d29a-065e-7ee0-b5ee-1b7e3c9a4ffd`: reviewed two-label runner
+  correction `17951f9f4`; rc.6's three native builds and release publication pass.
+  Source-idle; no outstanding runner allocation failure.
+- **W-02**, `01a1d2b8-0cbd-7dc3-b541-f47846054999`, worktree `0954`: manifest
+  repair `7e4d1b447`, complete 322-warning source repair `caa5064be`, four further
+  Clippy causes `5261194e4` and six Composition causes `489f57998` are reviewed
+  and integrated. No suppression, removed tests, public-handler exposure or
+  Windows behavior loss. Original fixture byte coverage changes its exact
+  qualification identity. Source-idle for actual validation findings.
+- **W-03**, `01a1d2c0-cca8-7792-b88b-c74efd5778c7`, worktree `e394`: local
+  installer snapshots/offline mode `556378f09` and listener/profile regression
+  `3fa5fb8e8` are integrated. Seventeen actual local cases pass; one systemd
+  validator is unavailable on macOS. External network-listener work is preserved;
+  no Linux service deployment acceptance is claimed. Source-idle.
+- **W-04**, `01a1d2d0-042b-7b43-a1b9-77bcc948947d`, worktree `29d2`: explicit
+  private-owner refusal in the historical chat-only fixture and actual Ingress/
+  Root refinery test dependencies (`c1cbe03c2`, `3d3fc5ef0`) are integrated.
+  Full default workspace/all-targets compilation reaches those targets; focused
+  native caller acceptance remains pending. No production fallback/default added.
+- **W-05**, `01a1d2df-5347-76d1-b2fa-f102bb409d4b`, worktree `2d4d`: first
+  nine dependency causes `c698241d7` integrated; YAML is retained for tests.
+  Root's two offline resolutions remove 32 then 69 orphan packages without
+  retained version/checksum updates. The eighteen-edge follow-up `bc78c0bfa`
+  and explicit TUI membership correction `55828a04` are integrated; actual
+  metadata preserves all 64 original members and the TUI library/example.
+  Storage's PostgreSQL dependency and Root compatibility feature names remain.
+  Source accepted; final strict/feature/native checks are pending. No concurrent
+  Root Rust implementation package is active.
+
+Root alone owns local Cargo, reviews, final strict/native acceptance and release.
+The user's separate Speedup2 work uses its own branch/worktree and must coordinate
+native Cargo and shared build entry points. It does not authorize concurrent
+edits to Root's frozen compiler inputs or an additional implementation owner.
+All three Bob plans/general Pure/full private N/R/Q/T remain open.
+
+### Historical follow-up — 2026-11-12, native failures and strict lint before release
 
 The user commissions repair of the two Run-52 native failures and all 20 Run-51
 strict-Clippy diagnostics, then changelog/version update and Main/tag publication.
