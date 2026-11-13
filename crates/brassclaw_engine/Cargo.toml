@@ -26,7 +26,6 @@ skills-db = ["brassclaw_skills/db-store", "dep:brassclaw_pg", "dep:brassclaw_cap
 [dependencies]
 brassclaw_monty_host = { path = "../brassclaw_monty_host" }
 async-trait = "0.1"
-cron = "0.13"
 brassclaw_capabilities = { path = "../brassclaw_capabilities", optional = true }
 brassclaw_common = { path = "../brassclaw_common", version = "0.4.2" }
 brassclaw_host_api = { path = "../brassclaw_host_api" }

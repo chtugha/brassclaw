@@ -73,11 +73,7 @@ tokio = { version = "1", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 futures = "0.3"
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
 eventsource-stream = "0.2"
-
-# Agent Client Protocol (ACP) — standard communication with coding agents
-agent-client-protocol = "0.10"
 
 # HTTP client
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls-native-roots", "stream"] }
@@ -125,9 +121,6 @@ async-trait = "0.1"
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 
-# Terminal
-crossterm = "0.29"
-
 # Channel integrations
 axum = { version = "0.8", features = ["ws"] }
 tower = "0.5"
@@ -157,24 +150,16 @@ brassclaw_reborn_cli = { path = "crates/brassclaw_reborn_cli", version = "1.7.0-
 brassclaw_engine = { path = "crates/brassclaw_engine", version = "0.1.0" }
 brassclaw_llm = { path = "crates/brassclaw_llm", version = "0.1.0" }
 brassclaw_embeddings = { path = "crates/brassclaw_embeddings", version = "0.1.0" }
-brassclaw_oauth = { path = "crates/brassclaw_oauth", version = "0.1.0" }
 brassclaw_reborn_traces = { path = "crates/brassclaw_reborn_traces", version = "0.1.0" }
 brassclaw_safety = { path = "crates/brassclaw_safety", version = "0.2.2" }
 brassclaw_skills = { path = "crates/brassclaw_skills", version = "0.3.0" }
-brassclaw_tui = { path = "crates/brassclaw_tui", optional = true, version = "0.1.0" }
 regex = "1"
 aho-corasick = "1"
-
-# YAML parsing for SKILL.md frontmatter
-serde_yml = "0.0.12"
 
 # Filesystem paths
 dirs = "6"
 fs4 = "0.6"
 glob = "0.3"
-
-# Semantic versioning
-semver = "1"
 
 # Secrecy for sensitive values
 secrecy = { version = "0.10", features = ["serde"] }
@@ -185,10 +170,6 @@ urlencoding = "2"
 
 # Open URLs in browser
 open = "5"
-
-# Vector embeddings for semantic search
-# The postgres feature provides ToSql/FromSql for postgres-types (shared by tokio-postgres)
-pgvector = { version = "0.4", features = ["postgres"], optional = true }
 
 # Cryptography for secrets management
 aes = "0.8"
@@ -217,27 +198,17 @@ bollard = "0.18"
 flate2 = "1"
 tar = "0.4"
 
-# Document text extraction
-pdf-extract = "0.7"
-zip = { version = "2", default-features = false, features = ["deflate"] }
-
 # HTTP proxy for sandboxed network access
 hyper = { version = "1.5", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["server", "tokio", "http1", "http2"] }
 http-body-util = "0.1"
 bytes = "1"
 base64 = "0.22.1"
-cookie = "0.18"
 jsonwebtoken = "9"
 mime_guess = "2.0.5"
 clap_complete = "4.5.0"
 lru = "0.18.2"
 
-# HTML to Markdown conversion (feature gated)
-html-to-markdown-rs = { version = "3", optional = true }
-readabilityrs = { version = "0.1.2", optional = true }
-ed25519-dalek = { version = "2.2.0", features = ["std"] }
-bs58 = "0.5"
 hex = "0.4.3"
 
 # Reborn capability system
@@ -306,7 +277,6 @@ postgres = [
     "dep:webpki-roots",
     "dep:postgres-types",
     "dep:refinery",
-    "dep:pgvector",
     "rust_decimal/db-tokio-postgres",
 ]
 # Upgrade-release gate: gates the libSQL read path used by the data migration
@@ -323,9 +293,13 @@ integration = []
 # Replay-gate snapshot tests run in a dedicated CI job.
 # Rebased onto the embedded Postgres test rig (§9.2 — Phase 6).
 replay = ["postgres"]
-html-to-markdown = ["dep:html-to-markdown-rs", "dep:readabilityrs"]
+# Compatibility name for build scripts predating the Phase 6 root-source removal.
+# The CLI shim has no HTML converter; this flag enables no runtime capability.
+html-to-markdown = []
 bedrock = ["brassclaw_llm/bedrock", "brassclaw_reborn_composition/bedrock"]
-tui = ["dep:brassclaw_tui"]
+# The removed root TUI bridge has no replacement in the CLI shim. Keep its build
+# flag accepted; the independent brassclaw_tui workspace crate/example is unchanged.
+tui = []
 import = ["dep:json5"]
 # Conditional gate for memory-substrate regression tests that anticipate
 # specific guards: `ensure_path_matches_context`/`ensure_scope_matches_context`
