@@ -98,7 +98,7 @@ registerPack("de", {
 
   // Validator Review Panel (B3-09)
   "validatorReview.title": "Originalsubjekt & Belege",
-  "validatorReview.scope": "Dies ist das unveränderliche zurückgehaltene Subjekt. Bitte vor der Freigabe oder Ablehnung die Originalbytes und die Prüfsumme prüfen.",
+  "validatorReview.scope": "Das ursprünglich eingereichte Subjekt. Komponentenbytes und Prüfsumme vor den vorhandenen Validierungskontrollen in dieser Queue prüfen.",
   "validatorReview.noSubmission": "Keine Originaleinreichung verknüpft. Bitte den Kandidaten mit dieser Queue-ID über das Einreichungsformular einreichen, bevor die Prüfung fortgesetzt werden kann.",
   "validatorReview.loadFailed": "Originalsubjekt konnte nicht geladen werden: {message}",
   "validatorReview.historicalSubject": "Historisches Subjekt — Prüfungsstatus",
@@ -120,10 +120,7 @@ registerPack("de", {
   "validatorReview.reviewSelection": "Prüfungsauswahl",
   "validatorReview.classCode": "Klasse",
   "validatorReview.reviewActions": "Menschliches Q2-Review",
-  "validatorReview.prerequisitesMissing": "Voraussetzungen fehlen — das Original muss den Status 'bound' haben, bevor die menschliche Q2-Freigabe erfolgen kann.",
-  "validatorReview.staleViewConflict": "Der Komponentenstatus hat sich seit dem Laden dieser Ansicht geändert. Bitte die Queue neu laden und erneut prüfen, bevor freigegeben wird.",
-  "validatorReview.newDraftHint": "Für einen korrigierten Entwurf: Das Einreichungsformular mit dem beobachteten Vorgänger-CAS verwenden. Die aktive freigegebene Revision ist schreibgeschützt.",
-  "validatorReview.actionNotConnected": "Die menschliche Q2-Freigabe für diese Komponentenklasse ist noch nicht angebunden. Das Subjekt wird nur zur Inspektion angezeigt. Die Anbindung erfolgt, wenn B1-06 den Freigabe-Writer verbindet.",
+  "validatorReview.actionNotConnected": "Menschliche Freigabe ist für diese Komponente noch nicht verfügbar. Die Einreichung wird nur zur Inspektion angezeigt.",
 
   "onboarding.codexSignInSempai": "Für Sempai anmelden",
   "onboarding.codexNewConfirm": "Eine neue Anmeldung für diesen Provider und diese Rolle starten? Die bisherige Anmeldung bleibt gespeichert.",

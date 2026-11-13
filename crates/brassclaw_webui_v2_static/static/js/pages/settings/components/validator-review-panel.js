@@ -1,39 +1,34 @@
 /**
  * ValidatorReviewPanel — B3-09 product integration.
  *
- * Shows the original immutable subject and evidence for one class-21 (Recipe)
- * or class-22 (PythonCode) validator queue item. The operator sees the same
- * subject the backend holds — identified by the original subject_checksum —
- * before deciding to approve or reject.
+ * Shows the original immutable subject for one class-21 (Recipe) or class-22
+ * (PythonCode) validator queue item. This is an inspection-only view: the
+ * human Q2 decision path (approve/reject) is not wired here for either class.
+ * The existing QueueRow approve/reject buttons continue to serve class 21
+ * through the legacy queue graduation path; that path does not send the
+ * displayed submission_id or subject_checksum and does not satisfy the
+ * immutable-approval contract required by the connected writer.
  *
- * Rules:
- * - Loads from B1's retained immutable subject via fetchComponentReviewSubmission;
+ * Rules (what this panel does):
+ * - Loads the retained subject via fetchComponentReviewSubmission;
  *   never from a latest component-row lookup.
- * - Approve/reject route through the existing typed validate/rejectComponent API
- *   (B1 class/profile dispatcher); never to a Skill-only association endpoint.
- * - A stale-view/base conflict (409) shows the new backend state and blocks
- *   re-approval until the operator explicitly re-prepares.
- * - Retry after lost ACK reuses the original item class/id; a new submission
- *   creates a new ID and uses ComponentSubmissionPanel.
- * - Admin catalogue inspection does NOT publish matching or MCP commands.
- * - Class 10 (Orchestrator) and 50 (Scaffold) are never shown here — they go
- *   through the LLM-audit-gated path in the existing QueueRow.
- * - Private class 05:validator route exclusion: this panel is for class 21/22
- *   only; it does not list validators or publish their intents.
+ * - Displays subject_checksum, candidate identity, component bytes and
+ *   review selection so the operator can see what was submitted.
+ * - Shows the Q1 work status when present.
+ * - Shows an inspection-only notice for q2_manual items to make clear
+ *   that approve/reject is not available here.
+ * - Does not publish matching or MCP commands.
+ * - Class 10 (Orchestrator) and 50 (Scaffold) are handled by the existing
+ *   LLM-audit-gated QueueRow and are excluded from this panel.
  */
 import { React, html } from "../../../lib/html.js";
-import { Card } from "../../../design-system/card.js";
 import { Badge } from "../../../design-system/badge.js";
 import { useT } from "../../../lib/i18n.js";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  fetchComponentReviewSubmission,
-  validateComponent,
-  rejectComponent,
-} from "../lib/settings-api.js";
+import { useQuery } from "@tanstack/react-query";
+import { fetchComponentReviewSubmission } from "../lib/settings-api.js";
 import { Section, Field, FieldGrid, CodeBlock } from "./component-detail-primitives.js";
 
-/** Classes for which this panel supplies approve/reject actions (B3-09 req 4). */
+/** Classes shown in this panel (subject inspection only). */
 const REVIEW_PANEL_CLASSES = new Set([21, 22]);
 
 /**
@@ -46,7 +41,6 @@ function workStatusKey(status) {
 
 /**
  * Tone for the review status badge.
- * draft / pending → warning, approved/active → positive, rejected/failed → danger.
  */
 function reviewStatusTone(status) {
   if (!status) return "muted";
@@ -57,38 +51,8 @@ function reviewStatusTone(status) {
 }
 
 /**
- * Classes for which the backend Q2 approval writer is currently connected.
- * Class 22 (PythonCode) is tracked under B1-06 and is NOT connected yet;
- * it shows the subject for inspection but no approve/reject buttons.
- */
-const CONNECTED_Q2_CLASSES = new Set([21]);
-
-/**
- * Returns true when the item is eligible for the Q2 review section —
- * q2_manual queue with a linked submission AND a connected backend writer.
- * The subject may still be unbound (prerequisitesMissing = true) in which
- * case the action buttons are disabled but the prerequisite warning is shown.
- */
-function isEligibleForReview(item) {
-  return (
-    item.queue_code === "q2_manual" &&
-    CONNECTED_Q2_CLASSES.has(item.class_code) &&
-    typeof item.original_review?.submission_id === "string" &&
-    item.original_review.submission_id.length > 0
-  );
-}
-
-/**
- * Returns true only when the original_review state is "bound" — meaning all
- * prerequisites are met and approve/reject buttons are enabled.
- */
-function isReviewable(item) {
-  return isEligibleForReview(item) && item.original_review?.state === "bound";
-}
-
-/**
  * Render one component revision reference inline.
- * Used directly in ValidatorReviewPanel — no sub-component boundary.
+ * Used directly in ValidatorReviewPanelInner — no sub-component boundary.
  */
 function revisionRefRow(t, label, revRef) {
   if (!revRef) return null;
@@ -112,28 +76,13 @@ function revisionRefRow(t, label, revRef) {
 }
 
 /**
- * ValidatorReviewPanel — public export.
- *
- * Renders nothing for classes other than 21 and 22, or when the queue item
- * has no retained submission to display. Silently returns null for private
- * validators (05:validator) since those are excluded by the queue filter.
- *
- * All content is rendered directly in this function (no sub-component calls)
- * so static-vm test traversal can reach all displayed values.
- *
- * @param {object} item - Queue row item from fetchValidationQueue.
- * @param {function?} onDone - Called after a successful approve/reject.
- */
-/**
  * Inner implementation — only rendered when class_code is 21 or 22.
- * All hooks are at the top level, before any conditional returns.
+ * All hooks are at the top level, before any conditional returns, so the
+ * outer guard wrapper can safely return null for excluded classes without
+ * changing the hook call sequence here.
  */
-function ValidatorReviewPanelInner({ item, onDone }) {
+function ValidatorReviewPanelInner({ item }) {
   const t = useT();
-  const queryClient = useQueryClient();
-  const [rejectOpen, setRejectOpen] = React.useState(false);
-  const [feedback, setFeedback] = React.useState("");
-  const [actionError, setActionError] = React.useState("");
 
   const submissionId = item?.original_review?.submission_id;
   const hasSubmission = typeof submissionId === "string" && submissionId.length > 0;
@@ -144,54 +93,6 @@ function ValidatorReviewPanelInner({ item, onDone }) {
     enabled: hasSubmission,
     staleTime: 30_000,
   });
-
-  const invalidateQueue = () => {
-    queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue"] });
-    queryClient.invalidateQueries({ queryKey: ["settings", "validation-queue", "count"] });
-    if (onDone) onDone();
-  };
-
-  const approveMutation = useMutation({
-    mutationFn: () => validateComponent(item.class_code, item.id),
-    onSuccess: invalidateQueue,
-    onError: (err) => {
-      setActionError(
-        err.status === 409
-          ? t("validatorReview.staleViewConflict")
-          : t("validationQueue.validateError", { message: err.message })
-      );
-    },
-  });
-
-  const rejectMutation = useMutation({
-    mutationFn: (reason) => rejectComponent(item.class_code, item.id, reason),
-    onSuccess: () => {
-      setRejectOpen(false);
-      setFeedback("");
-      invalidateQueue();
-    },
-    onError: (err) => {
-      setActionError(
-        err.status === 409
-          ? t("validatorReview.staleViewConflict")
-          : t("validationQueue.rejectError", { message: err.message })
-      );
-    },
-  });
-
-  const isBusy = approveMutation.isPending || rejectMutation.isPending;
-  const trimmedFeedback = feedback.trim();
-  // canShowActions: show approve/reject only when the backend writer is
-  // connected (CONNECTED_Q2_CLASSES, currently class 21 only). Class 22 shows
-  // the subject for inspection but no action buttons until B1-06 connects.
-  const canShowActions = isEligibleForReview(item);
-  const prerequisitesMissing = item.original_review?.state !== "bound";
-  // notYetConnected: show the "writer not connected" notice for classes that
-  // are in the subject panel (REVIEW_PANEL_CLASSES) but not wired for Q2.
-  const notYetConnected =
-    item.queue_code === "q2_manual" &&
-    REVIEW_PANEL_CLASSES.has(item.class_code) &&
-    !CONNECTED_Q2_CLASSES.has(item.class_code);
 
   if (!hasSubmission) {
     return html`
@@ -233,7 +134,6 @@ function ValidatorReviewPanelInner({ item, onDone }) {
   return html`
     <div className="space-y-5">
 
-      ${/* Title + scope */null}
       <${Section} title=${t("validatorReview.title")}>
         <p className="text-[11px] text-[var(--v2-text-faint)]">
           ${t("validatorReview.scope")}
@@ -252,16 +152,14 @@ function ValidatorReviewPanelInner({ item, onDone }) {
         </div>
       <//>
 
-      ${/* Historical subject warning */
-        isHistorical
-          ? html`<div className="rounded border border-[color-mix(in_srgb,var(--v2-warning-text)_34%,var(--v2-panel-border))] bg-[var(--v2-surface-soft)] px-3 py-2">
-              <span className="text-xs text-[var(--v2-warning-text)]">
-                ${t("validatorReview.historicalSubject")}: ${receipt.review_status}
-              </span>
-            </div>`
-          : null}
+      ${isHistorical
+        ? html`<div className="rounded border border-[color-mix(in_srgb,var(--v2-warning-text)_34%,var(--v2-panel-border))] bg-[var(--v2-surface-soft)] px-3 py-2">
+            <span className="text-xs text-[var(--v2-warning-text)]">
+              ${t("validatorReview.historicalSubject")}: ${receipt.review_status}
+            </span>
+          </div>`
+        : null}
 
-      ${/* Subject identity fields */null}
       <${FieldGrid}>
         <${Field}
           label=${t("validatorReview.subjectChecksum")}
@@ -286,8 +184,7 @@ function ValidatorReviewPanelInner({ item, onDone }) {
           : null}
       <//>
 
-      ${/* Candidate, base, dependencies */
-        revisionRefRow(t, t("validatorReview.candidate"), receipt.candidate)}
+      ${revisionRefRow(t, t("validatorReview.candidate"), receipt.candidate)}
 
       ${receipt.base
         ? revisionRefRow(t, t("validatorReview.base"), receipt.base)
@@ -300,30 +197,27 @@ function ValidatorReviewPanelInner({ item, onDone }) {
             )}
           <//>` : null}
 
-      ${/* Function partner */
-        receipt.function_partner
-          ? html`<${Section} title=${t("validatorReview.functionPartner")}>
-              <span className="font-mono text-xs text-[var(--v2-text-faint)]">
-                ${receipt.function_partner.changed
-                  ? t("validatorReview.partnerChanged")
-                  : t("validatorReview.partnerContext")}
-              </span>
-              ${revisionRefRow(
-                t,
-                t("validatorReview.partnerRef"),
-                receipt.function_partner.reference
-              )}
-            <//>` : null}
+      ${receipt.function_partner
+        ? html`<${Section} title=${t("validatorReview.functionPartner")}>
+            <span className="font-mono text-xs text-[var(--v2-text-faint)]">
+              ${receipt.function_partner.changed
+                ? t("validatorReview.partnerChanged")
+                : t("validatorReview.partnerContext")}
+            </span>
+            ${revisionRefRow(
+              t,
+              t("validatorReview.partnerRef"),
+              receipt.function_partner.reference
+            )}
+          <//>` : null}
 
-      ${/* Q1 work status */
-        view.work
-          ? html`<${Section} title=${t("validatorReview.workStatus")}>
-              <span className="text-xs text-[var(--v2-text-muted)]">
-                ${t(workStatusKey(view.work.status))}
-              </span>
-            <//>` : null}
+      ${view.work
+        ? html`<${Section} title=${t("validatorReview.workStatus")}>
+            <span className="text-xs text-[var(--v2-text-muted)]">
+              ${t(workStatusKey(view.work.status))}
+            </span>
+          <//>` : null}
 
-      ${/* Subject document */null}
       <${Section} title=${t("validatorReview.subjectBytes")}>
         <${CodeBlock} value=${view.subject_bytes} maxHeight="12rem" />
       <//>
@@ -345,97 +239,12 @@ function ValidatorReviewPanelInner({ item, onDone }) {
             <${CodeBlock} value=${view.review_selection_bytes} maxHeight="12rem" />
           </details>` : null}
 
-      ${notYetConnected
-          ? html`<${Section} title=${t("validatorReview.reviewActions")}>
-              <p className="text-xs text-[var(--v2-text-muted)]">
-                ${t("validatorReview.actionNotConnected")}
-              </p>
-            <//>` : null}
-
-      ${canShowActions
-          ? html`<${Section} title=${t("validatorReview.reviewActions")}>
-              <div className="space-y-3">
-                ${prerequisitesMissing
-                  ? html`<p className="text-xs text-[var(--v2-warning-text)]">
-                      ${t("validatorReview.prerequisitesMissing")}
-                    </p>` : null}
-
-                ${actionError
-                  ? html`<p role="alert" className="text-xs text-[var(--v2-danger-text)]">
-                      ${actionError}
-                    </p>` : null}
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick=${() => {
-                      setActionError("");
-                      setRejectOpen((open) => !open);
-                    }}
-                    disabled=${isBusy || prerequisitesMissing}
-                    className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    ${t("validationQueue.reject")}
-                  </button>
-                  <button
-                    onClick=${() => {
-                      setActionError("");
-                      approveMutation.mutate();
-                    }}
-                    disabled=${isBusy || prerequisitesMissing}
-                    className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-accent-text)] hover:bg-[var(--v2-accent-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    ${t("validationQueue.validate")}
-                  </button>
-                </div>
-
-                ${rejectOpen
-                  ? html`<div className="rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface-soft)] px-3 py-2">
-                      <label
-                        htmlFor="validator-reject-feedback"
-                        className="font-mono text-[10px] uppercase tracking-[0.12em] text-[var(--v2-text-faint)]"
-                      >
-                        ${t("validationQueue.feedbackLabel")}
-                      </label>
-                      <textarea
-                        id="validator-reject-feedback"
-                        rows=${3}
-                        value=${feedback}
-                        onChange=${(e) => setFeedback(e.target.value)}
-                        placeholder=${t("validationQueue.feedbackPlaceholder")}
-                        className="mt-1 w-full rounded border border-[var(--v2-panel-border)] bg-[var(--v2-surface)] px-2 py-1 text-xs text-[var(--v2-text-strong)]"
-                      />
-                      <p className="mt-1 text-[11px] text-[var(--v2-text-muted)]">
-                        ${t("validationQueue.feedbackHint")}
-                      </p>
-                      <div className="mt-2 flex items-center justify-end gap-2">
-                        <button
-                          onClick=${() => { setRejectOpen(false); setFeedback(""); }}
-                          disabled=${isBusy}
-                          className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-text-muted)] hover:bg-[var(--v2-surface-muted)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          ${t("common.cancel")}
-                        </button>
-                        <button
-                          onClick=${() => {
-                            setActionError("");
-                            rejectMutation.mutate(trimmedFeedback);
-                          }}
-                          disabled=${isBusy || trimmedFeedback.length === 0}
-                          title=${trimmedFeedback.length === 0
-                            ? t("validationQueue.feedbackRequired")
-                            : ""}
-                          className="rounded px-2 py-1 text-xs font-medium text-[var(--v2-danger-text)] hover:bg-[var(--v2-danger-bg)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          ${t("validationQueue.confirmReject")}
-                        </button>
-                      </div>
-                    </div>` : null}
-
-                <p className="text-[11px] text-[var(--v2-text-faint)]">
-                  ${t("validatorReview.newDraftHint")}
-                </p>
-              </div>
-            <//>` : null}
+      ${item.queue_code === "q2_manual"
+        ? html`<${Section} title=${t("validatorReview.reviewActions")}>
+            <p className="text-xs text-[var(--v2-text-muted)]">
+              ${t("validatorReview.actionNotConnected")}
+            </p>
+          <//>` : null}
 
     </div>
   `;
@@ -446,15 +255,9 @@ function ValidatorReviewPanelInner({ item, onDone }) {
  * any hook scope, so the inner component's hooks are always called in a
  * stable order inside their own React component boundary.
  *
- * React element creation (`html\`<${ValidatorReviewPanelInner}/>\``) establishes
- * a separate fiber/component instance for the inner function. This guarantees
- * that toggling between an included and excluded class never disrupts the hook
- * call sequence of ValidatorReviewPanelInner.
- *
  * @param {object} item - Queue row item from fetchValidationQueue.
- * @param {function?} onDone - Called after a successful approve/reject.
  */
-export function ValidatorReviewPanel({ item, onDone }) {
+export function ValidatorReviewPanel({ item }) {
   if (!REVIEW_PANEL_CLASSES.has(item?.class_code)) return null;
-  return html`<${ValidatorReviewPanelInner} item=${item} onDone=${onDone} />`;
+  return html`<${ValidatorReviewPanelInner} item=${item} />`;
 }

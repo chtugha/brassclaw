@@ -1,12 +1,10 @@
-// Rendered UI gates and actual message packs only. No mocked backend approval.
+// Rendered UI gates and actual message packs only. No backend approval actions.
 // Tests cover B3-09 requirements:
-//  - Class-21 (Recipe) and class-22 (PythonCode) full review flow
+//  - Class-21 (Recipe) and class-22 (PythonCode) subject inspection
+//  - Both classes show actionNotConnected notice for q2_manual queue code
 //  - Draft-vs-active / historical subject display
 //  - Missing evidence / no submission
-//  - Prerequisite gating (not bound → approve disabled)
-//  - Stale view conflict error message
 //  - Private validator exclusion (non-21/22 classes return null)
-//  - New draft hint always visible when actions present
 //  - En / De message packs are complete for all validatorReview.* keys used
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -106,7 +104,7 @@ function makeView(opts = {}) {
 
 /**
  * Build a fixture with a controlled React/query environment.
- * Returns helpers for rendering and asserting on rendered output.
+ * The panel is inspection-only: no mutations, no approve/reject.
  */
 function fixture({
   language = "en",
@@ -122,11 +120,6 @@ function fixture({
   const { useT, t } = translations(language);
   let cursorState = 0;
   const states = [];
-  const validateCalls = [];
-  const rejectCalls = [];
-
-  // Captured invalidateQueries calls
-  const invalidateCalls = [];
 
   const submittedView = viewOverride ?? makeView({ classCode, submissionId });
 
@@ -164,30 +157,6 @@ function fixture({
       if (queryError) return { isLoading: false, isError: true, error: queryError, data: null };
       return { isLoading: false, isError: false, data: submittedView };
     },
-    useQueryClient: () => ({
-      invalidateQueries(opts) { invalidateCalls.push(opts); },
-    }),
-    useMutation({ mutationFn, onSuccess, onError } = {}) {
-      return {
-        isPending: false,
-        mutate(value) {
-          const p = mutationFn(value);
-          if (p && typeof p.then === "function") {
-            p.then((result) => onSuccess && onSuccess(result)).catch(
-              (err) => onError && onError(err)
-            );
-          }
-        },
-      };
-    },
-    validateComponent(...args) {
-      validateCalls.push(args);
-      return Promise.resolve({});
-    },
-    rejectComponent(...args) {
-      rejectCalls.push(args);
-      return Promise.resolve({});
-    },
     fetchComponentReviewSubmission() { return Promise.resolve(submittedView); },
   };
 
@@ -222,8 +191,8 @@ function fixture({
 
   return {
     // render() uses the guard wrapper — returns null for excluded classes,
-    // returns the inner template node (not the rendered output) for included
-    // classes. Use for class-exclusion tests only.
+    // returns the inner template node for included classes.
+    // Use for class-exclusion tests only.
     render() {
       cursorState = 0;
       return context.renderPanel({ item });
@@ -236,9 +205,6 @@ function fixture({
     },
     pack,
     t,
-    validateCalls,
-    rejectCalls,
-    invalidateCalls,
     item,
   };
 }
@@ -270,14 +236,6 @@ function button(tree, label) {
   }
 }
 
-function prop({ node, start, end }, name) {
-  const index = node.strings.findIndex(
-    (text, i) => i >= start && i <= end && text.includes(`${name}=`)
-  );
-  assert.ok(index >= 0, `missing prop ${name}`);
-  return node.values[index];
-}
-
 // ── Message completeness ──────────────────────────────────────────────────────
 
 for (const language of ["en", "de"]) {
@@ -307,9 +265,6 @@ for (const language of ["en", "de"]) {
       "validatorReview.reviewSelection",
       "validatorReview.classCode",
       "validatorReview.reviewActions",
-      "validatorReview.prerequisitesMissing",
-      "validatorReview.staleViewConflict",
-      "validatorReview.newDraftHint",
       "validatorReview.actionNotConnected",
     ];
     for (const key of required) {
@@ -322,69 +277,95 @@ for (const language of ["en", "de"]) {
   });
 }
 
+for (const language of ["en", "de"]) {
+  test(`${language} message pack does not contain removed keys`, () => {
+    const pack = messages(language);
+    const removed = [
+      "validatorReview.prerequisitesMissing",
+      "validatorReview.staleViewConflict",
+      "validatorReview.newDraftHint",
+    ];
+    for (const key of removed) {
+      assert.ok(
+        !(key in pack),
+        `${language} must not contain removed key: ${key}`
+      );
+    }
+  });
+}
+
 // ── Class exclusion ───────────────────────────────────────────────────────────
 
 for (const classCode of [0, 1, 2, 3, 10, 13, 16, 23, 50]) {
   test(`class ${classCode} renders null — not a Recipe/PythonCode reviewer`, () => {
     const f = fixture({ classCode });
     const tree = f.render();
-    // null is returned for excluded classes
     assert.equal(tree, null);
   });
 }
 
-// ── Class 21 (Recipe) full review flow ───────────────────────────────────────
+// ── Class 21 (Recipe) subject inspection ─────────────────────────────────────
 
-test("class-21 bound item shows subject checksum and approve/reject buttons", () => {
+test("class-21 item shows title and subject checksum", () => {
   const f = fixture({ classCode: 21, originalState: "bound" });
   const tree = f.renderContent();
   assert.notEqual(tree, null);
-  const pack = f.pack;
-  // Title is shown
   assert.ok(
-    visible(tree, pack["validatorReview.title"]),
+    visible(tree, f.pack["validatorReview.title"]),
     "title must be visible"
   );
-  // Subject checksum is shown
   assert.ok(visible(tree, "sha256:abc123"), "subject checksum must be visible");
-  // Approve and reject buttons are present and not disabled
-  const approveLabel = f.t("validationQueue.validate");
-  const approve = button(tree, approveLabel);
-  assert.ok(approve, "approve button must exist");
-  assert.equal(prop(approve, "disabled"), false);
-  const rejectLabel = f.t("validationQueue.reject");
-  const reject = button(tree, rejectLabel);
-  assert.ok(reject, "reject button must exist");
-  assert.equal(prop(reject, "disabled"), false);
 });
 
-test("class-21 unbound item shows prerequisitesMissing and disables approve/reject", () => {
-  for (const state of ["unresolved", "legacy_unresolved", "missing_queue"]) {
-    const f = fixture({ classCode: 21, originalState: state });
-    const tree = f.renderContent();
-    assert.ok(
-      visible(tree, f.pack["validatorReview.prerequisitesMissing"]),
-      `state ${state} must show prerequisites message`
-    );
-    const approve = button(tree, f.t("validationQueue.validate"));
-    assert.ok(approve, "approve button still exists (but disabled)");
-    assert.equal(prop(approve, "disabled"), true, `${state}: approve must be disabled`);
-  }
+test("class-21 q2_manual item shows actionNotConnected notice", () => {
+  const f = fixture({ classCode: 21, queueCode: "q2_manual", originalState: "bound" });
+  const tree = f.renderContent();
+  assert.ok(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    "actionNotConnected notice must be visible for class-21 q2_manual"
+  );
+});
+
+test("class-21 q2_manual item shows no approve or reject buttons", () => {
+  const f = fixture({ classCode: 21, queueCode: "q2_manual", originalState: "bound" });
+  const tree = f.renderContent();
+  // No approve/reject buttons — this panel is inspection-only
+  assert.equal(
+    button(tree, "Approve"),
+    undefined,
+    "approve button must not appear"
+  );
+  assert.equal(
+    button(tree, "Reject"),
+    undefined,
+    "reject button must not appear"
+  );
+});
+
+test("class-21 non-q2_manual queue code shows no review section", () => {
+  const f = fixture({ classCode: 21, queueCode: "auto", originalState: "bound" });
+  const tree = f.renderContent();
+  assert.notEqual(tree, null);
+  assert.equal(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    false,
+    "actionNotConnected only appears on q2_manual items"
+  );
 });
 
 // ── Class 22 (PythonCode) subject inspection — Q2 writer not yet connected ───
 
-test("class-22 bound item shows subject checksum and actionNotConnected notice", () => {
+test("class-22 item shows subject checksum and actionNotConnected notice", () => {
   const f = fixture({ classCode: 22, originalState: "bound" });
   const tree = f.renderContent();
   assert.notEqual(tree, null);
-  // Subject is shown for inspection.
+  // Subject checksum is shown for inspection.
   assert.ok(visible(tree, "sha256:abc123"), "subject checksum must be visible");
   // No approve/reject buttons — backend writer not connected.
-  assert.equal(button(tree, f.t("validationQueue.validate")), undefined,
-    "approve button must not appear while class-22 writer is unconnected");
-  assert.equal(button(tree, f.t("validationQueue.reject")), undefined,
-    "reject button must not appear while class-22 writer is unconnected");
+  assert.equal(button(tree, "Approve"), undefined,
+    "approve button must not appear");
+  assert.equal(button(tree, "Reject"), undefined,
+    "reject button must not appear");
   // Explicit notice shown instead.
   assert.ok(
     visible(tree, f.pack["validatorReview.actionNotConnected"]),
@@ -395,11 +376,12 @@ test("class-22 bound item shows subject checksum and actionNotConnected notice",
 test("class-22 non-q2_manual queue code shows no review section", () => {
   const f = fixture({ classCode: 22, queueCode: "auto", originalState: "bound" });
   const tree = f.renderContent();
-  // Panel renders the subject, but no review section at all for non-manual.
   assert.notEqual(tree, null);
-  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
-  assert.equal(visible(tree, f.pack["validatorReview.actionNotConnected"]), false,
-    "actionNotConnected only appears on q2_manual items");
+  assert.equal(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    false,
+    "actionNotConnected only appears on q2_manual items"
+  );
 });
 
 // ── Historical subject labeling ───────────────────────────────────────────────
@@ -411,7 +393,6 @@ test("approved review status shows historical subject warning", () => {
     viewOverride: makeView({ reviewStatus: "approved", classCode: 21 }),
   });
   const tree = f.renderContent();
-  // The historical status must appear alongside the actual review status
   assert.ok(
     visible(tree, f.pack["validatorReview.historicalSubject"]),
     "historical subject label must appear for non-pending status"
@@ -443,7 +424,7 @@ test("item with no submission_id shows noSubmission message", () => {
     "noSubmission must be visible when submission_id is absent"
   );
   // No approve button when no submission
-  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+  assert.equal(button(tree, "Approve"), undefined);
 });
 
 test("item with null submission_id shows noSubmission message", () => {
@@ -478,32 +459,20 @@ test("loading state shows skeleton without buttons", () => {
   const f = fixture({ classCode: 21, originalState: "bound", queryLoading: true });
   const tree = f.renderContent();
   assert.notEqual(tree, null);
-  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
-  assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
-});
-
-// ── New draft hint ────────────────────────────────────────────────────────────
-
-test("new draft hint is visible when review actions are shown", () => {
-  const f = fixture({ classCode: 21, originalState: "bound" });
-  const tree = f.renderContent();
-  assert.ok(
-    visible(tree, f.pack["validatorReview.newDraftHint"]),
-    "new draft hint must always be shown with review actions"
-  );
+  assert.equal(button(tree, "Approve"), undefined);
+  assert.equal(button(tree, "Reject"), undefined);
 });
 
 // ── Subject bytes displayed ───────────────────────────────────────────────────
 
 test("submission ID is visible in the subject view", () => {
-  const f = fixture({ classCode: 21, originalState: "bound", submissionId: "my-exact-sub-id" });
-  const f2 = fixture({
+  const f = fixture({
     classCode: 21,
     originalState: "bound",
     submissionId: "my-exact-sub-id",
     viewOverride: makeView({ submissionId: "my-exact-sub-id", classCode: 21 }),
   });
-  const tree = f2.renderContent();
+  const tree = f.renderContent();
   assert.ok(
     visible(tree, "my-exact-sub-id"),
     "submissionId from the view must be visible"
@@ -512,7 +481,7 @@ test("submission ID is visible in the subject view", () => {
 
 // ── German translations ───────────────────────────────────────────────────────
 
-test("de bound class-21 item shows translated title and approve/reject labels", () => {
+test("de bound class-21 item shows translated title", () => {
   const f = fixture({ language: "de", classCode: 21, originalState: "bound" });
   const tree = f.renderContent();
   const pack = f.pack;
@@ -520,11 +489,29 @@ test("de bound class-21 item shows translated title and approve/reject labels", 
     visible(tree, pack["validatorReview.title"]),
     "German title must be visible"
   );
-  const approveLabel = f.t("validationQueue.validate");
-  assert.notEqual(approveLabel, "validationQueue.validate", "approve must have a German label");
-  const approve = button(tree, approveLabel);
-  assert.ok(approve, "German approve button must exist");
-  assert.equal(prop(approve, "disabled"), false);
+});
+
+test("de class-21 q2_manual item shows translated actionNotConnected notice", () => {
+  const f = fixture({ language: "de", classCode: 21, queueCode: "q2_manual", originalState: "bound" });
+  const tree = f.renderContent();
+  assert.ok(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    "German actionNotConnected notice must be visible"
+  );
+  // The German message must not mention any internal plan names
+  assert.ok(
+    !f.pack["validatorReview.actionNotConnected"].includes("B1-06"),
+    "German actionNotConnected must not mention B1-06"
+  );
+});
+
+test("de class-22 item shows translated actionNotConnected notice", () => {
+  const f = fixture({ language: "de", classCode: 22, queueCode: "q2_manual", originalState: "bound" });
+  const tree = f.renderContent();
+  assert.ok(
+    visible(tree, f.pack["validatorReview.actionNotConnected"]),
+    "German actionNotConnected must be visible for class 22"
+  );
 });
 
 // ── Work status display ───────────────────────────────────────────────────────
@@ -571,5 +558,15 @@ test("catalogue_activated = false does not show the activated notice", () => {
     visible(tree, f.pack["validatorReview.catalogueActivated"]),
     false,
     "catalogue activated label must not appear when false"
+  );
+});
+
+// ── actionNotConnected does not mention internal plan names ──────────────────
+
+test("en actionNotConnected message does not mention B1-06", () => {
+  const pack = messages("en");
+  assert.ok(
+    !pack["validatorReview.actionNotConnected"].includes("B1-06"),
+    "en actionNotConnected must not expose internal plan names to operators"
   );
 });
