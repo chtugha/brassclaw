@@ -1591,7 +1591,6 @@ dependencies = [
  "flate2",
  "hex",
  "libc",
- "postgresql_embedded",
  "sha2 0.10.9",
  "tar",
  "target-triple",
@@ -1749,7 +1748,6 @@ dependencies = [
  "async-trait",
  "brassclaw_host_api",
  "brassclaw_turns",
- "futures",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -1788,7 +1786,6 @@ dependencies = [
  "brassclaw_turns",
  "chrono",
  "futures",
- "lru 0.18.4",
  "rust_decimal",
  "serde",
  "serde_json",
@@ -1948,7 +1945,6 @@ dependencies = [
  "tracing",
  "tracing-test",
  "url",
- "urlencoding",
  "uuid",
 ]
 
@@ -2119,7 +2115,6 @@ name = "brassclaw_pg"
 version = "0.1.0"
 dependencies = [
  "deadpool-postgres",
- "pgvector",
  "refinery",
  "rustls 0.23.44",
  "rustls-native-certs 0.8.4",
@@ -2478,7 +2473,6 @@ dependencies = [
  "brassclaw_pg",
  "chrono",
  "deadpool-postgres",
- "hex",
  "secrecy",
  "serde",
  "serde_json",
@@ -2488,7 +2482,6 @@ dependencies = [
  "tokio",
  "tokio-postgres",
  "tracing",
- "urlencoding",
 ]
 
 [[package]]
@@ -2681,7 +2674,6 @@ version = "0.3.0"
 dependencies = [
  "async-trait",
  "brassclaw_common",
- "brassclaw_filesystem",
  "brassclaw_host_api",
  "brassclaw_pg",
  "chrono",
