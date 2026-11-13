@@ -11,9 +11,9 @@ back to the existing package owners, not a second implementation service.
 
 | Package | Branch | Latest inspected commit |
 | --- | --- | --- |
-| B1-06 | `codex/b1-06-approval-writer` | `b48d45b7c` |
+| B1-06 | `codex/b1-06-approval-writer` | `3f802f79c`, rejected regression from `b48d45b7c` |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `6c24e5e33` |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `e4b6adedb`, report `ec5a821af` |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### Latest follow-up and actual candidate check
@@ -42,6 +42,31 @@ attempting another allocation from head zero. Use `submit_retained` or allocate
 once through submission, preserving assertions. V214 requires actual missing-run,
 failed-run and seed-exemption constraint cases; closed authored writer tests
 return before that trigger. This is low-level DB integrity, not full approval.
+
+### B1-06 `3f802f79c` — rejected cross-package correction and rollback
+
+The new commit changes only the B1 approval writer/tests, not B2's retained
+selection contract. Its four-item summary does not resolve B2's `/1` selection
+strictness, captured original limits, Recipe/variant/step structure or formatting.
+It deletes the authored-path guard, Q1 subject-binding join and authored evidence
+format handling from the previously reviewed `b48d45b7c`, removing their tests
+without connecting qualified replacements (928 deleted lines across two files).
+V214's succeeded-run check cannot substitute for positive full-Q1 qualification,
+exact submission binding, trusted behavior or authenticated human Q2. Existing
+production callers remain installation-owned; no new public exploit or activated
+authored support is claimed. Reopening this internal writer is nevertheless not
+an accepted repair. Restore the prior protected B1 checkpoint and apply the
+actual B1 lint/fixture/DB-constraint corrections without deleting the guards or
+tests to avoid their failures. Keep B1 qualified producers as explicit open work.
+
+The local evidence limit value still copies every field from REVISION_LIMITS;
+passing it to an unused `_limits` parameter changes neither the accepted limit
+nor the caller contract. It is not captured-original limit propagation. The extra
+unknown-field/non-object/duplicate-evidence-ID cases are useful only within their
+B1 evidence/declaration scope, not duplicate Recipe-step or retained-selection
+coverage. The unchanged package report still describes the removed guards and
+binding as present and needs correction. No Cargo run or integration is justified
+for this known-regressed source. The existing candidate retains `b48d45b7c`.
 
 B3-06 `ad1ea1b90` removes the production draft selector and incompatible checksum
 read, and explicitly defers absent selections. Its write now has a deadline and
@@ -129,6 +154,38 @@ Remaining owner corrections:
   and identity comparisons. No replay of a completed effect is authorized.
 
 These are source findings. No Cargo/native acceptance of this branch is claimed.
+
+### B3-06 `e4b6adedb` — custody corrected; acceptance still pending
+
+The commit replaces Cell with AtomicBool and gives both timed transactional
+readers the existing EvidenceClient custody, including acknowledged recycling
+on the absent-original branch. The impossible timeout claim and vacuous array
+nonempty assertion are removed. The test compares the returned checksum with
+the persisted row. Direct Rust 1.100 Rustfmt checks of both changed Rust files
+pass; no Cargo, PostgreSQL or runtime acceptance is claimed.
+
+Remaining owner corrections before the combined build:
+
+- The ACK-loss test still injects only the write pool and resolves the write
+  through the separate healthy `self.pool`. A later successful checkout with a
+  different backend PID establishes fresh-connection availability, not the
+  required full recovery through one capacity-one pool. Construct the actual
+  runtime/catalogue with that shared proxy pool, prepare fixtures before arming
+  the exact fault, and invoke the production preparation entry point. Reuse the
+  existing proxy-runtime and state-fixture worker-stop patterns where needed.
+  Require successful original readback, one intercepted ACK and one original
+  row without replay; do not retain a separate healthy recovery route.
+- The new ten-second timeout bounds only checkout, leaving its PID query outside
+  the bound. Use the applicable existing acknowledged deadline for the complete
+  recovery observation. Describe the PID assertion as a new-session check, not
+  proof that the old server process has already terminated.
+- The nested successful-write/wake `if` remains in the changed production method;
+  correct the source-visible collapsible-if issue before strict Clippy. This is
+  not a new compiler observation. The package report also retains trailing
+  whitespace and a stale WriteOutcome test description.
+
+The package remains outside Main. The read-custody and Send findings from the
+previous commit are superseded by these source corrections.
 
 V214 belongs to B1. B2's unpublished migration is renamed to V215 in
 `abd55c2c3`, without changing the SQL. Applied migrations are untouched.

@@ -68,8 +68,8 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
-Three package branches remain **unaccepted into Main**: B1-06 `b48d45b7c`, B2-02
-`e0be06d8f` (source `78147448b`), B3-06 `6c24e5e33`. B3-09's inspection-only
+Three package branches remain **unaccepted into Main**: B1-06 `3f802f79c`, B2-02
+`e0be06d8f` (source `78147448b`), B3-06 `e4b6adedb` (report `ec5a821af`). B3-09's inspection-only
 `f857421e3` is accepted as Main merge `52d74c2c3`. Review corrections return
 to their original authors; do not create competing implementations. V214 is
 reserved for B1, V215 for B2. Failed B1 source remains on central integration
@@ -88,19 +88,25 @@ The actual class-22 dispatcher, immutable viewed-decision binding, B2 historical
 strictness/original limits/base validation and B3 qualified selection/commit
 custody remain review blockers. B2's shared-owner and explicit nil/zero checks
 are corrected in source; its direct Rustfmt check fails, and Cargo is not run.
-B1's authored creation remains closed. Its actual Run-58 strict full-feature
+B1's earlier `b48d45b7c` checkpoint keeps authored creation closed. Latest
+`3f802f79c` deletes that guard, Q1 subject binding and format tests without
+qualified replacements; reject it and return corrections to its owner. Its
+evidence-parser changes do not close B2 retained-selection findings. The prior
+candidate remains preserved. Its actual Run-58 strict full-feature
 Clippy fails on a collapsible if at writer line 687, with unchanged inputs.
 The fixture also double-allocates one revision; V214 needs direct constraint
 cases. The receipt runner's premature success-artifact assertion is diagnosed
 separately, preserving original logs; no unchanged rerun. The freeze is released.
-B3-06 removes the faulty draft selector and bounds writes, but error readback
-still escapes its bound; test duplication/permissive ACK assertions remain.
+B3-06 removes the faulty draft selector and bounds write/readback operations;
+its earlier error typing, moved result and permissive ACK assertions are corrected.
 B3-09 now makes both classes inspection-only. Its 41 Node cases and all 28 real
 Rust static asset/router tests pass warning-free. Run-59 verifies the new embedded
 module and unchanged hashes; all 362 relevant inputs match the accepted Main
-merge. No browser, Q2 or full-plan acceptance follows. B3-06's latest source fixes
-the earlier error typing/result move and bounds SQL, but its Cell/Send contract,
-raw read custody and zero-timeout pool proof still need correction. Its branch
+merge. No browser, Q2 or full-plan acceptance follows. B3-06's latest source
+corrects Send and timed transactional-read custody; direct Rustfmt passes. Its
+ACK test still recovers through a separate healthy pool. Exercise production
+recovery through the same capacity-one pool, bound the complete recovery
+observation and correct the nested wake-if before combined validation. Its branch
 remains uncompiled. No unaccepted B1/B3-06 source enters Main.
 See the [full source review and required acceptance](validation/2026-11-13-bob-incoming-package-review.md).
 

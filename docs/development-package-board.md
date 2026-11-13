@@ -114,9 +114,9 @@ inspection slice is accepted; its full typed-decision integration remains open:
 
 | Package | Reviewed incoming tip | Integration state |
 | --- | --- | --- |
-| B1-06 | `b48d45b7c` | Prior corrections applied; candidate `8cdbd5f7` fails actual strict Clippy. Fixture allocation and V214 coverage corrections returned; full B1 remains open. |
+| B1-06 | `3f802f79c` | Rejected: removes the prior authored guard/Q1 binding without qualified replacements and applies B2 requirements to the wrong parser. Preserve `b48d45b7c` candidate; its actual lint, fixture and V214 coverage corrections remain. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
-| B3-06 | `6c24e5e33` | Prior error typing/result move corrected; Cell/Send, raw timed read custody and the zero-timeout pool proof still need correction. |
+| B3-06 | `e4b6adedb` (report `ec5a821af`) | Send/read custody corrected; direct Rustfmt passes. Actual same-pool ACK recovery, complete bounded recovery observation and nested wake-if correction remain before Cargo/native acceptance. |
 | B3-09 | `f857421e3`, Main `52d74c2c3` | Inspection-only slice accepted: 41 Node and 28 real static asset/router cases pass; typed decisions/full B3-09 remain open. |
 
 Reserve unpublished migration V214 for B1 and V215 for B2. Package authors

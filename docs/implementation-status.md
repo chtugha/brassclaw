@@ -55,7 +55,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 ### Bob inspection slice accepted; remaining packages open
 
-B1-06 `b48d45b7c`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `6c24e5e33`
+B1-06 `3f802f79c`, B2-02 `e0be06d8f` (source `78147448b`) and B3-06 `e4b6adedb`
 remain unaccepted incoming work. B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
@@ -67,11 +67,17 @@ records source facts, owner corrections and the required combined acceptance.
 B2's shared structural owner and explicit nil/zero checks are corrected in
 source; `/1` strictness, original limits, complete base structure and formatting
 still require correction. This does not establish new runtime support.
-B1's unsupported authored writer is closed. Candidate integration `8cdbd5f7` on
+B1's earlier `b48d45b7c` checkpoint closes its unsupported authored writer.
+Latest `3f802f79c` removes that guard, subject binding and format tests without
+qualified replacements and is rejected; it does not repair B2's selection reader.
+Candidate integration `8cdbd5f7` on
 the supervisor's central integration branch fails actual full-feature strict
 Clippy at writer line 687; fixture allocation and V214 coverage corrections
 remain. Those source changes are absent from Main. B3-06 removes the faulty draft
-selector and bounds writes, but actual resolution/tests still need correction.
+selector and bounds writes. Its latest source corrects Send/read custody and
+passes direct Rustfmt; the ACK test still reads back through a separate healthy
+pool, so actual same-capacity-one-pool recovery and strict lint/native acceptance
+remain open.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,
