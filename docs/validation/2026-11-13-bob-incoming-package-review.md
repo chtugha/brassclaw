@@ -13,7 +13,7 @@ back to the existing package owners, not a second implementation service.
 | --- | --- | --- |
 | B1-06 | `codex/b1-06-approval-writer` | `d41db6c37`; guarded repair accepted as Main `3cd63dfc3`, full B1-06 open |
 | B2-02 | `codex/b2-02-retained-selection-v2` | `e0be06d8fbe9c08abd551ac522034255a2e90826` |
-| B3-06 | `codex/b3-06-durable-q1-work-wt` | `530a6855f`, report `e6e51253a`; Run-63 fails on one unused trait import |
+| B3-06 | `codex/b3-06-durable-q1-work-wt` | `473027913`, report `e6e51253a`; Run-64 fails on test helper type |
 | B3-09 | `codex/b3-09-webui-review-panels` | `f857421e3`, accepted inspection slice |
 
 ### B1 guarded repair accepted — full B1-06 remains open
@@ -23,6 +23,24 @@ Root squashes the reviewed final B1 tree onto Main `5012e6451` in isolated local
 candidate `codex/b1-06-reviewed-integration-20261113`, commit `3cd63dfc3`. Thus the
 reverted intermediate `3f802f79c` commit is not added to the integration ancestry.
 The three source/migration blobs match the package tip exactly. B3/B2 are absent.
+
+Current B3 successor: `473027913` removes the actual unused import. Root reviews
+that exact delta, updates the isolated corrected candidate with Main's current
+unembedded status and cherry-picks the fix as `b1b1fd0b0`. All five changed B3
+code blobs match the package tip exactly. Actual Run-64 strict Clippy exits 101
+in 115.515 seconds (batch 120.869), unchanged source. The production artifact
+confirms the required features and the prior import diagnostic is gone; the
+test library fails E0425 at `validator_retained_q1_tests.rs:836`, where the helper
+uses `super::RebornRuntime`. Use `&crate::RebornRuntime` or a correct explicit
+import. The immediate parent is the tests module, not the type's defining/export
+module. Do not add a placeholder type or alter runtime ownership.
+
+The serial chain stops at that failure; no native build or eighteen-case run
+starts. The candidate retains the embedded release notes. Root returns to Main,
+releases the source freeze and preserves current native codegen and the unchanged
+Run-62 worker. Complete diagnostics remain in Run-64. Correct the helper in the
+existing package, then use fresh run IDs for strict/native acceptance; no B3
+acceptance or Main integration is yet claimed.
 
 Actual Run-61 Rust 1.100 Composition all-targets Clippy with `postgres,skills-db`
 and `-D warnings` passes: exit 0, 144.851 seconds (batch 150.069 seconds), zero

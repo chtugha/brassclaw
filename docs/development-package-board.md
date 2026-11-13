@@ -116,7 +116,7 @@ incoming runtime packages and full typed-decision integration remain open:
 | --- | --- | --- |
 | B1-06 | `d41db6c37`, Main `3cd63dfc3` | Guarded repair accepted: strict full-feature Clippy, eleven B1 cases and one real seed-compatibility case pass; native link/source/image guards pass. Full trusted producer/Q2/route work remains open. |
 | B2-02 | `e0be06d8f` (`78147448b` source) | Shared contract/nil/zero checks corrected; historical `/1` strictness, original limits, base structure and formatting still need correction. |
-| B3-06 | `530a6855f` (report `e6e51253a`) | Run-60 causes corrected; actual Run-63 candidate `a490247b2` strict lint fails only on observed unused MontyCatalogueProvider import at reconciler line 15. Remove import before next gate; no native/Main acceptance. |
+| B3-06 | `473027913` (report `e6e51253a`) | Import corrected; actual Run-64 candidate `b1b1fd0b0` emits production artifact, then test library fails E0425 on `super::RebornRuntime` at validator helper line 836. Correct to crate type before next gate. Native not started, freeze released, no Main acceptance. |
 | B3-09 | `f857421e3`, Main `52d74c2c3` | Inspection-only slice accepted: 41 Node and 28 real static asset/router cases pass; typed decisions/full B3-09 remain open. |
 
 Reserve unpublished migration V214 for B1 and V215 for B2. Package authors

@@ -57,7 +57,7 @@ disk gate; this is not a whole-batch or native acceptance pass.
 
 B1-06's guarded repair `d41db6c37` is accepted as Main `3cd63dfc3`;
 full B1-06 producer/Q2/route integration remains open. B2-02 `e0be06d8f` (source
-`78147448b`) and B3-06 `530a6855f` remain unaccepted incoming runtime work.
+`78147448b`) and B3-06 `473027913` remain unaccepted incoming runtime work.
 B3-09 `f857421e3` is integrated as `52d74c2c3`
 for inspection only. Open
 findings concern qualified own Pure behavior/human Q2, strict connected `/2`
@@ -88,7 +88,11 @@ callee remains test-only and confirmation has an incompatible action-result
 type. New `530a6855f` corrects these and the test-only bridge reachability;
 actual Run-63 on candidate `a490247b2` then fails on the reconciler's unused
 MontyCatalogueProvider import (exit 101, unchanged source). Remove it before the
-next strict/native gate. B3 and the embedded release-note addition remain outside Main.
+next strict/native gate. `473027913` removes it; actual Run-64 on `b1b1fd0b0`
+emits the production artifact, then fails E0425 in the test helper's
+`super::RebornRuntime` type at line 836 (exit 101, unchanged source). Correct
+that type before the next gate. Native/eighteen-case acceptance has not started;
+B3 and the embedded release-note addition remain outside Main.
 B3-09's independent inspection slice passes all 28 real static asset/router cases
 without warnings; exact embedded module bytes and all 362 relevant unchanged
 inputs establish its scoped Main applicability. Typed decisions, full B3-09/Bob,

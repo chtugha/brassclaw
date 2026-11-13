@@ -68,6 +68,18 @@ before Cargo starts; no whole-batch/native pass is claimed.
 
 ### Incoming Bob review checkpoint
 
+**Latest B3 gate terminal:** candidate `b1b1fd0b0` on
+`codex/b3-06-corrected-integration-20261113` contains reviewed `473027913` and
+the embedded B1/B3 release notes. Run-64 strict full-feature all-targets Clippy
+exits 101 in 115.515 seconds, source unchanged. The import issue is gone and the
+production library artifact is emitted, but the test library fails E0425 at
+`runtime/tests/validator_retained_q1_tests.rs:836`: `super::RebornRuntime` does
+not exist. Use `&crate::RebornRuntime` or an explicit correct import in the
+package helper. No native build or eighteen-case run starts after this failure.
+The candidate is preserved; Root returns to Main, all owned jobs terminal and
+source freeze released. Keep current Composition/native caches and the Run-62
+worker; use a fresh run ID after correction, not the completed Run-64 chain.
+
 **B1 guarded checkpoint accepted:** Root fast-forwards final tree `3cd63dfc3`
 into Main after Run-61 full-feature strict Rust 1.100 Clippy and all twelve
 selected Run-62 native cases pass (eleven B1 plus existing seed-checker case).
