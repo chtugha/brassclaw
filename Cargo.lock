@@ -2561,7 +2561,6 @@ dependencies = [
  "jsonwebtoken",
  "parking_lot",
  "rand 0.8.8",
- "refinery",
  "reqwest 0.12.28",
  "rsa",
  "secrecy",

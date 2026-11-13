@@ -256,12 +256,6 @@ impl LegacyPlannedDriverFixture {
 
 #[async_trait]
 impl MontyTurnDriverPort for LegacyPlannedDriverFixture {
-    async fn reconcile_private_originals(&self) -> Result<(), AgentLoopDriverError> {
-        Err(AgentLoopDriverError::Unavailable {
-            reason: "this legacy test driver has no private original owner".into(),
-        })
-    }
-
     async fn drive_turn(
         &self,
         handoff: MontyTaskHandoff,
