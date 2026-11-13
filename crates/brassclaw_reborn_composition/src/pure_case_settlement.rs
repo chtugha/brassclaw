@@ -15,6 +15,16 @@ use crate::{
     validator_inventory_review::QualifiedPureSourceReview,
 };
 
+#[cfg(test)]
+#[path = "pure_case_read_observation.rs"]
+pub(crate) mod diagnostic;
+macro_rules! observe_read {
+    ($phase:literal) => {{
+        #[cfg(test)]
+        diagnostic::note($phase);
+    }};
+}
+
 fn invalid() -> AgentLoopDriverError {
     AgentLoopDriverError::Failed {
         reason_kind: "original_pure_case_settlement_invalid".into(),
@@ -67,20 +77,31 @@ async fn prepare(
     context: &PrivateExecutionContext,
     source: &QualifiedPureSourceReview,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
+    observe_read!("read_h01_delivery");
     let Some(delivery) =
         crate::pg_monty_admission::PgMontyAdmission::read_private_delivery(tx, id, context).await?
     else {
+        observe_read!("h01_delivery_absent");
         return Ok(None);
     };
+    observe_read!("h01_delivery_acknowledged");
     // A missing H01 acknowledgement needs no Source qualification walk. Every
     // positive settlement still authenticates the complete exact original.
     let case = CheckedOriginalPureCase::read(tx, source, id, context)
         .await
-        .map_err(|_| invalid())?
-        .ok_or_else(invalid)?;
+        .map_err(|_| {
+            observe_read!("case_original_reader_failed");
+            invalid()
+        })?
+        .ok_or_else(|| {
+            observe_read!("case_original_absent");
+            invalid()
+        })?;
+    observe_read!("case_original_acknowledged");
     if !matches!(delivery.original().request().original(),PrivateOriginalRef::OriginalPureCaseV1 {case_id,case_checksum}
         if *case_id==id && *case_checksum==case.checksum())
     {
+        observe_read!("delivery_case_identity_differs");
         return Err(invalid());
     }
     let bounds = delivery
@@ -89,6 +110,7 @@ async fn prepare(
         .preparation()
         .limits()
         .bounds;
+    observe_read!("derive_original_native_start");
     let (expected_source, expected_inputs) = case
         .expected_start(brassclaw_skills::value_contract::ContractLimits {
             max_depth: bounds.max_value_depth,
@@ -98,6 +120,7 @@ async fn prepare(
         .map_err(|_| invalid())?;
     // Compare the normal encoder's complete JSON value in PostgreSQL; do not
     // parse/re-encode arbitrary candidate data with a second host depth limit.
+    observe_read!("query_native_case_relation");
     let row=tx.query_opt("SELECT e.checksum,o.checksum,o.observation_bytes,o.native_receipts_bytes
         FROM reborn_original_pure_case_executions e
         JOIN reborn_original_pure_case_observations o USING(case_id)
@@ -117,7 +140,21 @@ async fn prepare(
             AND o.observation_bytes::jsonb->'invocation_checksum'=
                 (SELECT jsonb_agg(get_byte(sha256(convert_to($3,'UTF8')),k) ORDER BY k) FROM generate_series(0,31)k)
             AND original_pure_case_observation_valid(e.case_id,e.checksum,o.observation_bytes,o.native_receipts_bytes)",
-        &[&id,&serde_json::to_value(delivery.task()).map_err(|_|invalid())?,&expected_source,&expected_inputs]).await.map_err(|_|unavailable())?.ok_or_else(invalid)?;
+        &[&id,&serde_json::to_value(delivery.task()).map_err(|_|invalid())?,&expected_source,&expected_inputs]).await.map_err(|_| { observe_read!("native_case_relation_query_failed"); unavailable() })?;
+    let Some(row) = row else {
+        observe_read!("native_case_relation_absent");
+        #[cfg(test)]
+        diagnostic::missing_relation(
+            tx,
+            id,
+            serde_json::to_value(delivery.task()).map_err(|_| invalid())?,
+            &expected_source,
+            &expected_inputs,
+        )
+        .await;
+        return Err(invalid());
+    };
+    observe_read!("native_case_relation_acknowledged");
     let execution_checksum = row.get::<_, Vec<u8>>(0).try_into().map_err(|_| invalid())?;
     let observation_checksum: [u8; 32] =
         row.get::<_, Vec<u8>>(1).try_into().map_err(|_| invalid())?;
@@ -126,6 +163,7 @@ async fn prepare(
     digest.update(row.get::<_, &str>(2).as_bytes());
     digest.update(row.get::<_, &str>(3).as_bytes());
     if <[u8; 32]>::from(digest.finalize()) != observation_checksum {
+        observe_read!("native_observation_checksum_differs");
         return Err(invalid());
     }
     let record = Settlement {
@@ -158,6 +196,7 @@ async fn require_record(
     tx: &Transaction<'_>,
     prepared: &Prepared,
 ) -> Result<bool, AgentLoopDriverError> {
+    observe_read!("read_stored_case_settlement");
     let Some(row) = tx
         .query_opt(
             "SELECT observation_checksum,delivery_checksum,settlement_bytes,checksum
@@ -167,6 +206,7 @@ async fn require_record(
         .await
         .map_err(|_| unavailable())?
     else {
+        observe_read!("stored_case_settlement_absent");
         return Ok(false);
     };
     let bytes: &str = row.get(2);
@@ -178,8 +218,10 @@ async fn require_record(
         || row.get::<_, Vec<u8>>(1).as_slice() != prepared.record.delivery_checksum
         || row.get::<_, Vec<u8>>(3).as_slice() != prepared.checksum
     {
+        observe_read!("stored_case_settlement_differs");
         return Err(invalid());
     }
+    observe_read!("stored_case_settlement_acknowledged");
     Ok(true)
 }
 /// Historical read rechecks the actual I01 source original, normal delivery and

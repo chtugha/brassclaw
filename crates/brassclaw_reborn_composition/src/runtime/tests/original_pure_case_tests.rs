@@ -207,7 +207,7 @@ async fn one_case_with_id(
             let original = product_api(runtime)
                 .get_original_pure_case(caller(runtime), &id.to_string())
                 .await
-                .unwrap();
+                .unwrap_or_else(|error| panic!("actual original case read failed: case_id={id} export={export} error={error:?}"));
             assert_eq!(original.case_id, id.to_string());
             if original.status == OriginalPureCaseStatus::Settled {
                 assert!(original.settlement_checksum.is_some());

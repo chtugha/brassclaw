@@ -98,7 +98,7 @@ impl InstalledMontyCatalogue {
             OriginalPureCaseStatus as Status, OriginalPureCaseView, RecipeStoreError,
         };
         let id = original_case_identifier(case_id)?;
-        let timeout = self
+        let selected = self
             .resource_store_settings
             .snapshot()
             .and_then(|s| s.validate())
@@ -106,42 +106,124 @@ impl InstalledMontyCatalogue {
                 RecipeStoreError::Unavailable(
                     "original Pure case storage settings unavailable".into(),
                 )
-            })?
-            .timeout;
-        tokio::time::timeout(timeout, async {
-            let mut client = TransactionClient::from_client(self.pool.get().await
-                .map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?);
-            let tx = client.build_transaction().isolation_level(IsolationLevel::RepeatableRead)
-                .read_only(true).start().await.map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?;
-            let row = tx.query_opt("SELECT submission_id FROM reborn_original_pure_cases WHERE case_id=$1", &[&id])
-                .await.map_err(|_|RecipeStoreError::Unavailable("original Pure case metadata unavailable".into()))?
-                .ok_or_else(||RecipeStoreError::NotFound("original Pure case missing".into()))?;
+            })?;
+        let timeout = selected.timeout;
+        #[cfg(test)]
+        let trace =
+            crate::pure_case_settlement::diagnostic::Trace::new(id, selected.revision, timeout);
+        let read = async {
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("acquire_client");
+            let mut client =
+                TransactionClient::from_client(self.pool.get().await.map_err(|_| {
+                    RecipeStoreError::Unavailable("original Pure case metadata unavailable".into())
+                })?);
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("begin_read_snapshot");
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(|_| {
+                    RecipeStoreError::Unavailable("original Pure case metadata unavailable".into())
+                })?;
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("read_submission_id");
+            let row = tx
+                .query_opt(
+                    "SELECT submission_id FROM reborn_original_pure_cases WHERE case_id=$1",
+                    &[&id],
+                )
+                .await
+                .map_err(|_| {
+                    RecipeStoreError::Unavailable("original Pure case metadata unavailable".into())
+                })?
+                .ok_or_else(|| RecipeStoreError::NotFound("original Pure case missing".into()))?;
             let submission: Uuid = row.get(0);
-            let context = self.pure_case_context(&tx,submission).await
-                .map_err(|_|RecipeStoreError::Unavailable("original Pure case context unavailable".into()))?;
-            let settled = crate::pure_case_settlement::read(&tx,id,&context,&self.pure_source_review).await
-                .map_err(|_|RecipeStoreError::Unavailable("original Pure case settlement invalid".into()))?;
-            let pending_original=if settled.is_none() {
-                Some(CheckedOriginalPureCase::read(&tx,&self.pure_source_review,id,&context).await
-                    .map_err(|_|RecipeStoreError::Unavailable("original Pure case original invalid".into()))?
-                    .ok_or_else(||RecipeStoreError::NotFound("original Pure case missing".into()))?)
-            } else {None};
-            let case=settled.as_ref().map(|settled|settled.original()).or(pending_original.as_ref())
-                .ok_or_else(||RecipeStoreError::Unavailable("original Pure case original unavailable".into()))?;
-            let case_checksum=hex::encode(case.checksum());
-            let work = PgTurnStateStore::read_private_work_state_in_transaction(&tx,context.tenant_id.as_str(),id).await
-                .map_err(|_|RecipeStoreError::Unavailable("original Pure case Work unavailable".into()))?
-                .ok_or_else(||RecipeStoreError::Unavailable("original Pure case Work missing".into()))?;
-            if work.request.context()!=case.context()
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("read_case_context");
+            let context = self.pure_case_context(&tx, submission).await.map_err(|_| {
+                RecipeStoreError::Unavailable("original Pure case context unavailable".into())
+            })?;
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("read_case_settlement");
+            let settled =
+                crate::pure_case_settlement::read(&tx, id, &context, &self.pure_source_review)
+                    .await
+                    .map_err(|_| {
+                        RecipeStoreError::Unavailable(
+                            "original Pure case settlement invalid".into(),
+                        )
+                    })?;
+            let pending_original = if settled.is_none() {
+                #[cfg(test)]
+                crate::pure_case_settlement::diagnostic::note("read_pending_original");
+                Some(
+                    CheckedOriginalPureCase::read(&tx, &self.pure_source_review, id, &context)
+                        .await
+                        .map_err(|_| {
+                            RecipeStoreError::Unavailable(
+                                "original Pure case original invalid".into(),
+                            )
+                        })?
+                        .ok_or_else(|| {
+                            RecipeStoreError::NotFound("original Pure case missing".into())
+                        })?,
+                )
+            } else {
+                None
+            };
+            let case = settled
+                .as_ref()
+                .map(|settled| settled.original())
+                .or(pending_original.as_ref())
+                .ok_or_else(|| {
+                    RecipeStoreError::Unavailable("original Pure case original unavailable".into())
+                })?;
+            let case_checksum = hex::encode(case.checksum());
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("read_case_work");
+            let work = PgTurnStateStore::read_private_work_state_in_transaction(
+                &tx,
+                context.tenant_id.as_str(),
+                id,
+            )
+            .await
+            .map_err(|_| {
+                RecipeStoreError::Unavailable("original Pure case Work unavailable".into())
+            })?
+            .ok_or_else(|| {
+                RecipeStoreError::Unavailable("original Pure case Work missing".into())
+            })?;
+            if work.request.context() != case.context()
                 || !matches!(work.request.original(),PrivateOriginalRef::OriginalPureCaseV1 {case_id,case_checksum}
-                    if *case_id==id && *case_checksum==case.checksum()) {
-                return Err(RecipeStoreError::Unavailable("original Pure case Work identity invalid".into()));
+                    if *case_id==id && *case_checksum==case.checksum())
+            {
+                return Err(RecipeStoreError::Unavailable(
+                    "original Pure case Work identity invalid".into(),
+                ));
             }
 
-            let terminal=crate::pg_monty_admission::PgMontyAdmission::read_private_terminal_status(&tx,id,&context).await
-                .map_err(|_|RecipeStoreError::Unavailable("original Pure terminal invalid".into()))?;
-            let (status,observation_bytes,settlement_checksum) = if let Some(settled)=settled {
-                (Status::Settled,Some(settled.observation_bytes().to_owned()),Some(hex::encode(settled.checksum())))
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("read_case_terminal");
+            let terminal =
+                crate::pg_monty_admission::PgMontyAdmission::read_private_terminal_status(
+                    &tx, id, &context,
+                )
+                .await
+                .map_err(|_| {
+                    RecipeStoreError::Unavailable("original Pure terminal invalid".into())
+                })?;
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("project_original_status");
+            let (status, observation_bytes, settlement_checksum) = if let Some(settled) = settled {
+                (
+                    Status::Settled,
+                    Some(settled.observation_bytes().to_owned()),
+                    Some(hex::encode(settled.checksum())),
+                )
             } else {
                 (match work.status {
                     PrivateWorkStatus::AwaitingPreparation=>Status::AwaitingPreparation,
@@ -156,12 +238,56 @@ impl InstalledMontyCatalogue {
                     },
                 },None,None)
             };
-            let view=OriginalPureCaseView {case_id:id.to_string(),submission_id:submission.to_string(),
-                case_checksum,status,observation_bytes,settlement_checksum};
-            tx.commit().await.map_err(|_|RecipeStoreError::Unavailable("original Pure case read not acknowledged".into()))?;
+            let view = OriginalPureCaseView {
+                case_id: id.to_string(),
+                submission_id: submission.to_string(),
+                case_checksum,
+                status,
+                observation_bytes,
+                settlement_checksum,
+            };
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("commit_read_snapshot");
+            tx.commit().await.map_err(|_| {
+                RecipeStoreError::Unavailable("original Pure case read not acknowledged".into())
+            })?;
             client.recycle_after_commit();
             Ok(view)
-        }).await.map_err(|_|RecipeStoreError::Unavailable("original Pure case read deadline elapsed".into()))?
+        };
+        #[cfg(test)]
+        let result = crate::pure_case_settlement::diagnostic::scope(
+            trace.clone(),
+            tokio::time::timeout(timeout, read),
+        )
+        .await;
+        #[cfg(not(test))]
+        let result = tokio::time::timeout(timeout, read).await;
+        #[cfg(test)]
+        match &result {
+            Err(_) => trace.failed("captured_store_deadline", &self.pool),
+            Ok(Err(RecipeStoreError::Unavailable(reason))) => trace.failed(
+                match reason.as_str() {
+                    "original Pure case metadata unavailable" => "metadata_unavailable",
+                    "original Pure case context unavailable" => "context_unavailable",
+                    "original Pure case settlement invalid" => "settlement_invalid",
+                    "original Pure case original invalid" => "original_invalid",
+                    "original Pure case original unavailable" => "original_unavailable",
+                    "original Pure case Work unavailable" => "work_unavailable",
+                    "original Pure case Work missing" => "work_missing",
+                    "original Pure case Work identity invalid" => "work_identity_invalid",
+                    "original Pure terminal invalid" => "terminal_invalid",
+                    "original Pure terminal missing" => "terminal_missing",
+                    "original Pure case read not acknowledged" => "read_commit_unacknowledged",
+                    _ => "original_reader_error",
+                },
+                &self.pool,
+            ),
+            Ok(Err(_)) => trace.failed("original_reader_error", &self.pool),
+            Ok(Ok(_)) => (),
+        }
+        result.map_err(|_| {
+            RecipeStoreError::Unavailable("original Pure case read deadline elapsed".into())
+        })?
     }
     async fn pure_case_context(
         &self,

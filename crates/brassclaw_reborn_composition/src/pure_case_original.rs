@@ -240,6 +240,8 @@ impl CheckedOriginalPureCase {
         case_id: Uuid,
         context: &PrivateExecutionContext,
     ) -> Result<Option<Self>, RebornBuildError> {
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("read_original_case_bytes");
         let Some(row) = tx.query_opt("SELECT case_bytes,checksum,submission_id,subject_checksum,
             source_work_id,source_delivery_checksum,source_confirmation_checksum,
             source_selection_checksum,execution_context FROM reborn_original_pure_cases WHERE case_id=$1",
@@ -255,14 +257,20 @@ impl CheckedOriginalPureCase {
             || original.case_id != case_id
             || &original.context != context
         {
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("original_case_bytes_or_context_differs");
             return Err(invalid("original Pure case context or bytes differ"));
         }
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("read_original_positive_source");
         let checked = source
             .read_positive_original(tx, original.submission_id, context)
             .await?
             .ok_or_else(|| {
                 invalid("original Pure case positive Source prerequisite unavailable")
             })?;
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("original_positive_source_acknowledged");
         let actual = Self::capture(
             tx,
             &checked,
@@ -282,8 +290,12 @@ impl CheckedOriginalPureCase {
             || row.get::<_, &str>(7) != actual.original.source_selection_checksum
             || row.get::<_, Value>(8) != serde_json::to_value(context).map_err(invalid)?
         {
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::note("original_case_projection_differs");
             return Err(invalid("original Pure case projection differs"));
         }
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("original_case_projection_acknowledged");
         Ok(Some(actual))
     }
 }

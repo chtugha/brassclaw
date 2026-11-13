@@ -135,6 +135,8 @@ impl PgMontyAdmission {
         work_id: Uuid,
         context: &PrivateExecutionContext,
     ) -> Result<Option<DeliveredPrivateCompletion>, AgentLoopDriverError> {
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_work_read");
         let Some(state) =
             brassclaw_turns::PgTurnStateStore::read_private_work_state_in_transaction(
                 tx,
@@ -149,6 +151,8 @@ impl PgMontyAdmission {
         if state.request.context() != context || state.request.work_id() != work_id {
             return Err(invalid());
         }
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_delivery_join");
         let Some(row) = tx.query_opt("SELECT d.delivery_bytes,d.checksum,d.terminal_checksum,
             p.definition_bytes,p.checksum,t.terminal_bytes,t.execution_report_bytes,
             a.runner_id,a.claim_checksum,a.admission_key,a.private_claim_generation,a.private_request_checksum,
@@ -165,6 +169,8 @@ impl PgMontyAdmission {
                 &[&work_id]).await.map_err(database)?.get::<_, bool>(0) { return Err(invalid()); }
             return Ok(None);
         };
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_delivery_identity");
         if state.status != PrivateWorkStatus::Settled || state.cancellation_revision != 0 {
             return Err(invalid());
         }
@@ -185,6 +191,8 @@ impl PgMontyAdmission {
         }
         let definition_checksum: [u8; 32] =
             row.get::<_, Vec<u8>>(4).try_into().map_err(|_| invalid())?;
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_definition_restore");
         let definition = crate::private_work_definition::PrivateWorkDefinition::restore(
             tx,
             &state.request,
@@ -194,6 +202,8 @@ impl PgMontyAdmission {
         )
         .await
         .map_err(|_| invalid())?;
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_terminal_receipt");
         let report_bytes: &str = row.get::<_, Option<&str>>(6).ok_or_else(invalid)?;
         let native =
             terminal::Terminal::read_success(row.get(5), delivery.terminal_checksum, report_bytes)?;
@@ -209,6 +219,8 @@ impl PgMontyAdmission {
             admission_ref: Sha256::digest(row.get::<_, Vec<u8>>(9)).into(),
             cancellation_revision: 0,
         };
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_relationships");
         if native.address != address
             || row.get::<_, i64>(10) != 1
             || row.get::<_, i64>(17) != 1
@@ -243,8 +255,39 @@ impl PgMontyAdmission {
             .await?
                 != native.reconciliation_refs
         {
+            #[cfg(test)]
+            crate::pure_case_settlement::diagnostic::relation(serde_json::json!({
+                "kind":"h01_original_relationships",
+                "address":native.address == address,
+                "admission_generation":row.get::<_,i64>(10) == 1,
+                "work_generation":row.get::<_,i64>(17) == 1,
+                "request_checksum":row.get::<_,Vec<u8>>(11).as_slice() == state.request_checksum,
+                "context":row.get::<_,Value>(13) == serde_json::to_value(context).map_err(|_|invalid())?,
+                "actor":row.get::<_,Value>(14) == serde_json::to_value(&context.actor).map_err(|_|invalid())?,
+                "definition_checksum":row.get::<_,Vec<u8>>(15).as_slice() == definition_checksum,
+                "claim_checksum":row.get::<_,Vec<u8>>(16).as_slice() == address.claim_checksum,
+                "runner":row.get::<_,Uuid>(18) == row.get::<_,Uuid>(7),
+                "run":row.get::<_,Uuid>(19) == delivery.run_id,
+                "root":native.root["source_checksum"] == hex::encode(definition.root().source_checksum()),
+                "outcome_completed":outcome["status"] == "completed",
+                "execution_report":outcome.get("execution") == Some(&report),
+                "receipt_checksum":outcome["internal_receipt"].as_str().map(digest) == Some(native.receipt_checksum),
+                "report_format":report["format"] == "monty-internal-task-execution/1",
+                "report_root":report["root"] == native.root,
+                "report_accounting":report["accounting"] == native.accounting,
+                "root_completed":report["root_completed"] == true,
+                "recipes_completed":report["all_selected_recipes_complete"] == true,
+                "internal_receipt":report["internal_receipt"] == outcome["internal_receipt"],
+                "reply_absent":report["reply"].is_null(),
+                "withheld_root_answers_absent":report["withheld_root_answers"] == 0,
+                "withheld_host_answers_absent":report["withheld_host_answers"] == false,
+                "approval_absent":report["semantic_approval"] == false,
+                "activation_absent":report["catalogue_activation"] == false,
+            }));
             return Err(invalid());
         }
+        #[cfg(test)]
+        crate::pure_case_settlement::diagnostic::note("h01_original_result_reference");
         Self::validate_private_result_reference(&outcome, state.request.run_id())?;
         Ok(Some(DeliveredPrivateCompletion {
             original: PrivateCompletionOriginal {
