@@ -74,6 +74,11 @@ jobs:
           bash -n install.sh uninstall.sh
           python3 scripts/test_installer.py
           python3 scripts/test_uninstaller.py
+          python3 scripts/test_build_environments.py
+          python3 scripts/test_modal_build_worker.py
+          python3 scripts/test_modal_source_sync.py
+          python3 scripts/test_sweepfix.py
+          bash scripts/ci/test-classify-test-scope.sh
 
   native-memory-gate:
     name: Native memory capacity (${{ matrix.os }})

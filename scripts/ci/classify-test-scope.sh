@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+embedded_paths=$'\n'"$(python3 "$script_dir/embedded-input-paths.py")"$'\n'
+
+is_embedded_path() {
+  case "$embedded_paths" in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 has_core_code=false
 docs_only=true
 has_legacy_tests=false
@@ -8,6 +18,7 @@ has_reborn_tests=false
 
 is_docs_only_path() {
   local path="$1"
+  if is_embedded_path "$path"; then return 1; fi
   case "$path" in
     docs/*|.github/ISSUE_TEMPLATE/*|.github/pull_request_template.md)
       return 0
@@ -65,6 +76,7 @@ is_shared_test_path() {
 
 is_reborn_test_path() {
   local path="$1"
+  if is_embedded_path "$path"; then return 0; fi
   case "$path" in
     docs/reborn/*|scripts/reborn-e2e-rust.sh|scripts/ci/run-reborn-root-partition.sh|tests/reborn_*|tests/support/reborn/*|tests/browser/*|tests/e2e/scenarios/test_reborn_*)
       return 0
@@ -103,6 +115,9 @@ is_code_path() {
       return 0
       ;;
     scripts/check_no_panics.py|scripts/check_gateway_boundaries.py|scripts/check-version-bumps.sh|scripts/reborn-e2e-rust.sh|scripts/ci/*)
+      return 0
+      ;;
+    scripts/local_build.py|scripts/modal_build.py|scripts/modal_source_sync.py|scripts/modal_build_worker.py|scripts/modal_apple_toolchain.py|scripts/build_settings.py|scripts/build-environments.toml|scripts/testsystem.py|scripts/test_build_environments.py|scripts/test_modal_build_worker.py|scripts/test_modal_source_sync.py|scripts/test_sweepfix.py)
       return 0
       ;;
     .github/workflows/*.yml|.github/dependabot.yml|.github/labeler.yml)

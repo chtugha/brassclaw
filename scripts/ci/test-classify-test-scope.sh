@@ -197,7 +197,7 @@ has_reborn_tests=false"
 
 assert_scope \
   "docs only" \
-  "README.md" \
+  "docs/overview.md" \
   "docs_only=true
 has_core_code=false
 has_legacy_tests=false
@@ -218,9 +218,9 @@ has_legacy_tests=false
 has_reborn_tests=true"
 
 assert_scope \
-  "reborn docs only" \
+  "embedded Reborn docs" \
   "docs/reborn/harness/e2e.md" \
-  "docs_only=true
+  "docs_only=false
 has_core_code=false
 has_legacy_tests=false
 has_reborn_tests=true"
@@ -278,4 +278,85 @@ for path in \
 has_core_code=true
 has_legacy_tests=false
 has_reborn_tests=true"
+done
+
+# SP-13: build scripts must be classified as code paths (not docs-only).
+for path in \
+  scripts/local_build.py \
+  scripts/modal_build.py \
+  scripts/modal_source_sync.py \
+  scripts/modal_build_worker.py \
+  scripts/testsystem.py \
+  scripts/modal_apple_toolchain.py \
+  scripts/build_settings.py \
+  scripts/build-environments.toml \
+  scripts/test_build_environments.py \
+  scripts/test_modal_build_worker.py \
+  scripts/test_modal_source_sync.py \
+  scripts/test_sweepfix.py; do
+  assert_scope "build script is code: $path" "$path" \
+    "docs_only=false
+has_core_code=true
+has_legacy_tests=true
+has_reborn_tests=false"
+done
+
+# SP-13: embedded root markdown files must NOT be docs-only; they require recompile.
+for path in \
+  AGENTS.md \
+  CLAUDE.md \
+  CHANGELOG.md \
+  skills.md \
+  recipe.md \
+  tools.md \
+  toolskills.md \
+  README.md \
+  README.ja.md \
+  README.ko.md \
+  README.ru.md \
+  README.zh-CN.md \
+  simplified_v3.md \
+  path_to_v3.5.md \
+  validator_v3.md \
+  prefix_plan2.md \
+  remove_boot_mode_scripts.md \
+  CONTRIBUTING.md \
+  SECURITY.md \
+  mythbuster.md \
+  Prefixless_redefine_at_K3.md; do
+  assert_scope "embedded root markdown is not docs-only: $path" "$path" \
+    "docs_only=false
+has_core_code=false
+has_legacy_tests=false
+has_reborn_tests=true"
+done
+
+# Non-embedded local working files remain docs-only.
+for path in \
+  speedup2.md \
+  speedup.md; do
+  assert_scope "local working file stays docs-only: $path" "$path" \
+    "docs_only=true
+has_core_code=false
+has_legacy_tests=false
+has_reborn_tests=false"
+done
+
+# Exercise every actual embedded document/data input, including archived release
+# documents, component guides and the inventory itself. No copied second list.
+while IFS= read -r path; do
+  result="$(printf '%s\n' "$path" | "$classifier")"
+  if [[ "$result" != *"docs_only=false"* || "$result" != *"has_reborn_tests=true"* ]]; then
+    printf 'FAIL embedded input coverage: %s\n%s\n' "$path" "$result" >&2
+    exit 1
+  fi
+done < <(python3 "${script_dir}/embedded-input-paths.py")
+printf 'PASS complete actual embedded-input coverage\n'
+
+for path in docs/development-policy.md docs/build-environments.md docs/unembedded-example.md; do
+  assert_scope "unembedded development doc: $path" "$path" \
+    "docs_only=true
+has_core_code=false
+has_legacy_tests=false
+has_reborn_tests=false"
 done
