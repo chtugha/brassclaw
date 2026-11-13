@@ -83,6 +83,17 @@ V-01 continues the concrete interruption-custody follow-up in its private
 worktree; V-03 starts from `bc2bf6089`. Release remains pending their connected
 review and necessary acceptance, not a claim of full Bob completion.
 
+### W-01 — supported native macOS release runners
+
+User reports the actual unsupported `macos-14-arm64-us-default` Release annotation.
+Fresh chat `01a1d29a-065e-7ee0-b5ee-1b7e3c9a4ffd`, isolated worktree `34d4`, owns
+only CI runner repair. Commit `17951f9f4` on rc.5 `e466ed46c` changes two labels:
+Intel `macos-15-intel`, ARM `macos-15`. Root fully reviews and fast-forwards it.
+Actual actionlint/YAML/structural/whitespace checks pass; all other workflow values
+are unchanged. No Cargo/Modal/branch-setting changes or new native acceptance.
+W-01 source is idle/accepted; Root owns rc.6 metadata and actual GitHub validation.
+Do not force/move rc.5 or claim a hosted runner build from static label checks.
+
 ### 2026-11-13 repair checkpoint — scoped packages accepted/source-idle
 
 Validated runtime `f8b1f01a7` includes V-01 original cancellation/admission custody,

@@ -1,3 +1,15 @@
+## 2026-11-13 — Release CI runner correction prepared as rc.6
+
+The rc.5 checkpoint is pushed/tagged at `e466ed46c`. Actual GitHub Release run
+`43347099426` cancels the Intel job before execution because macOS 14 images are
+retired; this is not a Rust failure. Reviewed CI-only `17951f9f4` selects supported
+native `macos-15-intel`/`macos-15`, preserving all targets/assets/permissions.
+Actionlint/YAML/structural checks pass. Root prepares separate rc.6 metadata,
+preserving the rc.5 tag and all historical evidence. No Rust implementation
+changes or new local product compilation/testing are implied. Hosted rc.6 results
+are pending; rc.5 scoped acceptance below is not new-version/runtime/deployment
+acceptance. See the [repair record](validation/2026-11-13-release-runner-repair.md).
+
 ## 2026-11-13 — rc.5 local repair acceptance complete; full Bob/Pure scope open
 
 Validated runtime source `f8b1f01a7` includes reviewed native custody, original-

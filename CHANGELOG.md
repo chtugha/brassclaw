@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0-rc.6] - 2026-11-13
+
+- **Release runner repair**: Build Intel macOS on `macos-15-intel` and Apple
+  Silicon on `macos-15`. GitHub [retired macOS 14 runners](https://github.com/actions/runner-images/blob/main/README.md)
+  on November 2, preventing the rc.5 Intel job from starting. Keep Linux, target triples,
+  assets, checksum handling and publication permissions unchanged. Preserve
+  the existing rc.5 tag; publish this correction as a separate prerelease.
+  Runtime behavior is unchanged. Earlier rc.5 validation remains scoped to its
+  actual source/artifacts; release builds are checked independently.
+
 ## [1.7.0-rc.5] - 2026-11-13
 
 This prerelease collects the reviewed intermediate v3 changes below. It does

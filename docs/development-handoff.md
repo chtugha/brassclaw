@@ -1,4 +1,25 @@
-## Latest — 2026-11-13 rc.5 validated repair checkpoint
+## Latest — 2026-11-13 rc.5 published; rc.6 native runner repair prepared
+
+Main/tag rc.5 publication succeeds atomically: `e466ed46c69a77ae73e4502c68101c3d3f57a86d`;
+annotated tag object `7a0777e9637a7d74d1557956e73a423d696f3555` dereferences to it.
+The actual Release run `43347099426` cannot start its Intel job: retired macOS 14
+runner. Linux/ARM were still running at diagnosis, not accepted as passed.
+
+W-01's minimal reviewed runner patch `17951f9f4` is fast-forwarded to Main:
+`macos-15-intel` for x86_64, `macos-15` for Apple Silicon. All other workflow values
+are unchanged; actionlint/YAML/structural/whitespace checks pass. Root prepares
+`1.7.0-rc.6` metadata/changelog rather than moving rc.5. No Rust implementation
+change, local Cargo or paid Modal job. Existing rc.5 exact-byte runtime receipts
+are not relabelled as rc.6 package acceptance. Hosted build results remain pending.
+See the [runner repair record](validation/2026-11-13-release-runner-repair.md).
+
+Next: verify consistent rc.6 metadata, commit the bounded owned files, normal Main/
+tag push, inspect actual native hosted jobs and release results. Preserve old
+receipts and immutable tags. Branch protection's existing `build`/`test` names
+remain separate, read-only observed pending contexts; no fake status/guard removal.
+W-01 is source-idle. All three Bob plans/general Pure/full N/R/Q/T remain open.
+
+## Historical — 2026-11-13 rc.5 validated repair checkpoint
 
 Validated runtime source is `f8b1f01a7d7dc64008086450da535c5228ba4dc6`, with
 `1.7.0-rc.5` metadata already committed in `c91042365`. The following documentation
