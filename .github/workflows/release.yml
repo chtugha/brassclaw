@@ -19,10 +19,10 @@ jobs:
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             artifact_name: brassclaw-linux-amd64
-          - os: macos-latest
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact_name: brassclaw-macos-arm64
-          - os: macos-14
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             artifact_name: brassclaw-macos-amd64
 
