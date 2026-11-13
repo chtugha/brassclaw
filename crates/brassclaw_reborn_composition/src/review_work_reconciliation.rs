@@ -12,8 +12,6 @@ use std::sync::Arc;
 use tokio_postgres::Transaction;
 use uuid::Uuid;
 
-use crate::global_task_factory::MontyCatalogueProvider;
-
 pub(crate) struct ReviewWorkReconciler {
     pool: Arc<PgPool>,
     catalogue: Arc<crate::installed_monty_catalogue::InstalledMontyCatalogue>,
