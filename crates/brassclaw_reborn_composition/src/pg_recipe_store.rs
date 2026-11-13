@@ -2049,6 +2049,13 @@ impl brassclaw_product_workflow::RecipeStore for PgRecipeStoreFacade {
                 .await
             }
             _ => {
+                // B3-09: class-22 (PythonCode) Q2 approval requires the
+                // immutable pure-approval writer from B1-06: submission-linked,
+                // Q1/behaviour/Q2 bound, with transactional comparison against
+                // the displayed submission_id + subject_checksum. That writer
+                // is not yet wired here. This facade returns Err(Invalid) for
+                // class 22 until B1-06 connects the approval path and this
+                // match arm is updated under that contract.
                 tracing::debug!(
                     class_code,
                     component_id,

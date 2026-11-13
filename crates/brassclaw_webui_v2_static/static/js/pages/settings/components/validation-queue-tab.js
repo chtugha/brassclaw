@@ -19,6 +19,7 @@ import { ComponentDeploymentPanel } from "./component-deployment-panel.js";
 import { ComponentSubmissionPanel } from "./component-submission-panel.js";
 import { ComponentDetailPane, componentTypeForClass } from "./component-detail-pane.js";
 import { Section } from "./component-detail-primitives.js";
+import { ValidatorReviewPanel } from "./validator-review-panel.js";
 
 export function ValidationQueueTab({ searchQuery = "" }) {
   return html`<div className="space-y-4"><${PostTurnReviewPanel} /><${ComponentDeploymentPanel} /><${CatalogueRoutingPanel} /><${ValidationQueueContents} searchQuery=${searchQuery} /></div>`;
@@ -168,6 +169,8 @@ function QueueRow({ item }) {
   const isQ2 = item.queue_code === "q2_manual";
   // The current facade only supports the Recipe manual action. Listing an
   // original for other classes does not create their B2 approval writer.
+  // Class-22 (PythonCode) Q2 wiring is tracked under B1-06; until that
+  // writer is connected the approve/reject buttons are not shown for class 22.
   const showQ2Actions = isQ2 && item.class_code === 21;
   const auditBlocked =
     LLM_AUDIT_CLASS_CODES.has(item.class_code) &&
@@ -297,7 +300,12 @@ function QueueRow({ item }) {
       ${expanded &&
         html`<div className="mt-3 space-y-4">
           <${LlmAuditPanel} item=${item} />
-          ${detailType
+          ${(item.class_code === 21 || item.class_code === 22)
+            ? html`<${ValidatorReviewPanel}
+                item=${item}
+                onDone=${invalidateQueue}
+              />`
+            : detailType
             ? html`<${ComponentDetailPane}
                 componentType=${detailType}
                 id=${item.id}

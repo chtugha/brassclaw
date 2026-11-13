@@ -1862,6 +1862,33 @@ registerPack("en", {
   "validationQueue.q2ActorBuiltin": "builtin",
   "validationQueue.q2ActorLabel": "Q2 approved by",
 
+  // Settings — Validator Review Panel (B3-09). Surfaces the original immutable
+  // subject/evidence for class-21 (Recipe) and class-22 (PythonCode) Q2 items.
+  "validatorReview.title": "Original subject & evidence",
+  "validatorReview.scope": "The original submitted subject. Inspect the component bytes and checksum before the existing validation controls in this queue.",
+  "validatorReview.noSubmission": "No original submission is linked. Submit the candidate with this queue ID through the component submission panel before review can proceed.",
+  "validatorReview.loadFailed": "Failed to load original subject: {message}",
+  "validatorReview.historicalSubject": "Historical subject — review status",
+  "validatorReview.subjectChecksum": "Subject checksum",
+  "validatorReview.reviewStatus": "Review status",
+  "validatorReview.submissionId": "Submission ID",
+  "validatorReview.catalogueActivated": "Catalogue activated",
+  "validatorReview.yes": "Yes",
+  "validatorReview.candidate": "Candidate",
+  "validatorReview.base": "Base",
+  "validatorReview.dependencies": "Dependencies",
+  "validatorReview.functionPartner": "Function partner",
+  "validatorReview.partnerChanged": "Changed",
+  "validatorReview.partnerContext": "Context",
+  "validatorReview.partnerRef": "Reference",
+  "validatorReview.workStatus": "Q1 work status",
+  "validatorReview.subjectBytes": "Subject document",
+  "validatorReview.componentBytes": "Component bytes {index}",
+  "validatorReview.reviewSelection": "Review selection",
+  "validatorReview.classCode": "Class",
+  "validatorReview.reviewActions": "Human Q2 review",
+  "validatorReview.actionNotConnected": "Human approval is not yet available for this component. The submission is shown for inspection only.",
+
   // Settings — Reliability tab (Phase 6).
   "reliability.title": "Reliability overview",
   "reliability.desc": "These settings are controlled via the Monty VM tab. Navigate to Monty VM to change resource limits, retention windows, or rollback thresholds.",

@@ -108,16 +108,25 @@ for (const language of ["en", "de"]) {
     });
   }
 }
-for (const classCode of [1, 22]) {
-  test(`joint class ${classCode} shows the missing action and offers no partial Q2 button`, () => {
-    const f = fixture({ state: "joint_unsupported", classCode }); const tree = f.render();
-    assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
-    assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
-    assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
-    assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
-    assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
-  });
-}
+// Class 1 (Skill): no Q2 writer connected — shows actionUnavailable and no buttons.
+test("joint class 1 shows the missing action and offers no partial Q2 button", () => {
+  const f = fixture({ state: "joint_unsupported", classCode: 1 }); const tree = f.render();
+  assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
+  assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
+  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+  assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
+  assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
+});
+// Class 22 (PythonCode): Q2 writer not yet connected (pending B1-06).
+// joint_unsupported shows the same actionUnavailable as class 1 — no buttons.
+test("joint class 22 shows the missing action and offers no partial Q2 button", () => {
+  const f = fixture({ state: "joint_unsupported", classCode: 22 }); const tree = f.render();
+  assert.ok(visible(tree, f.pack["validationQueue.original.joint_unsupported"]));
+  assert.ok(visible(tree, f.pack["validationQueue.original.actionUnavailable"]));
+  assert.equal(button(tree, f.t("validationQueue.validate")), undefined);
+  assert.equal(button(tree, f.t("validationQueue.reject")), undefined);
+  assert.equal(f.validationCalls.length, 0); assert.equal(f.rejectionCalls.length, 0);
+});
 test("a bound Recipe Q2 row keeps its existing approval affordance without claiming backend success", () => {
   const f = fixture({ state: "bound" }); const tree = f.render();
   const approve = button(tree, f.t("validationQueue.validate"));
