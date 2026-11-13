@@ -33,6 +33,8 @@ class InstallerTests(unittest.TestCase):
             TEST_INSTALLER=str(INSTALLER),
             TEST_DESTINATION=str(self.destination),
             TEST_DOWNLOAD=str(self.download),
+            HOME=str(self.root / "home"),
+            TMPDIR=str(self.root),
         )
         if path is not None:
             environment["PATH"] = str(path)
@@ -51,6 +53,134 @@ class InstallerTests(unittest.TestCase):
         old.chmod(0o751)
         if worker:
             (self.destination / "monty_worker").write_bytes(b"previous worker")
+
+    def local_pair(self):
+        for name in ("artifact", "artifact-monty-worker"):
+            payload = self.download / name
+            (self.download / (name + ".sha256")).write_text(
+                hashlib.sha256(payload.read_bytes()).hexdigest() + "\n")
+
+    def without_curl(self):
+        tools = self.root / "offline-tools"
+        tools.mkdir()
+        # Expose only real installed executables; no network command or stubs.
+        for name in ("python3", "cat", "tr", "sed", "tail", "mktemp", "install",
+                     "cp", "mv", "chmod", "mkdir", "ln", "rm", "rmdir", "od",
+                     "id", "uname", "sha256sum", "shasum"):
+            target = shutil.which(name)
+            if target:
+                (tools / name).symlink_to(target)
+        return tools
+
+    @unittest.skipIf(os.geteuid() == 0, "manual user installation requires a non-root account")
+    def test_local_main_offline_with_digest_only_checksums(self):
+        self.local_pair()
+        # Match detect_artifact's actual platform name without executing payloads.
+        artifact = self.run_shell('detect_artifact').stdout.strip()
+        for suffix in ("", ".sha256", "-monty-worker", "-monty-worker.sha256"):
+            shutil.copyfile(self.download / ("artifact" + suffix), self.download / (artifact + suffix))
+        original = {p.name: p.read_bytes() for p in self.download.iterdir()}
+        tools = self.without_curl()
+        for version_args, expected in (("", "version unknown"), ("-v v1.7.0-rc.4", "operator-supplied version: v1.7.0-rc.4")):
+            with self.subTest(version=version_args):
+                result = self.run_shell('main --local-dir "$TEST_DOWNLOAD" ' + version_args, path=tools)
+                self.assertIn(expected, result.stdout)
+                self.assertEqual({p.name: p.read_bytes() for p in self.download.iterdir()}, original)
+                installed = self.root / "home" / ".local" / "bin"
+                self.assertEqual((installed / "brassclaw-reborn").read_bytes(), original[artifact])
+                self.assertEqual((installed / "monty_worker").read_bytes(), original[artifact + "-monty-worker"])
+                self.assertFalse((installed / ".brassclaw-install.lock").exists())
+
+    def test_network_downloads_still_require_curl(self):
+        tools = self.without_curl()
+        self.run_shell('LOCAL_DIR="$TEST_DOWNLOAD"\nrequire_commands', path=tools)
+        result = self.run_shell('require_commands', expected=1, path=tools)
+        self.assertIn('Required command missing: curl', result.stderr)
+
+    def test_local_relative_space_path_and_snapshot_isolation(self):
+        self.local_pair()
+        source = self.root / "local source"
+        self.download.rename(source)
+        self.download = source
+        original = {p.name: p.read_bytes() for p in source.iterdir()}
+        result = self.run_shell('cd "$TEST_DOWNLOAD/.."\n'
+                                'parse_args --local-dir "local source"\ntrap cleanup EXIT\n'
+                                'snapshot_local_pair artifact\n'
+                                'printf "%s\\n" "$DOWNLOAD_DIR"\n'
+                                'printf changed > "$LOCAL_DIR/artifact"\n'
+                                'stage_pair artifact\ncommit_pair')
+        snapshot = Path(result.stdout.strip())
+        self.assertFalse(snapshot.exists())
+        self.assertTrue(source.is_dir())
+        self.assertEqual((self.destination / "brassclaw-reborn").read_bytes(), original["artifact"])
+        self.assertEqual((source / "artifact").read_bytes(), b"changed")
+        for name in original.keys() - {"artifact"}:
+            self.assertEqual((source / name).read_bytes(), original[name])
+
+    def test_local_failures_leave_source_and_installation_untouched(self):
+        self.local_pair()
+        self.old_pair()
+        worker = self.download / "artifact-monty-worker"
+        checksum = self.download / "artifact-monty-worker.sha256"
+        for problem in ("missing-worker", "missing-checksum", "wrong-checksum", "malformed-checksum", "mixed-worker", "symlink", "checksum-symlink", "fifo"):
+            with self.subTest(problem=problem):
+                worker.unlink(missing_ok=True)
+                checksum.unlink(missing_ok=True)
+                shutil.copyfile("/usr/bin/env", worker)
+                checksum.write_text(hashlib.sha256(worker.read_bytes()).hexdigest() + "\n")
+                if problem == "missing-worker":
+                    worker.unlink()
+                elif problem == "missing-checksum":
+                    checksum.unlink()
+                elif problem == "wrong-checksum":
+                    checksum.write_text("0" * 64 + "\n")
+                elif problem == "malformed-checksum":
+                    checksum.write_text("v1.7.0 is not a digest\n")
+                elif problem == "mixed-worker":
+                    shutil.copyfile("/bin/sh", worker)
+                elif problem == "checksum-symlink":
+                    checksum.unlink()
+                    checksum.symlink_to(self.download / "artifact.sha256")
+                elif problem == "symlink":
+                    worker.unlink()
+                    worker.symlink_to("/usr/bin/env")
+                else:
+                    worker.unlink()
+                    os.mkfifo(worker)
+                original = {p.name: (p.lstat().st_mode, os.readlink(p) if p.is_symlink()
+                                      else p.read_bytes() if p.is_file() else None)
+                            for p in self.download.iterdir()}
+                result = self.run_shell('LOCAL_DIR="$TEST_DOWNLOAD"\ntrap cleanup EXIT\n'
+                                        'snapshot_local_pair artifact\nstage_pair artifact\ncommit_pair', expected=1)
+                self.assertTrue(result.stderr)
+                self.assertEqual({p.name: (p.lstat().st_mode, os.readlink(p) if p.is_symlink()
+                                           else p.read_bytes() if p.is_file() else None)
+                                  for p in self.download.iterdir()}, original)
+                self.assertTrue(self.download.is_dir())
+                self.assertFalse((self.destination / ".brassclaw-install.lock").exists())
+                self.assertEqual((self.destination / "brassclaw-reborn").read_bytes(), b"previous application")
+                self.assertEqual((self.destination / "monty_worker").read_bytes(), b"previous worker")
+                self.assertEqual(list(self.root.glob("brassclaw-download.*")), [])
+
+    def test_local_snapshot_rollback_preserves_source(self):
+        self.local_pair()
+        self.old_pair()
+        original = {p.name: p.read_bytes() for p in self.download.iterdir()}
+        self.run_shell('LOCAL_DIR="$TEST_DOWNLOAD"\ntrap cleanup EXIT\n'
+                       'snapshot_local_pair artifact\nstage_pair artifact\n'
+                       'rm "$STAGE_DIR/monty_worker"\ncommit_pair', expected=1)
+        self.assertEqual({p.name: p.read_bytes() for p in self.download.iterdir()}, original)
+        self.assertEqual((self.destination / "brassclaw-reborn").read_bytes(), b"previous application")
+        self.assertEqual((self.destination / "monty_worker").read_bytes(), b"previous worker")
+
+    def test_empty_and_missing_option_values_fail_before_install(self):
+        for arguments in ('--local-dir', '--local-dir ""', '--local-dir --version',
+                          '-v', '-v ""', '-v v', '--local-dir /nonexistent',
+                          '--local-dir "$TEST_DOWNLOAD" -v invalid'):
+            with self.subTest(arguments=arguments):
+                self.run_shell('main ' + arguments, expected=1, path=self.root)
+                self.assertEqual(list(self.destination.iterdir()), [])
+                self.assertTrue(self.download.is_dir())
 
     def test_valid_checksum_and_corruption(self):
         artifact = self.download / "artifact"
