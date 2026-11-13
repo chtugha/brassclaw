@@ -19,7 +19,6 @@ rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.8"
 webpki-roots = "1"
 refinery = { version = "0.8", features = ["tokio-postgres"] }
-pgvector = { version = "0.4", features = ["postgres"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt", "macros", "sync", "time"] }
 tracing = "0.1"
