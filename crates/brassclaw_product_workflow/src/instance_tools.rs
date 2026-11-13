@@ -74,10 +74,10 @@ pub trait InstanceToolSettings: Send + Sync {
 
 pub(crate) mod revision_wire {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
-    pub(crate) fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(super) fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&value.to_string())
     }
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
         let text = String::deserialize(deserializer)?;
         parse(&text).map_err(D::Error::custom)
     }
@@ -121,7 +121,7 @@ pub(crate) mod revision_wire {
 mod output_bytes_wire {
     use serde::{Deserialize, Deserializer, Serializer, de::Error};
 
-    pub(crate) fn serialize<S: Serializer>(
+    pub(super) fn serialize<S: Serializer>(
         value: &Option<u64>,
         serializer: S,
     ) -> Result<S::Ok, S::Error> {
@@ -131,7 +131,7 @@ mod output_bytes_wire {
         }
     }
 
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
         deserializer: D,
     ) -> Result<Option<u64>, D::Error> {
         let value = Option::<String>::deserialize(deserializer)?;
