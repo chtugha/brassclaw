@@ -39,11 +39,11 @@ pub(crate) struct DefaultCompactionStrategy {
 }
 
 impl DefaultCompactionStrategy {
-    pub const DEFAULT_CONTEXT_LIMIT_TOKENS: u64 = 8_192;
-    pub const DEFAULT_RESERVE_TOKENS: u64 = 2_048;
-    pub const DEFAULT_MAIN_LOOP_MAX_OUTPUT_TOKENS: u64 = 0;
-    pub const DEFAULT_PRESERVE_TAIL_TOKENS: u64 = 1_024;
-    pub const DEFAULT_DEADLINE_MS: u64 = 30_000;
+    const DEFAULT_CONTEXT_LIMIT_TOKENS: u64 = 8_192;
+    const DEFAULT_RESERVE_TOKENS: u64 = 2_048;
+    const DEFAULT_MAIN_LOOP_MAX_OUTPUT_TOKENS: u64 = 0;
+    const DEFAULT_PRESERVE_TAIL_TOKENS: u64 = 1_024;
+    const DEFAULT_DEADLINE_MS: u64 = 30_000;
 }
 
 impl Default for DefaultCompactionStrategy {

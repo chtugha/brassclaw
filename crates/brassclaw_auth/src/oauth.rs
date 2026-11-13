@@ -33,23 +33,21 @@ pub const GOOGLE_CALENDAR_READONLY_SCOPE: &str =
 /// Read/write access to Google Calendar events.
 pub const GOOGLE_CALENDAR_EVENTS_SCOPE: &str = "https://www.googleapis.com/auth/calendar.events";
 /// Read-only access to Google Drive files.
-pub const GOOGLE_DRIVE_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
+const GOOGLE_DRIVE_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/drive.readonly";
 /// Read/write access to Google Drive files.
-pub const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
+const GOOGLE_DRIVE_SCOPE: &str = "https://www.googleapis.com/auth/drive";
 /// Read-only access to Google Docs documents.
-pub const GOOGLE_DOCS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/documents.readonly";
+const GOOGLE_DOCS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/documents.readonly";
 /// Read/write access to Google Docs documents.
-pub const GOOGLE_DOCS_SCOPE: &str = "https://www.googleapis.com/auth/documents";
+const GOOGLE_DOCS_SCOPE: &str = "https://www.googleapis.com/auth/documents";
 /// Read-only access to Google Sheets spreadsheets.
-pub const GOOGLE_SHEETS_READONLY_SCOPE: &str =
-    "https://www.googleapis.com/auth/spreadsheets.readonly";
+const GOOGLE_SHEETS_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets.readonly";
 /// Read/write access to Google Sheets spreadsheets.
-pub const GOOGLE_SHEETS_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets";
+const GOOGLE_SHEETS_SCOPE: &str = "https://www.googleapis.com/auth/spreadsheets";
 /// Read-only access to Google Slides presentations.
-pub const GOOGLE_SLIDES_READONLY_SCOPE: &str =
-    "https://www.googleapis.com/auth/presentations.readonly";
+const GOOGLE_SLIDES_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/presentations.readonly";
 /// Read/write access to Google Slides presentations.
-pub const GOOGLE_SLIDES_SCOPE: &str = "https://www.googleapis.com/auth/presentations";
+const GOOGLE_SLIDES_SCOPE: &str = "https://www.googleapis.com/auth/presentations";
 /// Read-only access to Gmail messages and metadata.
 pub const GOOGLE_GMAIL_READONLY_SCOPE: &str = "https://www.googleapis.com/auth/gmail.readonly";
 /// Permission to send Gmail messages.

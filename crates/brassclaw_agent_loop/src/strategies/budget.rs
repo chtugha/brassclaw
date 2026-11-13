@@ -28,7 +28,7 @@ fn assert_budget_strategy_object_safe(_: &dyn BudgetStrategy) {}
 /// The 32-iteration ceiling is the first safety net. Loop families that need
 /// shorter or longer budgets construct this struct directly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct DefaultBudgetStrategy {
+pub(crate) struct DefaultBudgetStrategy {
     /// Hard ceiling on iteration count. Default `32`.
     pub iteration_limit: u32,
     /// Optional wall-clock cap. Default `None` (no limit).

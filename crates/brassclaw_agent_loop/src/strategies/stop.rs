@@ -200,7 +200,7 @@ pub(crate) enum StopKind {
 ///
 /// On no signal, returns `Continue`.
 #[derive(Debug, Clone, Copy)]
-pub struct DefaultStopConditionStrategy {
+pub(crate) struct DefaultStopConditionStrategy {
     /// Window size for the "same call signature ≥ N times" check.
     pub repetition_window: usize,
     /// Min repeated count within the window to trigger `NoProgressDetected`.

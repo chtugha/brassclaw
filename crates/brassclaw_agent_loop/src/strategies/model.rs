@@ -26,7 +26,7 @@ fn _assert_object_safe(_: &dyn ModelStrategy) {}
 /// always returns `Primary`. The `Fallback` arm is wired through for a future
 /// model-route-chain implementation.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DefaultModelStrategy;
+pub(crate) struct DefaultModelStrategy;
 
 #[async_trait]
 impl ModelStrategy for DefaultModelStrategy {

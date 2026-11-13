@@ -35,7 +35,7 @@ fn _batch_policy_strategy_object_safe(_: &dyn BatchPolicyStrategy) {}
 /// batch (the executor never invokes the strategy in that case in practice),
 /// but a stable answer keeps the strategy total.
 #[derive(Debug, Clone, Copy, Default)]
-pub struct DefaultBatchPolicyStrategy;
+pub(crate) struct DefaultBatchPolicyStrategy;
 
 impl BatchPolicyStrategy for DefaultBatchPolicyStrategy {
     fn policy(&self, _state: &LoopExecutionState, calls: &[CapabilityCallSummary]) -> BatchPolicy {
