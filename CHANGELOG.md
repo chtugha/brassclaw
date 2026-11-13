@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **install.sh: `--local-dir` flag**: Pass `--local-dir <path>` to install from
+  a pre-downloaded GitHub release artifact directory instead of fetching from
+  the network. The script verifies SHA-256 checksums, infers the version from
+  the checksum file where possible, and skips the download step entirely.
+  `--local-dir` and `-v`/`--version` are mutually exclusive.
+
 ## [1.7.0-rc.6] - 2026-11-13
 
 - **Release runner repair**: Build Intel macOS on `macos-15-intel` and Apple

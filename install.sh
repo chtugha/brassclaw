@@ -2,7 +2,7 @@
 # Install a verified BrassClaw application/worker pair from a GitHub release.
 # Linux amd64 and macOS arm64/amd64. PostgreSQL/pgvector are embedded in the
 # application; Monty is a separate companion executable from the same release.
-# Usage: bash install.sh [-v version] [--startup-timeout seconds]
+# Usage: bash install.sh [-v version] [--local-dir path] [--startup-timeout seconds]
 # Root on systemd Linux installs a service; other installs are started manually.
 set -euo pipefail
 
@@ -12,6 +12,7 @@ LEGACY_BINARY_NAME="brassclaw"
 SERVICE_NAME="brassclaw"
 SYSTEMD_DIR="/etc/systemd/system"
 PINNED_VERSION=""
+LOCAL_DIR=""
 STARTUP_TIMEOUT=180
 INSTALL_MODE="user"
 USE_SYSTEMD=false
@@ -33,7 +34,7 @@ log_error() { printf '[ERROR] %s\n' "$*" >&2; }
 log_step()  { printf '[STEP]  %s\n' "$*"; }
 
 usage() {
-    printf 'Usage: %s [-v version] [--startup-timeout seconds]\n' "$0"
+    printf 'Usage: %s [-v version] [--local-dir path] [--startup-timeout seconds]\n' "$0"
 }
 
 parse_args() {
@@ -42,6 +43,10 @@ parse_args() {
             -v|--version)
                 [[ $# -ge 2 ]] || { usage >&2; return 1; }
                 PINNED_VERSION="${2#v}"
+                shift 2 ;;
+            --local-dir)
+                [[ $# -ge 2 ]] || { usage >&2; return 1; }
+                LOCAL_DIR="$2"
                 shift 2 ;;
             --startup-timeout)
                 [[ $# -ge 2 && "$2" =~ ^[1-9][0-9]{0,4}$ ]] || { usage >&2; return 1; }
@@ -53,6 +58,14 @@ parse_args() {
     done
     if [[ -n "$PINNED_VERSION" && ! "$PINNED_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
         log_error 'Invalid release version.'
+        return 1
+    fi
+    if [[ -n "$LOCAL_DIR" && -n "$PINNED_VERSION" ]]; then
+        log_error '--local-dir and -v/--version are mutually exclusive.'
+        return 1
+    fi
+    if [[ -n "$LOCAL_DIR" && ! -d "$LOCAL_DIR" ]]; then
+        log_error "--local-dir: directory not found: $LOCAL_DIR"
         return 1
     fi
 }
@@ -384,7 +397,7 @@ cleanup() {
     elif [[ "$result" != 0 && "$WAS_RUNNING" == true && "$retain_stage" == false ]]; then
         systemctl start "$SERVICE_NAME" || log_error 'Could not restart the previous service; inspect its journal.'
     fi
-    [[ -z "$DOWNLOAD_DIR" ]] || rm -rf "$DOWNLOAD_DIR" || log_warn "Could not remove $DOWNLOAD_DIR"
+    [[ -z "$DOWNLOAD_DIR" || "$DOWNLOAD_DIR" == "$LOCAL_DIR" ]] || rm -rf "$DOWNLOAD_DIR" || log_warn "Could not remove $DOWNLOAD_DIR"
     if [[ -n "$STAGE_DIR" && "$retain_stage" == false ]]; then
         rm -rf "$STAGE_DIR" || log_warn "Could not remove $STAGE_DIR"
     fi
@@ -424,7 +437,35 @@ main() {
     require_commands
     local artifact version
     artifact=$(detect_artifact)
-    version=$(resolve_version "$artifact")
+    if [[ -n "$LOCAL_DIR" ]]; then
+        # Use pre-downloaded files; resolve version from the artifact filename.
+        for asset in "$artifact" "$artifact-monty-worker"; do
+            [[ -f "$LOCAL_DIR/$asset" ]] || { log_error "Local artifact not found: $LOCAL_DIR/$asset"; return 1; }
+            [[ -f "$LOCAL_DIR/$asset.sha256" ]] || { log_error "Local checksum not found: $LOCAL_DIR/$asset.sha256"; return 1; }
+        done
+        version=$(python3 -c '
+import re, sys
+data = open(sys.argv[1]).read().strip()
+m = re.search(r"v([0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?)", data)
+if not m:
+    sys.exit("Cannot determine version from sha256 file; pass -v to set it explicitly.")
+print(m.group(1))
+' "$LOCAL_DIR/$artifact.sha256" 2>/dev/null) || version=""
+        if [[ -z "$version" || ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
+            log_warn 'Could not determine version from local files; set -v to display the correct version.'
+            version="local"
+        fi
+        log_step "Verifying local artifacts in $LOCAL_DIR"
+        for asset in "$artifact" "$artifact-monty-worker"; do
+            sha256_check "$LOCAL_DIR/$asset" "$LOCAL_DIR/$asset.sha256" || {
+                log_error "Checksum verification failed for $asset."
+                return 1
+            }
+        done
+        DOWNLOAD_DIR="$LOCAL_DIR"
+    else
+        version=$(resolve_version "$artifact")
+    fi
     if [[ $EUID -eq 0 ]]; then
         INSTALL_MODE=system
         INSTALL_DIR=/usr/local/bin
@@ -438,7 +479,9 @@ main() {
     trap cleanup EXIT
     trap 'exit 130' INT
     trap 'exit 143' TERM
-    download_pair "$version" "$artifact"
+    if [[ -z "$LOCAL_DIR" ]]; then
+        download_pair "$version" "$artifact"
+    fi
     if [[ "$USE_SYSTEMD" == false ]]; then
         log_info 'For a manual upgrade, stop running BrassClaw instances before replacing executables.'
     fi
