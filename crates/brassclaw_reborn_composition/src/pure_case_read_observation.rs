@@ -1,4 +1,4 @@
-//! Test-only passive trace of the actual historical read that failed. It neither
+//! Test-only passive trace of actual failed and settled historical reads. It neither
 //! repeats a read nor changes routing, verification, deadlines or settlement.
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -26,7 +26,7 @@ impl Trace {
             relation: Mutex::new(None),
         })
     }
-    pub(crate) fn failed(&self, outcome: &'static str, pool: &brassclaw_pg::PgPool) {
+    pub(crate) fn report(&self, outcome: &'static str, pool: &brassclaw_pg::PgPool) {
         let pool = pool.status();
         let phases = self
             .phases

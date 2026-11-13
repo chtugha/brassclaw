@@ -264,8 +264,8 @@ impl InstalledMontyCatalogue {
         let result = tokio::time::timeout(timeout, read).await;
         #[cfg(test)]
         match &result {
-            Err(_) => trace.failed("captured_store_deadline", &self.pool),
-            Ok(Err(RecipeStoreError::Unavailable(reason))) => trace.failed(
+            Err(_) => trace.report("captured_store_deadline", &self.pool),
+            Ok(Err(RecipeStoreError::Unavailable(reason))) => trace.report(
                 match reason.as_str() {
                     "original Pure case metadata unavailable" => "metadata_unavailable",
                     "original Pure case context unavailable" => "context_unavailable",
@@ -282,7 +282,10 @@ impl InstalledMontyCatalogue {
                 },
                 &self.pool,
             ),
-            Ok(Err(_)) => trace.failed("original_reader_error", &self.pool),
+            Ok(Err(_)) => trace.report("original_reader_error", &self.pool),
+            Ok(Ok(view)) if view.status == Status::Settled => {
+                trace.report("settled_read", &self.pool);
+            }
             Ok(Ok(_)) => (),
         }
         result.map_err(|_| {
