@@ -14,6 +14,7 @@ import math
 import os
 from pathlib import Path
 import subprocess
+import stat
 import tempfile
 import re
 import sys
@@ -232,11 +233,36 @@ def run(args):
             raise
 
 
+def local_artifact_matches(path, artifact):
+    """Reuse only the canonical regular original bytes, verified without following links."""
+    path = Path(path)
+    try:
+        selected = path.lstat()
+        if (not stat.S_ISREG(selected.st_mode) or selected.st_size != artifact["size"]
+                or path != path.resolve(strict=True)):
+            return False
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as source:
+            before = os.fstat(source.fileno())
+            if not stat.S_ISREG(before.st_mode) or (before.st_dev, before.st_ino) != (selected.st_dev, selected.st_ino):
+                return False
+            digest = hashlib.file_digest(source, "sha256").hexdigest()
+            after = os.fstat(source.fileno())
+        def identity(value):
+            return (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
+        return (identity(selected) == identity(before) == identity(after) == identity(path.lstat())
+                and path == path.resolve(strict=True) and digest == artifact["sha256"])
+    except OSError:
+        return False  # Missing/unreadable/nonregular/corrupt files must be recollected.
+
+
 def atomic_download(volume, remote_path, destination, artifact=None):
     """Private staging + verify + rename; a failed fetch never publishes bytes."""
     destination = Path(destination)
     if destination.parent.is_symlink() or destination.parent != destination.parent.resolve():
         raise ValueError("Collection directory must be canonical without symlinks")
+    if artifact is not None and local_artifact_matches(destination, artifact):
+        return
     descriptor, temporary = tempfile.mkstemp(prefix=".download-", dir=destination.parent)
     temporary = Path(temporary)
     try:
@@ -299,14 +325,16 @@ def status(args):
     with modal_lock():
         path = (records_root() / "jobs" / str(uuid.UUID(args.job_id)) / "state.json").resolve()
         state = json.loads(path.read_bytes())
-        if state["state"] == "failed" or not state.get("function_call_id"):
+        if state["state"] == "failed":
             print(json.dumps(state, indent=2))
             return
         original = json.loads(path.with_name("request.json").read_bytes())
+        if original["job_id"] != str(uuid.UUID(args.job_id)) or state["job_id"] != original["job_id"]:
+            raise ValueError("Local state/request differs from original job UUID")
         volume = modal.Volume.from_name(original["volume"], environment_name=original["environment"])
         # Volume transport errors are never terminal FunctionCall results.
         # A previously returned completion needs no still-live SDK result handle.
-        if (state.get("remote_state") == "completed" or state["state"] == "completed"
+        if (not state.get("function_call_id") or state.get("remote_state") == "completed" or state["state"] == "completed"
                 or path.with_name("completed.json").exists()):
             result = json.loads(b"".join(volume.read_file(
                 f'/cache/jobs/{original["job_id"]}/completed.json')))

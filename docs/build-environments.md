@@ -216,8 +216,13 @@ environment. Downloads stage privately, check size/SHA-256 and rename atomically
 After a returned remote result, a download failure leaves `collection_pending`
 with `remote_state=completed`. The existing unresolved-job gate conservatively
 blocks new remote synchronization until collection finishes. `status <UUID>`
-recollects the original durable completion, artifacts and logs without Cargo or
-job replay, including after SDK result-handle expiry. Local state becomes
+reconciles the original durable completion even if the spawn response/FunctionCall
+handle was lost. A missing or transport-failed Volume receipt leaves the job
+unconfirmed. Canonical regular local artifact files are reused only after size
+and SHA-256 verification; corrupt, missing or symlink copies are fetched again
+from the original job. Repeated status calls therefore do not retransmit a valid
+large binary. No Cargo or job replay occurs, including after SDK result-handle
+expiry. Local state becomes
 `completed` / `collection=verified` only after all required transfers succeed.
 That state means verified byte collection; it does not certify native test
 execution, fixtures, shared services, companion workers, compile-time paths or

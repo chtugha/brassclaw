@@ -447,6 +447,90 @@ class CollectionBoundaryTests(unittest.TestCase):
                       "cargo.log": b"fixture stdout log", "brassclaw-reborn": self.body}
         self.volume = SimpleNamespace(read_file=lambda path: [self.files[path.rsplit("/", 1)[-1]]])
 
+    def status_fixture(self, state_name="unresolved"):
+        directory = self.directory / "jobs" / self.original["job_id"]
+        directory.mkdir(parents=True)
+        original = {**self.original, "volume": "original-volume", "environment": "brassclaw"}
+        state = {"state": state_name, "job_id": original["job_id"]}  # Spawn answer/handle lost.
+        (directory / "state.json").write_bytes(encoded(state))
+        (directory / "request.json").write_bytes(encoded(original))
+        reads, selected = [], []
+        def read_file(path):
+            self.assertTrue(path.startswith(f'/cache/jobs/{original["job_id"]}/'))
+            reads.append(path)
+            name = path.rsplit("/", 1)[-1]
+            if name not in self.files:
+                raise FileNotFoundError(path)
+            if isinstance(self.files[name], Exception):
+                raise self.files[name]
+            return [self.files[name]]
+        def from_name(name, **kwargs):
+            selected.append((name, kwargs))
+            return SimpleNamespace(read_file=read_file)
+        # Intentionally no FunctionCall/App/spawn surface: recovery must work
+        # solely from the original durable Volume receipt and byte snapshots.
+        sdk = SimpleNamespace(Volume=SimpleNamespace(from_name=from_name))
+        def invoke():
+            with patch.dict(sys.modules, {"modal": sdk}), \
+                    patch.object(modal_build, "records_root", return_value=self.directory), \
+                    patch.object(modal_build, "modal_lock", return_value=nullcontext()):
+                modal_build.status(SimpleNamespace(job_id=original["job_id"], volume="wrong-current-volume"))
+        return directory, state, reads, selected, invoke
+
+    def test_lost_spawn_handle_recovers_from_original_durable_job_receipt(self):
+        directory, state, reads, selected, invoke = self.status_fixture("submitting")
+        invoke()
+        recovered = json.loads((directory / "state.json").read_bytes())
+        self.assertEqual((recovered["state"], recovered["collection"]), ("completed", "verified"))
+        self.assertEqual((directory / "brassclaw-reborn").read_bytes(), self.body)
+        self.assertEqual(selected, [("original-volume", {"environment_name": "brassclaw"})])
+        self.assertFalse((directory / "terminal.json").exists())
+
+    def test_missing_or_transport_failed_receipt_without_handle_stays_unconfirmed(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        for error in (FileNotFoundError("receipt absent"), OSError("Volume transport unavailable")):
+            self.files["completed.json"] = error
+            with self.subTest(error=error), self.assertRaises(type(error)):
+                invoke()
+            self.assertEqual(json.loads((directory / "state.json").read_bytes()), state)
+            self.assertFalse((directory / "completed.json").exists())
+            self.assertFalse((directory / "terminal.json").exists())
+            self.assertFalse((directory / "brassclaw-reborn").exists())
+
+    def test_repeated_status_reuses_verified_local_bytes_and_repairs_corrupt_or_missing_copy(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        invoke()
+        binary = directory / "brassclaw-reborn"
+        original_stat = binary.stat()
+        artifact_path = f'/cache/jobs/{self.original["job_id"]}/artifacts/brassclaw-reborn'
+        self.assertEqual(reads.count(artifact_path), 1)
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 1, "verified bytes must not be downloaded again")
+        self.assertEqual((binary.stat().st_ino, binary.stat().st_mtime_ns),
+                         (original_stat.st_ino, original_stat.st_mtime_ns))
+        # Same-size corruption must trigger a hash check, not just size reuse.
+        binary.chmod(0o600)
+        binary.write_bytes(b"x" * len(self.body))
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 2)
+        self.assertEqual(binary.read_bytes(), self.body)
+        binary.unlink()
+        invoke()
+        self.assertEqual(reads.count(artifact_path), 3)
+        self.assertEqual(binary.read_bytes(), self.body)
+
+    def test_symlink_local_artifact_is_replaced_without_following_its_target(self):
+        directory, state, reads, selected, invoke = self.status_fixture()
+        outside = self.directory / "outside-original-bytes"
+        outside.write_bytes(self.body)
+        binary = directory / "brassclaw-reborn"
+        binary.symlink_to(outside)
+        invoke()
+        self.assertFalse(binary.is_symlink())
+        self.assertEqual(binary.read_bytes(), self.body)
+        self.assertEqual(outside.read_bytes(), self.body)
+        self.assertEqual(sum(path.endswith("/artifacts/brassclaw-reborn") for path in reads), 1)
+
     def test_verified_atomic_copy_preserves_old_bytes_on_transfer_or_hash_failure(self):
         destination = self.directory / "brassclaw-reborn"
         destination.write_bytes(b"old verified copy")
