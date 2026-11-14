@@ -355,6 +355,227 @@ async fn native_codex_refresh_confirmed_no_send_keeps_account_and_original_stop_
     assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 1);
 }
 
+#[tokio::test]
+async fn native_codex_refresh_late_return_retains_custody_after_account_revocation() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    run_auth_migrations(&rig.pool).await.unwrap();
+    let auth = service(&rig.pool);
+    let issuer = Issuer::start(IssuerMode::HoldRefresh).await;
+    let (transport, head, account) = published_login(&rig, &auth, &issuer).await;
+    let selected = CodexAccessSelection {
+        namespace: "native-device-test",
+        provider_id: "openai_codex",
+        head: &head,
+        api_base_url: "https://native-device.example/backend-api",
+        margin_secs: 3600,
+    };
+    let admitted = auth.admit_codex_refresh(&selected).await.unwrap().unwrap();
+    let other = service(&rig.pool);
+    let (returned, revoked) = tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        tokio::join!(
+            auth.execute_codex_refresh(&transport, &admitted, &selected),
+            async {
+                issuer.state.entered.notified().await;
+                // Actual native account CAS must finish while HTTP is still held:
+                // no account/journal/secret transaction can span issuer transport.
+                let revoked = other
+                    .update_status(&account.scope, account.id, CredentialAccountStatus::Revoked)
+                    .await
+                    .unwrap();
+                issuer.state.released.notify_one();
+                revoked
+            }
+        )
+    })
+    .await
+    .expect("revocation must complete while the issuer response is held");
+    assert_eq!(returned.unwrap_err(), AuthProductError::BackendConflict);
+    assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 2);
+    let restarted = service(&rig.pool);
+    let (actual, _) = restarted
+        .read_account(&account.scope, account.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(actual, revoked);
+    assert_eq!(actual.access_secret, account.access_secret);
+    let rows = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query(
+            "SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1",
+            &[&"native-device-test"],
+        )
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let action: brassclaw_auth::CredentialRefreshAction =
+        serde_json::from_value(rows[0].get(0)).unwrap();
+    assert_eq!(action.expected_account, account);
+    assert_eq!(
+        action.outcome,
+        brassclaw_auth::CredentialRefreshOutcome::Submitted
+    );
+    assert!(!action.receipt().unwrap().confirmed_refresh());
+    for suffix in ["request", "response", "returned"] {
+        let handle =
+            SecretHandle::new(format!("codex-refresh-{}-{suffix}", action.original.id)).unwrap();
+        assert!(
+            restarted
+                .secret_store
+                .custody(&account.scope.resource, &handle)
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+    assert!(restarted.admit_codex_refresh(&selected).await.is_err());
+    assert!(
+        restarted
+            .execute_codex_refresh(&transport, &admitted, &selected)
+            .await
+            .is_err()
+    );
+    assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        restarted
+            .read_account(&account.scope, account.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .0,
+        revoked
+    );
+}
+
+#[tokio::test]
+async fn native_codex_refresh_late_return_never_installs_into_a_new_login() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    run_auth_migrations(&rig.pool).await.unwrap();
+    let auth = service(&rig.pool);
+    let issuer = Issuer::start(IssuerMode::HoldRefresh).await;
+    let (transport, head, old_account) = published_login(&rig, &auth, &issuer).await;
+    let next_login = prepare(&auth, &transport, 60).await.original;
+    let challenge = step(&auth, &transport, &next_login).await;
+    wait_until_due(&challenge).await;
+    step(&auth, &transport, &next_login).await;
+    step(&auth, &transport, &next_login).await;
+    let selected = CodexAccessSelection {
+        namespace: "native-device-test",
+        provider_id: "openai_codex",
+        head: &head,
+        api_base_url: "https://native-device.example/backend-api",
+        margin_secs: 3600,
+    };
+    let admitted = auth.admit_codex_refresh(&selected).await.unwrap().unwrap();
+    let other = service(&rig.pool);
+    let repo = crate::PgProviderRepo::new(rig.pool.as_ref().clone(), "native-device-test");
+    let (returned, (new_head, new_account)) =
+        tokio::time::timeout(std::time::Duration::from_secs(20), async {
+            tokio::join!(
+                auth.execute_codex_refresh(&transport, &admitted, &selected),
+                async {
+                    issuer.state.entered.notified().await;
+                    let mut connection = rig.pool.get().await.unwrap();
+                    let tx = connection.transaction().await.unwrap();
+                    let revision = repo
+                        .lock_active_revision(&tx, "openai_codex")
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .revision;
+                    let published = publish_login_in_transaction(
+                        &other,
+                        &tx,
+                        &next_login,
+                        revision,
+                        Some(&head),
+                    )
+                    .await;
+                    tx.commit().await.unwrap();
+                    issuer.state.released.notify_one();
+                    published
+                }
+            )
+        })
+        .await
+        .expect("new login publication must complete while the old refresh is held");
+    assert!(returned.is_err());
+    assert_ne!(new_head, head);
+    assert_ne!(new_account.id, old_account.id);
+    assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 3);
+    let restarted = service(&rig.pool);
+    assert_eq!(
+        restarted
+            .read_account(&old_account.scope, old_account.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .0,
+        old_account
+    );
+    assert_eq!(
+        restarted
+            .read_account(&new_account.scope, new_account.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .0,
+        new_account
+    );
+    assert!(restarted.admit_codex_refresh(&selected).await.is_err());
+    assert!(
+        restarted
+            .execute_codex_refresh(&transport, &admitted, &selected)
+            .await
+            .is_err()
+    );
+    let mut connection = rig.pool.get().await.unwrap();
+    let tx = connection.transaction().await.unwrap();
+    let current = crate::provider_codex_credentials::current_access(
+        &tx,
+        &restarted.secret_store,
+        "native-device-test",
+        "openai_codex",
+        &new_head,
+        "https://native-device.example/backend-api",
+        crate::provider_codex_credentials::AccountRead::Snapshot,
+    )
+    .await
+    .unwrap();
+    assert_eq!(current.account, new_account);
+    tx.commit().await.unwrap();
+    assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 3);
+    let rows = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query(
+            "SELECT data FROM brassclaw_product_auth_refreshes WHERE tenant_id=$1",
+            &[&"native-device-test"],
+        )
+        .await
+        .unwrap();
+    assert_eq!(rows.len(), 1);
+    let action: brassclaw_auth::CredentialRefreshAction =
+        serde_json::from_value(rows[0].get(0)).unwrap();
+    assert_eq!(action.expected_account, old_account);
+    assert!(!action.receipt().unwrap().confirmed_refresh());
+    let response =
+        SecretHandle::new(format!("codex-refresh-{}-response", action.original.id)).unwrap();
+    assert!(
+        restarted
+            .secret_store
+            .custody(&old_account.scope.resource, &response)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct RefreshWorkerInput {
     url: String,

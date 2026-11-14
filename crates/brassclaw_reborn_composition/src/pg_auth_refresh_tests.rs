@@ -51,6 +51,97 @@ fn service(pool: &Arc<brassclaw_pg::PgPool>) -> PgAuthProductServices {
     )
 }
 
+#[tokio::test]
+#[tracing_test::traced_test]
+async fn native_account_lookup_and_list_redact_rejected_database_values() {
+    let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
+    run_auth_migrations(&rig.pool).await.unwrap();
+    let auth = service(&rig.pool);
+    let owner = owner_scope();
+    let account = auth
+        .create_account(account_request(owner.clone(), "redaction-original"))
+        .await
+        .unwrap();
+    let canary = "Bearer rejected-db-token LOGIN-CODE-PRIVATE";
+    let mut malformed = serde_json::to_value(&account).unwrap();
+    malformed["status"] = serde_json::json!(canary);
+    rig.pool.get().await.unwrap().execute(
+        "UPDATE brassclaw_product_auth_accounts SET data=$3,revision=revision+1 WHERE tenant_id=$1 AND id=$2",
+        &[&owner.resource.tenant_id.as_str(), &account.id.to_string(), &malformed],
+    ).await.unwrap();
+
+    let restarted = service(&rig.pool);
+    let lookup = restarted
+        .get_account(CredentialAccountLookupRequest::new(
+            owner.clone(),
+            account.id,
+        ))
+        .await
+        .unwrap_err();
+    let list = restarted
+        .list_accounts(CredentialAccountListRequest::new(
+            owner.clone(),
+            account.provider.clone(),
+        ))
+        .await
+        .unwrap_err();
+    assert_eq!(lookup, AuthProductError::BackendUnavailable);
+    assert_eq!(list, AuthProductError::BackendUnavailable);
+    for value in [canary, "rejected-db-token", "LOGIN-CODE-PRIVATE"] {
+        assert!(!logs_contain(value));
+        assert!(!format!("{lookup:?} {lookup} {list:?} {list}").contains(value));
+    }
+    logs_assert(|lines| {
+        let diagnostics = lines
+            .iter()
+            .filter(|line| line.contains("pg_auth_product_services: deserialisation failed"))
+            .collect::<Vec<_>>();
+        if diagnostics.len() == 2
+            && diagnostics.iter().all(|line| {
+                line.contains("brassclaw_product_auth_accounts")
+                    && line.contains("error_category=Data")
+            })
+        {
+            Ok(())
+        } else {
+            Err("both actual account readers must retain classified redacted diagnostics".into())
+        }
+    });
+    // Reads fail closed without repairing/deleting the original database row.
+    let row: serde_json::Value = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one(
+            "SELECT data FROM brassclaw_product_auth_accounts WHERE tenant_id=$1 AND id=$2",
+            &[&owner.resource.tenant_id.as_str(), &account.id.to_string()],
+        )
+        .await
+        .unwrap()
+        .get(0);
+    assert_eq!(row, malformed);
+    auth.write_account(&account, Some(1)).await.unwrap();
+    assert_eq!(
+        restarted
+            .get_account(CredentialAccountLookupRequest::new(
+                owner.clone(),
+                account.id
+            ))
+            .await
+            .unwrap(),
+        Some(account.clone())
+    );
+    let listed = restarted
+        .list_accounts(CredentialAccountListRequest::new(
+            owner,
+            account.provider.clone(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(listed.accounts, vec![account.projection()]);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn native_independent_auth_owners_publish_only_one_original_snapshot_successor() {
     let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;

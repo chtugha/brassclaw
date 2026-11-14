@@ -259,7 +259,8 @@ impl PgAuthProductServices {
                 let json: serde_json::Value = row.get(0);
                 let revision: i64 = row.get(1);
                 let record: T = serde_json::from_value(json).map_err(|e| {
-                    tracing::debug!(table, error = %e, "pg_auth_product_services: deserialisation failed");
+                    // Serde diagnostics may quote the rejected database value.
+                    tracing::debug!(table, error_category = ?e.classify(), line = e.line(), column = e.column(), "pg_auth_product_services: deserialisation failed");
                     AuthProductError::BackendUnavailable
                 })?;
                 Ok(Some((record, revision)))
@@ -284,7 +285,7 @@ impl PgAuthProductServices {
             return Err(AuthProductError::BackendUnavailable);
         }
         let json = serde_json::to_value(record).map_err(|e| {
-            tracing::debug!(table, error = %e, "pg_auth_product_services: serialisation failed");
+            tracing::debug!(table, error_category = ?e.classify(), line = e.line(), column = e.column(), "pg_auth_product_services: serialisation failed");
             AuthProductError::BackendUnavailable
         })?;
         let client = self.pool.get().await.map_err(pool_err)?;
@@ -375,7 +376,7 @@ impl PgAuthProductServices {
             .map(|row| {
                 let json: serde_json::Value = row.get(0);
                 serde_json::from_value(json).map_err(|e| {
-                    tracing::debug!(table, filter_col, error = %e, "pg_auth_product_services: deserialisation failed");
+                    tracing::debug!(table, filter_col, error_category = ?e.classify(), line = e.line(), column = e.column(), "pg_auth_product_services: deserialisation failed");
                     AuthProductError::BackendUnavailable
                 })
             })

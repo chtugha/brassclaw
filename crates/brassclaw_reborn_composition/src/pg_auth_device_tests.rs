@@ -38,6 +38,7 @@ enum IssuerMode {
     RefreshOmit,
     RefreshInvalid,
     RefreshDisconnect,
+    HoldRefresh,
 }
 struct IssuerState {
     mode: IssuerMode,
@@ -122,6 +123,10 @@ async fn token(State(state): State<Arc<IssuerState>>, headers: HeaderMap, body: 
             "refresh-http-original"
         );
         assert!(!values.contains_key("code"));
+        if state.mode == IssuerMode::HoldRefresh {
+            state.entered.notify_one();
+            state.released.notified().await;
+        }
         if state.mode == IssuerMode::RefreshDisconnect {
             let stream = futures::stream::once(async {
                 Err::<Bytes, std::io::Error>(std::io::Error::other("lost refresh return"))
