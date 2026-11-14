@@ -70,6 +70,16 @@ impl RetainedRecipeInstruction {
     /// retains references and layout, never an executable BuildInstruction or
     /// runtime input/result. It establishes no approval, activation or grant.
     pub fn retained_selection(&self) -> Result<RetainedRecipeSelection, RetainedSelectionError> {
+        self.retained_selection_with_limits(REVISION_LIMITS)
+    }
+
+    /// A caller with an acknowledged/original preparation must supply its
+    /// captured bounds before serializing. Historical default callers retain
+    /// the existing profile; this does not introduce another resource policy.
+    pub fn retained_selection_with_limits(
+        &self,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<RetainedRecipeSelection, RetainedSelectionError> {
         let recipe = self
             .snapshot
             .revisions()
@@ -110,10 +120,9 @@ impl RetainedRecipeInstruction {
         {
             selection["model_input_binding"] = self.model_input.retained_binding();
         }
-        validate_data_bounds(&selection, REVISION_LIMITS)
-            .map_err(|_| RetainedSelectionError::Capacity)?;
+        validate_data_bounds(&selection, limits).map_err(|_| RetainedSelectionError::Capacity)?;
         let bytes = selection.to_string();
-        if bytes.len() > REVISION_LIMITS.max_bytes {
+        if bytes.len() > limits.max_bytes {
             return Err(RetainedSelectionError::Capacity);
         }
         let checksum = Sha256::digest(bytes.as_bytes()).into();
@@ -121,8 +130,9 @@ impl RetainedRecipeInstruction {
     }
 }
 
-/// Constructed only from a retained compiled instruction, not arbitrary JSON or
-/// a caller-supplied success flag. Sensitive authoring metadata has no Debug.
+/// Exact bytes from the retained compiler or versioned structural builder.
+/// This passive metadata grants no approval, activation or execution authority.
+/// Sensitive authoring metadata has no Debug.
 pub struct RetainedRecipeSelection {
     bytes: String,
     checksum: [u8; 32],
@@ -133,6 +143,12 @@ impl RetainedRecipeSelection {
     }
     pub fn checksum(&self) -> [u8; 32] {
         self.checksum
+    }
+
+    /// Used by the versioned `/3` builder only. Callers may not construct
+    /// arbitrary selections; the bytes must be pre-validated by the builder.
+    pub(super) fn from_parts(bytes: String, checksum: [u8; 32]) -> Self {
+        Self { bytes, checksum }
     }
 }
 #[derive(Debug, thiserror::Error)]

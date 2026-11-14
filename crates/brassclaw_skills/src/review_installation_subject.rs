@@ -118,6 +118,7 @@ pub struct RetainedInstallationValidatorSelection {
     selection: Value,
     snapshot: Arc<RetainedComponentSnapshot>,
     profile: InstallationProfile,
+    parsing_limits: ContractLimits,
 }
 impl RetainedInstallationValidatorSelection {
     pub fn reference(&self) -> &InstallationRecordRef {
@@ -137,6 +138,10 @@ impl RetainedInstallationValidatorSelection {
     }
     pub fn snapshot(&self) -> Arc<RetainedComponentSnapshot> {
         self.snapshot.clone()
+    }
+    /// The original caller policy used for this exact retained read.
+    pub fn parsing_limits(&self) -> ContractLimits {
+        self.parsing_limits
     }
     pub fn profile(&self) -> InstallationProfile {
         self.profile
@@ -447,5 +452,6 @@ pub async fn read_selection_in_transaction(
         selection,
         snapshot,
         profile: report.profile,
+        parsing_limits: limits,
     }))
 }

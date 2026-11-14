@@ -36,6 +36,33 @@ source and receipts stay intact. Capacity moves from 92.13% to 89.37%, freeing
 6,758,400,000 bytes. The separate one-use capacity receipt is preserved under
 `b2r01-capacity-recovery-20261113`; no consumed cleanup is rerun.
 
+## B2-R01 corrected-source gate — 2026-11-14
+
+The fresh package imports the original final B2 draft without changing its
+branch, then addresses all four source findings through one Skills structural
+owner and existing Store/Engine adapters. Root additionally discovers that Q/N
+`8ed62ca7b` already reserves incompatible retained `/2` capture/profile/ARRAY-hex
+semantics. The corrected package reserves `/3` after branch-format inventory;
+Q originals and Main's applied V214 remain unchanged. V215 is the unpublished
+format-only `/3` extension. Future private migration collisions remain a
+coordinated adoption gate, not permission to overwrite applied history.
+
+Root reviews actual base/wire/snapshot checks, limits propagation, strict old
+fields, exact typed references, shared IBS grammar and real-PG test sources.
+Two further source findings return to the package: private names accepted as
+Public exports, and an unnecessary full Base clone even on `/1` reads.
+`3271af2c8` shares the real lexical owner/public-name gate and replaces both
+owned Base copies with a borrowed projection. The existing Engine API delegates
+without changing valid private helper symbols. Source is ready for strict lint
+and genuine native/PG acceptance; those checks are not yet passed.
+
+The proposed passive carrier still emits no ordinary `/3` task, activates no
+profile and cannot create B1 approval. Full restored/publication/consumer support
+and original captured adjustable resource-gate migration remain B2-03–09 work.
+Root's local candidate includes the actual corrected package plus reviewed
+Changelog/plan/status bytes before compiling; Main remains the accepted UI
+checkpoint until the required bounded gates pass.
+
 ## Source identities and ownership
 
 | Package | Branch | Latest inspected commit |

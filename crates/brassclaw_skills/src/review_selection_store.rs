@@ -20,6 +20,7 @@ pub struct RetainedValidatorSelection {
     selection: serde_json::Value,
     snapshot: std::sync::Arc<crate::component_revision::RetainedComponentSnapshot>,
     qualification: Option<SourceQualification>,
+    parsing_limits: ContractLimits,
 }
 impl RetainedValidatorSelection {
     pub fn submission_id(&self) -> Uuid {
@@ -36,6 +37,10 @@ impl RetainedValidatorSelection {
     }
     pub fn selection(&self) -> &serde_json::Value {
         &self.selection
+    }
+    /// The same captured policy that validated these original bytes.
+    pub fn parsing_limits(&self) -> ContractLimits {
+        self.parsing_limits
     }
     pub fn snapshot(&self) -> std::sync::Arc<crate::component_revision::RetainedComponentSnapshot> {
         self.snapshot.clone()
@@ -177,6 +182,7 @@ async fn verify(
         selection,
         snapshot,
         qualification: value.qualification,
+        parsing_limits: limits,
     })
 }
 
@@ -192,58 +198,29 @@ pub(super) async fn verify_program_selection(
     ),
     SubmissionStoreError,
 > {
-    let selection =
-        strict_json(validator_bytes, limits).map_err(|_| SubmissionStoreError::Invalid)?;
-    if selection["format"] != "monty-retained-recipe-selection/1" {
-        return Err(SubmissionStoreError::Invalid);
-    }
-    let fields = [
-        "format",
-        "recipe",
-        "variant",
-        "workflow_class",
-        "input_layout",
-        "invocation_layout",
-        "step_order",
-        "components",
-    ];
-    let object = selection.as_object().ok_or(SubmissionStoreError::Invalid)?;
-    if fields.iter().any(|name| !object.contains_key(*name))
-        || object.keys().any(|name| {
-            !fields.contains(&name.as_str())
-                && !matches!(
-                    name.as_str(),
-                    "association_approvals" | "model_input_binding"
-                )
-        })
-        || !matches!(
-            selection["workflow_class"].as_str(),
-            Some("deterministic" | "requires_model")
-        )
-        || selection["step_order"].as_array().is_none_or(Vec::is_empty)
-        || !selection["input_layout"].is_object()
-    {
-        return Err(SubmissionStoreError::Invalid);
-    }
-    let root: Reference = serde_json::from_value(selection["recipe"].clone())
-        .map_err(|_| SubmissionStoreError::Invalid)?;
-    let root = root.parsed()?;
-    let refs: Vec<Reference> = serde_json::from_value(selection["components"].clone())
-        .map_err(|_| SubmissionStoreError::Invalid)?;
-    let refs = refs
-        .iter()
-        .map(Reference::parsed)
-        .collect::<Result<Vec<_>, _>>()?;
+    let parsed =
+        crate::retained_selection_contract::parse_selection_version(validator_bytes, limits)
+            .map_err(|error| match error {
+                crate::retained_selection_contract::SelectionContractError::Capacity => {
+                    SubmissionStoreError::Capacity
+                }
+                crate::retained_selection_contract::SelectionContractError::Invalid => {
+                    SubmissionStoreError::Invalid
+                }
+            })?;
+    let root = parsed.selection().recipe();
+    let refs = parsed.selection().components();
     let graph = PgComponentRevisionStore::read_exact_in_transaction(
         tx,
         &[root.uuid],
-        &refs,
+        refs,
         crate::revision_store::SnapshotReadLimits::legacy_graph(),
     )
     .await?;
-    if root.class_code != 21 || graph.revisions()[&root.uuid].reference() != root {
-        return Err(SubmissionStoreError::Invalid);
-    }
+    parsed
+        .require_snapshot(&graph)
+        .map_err(|_| SubmissionStoreError::Invalid)?;
+    let selection = parsed.into_value();
     let doc = graph.revisions()[&root.uuid].draft().document();
     let key = selection["variant"]["variant_key"]
         .as_str()
@@ -251,42 +228,14 @@ pub(super) async fn verify_program_selection(
     let variants = doc["variants"]
         .as_array()
         .ok_or(SubmissionStoreError::Invalid)?;
-    let declared_variants = variants
-        .iter()
-        .map(|variant| {
-            variant["variant_key"]
-                .as_str()
-                .map(str::to_owned)
-                .ok_or(SubmissionStoreError::Invalid)
-        })
-        .collect::<Result<std::collections::BTreeSet<_>, _>>()?;
-    if declared_variants.len() != variants.len() {
-        return Err(SubmissionStoreError::Invalid);
-    }
     let variant = variants
         .iter()
         .find(|variant| variant["variant_key"] == key)
         .ok_or(SubmissionStoreError::Invalid)?;
-    // Resolve from the actual retained document with the same parser as IBS.
-    // A captured selection may neither omit an explicit binding nor replace
-    // historical absence, switch profiles, or invent a prefix-free capability.
-    let model_input =
-        crate::recipe_model_input::RecipeModelInput::for_variant(doc, &declared_variants, key)
-            .map_err(|_| SubmissionStoreError::Invalid)?;
-    let expected_binding = doc
-        .get("model_input_bindings")
-        .map(|_| model_input.retained_binding());
-    if selection.get("model_input_binding") != expected_binding.as_ref() {
-        return Err(SubmissionStoreError::Invalid);
-    }
     if doc["validates_class_code"].as_i64() != Some(i64::from(class_code))
         || doc["consumer_tags"] != serde_json::json!(["05:validator"])
         || variant["intent_examples"] != serde_json::json!([])
         || selection["variant"]["intent_examples"] != serde_json::json!([])
-        || variant["step_link"] != selection["variant"]["step_link"]
-        || doc["input_layouts"][key] != selection["input_layout"]
-        || doc.get("invocations").unwrap_or(&serde_json::Value::Null)
-            != &selection["invocation_layout"]
     {
         return Err(SubmissionStoreError::Invalid);
     }

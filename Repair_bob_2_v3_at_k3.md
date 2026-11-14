@@ -150,10 +150,46 @@ all readers. Fixture tests prove old byte identity and new exact round trips.
 
 ### Concrete successor layout and per-root approval references
 
-Use `monty-retained-recipe-selection/2` for the proposed successor after B2-01
-confirms that version is unused. If intervening work already allocated it, reuse
-that actual compatible owner contract or allocate the next explicitly versioned
-successor once; do not create two meanings for `/2`.
+**Concrete format ownership — 2026-11-14, source pending acceptance:** the
+prior tentative `/2` choice is superseded. Source inspection of the unaccepted
+Q/N branch `8ed62ca7b` finds an already reserved `/2` passive codec carrying
+original preparation/capture, flat/structured profiles, pure/functional and
+workflow qualification references. Its own-approval collection is an array and
+its revision references use the hexadecimal wire codec. This remains private,
+uncompiled/unaccepted as a connected stack; its format allocation is not evidence
+of supported execution or qualification.
+
+B2-R01's source through `3271af2c8` reserves
+`monty-retained-recipe-selection/3` for the bounded flat own-approval successor,
+after inventory of local branch tips finds no existing positive `/3` codec.
+Do not assign two incompatible meanings to `/2`, normalize Q originals into
+`/3`, or silently infer a captured Q profile from this flat successor. `/3` keeps
+the existing `/1` base's hexadecimal references and uses the native
+`ComponentRevisionRef` transport (32-integer checksum arrays) within its typed
+functional/own pins; `own_approvals` is a UUID-keyed map. Outer
+`component-validator-selection/1` and `/2` keep their current preparation-only
+and qualified Source-prerequisite meanings; neither becomes full Q1.
+
+One Skills structural owner validates the common base. The concrete adoption
+seam is `validate_base_wire(&Value, ContractLimits) ->
+Result<ValidatedBaseWire<'_>, SelectionContractError>`, with static
+`require_snapshot(&RetainedComponentSnapshot)` checks. Version-specific capture,
+flow, approval shape and authority stay with their existing owners. Later Q
+adoption must extend/reuse this owner for its actual supported layouts, not keep
+a duplicate base validator. Current `/1` bytes and selected originals remain
+exact; ordinary emission stays `/1` until complete connected approval/readers/
+publication acceptance. The source has no Cargo/PG acceptance yet. `3271af2c8` addresses Root's
+public-export and parse-allocation review findings through one shared preload
+name owner and a borrowed BaseFields view; Root's strict/native gate follows.
+
+Main V214 is the applied B1 guard. B2 V215 is reserved as
+`V215__retained_selection_v3_format.sql`; it preserves checksum/immutability
+constraints and explicitly refuses an already present incompatible `/2` gate.
+Before later importing private N/R/Q/T, reconcile their unpublished V214–V216
+allocations and combined format gates through the same migration owner. Rename
+only unapplied private migrations; preserve applied history and actual original
+qualification/artifact identities. No label-based migration or silent narrowing
+of an existing supported format is allowed.
 
 Keep the eight existing base fields and their meanings. Explicitly version the
 input-layout schema when the shared structured-flow owner requires it; do not
@@ -162,7 +198,8 @@ silently reinterpret a historical field. Keep existing optional
 Add `functional_approvals`, keyed by exact static executable step IDs, exactly
 when the verified selection contains steps using the new own-approval profile.
 Then it is nonempty and covers exactly those steps. With no such steps it must
-be absent, never empty or null. A `/1` record cannot contain this field. Execution
+be absent, never empty or null. A `/1` record cannot contain this field. In `/3` the collection below is the
+explicit UUID-keyed map; it does not reinterpret Q's `/2` array. Execution
 shape and evidence provenance are independent: a structured shipped workflow
 does not manufacture authored own approvals. This is a **proposed strict successor
 retained-selection contract**, not a new Recipe/association field or an API
@@ -217,10 +254,14 @@ Skill/ToolSkill/Tool association and live kernel policy for authored-functional
 steps. Removing the old approval-count assumption must not remove binding,
 artifact, identity or dispatch checks. Old `/1` retains its original invariant.
 
-The shared V35-13/14 flow/occurrence owner, currently package N-01, extends this
-same planned `/2` rather than allocating an incompatible second format. Its
-explicit `execution_profile` distinguishes flat stop-only from structured
-sequential stop-only execution. Structured selections pin their actual flow,
+The shared V35-13/14 flow/occurrence owner, currently package N-01 with Q's
+capture codec, retains its already reserved `/2` contract. It is distinct from
+the bounded own-carrier `/3` above. Reuse and extend the same common structural
+base owner when adopting it; do not create parallel decoders or discard capture
+fields to force a `/2` task into `/3`. A combined captured own-functional profile
+requires an explicitly reviewed compatible/versioned contract and connected
+readers before emission. Q's explicit `execution_profile` distinguishes flat
+stop-only from structured sequential stop-only execution. Structured selections pin their actual flow,
 canonical checksum and original workflow qualification; flat selections forbid
 those structured-only fields. Static step order never becomes an expanded list
 of runtime occurrences. Each occurrence retains the one original static export
@@ -399,6 +440,16 @@ queries without truncating an otherwise eligible graph; source metadata or a
 new default constant is not completion. Intrinsic wire/type constraints remain
 explicitly distinct from adjustable resource quotas. Reuse the Simplified
 resource/settings owner, not a second catalogue or budget service.
+
+Also inventory the V103/V106 selection byte ceilings (8,388,608 bytes): allowing
+an acknowledged larger original in the parser alone must not leave an arbitrary
+smaller SQL storage gate. Coordinate supported new records with the existing
+whole-value/preparation owner and a successor migration; preserve historical
+bytes and real protocol/backend constraints. Any remaining adjustable bound
+must use its captured effective setting and the normal explained WebUI/API
+path, with an explicit capacity error rather than truncation or fabricated
+retention success. This is remaining B2-06 work; V215's format-only extension
+neither removes that ceiling nor establishes complete cap migration.
 
 **Connected remaining gates, source audit 2026-11-09:** the submission store
 also imposes the dependency count during reconstruction. V104 separately caps

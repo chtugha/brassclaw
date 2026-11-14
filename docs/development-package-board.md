@@ -53,6 +53,7 @@ corrections in a fresh isolated worktree, without a competing implementation.
 | --- | --- | --- |
 | B2-R01 | `01a1d689-537c-7701-bf3a-1fb8d157879f`, local; `/Users/ollama/.codex/worktrees/71a0/brassclaw` | Integrate the final unaccepted B2 draft `e0be06d8f` into its own branch; repair historical `/1` strictness, original-limit propagation/single parse, complete wire/static step validation, real fixtures and formatting. Shared structural owner stays Skills; V215 reserved, V214 untouched. Source/PG tests authored; native acceptance owned by Root. |
 | B3-R02 | `01a1d689-c38f-7be3-8d16-11880642f3b2`, local; `/Users/ollama/.codex/worktrees/c530/brassclaw` | Accepted source `6fd7dcb33`, handoff `3dc94344d`: all 109 connected Node tests pass, 361 input hashes verified, and Run-67 native compilation/28 static-router cases pass warning-free with exact embedded test-asset proof. No production JS/Auth changes. The assigned baseline repair is complete; full B3-12 remains open. |
+| B3-R03 | `01a1d97d-d16f-7983-9537-0b61ef806d9f`, local; `/Users/ollama/.codex/worktrees/b3-r03-native-factory/brassclaw` | Fresh successor after B3-R02 acceptance on Main `3ca800ed6`. Reconcile existing M/O/P/native owners and finish genuinely missing B3-02/03 production factory/consumer connections, preserving original auth/account/credential guards and other providers. No B1/B2 or private N/R/Q/T adoption. Source/native status separate; no local Cargo or paid Modal. |
 
 Both chats must read all four ground-truth guides, future v3.5 plan, current
 policy/status and applicable owner/crate docs. No local Cargo, nested delegation,
@@ -66,6 +67,18 @@ reclaims 6,758,400,000 bytes and reaches 89.37% utilization; the one-use receipt
 is `target/validation/bob-native-repair-20261105/b2r01-capacity-recovery-20261113/`.
 Never rerun that consumed cleaner. Recheck the normal disk gate before Cargo.
 Neither package assignment nor a checkpoint commit closes a full Bob plan.
+
+**B2-R01 source review — 2026-11-14:** source through `3271af2c8` fixes the four original
+findings and reserves own `/3` after inventory proves Q's incompatible private
+`/2` allocation. Shared flat base validation is Skills-owned; ordinary emission
+remains `/1`, and full `/3` execution/publication is still gated. Root returns
+two connected source corrections before compiling. `3271af2c8` now shares the
+actual identifier grammar/public-export restriction and removes the unnecessary
+Base graph copy through a borrowed view. Root accepts that corrected source for
+the strict/native gate; no B2 Cargo/PG acceptance or Main activation yet.
+Private Q/N's old V214/V215 allocations conflict with current Main V214 and B2
+V215; their later adoption must coordinate unapplied successor numbers and exact
+format gates. Do not reinterpret or overwrite applied migrations or old pins.
 
 ## Current release compatibility follow-up — 2026-11-13
 

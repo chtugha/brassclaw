@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.7.0-rc.7] - 2026-11-13
 
+- **Retained selection contracts**: Validate complete flat selection metadata in
+  one shared reader under the original preparation limits, preserving historical
+  bytes and exact revision/export bindings. Add a passive own-approval `/3`
+  carrier while keeping the separately reserved capture `/2` contract distinct.
+  Share preload-name checks and avoid an extra full copy of parsed metadata.
+  New approval publication and execution profiles remain gated by their owners.
+- **Provider UI test coverage**: Repair the existing render harness to load real
+  bootstrap/auth components and provider helpers. All 109 connected Node cases
+  and 28 native static/router checks pass, retaining missing and negative states.
+
 - **Pure approval integrity**: Validate the supported evidence formats and add
   V214's database guard against authored approvals
   without a succeeded Q1 run. Keep authored approval creation closed until its

@@ -20,6 +20,7 @@ pub mod retained_inputs;
 pub mod retained_instruction;
 #[cfg(feature = "skills-db")]
 pub mod retained_reviews;
+pub mod retained_selection_v3;
 pub mod retained_tools;
 pub mod retained_validator;
 pub mod retrieval_source;

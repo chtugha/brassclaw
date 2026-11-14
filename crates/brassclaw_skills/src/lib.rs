@@ -99,6 +99,15 @@ pub mod orchestrator_contract;
 #[cfg(feature = "db-store")]
 pub mod revision_store;
 
+/// Shared passive symbol and public-export grammar.
+pub mod preload_identifier;
+/// Shared structural contract for retained selections `/1` and `/3`.
+/// Lives here so both `review_selection_store` and the Engine can consume it
+/// without a crate cycle.
+pub mod retained_selection_contract;
+/// Existing IBS wire grammar; execution and approval remain with their owners.
+pub mod retained_step_link;
+
 /// Exact immutable authoring subjects, separate from review and activation.
 #[cfg(feature = "db-store")]
 pub mod review_submission_store;

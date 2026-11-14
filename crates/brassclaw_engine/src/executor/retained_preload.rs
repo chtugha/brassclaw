@@ -26,56 +26,7 @@ pub struct PreloadDeclaration {
 }
 
 pub fn identifier(value: &str) -> bool {
-    let mut bytes = value.bytes();
-    bytes
-        .next()
-        .is_some_and(|b| b == b'_' || b.is_ascii_alphabetic())
-        && bytes.all(|b| b == b'_' || b.is_ascii_alphanumeric())
-        && !matches!(
-            value,
-            "host"
-                | "inputs"
-                | "result"
-                | "exec"
-                | "eval"
-                | "open"
-                | "__import__"
-                | "False"
-                | "None"
-                | "True"
-                | "and"
-                | "as"
-                | "assert"
-                | "async"
-                | "await"
-                | "break"
-                | "class"
-                | "continue"
-                | "def"
-                | "del"
-                | "elif"
-                | "else"
-                | "except"
-                | "finally"
-                | "for"
-                | "from"
-                | "global"
-                | "if"
-                | "import"
-                | "in"
-                | "is"
-                | "lambda"
-                | "nonlocal"
-                | "not"
-                | "or"
-                | "pass"
-                | "raise"
-                | "return"
-                | "try"
-                | "while"
-                | "with"
-                | "yield"
-        )
+    brassclaw_skills::preload_identifier::identifier(value)
 }
 impl PreloadDeclaration {
     pub fn parse(
@@ -104,8 +55,7 @@ impl PreloadDeclaration {
         }
         let mut symbols = BTreeSet::new();
         for (name, export) in &declaration.exports {
-            if !identifier(name)
-                || name.starts_with('_')
+            if !brassclaw_skills::preload_identifier::public_export(name)
                 || !identifier(&export.symbol)
                 || !symbols.insert(export.symbol.clone())
                 || (export.mapping && export.parameters != ["inputs"])
@@ -233,6 +183,43 @@ mod tests {
             imports: Vec::new(),
             dependencies: dependencies.iter().copied().map(Uuid::from_u128).collect(),
             default_export: None,
+        }
+    }
+
+    #[test]
+    fn public_names_reject_private_selection_but_keep_private_implementation_and_helpers() {
+        let document = serde_json::json!({"preload": {
+            "format":"python-preload/2", "exports":{"run":{
+                "symbol":"_implementation", "parameters":["inputs"], "mapping":true}},
+            "private_functions":{"_helper":["value"]}, "constants":["_CONSTANT"],
+            "imports":[], "dependencies":[], "default_export":"run"
+        }});
+        let parsed = PreloadDeclaration::parse(&document, &BTreeSet::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            parsed.invocation("run", &serde_json::json!({})).unwrap(),
+            "result = _implementation(inputs=inputs)"
+        );
+        assert!(parsed.symbols().contains("_helper"));
+        assert!(parsed.symbols().contains("_CONSTANT"));
+        for name in ["_private", "_helper"] {
+            assert!(identifier(name));
+            let mut changed = document.clone();
+            let export = changed["preload"]["exports"]["run"].take();
+            changed["preload"]["exports"]
+                .as_object_mut()
+                .unwrap()
+                .remove("run");
+            changed["preload"]["exports"][name] = export;
+            changed["preload"]["default_export"] = serde_json::json!(name);
+            assert!(matches!(
+                PreloadDeclaration::parse(&changed, &BTreeSet::new()),
+                Err("invalid or conflicting export signature")
+            ));
+        }
+        for name in ["", "class", "host", "9name", "name.with.dot"] {
+            assert!(!identifier(name));
         }
     }
 

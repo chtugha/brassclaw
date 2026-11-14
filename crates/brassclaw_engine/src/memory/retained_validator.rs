@@ -64,19 +64,30 @@ impl RetainedValidatorCoverage {
     pub fn restore_preparation(
         saved: &brassclaw_skills::review_submission_store::selection::RetainedValidatorSelection,
     ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
-        Self::restore_preparation_core(saved.snapshot(), saved.selection(), saved.validator_bytes())
+        Self::restore_preparation_core(
+            saved.snapshot(),
+            saved.selection(),
+            saved.validator_bytes(),
+            saved.parsing_limits(),
+        )
     }
     #[cfg(feature = "skills-db")]
     pub fn restore_installation_preparation(
         saved:&brassclaw_skills::review_submission_store::installation::RetainedInstallationValidatorSelection,
     ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
-        Self::restore_preparation_core(saved.snapshot(), saved.selection(), saved.validator_bytes())
+        Self::restore_preparation_core(
+            saved.snapshot(),
+            saved.selection(),
+            saved.validator_bytes(),
+            saved.parsing_limits(),
+        )
     }
     #[cfg(feature = "skills-db")]
     fn restore_preparation_core(
         snapshot: std::sync::Arc<brassclaw_skills::component_revision::RetainedComponentSnapshot>,
         selection: &Value,
         validator_bytes: &str,
+        limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<super::retained_tools::RetainedToolProgram, &'static str> {
         use super::{
             retained_instruction::{WorkflowClass, compile_retained_recipe},
@@ -106,7 +117,7 @@ impl RetainedValidatorCoverage {
         if program
             .inputs()
             .instruction()
-            .retained_selection()
+            .retained_selection_with_limits(limits)
             .map_err(|_| "restored validator selection cannot be retained")?
             .exact_bytes()
             != validator_bytes
@@ -130,7 +141,7 @@ impl RetainedValidatorCoverage {
             .program()
             .inputs()
             .instruction()
-            .retained_selection()
+            .retained_selection_with_limits(limits)
             .map_err(|_| "validator selection cannot be retained")?;
         let checksum: String = selection
             .checksum()
