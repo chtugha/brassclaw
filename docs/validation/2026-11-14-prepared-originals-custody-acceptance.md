@@ -5,7 +5,9 @@ Reviewed on Main basis `afdcf6c3c103d2cae9fad72006f799131077c5dc`, branch
 validated the connected changes; no correction was delegated. The captured
 28 Rust file hashes and complete source review remain in
 `target/validation/prepared-integration-20261114/prepared-bundle-final-source-review.json`.
-This accepts the independent code slices below, not the original branches whole.
+Integrated source commit: `0b2aaaf56eb36b738acbba73f484a97bb8c5940d`.
+Fifteen normal history-only merges through `9033c6f14` preserve every Git tree
+byte. This accepts the independent code slices below, not the original branches whole.
 
 ## Accepted changes
 

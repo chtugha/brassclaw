@@ -123,3 +123,27 @@ Further net-fragment review distinguishes useful independent fixes from dependen
 ## Final independent-source acceptance — 2026-11-15
 
 All identified immediately supported independent code fragments above are reviewed and corrected by Root: original selection-policy carriage, immutable preview/producer behavior, existing transaction custody, useful historical-read diagnostics and the actual connected read defect they expose. Run85/86 and 73 selected cases pass with the exact limits in the [accepted receipt](2026-11-14-prepared-originals-custody-acceptance.md). No prepared fragment is deferred merely because it needs compilation or repair. Whole-package blockers above identify genuinely missing shared contracts/callers/historical provenance; an audit-only R06 proposal is not unimplemented ready source. Preserve those originals. No new B1 implementation begins before this source/history integration.
+
+## Completed normal history consolidation — 2026-11-15
+
+Accepted source commit `0b2aaaf56` is fast-forwarded into local Main. The later operator clarification of non-interrupting status checks is `697104e05`; the five-minute log-silence requirement remains paused. Recomputed ordinary merge-tree checks against that actual Main identify **15** safe historical tips (the earlier provisional 16 included B2-R01, which now conflicts with the corrected serializer carrier and is preserved). Before each normal merge, check its current tip/rejected-history ancestry and recompute against the then-current Main; after each merge, the complete Git tree must remain exactly `9a1d6d0a1414d038d1e145200332e66494be8283`. All fifteen checks/merges pass, ending at `9033c6f14`, with no file changes, force updates, `ours` strategy, branch deletion or overwritten WIP.
+
+Consolidated histories:
+
+- `codex/b3-r03-native-factory` (`cd654b869`).
+- `codex/h01-original-work-custody` (`7ca1f30e3`).
+- `codex/j01-run40-import` (`f06b66839`).
+- `codex/m01-codex-use-conflict` (`4ddc8c193`).
+- `codex/m01-startup-owner-fixture` (`bbd4e12d4`).
+- `codex/repair-clippy-composition-16` (`a8423bd67`).
+- `codex/s01-codex-request-inspect-error` (`7d366a816`).
+- `codex/s01-memory-decoder-as-chunks` (`35867b50d`).
+- `codex/s01-process-error-layout` (`46a895f20`).
+- `codex/t01-architecture-test-gates` (`3812dae05`).
+- `codex/t01-bounded-record-checkpoint` (`82edcdb57`).
+- `codex/t01-skills-lint-baseline` (`b7c5aa988`).
+- `codex/v03-cli-smoke` (`227179ca0`).
+- `codex/w05-cargo100-followup-18` (`55828a04c`).
+- `codex/w05-root-fs4-md5-followup` (`7c1e9b2bd`).
+
+The local exact receipt is `normal-history-consolidation.json`; logs retain every normal merge. Remaining conflicting/superseded histories and genuine incomplete packages stay preserved. An ancestor relationship is history reconciliation, not proof that a reverted/superseded feature or whole original package is activated. No additional Cargo is needed for metadata-only merges.

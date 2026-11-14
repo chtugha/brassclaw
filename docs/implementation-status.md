@@ -15,7 +15,10 @@ separates already integrated source, accepted independent fragments and genuine
 missing N/R/Q/T prerequisites. No Capture2/Flow/general approval or whole-Bob
 activation follows. Test images retain their actual embedded input scope;
 foreign guide changes and clean-Main package/prefix qualification are excluded.
-Source integration/history reconciliation follows before further B1 work.
+Accepted source is integrated into local Main as `0b2aaaf56`; fifteen already
+accepted histories are normally consolidated through `9033c6f14`, with complete
+Git tree equality before/after every merge. Conflicting or incomplete histories
+remain preserved. Continue B1 -> B2 -> B3 alone after publishing this checkpoint.
 
 ## 2026-11-14 — prepared-work integration before further B1 work
 
