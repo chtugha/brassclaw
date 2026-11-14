@@ -155,6 +155,16 @@ transport work; a test that manually calls the builder does not establish this.
 
 - [ ] **B3-03 — Thread the same owner through every model/configuration consumer.**
 
+**2026-11-14 reviewed lifetime correction:** package `cd654b869` finds that the
+startup Sempai callback's weak Auth facade can expire when runtime attaches its
+final continuation dispatcher. It retains the existing narrow native session
+capability across that replacement, with no credential/account snapshot or
+strong facade/coordinator cycle. Real factory/runtime/PG/local-issuer regression
+sources cover later model selection, missing-then-published login and the original
+PG provider/head guard. They do not execute the request-local access-token guard
+or model transport. Strict/native acceptance remains pending in Root's combined
+B2/B3 batch; this source checkpoint does not close B3-03 or serving qualification.
+
 **2026-11-10 source checkpoint:** M-01's M1/M2 source is reviewed, all six
 manifest files verified and integrated as `813154d33`. Explicit Use and Sempai
 preparation now reuse the existing canonical Codex source; early startup retains

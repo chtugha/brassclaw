@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native Codex preparation**: Preserve the existing native session capability
+  when startup replaces its Auth facade, so later Sempai selections can prepare
+  through the original owner without retaining credentials or weakening live guards.
+- **Historical upgrade coverage**: Construct the V209 review fixture against its
+  actual predecessor schema and verify byte-identical retained selection readback
+  after the normal upgrade, preserving current production store checks.
+
 ## [1.7.0-rc.7] - 2026-11-13
 
 - **Retained selection contracts**: Validate complete flat selection metadata in

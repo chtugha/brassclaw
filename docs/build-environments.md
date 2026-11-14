@@ -10,6 +10,33 @@ without a per-batch question. See the current
 [cost and validation policy](development-policy.md#modal-usage-and-cost-policy-updated-2026-11-12).
 Activation and actual controller/runtime support remain prerequisites.
 
+## Cold build-data storage on this host
+
+On 2026-11-14 the operator requested cold-cache offloading. The canonical active
+Cargo target remains `/Users/ollama/brassclaw-target` on NVMe; its configuration,
+current native/Clippy artifacts, worker and current incremental graphs are
+unchanged. Do not redirect the active target to the archive or copy an old cache
+over current outputs.
+
+`/Volumes/SSDE/target-auslagerung/brassclaw-kaltbestand-20261114` contains 10,529
+verified older library/metadata files and completed superseded incremental
+sessions. Each destination was checksum-verified before removing its source,
+under the existing Cargo lock with no compiler or planned file open. The archive's
+`inventory.json`, `moves.jsonl`, `completed.json` and `README.md` retain exact
+original paths, hashes, outcome and selective-restoration instructions. Its
+`target/` tree mirrors the canonical target's relative paths. This is optional
+old compiler cache, not a new build target or runtime dependency. Preserve active
+graphs; a new feature/compiler request may restore an exact still-applicable old
+file or let Cargo regenerate it. Never overwrite current files wholesale.
+
+The one-time move transfers 24,785,197,566 logical bytes and actually frees
+22,331,748,352 bytes; shared blocks explain the difference. System free space
+rises to 36.1 GiB/84.2% utilization at completion. Recheck actual free space before
+future compilation; this historical measurement is not a standing guarantee.
+Toolchains, Cargo registry and other applications' caches stay in place. Future
+moves need a fresh inventory, process/open-file/lock checks and current-artifact
+protection; never rerun the consumed one-time mover.
+
 ## Settings and commands
 
 [scripts/build-environments.toml](../scripts/build-environments.toml) owns host

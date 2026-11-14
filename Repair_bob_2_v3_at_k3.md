@@ -93,6 +93,16 @@ per-product approval verifier is proposed.
 
 - [ ] **B2-02 — Extend the existing retained format deliberately.**
 
+**2026-11-14 bounded acceptance:** the shared flat `/1`/passive own `/3`
+contract passes strict all-targets lint and 101 native cases on `c1ae9c4a3`,
+including three real PG retention/V215 migration cases and restoration under the
+original preparation. The aggregate remains failed: the additional V209 Source
+upgrade fixture used a V213-aware store before upgrade. Reviewed package correction
+`8b67a4efb` constructs actual historical rows and requires the current sealed
+reader/coverage writer to reproduce their exact bytes afterwards; its execution
+is pending. Ordinary `/1` emission and all general approval/publication gates
+remain unchanged. Parsing a `/3` carrier is not execution or approval activation.
+
 Current `/1` selections have eight required fields and existing optional
 `association_approvals`/`model_input_binding`. Preserve their exact historical
 bytes, checksum domains, absence semantics and actual supported approvals.

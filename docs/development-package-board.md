@@ -76,6 +76,57 @@ two connected source corrections before compiling. `3271af2c8` now shares the
 actual identifier grammar/public-export restriction and removes the unnecessary
 Base graph copy through a borrowed view. Root accepts that corrected source for
 the strict/native gate; no B2 Cargo/PG acceptance or Main activation yet.
+**Actual Run-69 strict gate:** candidate `c1ae9c4a3`, matching all package
+implementation blobs at `3271af2c8`, passes Rust 1.100 Clippy for Skills/db-store,
+Engine/skills-db and Composition/postgres+skills-db with all targets, zero
+warnings and unchanged source (145.851 seconds). The first launcher-only Run-68
+stops before Cargo because Root supplied an abbreviated instead of full HEAD;
+its failed preflight is preserved. Run-70 also stops before Cargo: the complete
+MontyHost → Resources → PG graph includes the new V215 migration, so its worker
+is not source-identical. The failed identity check is preserved; no reuse is
+claimed. Run-71 builds the current Worker first (13.30 seconds, warning-free),
+then the six native test programs serially in detached Screen. Source freeze covers
+captured Root inputs until this batch is terminal; package worktrees remain
+independent. Native/PG/migration tests are not yet passed, Main stays `3ca800ed6`.
+
+**Run-71 observed native checkpoint — 2026-11-14:** current worker and all six
+requested native programs compile warning-free from unchanged `c1ae9c4a3`
+(13.389 and 1,285.966 seconds). Actual current-repository architecture scanners
+reuse hash-verified programs after unchanged source/dependency-graph proof; their
+33 cases pass serially. Fourteen Skills contract, 48 Engine grammar, one public
+export, three real PG retention/V215 upgrade and one existing ordinary model-input
+case also pass: **100 executed cases passed**. No zero-test library is counted.
+
+The separate historical Source upgrade case fails before runtime startup while
+filling genuine V209: its fixture calls today's V213-aware revision store against
+the old schema. B2-R01 now owns the narrow historical test-helper correction;
+production readers and integrity gates must stay strict. The original-preparation
+native restoration case passes after 375.634 seconds, bringing the scoped total
+to 101 passed cases. Preserve failed/preflight receipts;
+this is not final B2 acceptance or Main integration.
+
+Native tests initially stopped before execution because the system reserve fell
+below 15 GiB after linking. One independently audited, unopened old 02:14
+Composition incremental session was retired under the existing lock; the one-use
+`b2r01-test-capacity-recovery-20261114` receipt records 1,119,084,544 bytes reclaimed.
+Do not rerun its consumed cleaner. All current programs, snapshots and warm current
+build graphs are preserved; tests restarted without compilation, writing to SSDE.
+
+**Combined follow-up source, not yet accepted:** Root cherry-picks B2's actual
+V209 fixture correction `8b67a4efb` as `821718614`, then reviewed Codex capability
+repair `cd654b869` as `b351ae931` on its combined integration branch. Both authors
+are source-idle for concrete validation findings. The same current native graph
+will serve the joint checks, preserving the existing passing lower-layer evidence.
+
+**Operator-requested storage offload complete:** 10,529 cold cache files move to
+`/Volumes/SSDE/target-auslagerung/brassclaw-kaltbestand-20261114`, with per-file
+checksums/readback before source removal and full preserved path inventory.
+All protected current native/strict artifacts remain unchanged. Actual reclaimed
+space is 22,331,748,352 bytes; system free space becomes 36.1 GiB/84.2% used.
+No target/configuration change, symlink, routine clean, compiler/toolchain move,
+other-app cache mutation or runtime/deployment change. Its consumed one-time
+mover must not be rerun. The normal compile disk gate is restored; recheck it.
+
 Private Q/N's old V214/V215 allocations conflict with current Main V214 and B2
 V215; their later adoption must coordinate unapplied successor numbers and exact
 format gates. Do not reinterpret or overwrite applied migrations or old pins.
