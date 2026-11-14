@@ -139,6 +139,11 @@ pub struct RebornLlmConfigService {
     /// device login. Absent until wired at startup; callers get Unavailable.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     native_auth: std::sync::Weak<crate::RebornProductAuthServices>,
+    /// Preparation outlives the startup facade when runtime replaces its
+    /// continuation dispatcher. Retain only the existing native capability,
+    /// without a facade/coordinator cycle or a captured credential selection.
+    #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+    native_codex_owner: Option<crate::auth::native_codex::NativeCodexSessionOwner>,
 }
 
 impl Clone for RebornLlmConfigService {
@@ -168,6 +173,8 @@ impl Clone for RebornLlmConfigService {
             interceptor_mode: self.interceptor_mode.clone(),
             #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
             native_auth: self.native_auth.clone(),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            native_codex_owner: self.native_codex_owner.clone(),
         }
     }
 }
@@ -328,6 +335,8 @@ impl RebornLlmConfigService {
             interceptor_mode: None,
             #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
             native_auth: std::sync::Weak::new(),
+            #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
+            native_codex_owner: None,
         }
     }
 
@@ -397,14 +406,15 @@ impl RebornLlmConfigService {
     }
 
     /// Attach the auth services owning the native Codex device login.
-    /// Must be called before the service is Arc-wrapped; the Weak is taken
-    /// from the same Arc that the runtime keeps alive.
+    /// Keep facade operations weak; model preparation retains the narrow native
+    /// capability across the runtime's continuation-dispatcher replacement.
     #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
     pub(crate) fn with_native_product_auth(
         mut self,
         auth: &Arc<crate::RebornProductAuthServices>,
     ) -> Self {
         self.native_auth = Arc::downgrade(auth);
+        self.native_codex_owner = auth.native_codex_session_owner().ok();
         self
     }
 
@@ -506,16 +516,12 @@ impl RebornLlmConfigService {
     > {
         let selection = captured.selection.clone();
         let credential_ref = captured.credential_ref.clone();
-        let codex_native_owner = self
-            .native_auth
-            .upgrade()
-            .and_then(|auth| auth.native_codex_session_owner().ok());
         let resolved = crate::llm_catalog::resolve_captured_provider_selection(
             &self.pg_pool,
             &self.db_tenant_id,
             &self.keys,
             captured,
-            codex_native_owner,
+            self.native_codex_owner.clone(),
         )
         .map_err(|_| "stored Sempai configuration is invalid".to_string())?;
         let config = resolved.config;

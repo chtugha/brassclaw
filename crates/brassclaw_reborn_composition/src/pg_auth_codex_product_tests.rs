@@ -428,6 +428,153 @@ async fn native_codex_product_startup_restores_sempai_without_webui_or_dispatch(
     let prepared = sempai.prepare_retained_provider().await.unwrap().unwrap();
     assert!(Arc::ptr_eq(&retained, &prepared.provider));
     assert_eq!(prepared.publication, expected);
+    // Runtime has replaced the startup Auth facade to bind its final turn
+    // coordinator. Force the already-installed preparation callback past its
+    // unchanged-publication shortcut; no WebUI service reattachment can repair it.
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        TENANT,
+        &[("llm.sempai.model", Some("codex-after-runtime-wiring"))],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    let prepared = sempai.prepare_retained_provider().await.unwrap().unwrap();
+    assert_eq!(prepared.model, "codex-after-runtime-wiring");
+    assert!(!Arc::ptr_eq(&retained, &prepared.provider));
+    assert_eq!(
+        retained.active_model_name(),
+        selected.definition.default_model
+    );
+    // A role edit must not retarget an earlier immutable client. Its existing
+    // provider guard still authenticates the original model/head without sending.
+    retained.check_dispatch(None, None).await.unwrap();
+    let current = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
+        .capture_selection(
+            crate::provider_admin::ProviderSelectionSource::Role(ProviderRole::Sempai),
+            &runtime.services().llm_key_store(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.credential_ref.as_deref(), Some(head.as_str()));
+    assert_eq!(
+        prepared.publication,
+        ProviderPublication::Configured {
+            selection: current.revision
+        }
+    );
+    // Actual head removal invalidates this already-built client's original
+    // dispatch guard. Retaining the capability cannot make it borrow new auth.
+    assert!(
+        runtime
+            .services()
+            .product_auth
+            .as_ref()
+            .unwrap()
+            .native_codex_owner()
+            .unwrap()
+            .secret_store
+            .delete(
+                &ResourceScope::system(),
+                &crate::llm_key_store::oauth_handle_for("openai_codex").unwrap(),
+            )
+            .await
+            .unwrap()
+    );
+    assert!(matches!(
+        prepared.provider.check_dispatch(None, None).await,
+        Err(brassclaw_llm::LlmError::ConfigurationChanged { .. })
+    ));
+    assert_eq!(issuer.state.calls.load(Ordering::SeqCst), calls);
+    runtime.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_codex_product_preparation_survives_non_codex_startup_and_later_login() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let services = factory(&rig, home.path()).await;
+    services
+        .llm_key_store()
+        .put("openai", "native-test-api-key".into())
+        .await
+        .unwrap();
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        TENANT,
+        &[
+            ("llm.sempai.provider_id", Some("openai")),
+            ("llm.sempai.model", None),
+        ],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    // No Codex account/head exists at startup. The native owner must remain
+    // available for a later deliberate selection, independently of the role.
+    drop(services);
+    let runtime = crate::build_reborn_runtime(
+        crate::RebornRuntimeInput::from_services(
+            rig.build_input("native-device-operator", home.path())
+                .with_tenant_id(TENANT)
+                .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
+        )
+        .with_identity(crate::RebornRuntimeIdentity {
+            tenant_id: TENANT.into(),
+            agent_id: "native-codex-later".into(),
+            source_binding_id: "native-codex-source".into(),
+            reply_target_binding_id: "native-codex-reply".into(),
+        }),
+    )
+    .await
+    .unwrap();
+    let sempai = runtime.sempai_swappable().unwrap();
+    let original = sempai.prepare_retained_provider().await.unwrap().unwrap();
+    assert_eq!(original.provider_id, "openai");
+    crate::db_config::save_config_changes(
+        &rig.pool,
+        TENANT,
+        &[
+            ("llm.sempai.provider_id", Some("openai_codex")),
+            ("llm.sempai.model", Some("codex-selected-after-login")),
+        ],
+        crate::db_config::ConfigWriteContext::Operator,
+    )
+    .await
+    .unwrap();
+    assert!(sempai.prepare_retained_provider().await.is_err());
+    assert_eq!(sempai.publication_status().effective, original.publication);
+    original.provider.check_dispatch(None, None).await.unwrap();
+    let auth = runtime.services().product_auth.as_ref().unwrap();
+    let issuer = Issuer::start(IssuerMode::Success).await;
+    let (_, head, _) =
+        published_login_on_pool(&rig.pool, &auth.native_codex_owner().unwrap(), &issuer).await;
+    let calls = issuer.state.calls.load(Ordering::SeqCst);
+    // The same desired role can now prepare from its newly authenticated head;
+    // no callback/facade reattachment, saved credential or replacement request.
+    let prepared = sempai.prepare_retained_provider().await.unwrap().unwrap();
+    assert_eq!(prepared.provider_id, "openai_codex");
+    assert_eq!(prepared.model, "codex-selected-after-login");
+    assert!(!Arc::ptr_eq(&original.provider, &prepared.provider));
+    assert_eq!(original.provider_id, "openai");
+    let current = crate::RebornProviderAdmin::new(rig.pool.as_ref().clone(), TENANT)
+        .capture_selection(
+            crate::provider_admin::ProviderSelectionSource::Role(ProviderRole::Sempai),
+            &runtime.services().llm_key_store(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(current.credential_ref.as_deref(), Some(head.as_str()));
+    assert_eq!(
+        prepared.publication,
+        ProviderPublication::Configured {
+            selection: current.revision
+        }
+    );
     assert_eq!(issuer.state.calls.load(Ordering::SeqCst), calls);
     runtime.shutdown().await.unwrap();
 }
