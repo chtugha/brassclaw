@@ -327,3 +327,62 @@ files, whitespace and source/caller/grammar-identity inspection only. Cargo,
 Clippy, all unit/native/PG tests and Modal remain UNEXECUTED. Full reader
 activation, trusted approvals, migration adoption and native acceptance remain
 with Root and the existing owners.
+
+
+## Root native diagnosis correction — historical V209 fixture (2026-11-14)
+
+Root reported Run69 strict all-three-package/full-feature/all-target Clippy PASS
+with zero warnings and Run71's first 100 selected architecture/Skills/Engine/PG
+cases PASS against its captured candidate. This is supervisor-reported evidence,
+not a package-chat execution or acceptance of this later correction. The
+additional real Composition upgrade case failed at the fixture's first
+`retain_packaged_draft`: current `revision_store` writes V213
+`revision_preparation_bytes/checksum`, absent on the intentionally real V209 DB.
+The masked failure is recorded in Root's Run71 `test-008` log. No DB process or
+Cargo/Modal command was started here to reproduce it.
+
+The correction changes only `qualified_source_legacy_fixture.rs` and its sole
+caller in `qualified_source_review_tests.rs`, plus this handoff. It reuses the
+historical-DDL fixture pattern already present in
+`snapshot_policy_tests::native_l01_v212_upgrade_preserves_legacy_row_and_preexisting_v4_subject`.
+It does not advance the schema before creating originals, add product schema
+fallbacks, modify current store checks or create any qualification/approval.
+
+Exact historical use:
+
+- Assert `max(refinery_schema_history.version) = 209` within the same
+  repeatable-read transaction used for all historical writes/readbacks.
+- V101: insert first-version heads (`component_id,class_code,last_version=1`)
+  and revisions (`component_id,class_code,version=1,revision_bytes,checksum`),
+  using all five unchanged packaged validator drafts and one candidate. Reject
+  a draft carrying a later preparation policy. Read exact bytes, class/version,
+  head and SHA256 back; parse through `ComponentRevisionDraft` and build the
+  graph through the existing `RetainedComponentSnapshot` owner.
+- Compile that graph with the actual retained compiler, tool preparation,
+  native `InspectedRetainedProgram::inspect` and `RetainedValidatorCoverage`.
+  Check the inspected coverage class against the actual retained candidate.
+- V104: serialize the fixed original `/1` subject fields in their existing
+  serializer order; insert `submission_id,actor,component_id,candidate_version,
+  base_version,subject_bytes,checksum`. V149's actual trigger creates/verifies
+  the immutable request. Read subject/request checksums and bytes back.
+- V150: retain the preparation-only `/1` outer selection, containing the actual
+  inspected program's retained `/1` bytes and checksum, under the real hash,
+  format, request-identity and immutability constraints. Read bytes/hash back.
+  Native SQL errors expose SQLSTATE/table/column/constraint only, retaining
+  actionable underlying failure classification without author detail or rows.
+
+Only after these originals commit does the existing runtime-start/upgrade path
+run. Its existing sealed `selection::read_preparation_in_transaction` still
+checks the full saved subject and program graph and demands byte preservation
+and absent source qualification. An added assertion reads the real sealed
+validator subject and invokes `RetainedValidatorCoverage::selection_bytes` with
+the original inspected program; it must reproduce the historical outer bytes
+exactly. The existing genuine new qualified `/2`, crossed-proof rejection and
+unqualified `/2` rejection cases remain in that same consumer unchanged.
+
+Direct Rust 1.100 rustfmt and `git diff --check` passed for this correction.
+No native/PG/Cargo/Clippy/Modal run was executed here. Root must rerun the failing
+Composition upgrade selector and relevant lint/artifact checks for this changed
+test source. The earlier 100 passing cases are reusable only where Root verifies
+identical relevant source and artifact inputs; this correction does not claim
+a new execution or blanket reuse of that receipt.

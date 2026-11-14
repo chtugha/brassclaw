@@ -1021,7 +1021,7 @@ async fn native_qualified_pure_source_restore_preserves_original_preparation() {
 async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualified_v2() {
     let rig = crate::runtime::test_pg::pg_rig_at_version(209).await;
     let _db = rig.lock_db().await;
-    let (legacy, old) = legacy_fixture::retain_before_upgrade(&rig.pool).await;
+    let (legacy, old, inspected) = legacy_fixture::retain_before_upgrade(&rig.pool).await;
     let home = tempfile::tempdir().unwrap();
     let (runtime, frame) = start(&rig, home.path()).await;
     let (id, component) = (Uuid::new_v4(), Uuid::new_v4());
@@ -1044,6 +1044,25 @@ async fn native_qualified_pure_source_upgrade_preserves_v1_and_rejects_unqualifi
         .unwrap();
     assert_eq!(saved.bytes(), old);
     assert!(saved.source_qualification().is_none());
+    // The actual current sealed reader and coverage writer must reproduce the
+    // historical fixture, including candidate/subject/graph integrity checks.
+    let subject = PgReviewSubmissionStore::read_validator_subject_in_transaction(
+        &tx,
+        legacy,
+        REVISION_LIMITS,
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    assert_eq!(
+        brassclaw_engine::memory::retained_validator::RetainedValidatorCoverage::selection_bytes(
+            &subject,
+            &inspected,
+            REVISION_LIMITS,
+        )
+        .unwrap(),
+        old,
+    );
     tx.commit().await.unwrap();
     drop(client);
     // Copying well-formed pins is no authority: a different original W proof
