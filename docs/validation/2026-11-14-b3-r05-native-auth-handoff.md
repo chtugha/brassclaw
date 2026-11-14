@@ -160,3 +160,144 @@ real issuer compatibility; original request cancellation through native refresh;
 complete authenticated API/UI login/publication/restart/ACK and broader product/
 platform gates. This package supplies neither a deployed readiness claim nor a
 complete B3 checkbox. Source checkpoint does not release Root review corrections.
+
+## Cancellation seam: audited proposal, no signature implementation
+
+Root's subsequent priority is B1, then B2, then B3 after this correction package.
+The following is a concrete cross-owner proposal for Root's boundary decision,
+not permission to start another B3 package. No LLM/Auth signatures, Network/TLS
+sources, scheduler or second guard authority were changed.
+
+### Existing observer implementations and effects
+
+The production `ProviderWireObserver` implementations are:
+
+- `reborn/model_gateway.rs::ProviderWireCustodian`: `before_submission` calls
+  `LoopModelResponseCustodian::before_provider_submission`; rejection sets its
+  preflight-denied marker. `submission_started` is a separate model marker.
+- `llm/openai_codex_provider.rs::CodexCredentialObserver`: checks the immutable
+  access/provider guard, then calls its captured original observer. It is built
+  after session acquisition and cannot protect earlier refresh/secret work.
+- `composition/completed_turn_review/wire.rs::ReviewWire`: checks closed state,
+  original global ownership and the actual attempt/owner row in
+  `model_dispatching`, count one, with retained model binding. This check is
+  read-only; started/rejected are separate markers.
+
+All other implementations found are test observers in `codex_host_session_tests`,
+`final_request_sdk_tests` and `single_submission_tests`; their event-recording,
+unconditional success or explicit rejection is fixture behavior, not production
+authority. There is no reusable production default-success request fence.
+
+The production loop custodian is
+`reborn/monty_task_host.rs::SelectedModelResponseCustodian`, delegating to its
+own `RecipeModelResponseRecord`. The production record implementation is
+`composition/pg_monty_model_response.rs::Handle`. Its
+`before_provider_submission` is **not a repeatable read-only check**: it checks
+the original admission, locks the invocation, checks no observations, reserves
+related review submission where applicable, verifies the claim with its snapshot
+lock, atomically sets `submission_reserved`, and commits. An uncertain COMMIT
+does not release the reservation. Calling this during auth refresh would consume
+the model submission and break the later real send. The loop trait's existing
+legacy default is fail-closed only when provider observation is required; it is
+not a suitable new native-auth fence.
+
+### Proposed existing-port changes and actual callers
+
+Propose a required async, repeatable `check_request_fence` method on the existing
+`ProviderWireObserver`, `LoopModelResponseCustodian` and
+`RecipeModelResponseRecord` ports. Root chooses the final name/signature. No new
+guard trait or parallel authority is needed. Every production implementation
+must explicitly implement/delegate it; no permissive default for required
+BrassClaw calls. The final consuming `before_submission` path stays separate.
+
+`ProviderWireCustodian -> SelectedModelResponseCustodian -> Handle` would check
+the authentic retained admission/invocation through existing claim readers in a
+short transaction, plus unchanged invocation phase and unsubmitted observations.
+Related review records must also check their own exact work/request/prefix and
+prepared/count-zero state without calling `reserve_related_submission`. This
+method must not update submission counts, reserve anything, set model-started,
+or retain an auth reply as a model response. `ReviewWire` can share its existing
+read-only ownership checks with this method; its already-owned dispatch count
+must not increment again. `CodexCredentialObserver` must delegate the pure check
+separately from the consuming final preflight.
+
+Propose changing `CodexHostSessionSource::session` to require the actual request's
+observer/fence, supplied by `TokenRefreshingProvider` in both text and tools Host
+branches. The only production source implementation is
+`composition/pg_auth_codex_access.rs::NativeCodexSourceSupplier`; the other two
+are `codex_host_session_tests::{Source, ExpiredHostSource}` fixtures. Capture the
+current explicit observer once for this request; missing native context must
+fail before admission/secret consumption. Do not cache the last observer on a
+supplier/provider, fabricate a run/attempt, or substitute a passing fixture.
+
+Carry this request-local context through `prepare_codex_access`, winning refresh
+execution and `take_codex_access_session`. Check before new refresh admission or
+secret consumption and in the actual `RefreshCustodian` transport preflight,
+alongside the existing exact account/head checks. The implementation must cover
+the final pre-transport gap after request-original persistence as well. The
+actual model send then independently performs its current access/provider check
+and consuming model submission preflight. Auth dispatch never marks model send.
+
+### Caller/ownership matrix
+
+| Path | Actual observer and authentic ownership | Required integration boundary |
+| --- | --- | --- |
+| Ordinary completion and tools | `model_gateway::observed_provider_call` creates `ProviderWireCustodian`; exact model invocation/admission in its own record | Both completion branches must supply the same request-local pure fence before Host session acquisition. |
+| Task/explicit child model call | Same record pipeline; child uses its own admission/invocation with inherited immutable model selection | Never substitute parent's claim for child's claim; private deterministic model calls currently remain rejected by the existing host. |
+| Pre-call Sempai | `model_interceptor::accounted_review` prepares a separate related response owner via `prepare_related_model_work`, then calls `stream_model_observed` | Related record owns original work/request/checksum/reviewer prefix and its separate reservation. It must never borrow the outer Kohai observer. |
+| Completed-turn review | Backend owns actual review attempt/owner; explicit `observe_chat_completion(ReviewWire, operation)` wraps gateway `stream_model` when `prefix_at_final_boundary` is true | Keep this own observer through the gateway's no-loop-custodian path. Its actual ownership/closed state must fence session acquisition. |
+| Legacy completed-turn/no-custody path | `prefix_at_final_boundary` false constructs no `ReviewWire`; legacy loop custodians can also omit observation | This is a real missing native fence, not evidence of safety. Do not silently accept native Host Codex or inherit an unrelated ambient observer. |
+
+`model_interceptor::prepare` runs the precall reviewer before installing the
+primary gateway's observer; own related custody is nevertheless required.
+`observed_provider_call` currently preserves ambient task-local observation when
+there is no loop custodian, which is intentional for completed-turn `ReviewWire`.
+Blanket clearing that scope would break that actual caller. Root must decide
+explicit own-scope propagation/masking for legacy and reviewer calls together;
+simply reading whatever outer observer exists is not sufficient authentication.
+File-backed Codex and non-Codex compatibility stay a separate caller decision;
+their existing behavior must not gain a fake native observer or unrelated gate.
+
+### Request cancellation versus shared refresh custody
+
+The refresh journal belongs to its original credential generation and exact
+binding/head/account/access/refresh references. A request fence is request-local,
+not part of the refresh ID and not a replacement for the original sealed action.
+Two waiters must keep independent fences. A cancelled waiter cannot cancel,
+retarget or lend its authorization to the other waiter; no new refresh ID or
+replacement dispatch is created to bypass the original winner.
+
+Before admission, rejection can prevent new work. If the winning action is
+admitted but transport is provably unsubmitted, use the existing original-only
+no-send outcome. Once request transport may have begun, late response custody
+must retain the exact private request/response/returned originals despite request
+cancellation. Reconciliation may publish only to that original account/head
+under existing identity/CAS checks; it must not require a cancelled caller's
+permission merely to retain received bytes. Unknown outcomes remain unknown,
+never deleted/reset/replayed. A cancelled caller must not consume/return a token
+for a subsequent model send. Another valid waiter may observe the same confirmed
+generation outcome through its own fence; it cannot replay the original issuer
+request or take over its sealed dispatch.
+
+No detached refresh scheduler is proposed. The existing pending-future/original
+custody owner must be checked at implementation time for dropped callers as well
+as cancellation observed while polling; this source audit does not establish
+crash recovery or durable continuation. The new revocation/new-login races prove
+neither request cancellation nor all coalesced-waiter behavior until actually
+compiled/executed, and even then cover their stated account/head races only.
+
+## Final source self-review checkpoint
+
+Source commit: `ea3690a467575f9465ed628f95bedf56aba8665e` on
+`codex/b3-r05-native-auth-boundaries`, based on Root-authorized private candidate
+`61b456b41711ccbdc55a1e1d019bc938a2ec64f5`. Rechecked actual account revision
+initialization/CAS repair, held issuer notifications, separate native owner
+transactions, original action/custody assertions, issuer call counts and
+unchanged production timeout/transport boundaries. The Serde diagnostic fix
+retains only structural category/position fields; no payload-bearing error is
+formatted. No additional source correction was identified in this review.
+
+Root owns native compilation, lint and the three real regressions above. They
+remain pending, with no source-only acceptance or completed B3 claim. No further
+B3 implementation starts from this handoff ahead of required B1/B2 work unless
+Root establishes a concrete shared prerequisite.
