@@ -370,7 +370,7 @@ pub(super) async fn qualify(
     }
     let subject =
         Subject::prepare(pool.clone(), kernel.as_ref(), candidate, generation, worker).await?;
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -380,15 +380,18 @@ pub(super) async fn qualify(
     match begin(&tx, &subject).await? {
         Begin::Reuse(approved) => {
             tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
             return Ok(Some(*approved));
         }
         Begin::Blocked => {
             tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
             return Ok(None);
         }
         Begin::Run => {}
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     let observed = Box::pin(validation::execute(
         executor.clone(),
@@ -399,7 +402,7 @@ pub(super) async fn qualify(
         &subject.q1.to_string(),
     ))
     .await?;
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -425,6 +428,7 @@ pub(super) async fn qualify(
         .await?
         .ok_or_else(|| invalid("compiler qualification readback missing"))?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(Some(approved))
 }
 enum Begin {

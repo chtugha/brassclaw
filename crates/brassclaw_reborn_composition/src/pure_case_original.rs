@@ -161,9 +161,7 @@ impl CheckedOriginalPureCase {
         limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<(String, Value), RebornBuildError> {
         use brassclaw_engine::executor::retained_preload::PreloadDeclaration;
-        use brassclaw_skills::{
-            component_revision::REVISION_LIMITS, value_contract::InputContract,
-        };
+        use brassclaw_skills::value_contract::InputContract;
 
         let candidate = self
             .snapshot
@@ -177,10 +175,13 @@ impl CheckedOriginalPureCase {
         let source = declaration
             .invocation(self.export(), &document["input_contract"])
             .map_err(invalid)?;
-        let inputs = InputContract::from_value(&document["input_contract"], REVISION_LIMITS)
-            .map_err(invalid)?
-            .bind_with_limits(self.inputs(), limits)
-            .map_err(invalid)?;
+        let inputs = InputContract::from_value(
+            &document["input_contract"],
+            candidate.draft().parsing_limits(),
+        )
+        .map_err(invalid)?
+        .bind_with_limits(self.inputs(), limits)
+        .map_err(invalid)?;
         Ok((source, Value::Object(inputs)))
     }
     pub(crate) fn worker_checksum(&self) -> [u8; 32] {

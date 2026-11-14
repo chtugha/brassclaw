@@ -1,3 +1,22 @@
+## 2026-11-15 — prepared originals/custody accepted
+
+Root alone reviews and corrects the independent R04 selection-policy carrier,
+T immutable preview/producer and Q cancellation-safe custody (19 existing
+transactions / 31 ACK branches). The actual historical Pure read exposes and
+now resolves duplicate Source verification inside one snapshot, without larger
+deadlines or omitted native/source checks. Original input schemas use their
+retained revision profile. Run85 strict lint and Run86 native compilation pass
+warning-free; all 73 scoped cases pass, with 62 lower cases reused only from
+byte-identical current programs. See the [exact acceptance and preserved guard
+failures](validation/2026-11-14-prepared-originals-custody-acceptance.md).
+
+The [79-tip inventory](validation/2026-11-14-prepared-integration-inventory.md)
+separates already integrated source, accepted independent fragments and genuine
+missing N/R/Q/T prerequisites. No Capture2/Flow/general approval or whole-Bob
+activation follows. Test images retain their actual embedded input scope;
+foreign guide changes and clean-Main package/prefix qualification are excluded.
+Source integration/history reconciliation follows before further B1 work.
+
 ## 2026-11-14 — prepared-work integration before further B1 work
 
 The operator stopped package orchestration: Root reviews, corrects, validates

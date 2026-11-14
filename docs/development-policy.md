@@ -122,6 +122,23 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 ## Shared source and central build ownership (2026-10-30)
 
+**Temporary operator override — 2026-11-15:** the log-silence requirement
+(the five-minute trigger for additional session/process/log investigation) is
+paused until the operator explicitly releases it. The at-most-60-second local
+status/notification checks and prohibition on ending a turn with an owned Screen
+session remain active. This does not pause implementation or validation.
+
+**Global Screen rule — explicit operator instruction, 2026-11-15:** do not
+end a turn while a Screen session assigned to that chat exists. Continue
+independent work and inspect the local status/notification files at least every
+60 seconds. If more than five minutes have passed since launch or the last
+successfully queued alive without a build message, inspect the session, actual
+build process and logs. On completion, evaluate the result and confirm that the
+owned session closed. If independent work is exhausted, wait only until the next
+bounded inspection. Do not stop, claim success or interfere with another chat's
+terminal merely because a session is detached. Existing source freezes and
+per-environment serial Cargo custody still apply.
+
 **Latest operator instruction — 2026-11-14, single leading chat:** the package
 orchestrator is stopped. The leading chat now reviews, corrects, validates and
 integrates prepared work itself, without delegating corrections or creating new

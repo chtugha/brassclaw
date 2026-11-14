@@ -261,7 +261,7 @@ impl LocalDevCapabilityIo {
                 output_bytes: record.output_bytes,
                 result_ref: record.result_ref,
                 truncated: record.truncated,
-                updated_at: Utc::now(),
+                updated_at: record.original_timestamp,
             }) {
                 Ok(preview) => preview,
                 Err(error) => {
@@ -455,31 +455,49 @@ impl LoopCapabilityResultWriter for LocalDevCapabilityIo {
             output,
             display_preview,
         } = write;
-        let result_ref =
-            LoopResultRef::new(format!("result:{}.{}", run_context.run_id, Uuid::new_v4()))
-                .map_err(|_| {
-                    AgentLoopHostError::new(
-                        AgentLoopHostErrorKind::Internal,
-                        "capability result ref could not be represented",
-                    )
-                })?;
-        let output_bytes = staged_value_bytes(&output)?.try_into().unwrap_or(u64::MAX);
-        {
+        let result_ref = {
+            // One actual original per invocation, including result ref and
+            // display timestamp. No await while holding this staging lock.
             let mut results = self.results.lock().map_err(|_| capability_io_error())?;
-            results.insert_with_oldest_eviction(result_ref.as_str().to_string(), output.clone())?;
-        }
-        self.display_previews.record_result_with_preview(
-            CapabilityDisplayPreviewResult {
-                run_id: &run_context.run_id.to_string(),
-                input_ref,
-                invocation_id,
-                capability_id,
-                result_ref: result_ref.as_str(),
-                output: &output,
-                output_bytes,
-            },
-            display_preview.as_ref(),
-        );
+            if let Some(original) = self.display_previews.record_for_invocation(invocation_id) {
+                let reference = original
+                    .result_ref
+                    .as_deref()
+                    .ok_or_else(capability_io_error)?;
+                if original.original_run != run_context.run_id.to_string()
+                    || original.original_input != input_ref.as_str()
+                    || original.original_capability != *capability_id
+                    || original.original_display_checksum
+                        != CapabilityDisplayPreviewStore::original_display_checksum(
+                            display_preview.as_ref(),
+                        )
+                    || results.get(reference) != Some(&output)
+                {
+                    return Err(capability_io_error());
+                }
+                LoopResultRef::new(reference.to_owned()).map_err(|_| capability_io_error())?
+            } else {
+                let reference =
+                    LoopResultRef::new(format!("result:{}.{}", run_context.run_id, Uuid::new_v4()))
+                        .map_err(|_| capability_io_error())?;
+                let output_bytes = staged_value_bytes(&output)?.try_into().unwrap_or(u64::MAX);
+                results
+                    .insert_with_oldest_eviction(reference.as_str().to_string(), output.clone())?;
+                self.display_previews.record_result_with_preview(
+                    CapabilityDisplayPreviewResult {
+                        run_id: &run_context.run_id.to_string(),
+                        input_ref,
+                        invocation_id,
+                        capability_id,
+                        result_ref: reference.as_str(),
+                        output: &output,
+                        output_bytes,
+                    },
+                    display_preview.as_ref(),
+                );
+                reference
+            }
+        };
         if let Some(message_id) = self
             .try_append_durable_display_preview(run_context, invocation_id, capability_id)
             .await

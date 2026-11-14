@@ -19,7 +19,7 @@ delegation. The prepared-work audit is retained under
 an acceptance claim. Existing private/WIP work is preserved until reviewed.
 The [prepared source inventory](validation/2026-11-14-prepared-integration-inventory.md)
 records the backlog. [R05 is accepted](validation/2026-11-14-prepared-r05-acceptance.md)
-with three actual native cases; independent R04/T fragments remain under review.
+with three actual native cases. Independent R04/T/Q fragments and Root’s connected historical Pure read repair now pass strict Run85/native compilation and all 73 scoped cases. The existing store deadline and integrity checks remain effective. The exact receipt preserves source-guard failures and limits code acceptance to its actual embedded inputs. Root performs source/history integration before further B1 work; no package orchestration is resumed.
 
 
 - Supervisor: `/Volumes/SSDE/brassclaw` on `main`; package definition, architecture

@@ -41,6 +41,48 @@ pub struct CapabilityDisplayPreviewEnvelope {
 }
 
 impl CapabilityDisplayPreviewEnvelope {
+    /// Match an immutable original, including its original timestamp. An
+    /// invocation cannot be reused for another run or a different payload.
+    pub(crate) fn matches_original(
+        &self,
+        message: &crate::ThreadMessageRecord,
+        run: &str,
+    ) -> Result<bool, crate::SessionThreadError> {
+        use crate::{MessageKind, MessageStatus, SessionThreadError};
+        if message.kind != MessageKind::CapabilityDisplayPreview {
+            return Ok(false);
+        }
+        let content = message.content.as_deref().ok_or_else(|| {
+            SessionThreadError::Serialization("preview original content missing".into())
+        })?;
+        // Direct struct decoding retains duplicate-field rejection. Historical
+        // display reads keep their existing forward-compatible unknown fields;
+        // this original-append check additionally authenticates every field.
+        let original: Self = serde_json::from_str(content).map_err(|_| {
+            SessionThreadError::Serialization("capability preview original is invalid".into())
+        })?;
+        if original.invocation_id != self.invocation_id {
+            return Ok(false);
+        }
+        original
+            .validate()
+            .map_err(SessionThreadError::Serialization)?;
+        let raw: serde_json::Value = serde_json::from_str(content).map_err(|_| {
+            SessionThreadError::Serialization("capability preview original is invalid".into())
+        })?;
+        if message.status != MessageStatus::Finalized
+            || message.turn_run_id.as_deref() != Some(run)
+            || original != *self
+            || raw
+                != serde_json::to_value(self)
+                    .map_err(|e| SessionThreadError::Serialization(e.to_string()))?
+        {
+            return Err(SessionThreadError::Backend(
+                "capability preview original conflicts".into(),
+            ));
+        }
+        Ok(true)
+    }
     pub fn new(input: CapabilityDisplayPreviewEnvelopeInput) -> Result<Self, String> {
         let envelope = Self {
             version: 1,
@@ -63,6 +105,9 @@ impl CapabilityDisplayPreviewEnvelope {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.version != 1 {
+            return Err("unsupported capability display preview version".into());
+        }
         validate_bounded_text(
             "capability display title",
             &self.title,
@@ -91,17 +136,6 @@ impl CapabilityDisplayPreviewEnvelope {
             CAPABILITY_DISPLAY_RESULT_REF_MAX_BYTES,
         )?;
         Ok(())
-    }
-
-    pub(crate) fn invocation_id_from_json(
-        content: Option<&str>,
-    ) -> Result<Option<InvocationId>, String> {
-        let Some(content) = content else {
-            return Ok(None);
-        };
-        let preview = serde_json::from_str::<Self>(content).map_err(|error| error.to_string())?;
-        preview.validate()?;
-        Ok(Some(preview.invocation_id))
     }
 }
 
@@ -221,6 +255,40 @@ mod tests {
         );
 
         CapabilityDisplayPreviewEnvelope::new(input).expect("line count is not capped");
+    }
+
+    #[test]
+    fn original_retry_rejects_unknown_and_duplicate_stored_fields_and_schema_changes() {
+        let preview = CapabilityDisplayPreviewEnvelope::new(preview_input()).unwrap();
+        let mut record:crate::ThreadMessageRecord=serde_json::from_value(serde_json::json!({
+            "message_id":crate::ThreadMessageId::new(),"thread_id":"thread-original","sequence":1,
+            "kind":"capability_display_preview","status":"finalized","actor_id":null,
+            "source_binding_id":null,"reply_target_binding_id":null,"turn_id":null,
+            "turn_run_id":"run-original","content":serde_json::to_string(&preview).unwrap(),"redaction_ref":null
+        })).unwrap();
+        assert!(preview.matches_original(&record, "run-original").unwrap());
+        let mut value = serde_json::to_value(&preview).unwrap();
+        value["foreign"] = serde_json::json!(true);
+        record.content = Some(value.to_string());
+        assert!(preview.matches_original(&record, "run-original").is_err());
+        record.content = Some(serde_json::to_string(&preview).unwrap().replacen(
+            "{",
+            "{\"version\":1,",
+            1,
+        ));
+        assert!(preview.matches_original(&record, "run-original").is_err());
+        value.as_object_mut().unwrap().remove("foreign");
+        value["version"] = serde_json::json!(2);
+        record.content = Some(value.to_string());
+        assert!(preview.matches_original(&record, "run-original").is_err());
+        let canary = "Bearer rejected-preview-private";
+        value["version"] = serde_json::json!(1);
+        value["status"] = serde_json::json!(canary);
+        record.content = Some(value.to_string());
+        let error = preview
+            .matches_original(&record, "run-original")
+            .unwrap_err();
+        assert!(!format!("{error:?} {error}").contains(canary));
     }
 
     fn preview_input() -> CapabilityDisplayPreviewEnvelopeInput {

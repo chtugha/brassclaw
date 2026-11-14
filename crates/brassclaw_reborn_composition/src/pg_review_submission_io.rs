@@ -195,6 +195,7 @@ pub(crate) fn projection_policy(settings: PgResourceStoreSettings) {
 }
 #[cfg(all(test, feature = "skills-db"))]
 pub(crate) fn projection_phase(phase: &'static str, index: Option<usize>) {
+    crate::pure_case_settlement::diagnostic::source_qualification_phase(phase, index);
     with_projection(|p| {
         p.phase = phase;
         p.index = index;

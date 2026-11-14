@@ -149,15 +149,17 @@ impl InstalledMontyCatalogue {
             })?;
             #[cfg(test)]
             crate::pure_case_settlement::diagnostic::note("read_case_settlement");
-            let settled =
-                crate::pure_case_settlement::read(&tx, id, &context, &self.pure_source_review)
-                    .await
-                    .map_err(|_| {
-                        RecipeStoreError::Unavailable(
-                            "original Pure case settlement invalid".into(),
-                        )
-                    })?;
-            let pending_original = if settled.is_none() {
+            let settlement = crate::pure_case_settlement::read_state(
+                &tx,
+                id,
+                &context,
+                &self.pure_source_review,
+            )
+            .await
+            .map_err(|_| {
+                RecipeStoreError::Unavailable("original Pure case settlement invalid".into())
+            })?;
+            let pending_original = if settlement.original().is_none() {
                 #[cfg(test)]
                 crate::pure_case_settlement::diagnostic::note("read_pending_original");
                 Some(
@@ -175,9 +177,8 @@ impl InstalledMontyCatalogue {
             } else {
                 None
             };
-            let case = settled
-                .as_ref()
-                .map(|settled| settled.original())
+            let case = settlement
+                .original()
                 .or(pending_original.as_ref())
                 .ok_or_else(|| {
                     RecipeStoreError::Unavailable("original Pure case original unavailable".into())
@@ -218,7 +219,9 @@ impl InstalledMontyCatalogue {
                 })?;
             #[cfg(test)]
             crate::pure_case_settlement::diagnostic::note("project_original_status");
-            let (status, observation_bytes, settlement_checksum) = if let Some(settled) = settled {
+            let (status, observation_bytes, settlement_checksum) = if let Some(settled) =
+                settlement.into_settled()
+            {
                 (
                     Status::Settled,
                     Some(settled.observation_bytes().to_owned()),

@@ -75,7 +75,7 @@ impl Qualification {
     /// the same coherent RR snapshot. The caller must not pre-read the policy
     /// independently; this is the only authoritative capture path.
     pub(crate) async fn prepare(&self, pool: &PgPool) -> Result<Prepared, RebornBuildError> {
-        let mut client = pool.get().await.map_err(invalid)?;
+        let mut client = crate::bootstrap_evidence::io::acquire(pool).await?;
         let tx = client
             .build_transaction()
             .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -92,6 +92,7 @@ impl Qualification {
                 .await
                 .map_err(|_| invalid("effective input limits unavailable in qualification read"))?;
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         Ok(Prepared {
             subject: self.subject.clone(),
             original_input_limits,
@@ -201,7 +202,7 @@ pub(crate) async fn qualify(
         q1: Uuid::new_v5(&identity, b"q1"),
         behavior: Uuid::new_v5(&identity, b"behavior"),
     });
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -210,6 +211,7 @@ pub(crate) async fn qualify(
         .map_err(invalid)?;
     if read(&tx, &subject).await?.is_some() {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(Qualification { subject });
     }
     if !evidence::retain_workflow(
@@ -226,9 +228,10 @@ pub(crate) async fn qualify(
         ));
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     let report = execute(pool.clone(), kernel, subject.clone()).await?;
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
@@ -253,6 +256,7 @@ pub(crate) async fn qualify(
         .await?
         .ok_or_else(|| invalid("setup qualification readback missing"))?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(Qualification { subject })
 }
 const CASES: &[&str] = &[

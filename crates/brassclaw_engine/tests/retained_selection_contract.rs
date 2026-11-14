@@ -122,8 +122,32 @@ async fn fixture(pool: &Arc<brassclaw_pg::PgPool>, large: bool) -> Fixture {
         WorkflowClass::Deterministic,
     )
     .unwrap();
+    // A selection's retained parser policy must itself be supported, even if
+    // this small document would fit a looser data-traversal depth budget.
+    for unsupported in [
+        brassclaw_skills::value_contract::ContractLimits {
+            max_depth: usize::MAX,
+            ..limits
+        },
+        brassclaw_skills::value_contract::ContractLimits {
+            max_nodes: 0,
+            ..limits
+        },
+        brassclaw_skills::value_contract::ContractLimits {
+            max_bytes: 0,
+            ..limits
+        },
+    ] {
+        assert!(matches!(
+            instruction.retained_selection_with_limits(unsupported),
+            Err(brassclaw_engine::memory::retained_instruction::RetainedSelectionError::Invalid)
+        ));
+    }
     let serialized = instruction.retained_selection_with_limits(limits).unwrap();
     let v1 = serialized.exact_bytes().to_owned();
+    assert_eq!(serialized.data_limits().max_depth, limits.max_depth);
+    assert_eq!(serialized.data_limits().max_nodes, limits.max_nodes);
+    assert_eq!(serialized.data_limits().max_bytes, limits.max_bytes);
     let parsed = parse_selection_version(&v1, limits).unwrap();
     parsed.require_snapshot(&snapshot).unwrap();
     assert_eq!(parsed.selection().checksum(), serialized.checksum());
@@ -144,9 +168,17 @@ async fn fixture(pool: &Arc<brassclaw_pg::PgPool>, large: bool) -> Fixture {
         None,
         limits,
     )
-    .unwrap()
-    .exact_bytes()
-    .to_owned();
+    .unwrap();
+    assert_eq!(v3.data_limits().max_depth, limits.max_depth);
+    assert_eq!(v3.data_limits().max_nodes, limits.max_nodes);
+    assert_eq!(v3.data_limits().max_bytes, limits.max_bytes);
+    let cloned = v3.clone();
+    assert_eq!(cloned.exact_bytes(), v3.exact_bytes());
+    assert_eq!(cloned.checksum(), v3.checksum());
+    assert_eq!(cloned.data_limits().max_depth, limits.max_depth);
+    assert_eq!(cloned.data_limits().max_nodes, limits.max_nodes);
+    assert_eq!(cloned.data_limits().max_bytes, limits.max_bytes);
+    let v3 = v3.exact_bytes().to_owned();
     parse_selection_version(&v3, limits)
         .unwrap()
         .require_snapshot(&snapshot)

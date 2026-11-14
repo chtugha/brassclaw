@@ -2726,6 +2726,100 @@ async fn native_generation_qualification_preserves_configured_slots_and_original
     .unwrap();
     writer_tx.rollback().await.unwrap();
     drop(writer);
+    // Keep the real server COMMIT acknowledgement withheld, then drop its
+    // actual qualification future. The existing custody guard must retire that
+    // still-connected session; a completed/error response is not substituted.
+    let transport = brassclaw_pg::test_support::AckCutTransport::start(
+        rig.url.expose_secret(),
+        vec![brassclaw_pg::test_support::AckCutRule::next_commit(1).hold()],
+    )
+    .await
+    .unwrap();
+    let proxy_pool = Arc::new(
+        brassclaw_pg::pool::build_pool_with_max_size(transport.connection_string(), 1).unwrap(),
+    );
+    let original_pid: i32 = proxy_pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT pg_backend_pid()", &[])
+        .await
+        .unwrap()
+        .get(0);
+    let mut ticket = transport.arm_hold(1, original_pid).unwrap();
+    let mut pending = Box::pin(crate::bootstrap_generation_approval::forbid_fresh_fixture(
+        crate::bootstrap_generation_approval::qualify(
+            proxy_pool.clone(),
+            catalogue.kernel.clone(),
+            &catalogue._generation_candidates,
+            &catalogue.worker,
+            smaller.clone(),
+        ),
+    ));
+    // Test-only watchdog, not a new product deadline or qualification budget.
+    let held = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        tokio::select! {
+            held = ticket.wait_held() => held.unwrap(),
+            returned = &mut pending => panic!(
+                "qualification returned before the actual COMMIT ACK hold (success={})",
+                returned.is_ok(),
+            ),
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(held.backend_pid, original_pid);
+    assert_eq!(
+        held.boundary,
+        brassclaw_pg::test_support::AckBoundary::Commit
+    );
+    drop(pending);
+    assert_eq!(
+        tokio::time::timeout(std::time::Duration::from_secs(30), ticket.wait_closed())
+            .await
+            .unwrap()
+            .unwrap(),
+        brassclaw_pg::test_support::AckHoldEnd::PeerClosed
+    );
+    drop(ticket);
+    let recovery_pid: i32 = tokio::time::timeout(std::time::Duration::from_secs(30), async {
+        proxy_pool
+            .get()
+            .await
+            .unwrap()
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+            .unwrap()
+            .get(0)
+    })
+    .await
+    .unwrap();
+    assert_ne!(
+        original_pid, recovery_pid,
+        "the uncertain session cannot be reused"
+    );
+    let recovered = crate::bootstrap_generation_approval::forbid_fresh_fixture(
+        crate::bootstrap_generation_approval::qualify(
+            proxy_pool.clone(),
+            catalogue.kernel.clone(),
+            &catalogue._generation_candidates,
+            &catalogue.worker,
+            smaller.clone(),
+        ),
+    )
+    .await
+    .unwrap();
+    assert_eq!(recovered.len(), reused.len());
+    for (original, recovered) in reused.iter().zip(&recovered) {
+        assert_eq!(original.approval_id(), recovered.approval_id());
+    }
+    assert_eq!(
+        counts(&rig.pool).await,
+        before,
+        "cancellation/readback cannot replay qualification effects"
+    );
+    proxy_pool.close();
+    transport.shutdown().await.unwrap();
     assert_eq!(reused.len(), catalogue.generation_approvals.len());
     for (old, read) in catalogue.generation_approvals.iter().zip(&reused) {
         assert_eq!(read.approval_id(), old.approval_id());
@@ -2741,6 +2835,7 @@ async fn native_generation_qualification_preserves_configured_slots_and_original
         before,
         "readback, malformed metadata and incomplete original guards must not replay effects or rewrite evidence"
     );
+    runtime.shutdown().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

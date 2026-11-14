@@ -82,8 +82,13 @@ struct CapabilityDisplayInputPreview {
     truncated: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct CapabilityDisplayPreviewRecord {
+    pub(crate) original_run: String,
+    pub(crate) original_input: String,
+    pub(crate) original_capability: CapabilityId,
+    pub(crate) original_display_checksum: [u8; 32],
+    pub(crate) original_timestamp: chrono::DateTime<chrono::Utc>,
     pub(crate) timeline_message_id: Option<ThreadMessageId>,
     pub(crate) title: String,
     pub(crate) subtitle: Option<String>,
@@ -107,6 +112,44 @@ pub(crate) struct CapabilityDisplayPreviewResult<'a> {
 }
 
 impl CapabilityDisplayPreviewStore {
+    /// Bind every unsanitized original field without retaining or repeatedly
+    /// cloning its potentially large, private payload. This digest stays inside
+    /// the existing per-run cache and is never a public preview or Tool grant.
+    pub(crate) fn original_display_checksum(
+        display: Option<&CapabilityDisplayOutputPreview>,
+    ) -> [u8; 32] {
+        use sha2::{Digest, Sha256};
+        let mut hash = Sha256::new();
+        hash.update(b"brassclaw-capability-display-original/1");
+        hash.update([u8::from(display.is_some())]);
+        if let Some(display) = display {
+            // Exhaustive destructuring requires a deliberate update when the
+            // source contract gains a field. Optional/empty strings differ;
+            // explicit byte lengths prevent cross-field concatenation aliases.
+            let CapabilityDisplayOutputPreview {
+                output_summary,
+                output_preview,
+                output_kind,
+                subtitle,
+                truncated,
+            } = display;
+            for field in [
+                output_summary.as_deref(),
+                Some(output_preview.as_str()),
+                Some(output_kind.as_str()),
+                subtitle.as_deref(),
+            ] {
+                hash.update([u8::from(field.is_some())]);
+                if let Some(field) = field {
+                    hash.update((field.len() as u128).to_be_bytes());
+                    hash.update(field.as_bytes());
+                }
+            }
+            hash.update([u8::from(*truncated)]);
+        }
+        hash.finalize().into()
+    }
+
     pub(crate) fn record_input(
         &self,
         run_id: &str,
@@ -157,6 +200,11 @@ impl CapabilityDisplayPreviewStore {
             .map(output_preview_from_display)
             .unwrap_or_else(|| output_preview(result.output));
         let record = CapabilityDisplayPreviewRecord {
+            original_run: result.run_id.to_owned(),
+            original_input: result.input_ref.as_str().to_owned(),
+            original_capability: result.capability_id.clone(),
+            original_display_checksum: Self::original_display_checksum(display_preview),
+            original_timestamp: chrono::Utc::now(),
             timeline_message_id: None,
             title,
             subtitle: display_preview

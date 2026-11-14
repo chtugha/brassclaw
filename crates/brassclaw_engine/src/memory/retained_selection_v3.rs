@@ -67,5 +67,5 @@ pub fn build_v3_selection(
         model_input_binding,
         limits,
     )?;
-    Ok(super::retained_instruction::RetainedRecipeSelection::from_parts(bytes, checksum))
+    Ok(super::retained_instruction::RetainedRecipeSelection::from_parts(bytes, checksum, limits))
 }

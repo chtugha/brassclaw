@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Original selection metadata**: Retain the actual supported parser limits with
+  immutable selection bytes and checksums; reject unsupported profiles before
+  construction and preserve the limits through the passive successor carrier.
+- **Capability previews**: Keep original result references and timestamps on exact
+  retries, reject substituted payloads across memory/filesystem/PostgreSQL owners,
+  and avoid duplicate PostgreSQL snapshot writes. Bind raw display originals with
+  a private fingerprint rather than retaining their unbounded private tail.
+- **PostgreSQL custody**: Apply the existing cancellation-safe connection owner to
+  the remaining qualification/seeding transactions. Retire uncertain sessions and
+  recycle only after acknowledged commits, without replaying effects.
+- **Historical Pure reads**: Reuse a fully checked original within the same
+  snapshot when its settlement record is pending, preserving all source/native
+  integrity checks and the configured timeout. Parse original input declarations
+  under their retained revision profile rather than a later default.
 - **Native Auth diagnostics**: Keep rejected database payloads out of shared
   account read/write/list logs. Verify real PostgreSQL account recovery and late
   refresh returns after revocation or a newer login, preserving original results

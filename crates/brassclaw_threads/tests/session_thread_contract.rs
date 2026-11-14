@@ -308,12 +308,13 @@ async fn append_capability_display_preview_is_history_visible_and_model_hidden()
         .unwrap();
 
     let invocation_id = InvocationId::new();
+    let original = preview_envelope(invocation_id);
     let first = service
         .append_capability_display_preview(AppendCapabilityDisplayPreviewRequest {
             scope: scope.clone(),
             thread_id: thread.thread_id.clone(),
             turn_run_id: "run-1".into(),
-            preview: preview_envelope(invocation_id),
+            preview: original.clone(),
         })
         .await
         .unwrap();
@@ -322,11 +323,35 @@ async fn append_capability_display_preview_is_history_visible_and_model_hidden()
             scope: scope.clone(),
             thread_id: thread.thread_id.clone(),
             turn_run_id: "run-1".into(),
-            preview: preview_envelope(invocation_id),
+            preview: original.clone(),
         })
         .await
         .unwrap();
 
+    for altered in [
+        {
+            let mut p = original.clone();
+            p.updated_at += chrono::Duration::seconds(1);
+            p
+        },
+        {
+            let mut p = original.clone();
+            p.output_preview = Some("foreign payload".into());
+            p
+        },
+    ] {
+        assert!(
+            service
+                .append_capability_display_preview(AppendCapabilityDisplayPreviewRequest {
+                    scope: scope.clone(),
+                    thread_id: thread.thread_id.clone(),
+                    turn_run_id: "run-1".into(),
+                    preview: altered,
+                })
+                .await
+                .is_err()
+        );
+    }
     assert_eq!(first.message_id, duplicate.message_id);
     assert_eq!(first.kind, MessageKind::CapabilityDisplayPreview);
     assert_eq!(first.status, MessageStatus::Finalized);

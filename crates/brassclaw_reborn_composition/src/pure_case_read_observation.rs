@@ -12,6 +12,7 @@ pub(crate) struct Trace {
     timeout: Duration,
     started: Instant,
     phases: Mutex<Vec<(&'static str, u128)>>,
+    source_qualification_phases: Mutex<Vec<(&'static str, Option<usize>, u128)>>,
     relation: Mutex<Option<Value>>,
 }
 tokio::task_local! { static ACTIVE: Arc<Trace>; }
@@ -23,6 +24,7 @@ impl Trace {
             timeout,
             started: Instant::now(),
             phases: Mutex::new(Vec::new()),
+            source_qualification_phases: Mutex::new(Vec::new()),
             relation: Mutex::new(None),
         })
     }
@@ -38,6 +40,11 @@ impl Trace {
             .lock()
             .map(|relation| json!(*relation))
             .unwrap_or_else(|_| json!("unavailable"));
+        let source_qualification_phases = self
+            .source_qualification_phases
+            .lock()
+            .map(|phases| json!(*phases))
+            .unwrap_or_else(|_| json!("unavailable"));
         eprintln!(
             "Original Pure case historical read {}",
             json!({
@@ -45,6 +52,7 @@ impl Trace {
                 "settings_revision":self.revision,"timeout_millis":self.timeout.as_millis(),
                 "elapsed_millis":self.started.elapsed().as_millis(),"outcome":outcome,
                 "phases":phases,"native_relation":relation,
+                "source_qualification_phases":source_qualification_phases,
                 "pool":{"max_size":pool.max_size,"size":pool.size,"available":pool.available,"waiting":pool.waiting},
             })
         );
@@ -57,6 +65,16 @@ pub(crate) fn note(phase: &'static str) {
     let _ = ACTIVE.try_with(|trace| {
         if let Ok(mut phases) = trace.phases.lock() {
             phases.push((phase, trace.started.elapsed().as_millis()));
+        }
+    });
+}
+/// Reuse existing qualification milestones only inside the actual historical
+/// read scope. Indices identify positions in the fixed qualification walk;
+/// neither original evidence nor source bytes are copied into the trace.
+pub(crate) fn source_qualification_phase(phase: &'static str, index: Option<usize>) {
+    let _ = ACTIVE.try_with(|trace| {
+        if let Ok(mut phases) = trace.source_qualification_phases.lock() {
+            phases.push((phase, index, trace.started.elapsed().as_millis()));
         }
     });
 }

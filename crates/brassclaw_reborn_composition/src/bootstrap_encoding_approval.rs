@@ -214,7 +214,7 @@ pub(super) async fn qualify(
         .await?,
         Subject::prepare(&candidates[1], true, native, worker, fixture).await?,
     ];
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -223,10 +223,12 @@ pub(super) async fn qualify(
         .map_err(invalid)?;
     if let Some(approved) = begin(&tx, &subjects).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(approved);
     }
     let mut approved = Vec::new();
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     let mut observations = Vec::new();
     for subject in &subjects {
@@ -242,7 +244,7 @@ pub(super) async fn qualify(
         .await?;
         observations.push(observed);
     }
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -281,6 +283,7 @@ pub(super) async fn qualify(
         );
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(approved)
 }
 // Atomic group intent. No Tool dispatch or retry can occur before this commits.

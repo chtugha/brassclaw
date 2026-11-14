@@ -64,6 +64,29 @@ impl SettledOriginalPureCase {
         self.checksum
     }
 }
+/// Result of the existing historical read in its caller's RR snapshot.
+/// Keep an already verified original when only its settlement record is pending;
+/// it is neither a cross-request cache nor live execution/approval authority.
+pub(crate) enum OriginalCaseRead {
+    DeliveryPending,
+    SettlementPending(CheckedOriginalPureCase),
+    Settled(SettledOriginalPureCase),
+}
+impl OriginalCaseRead {
+    pub(crate) fn original(&self) -> Option<&CheckedOriginalPureCase> {
+        match self {
+            Self::DeliveryPending => None,
+            Self::SettlementPending(original) => Some(original),
+            Self::Settled(settled) => Some(settled.original()),
+        }
+    }
+    pub(crate) fn into_settled(self) -> Option<SettledOriginalPureCase> {
+        match self {
+            Self::Settled(settled) => Some(settled),
+            Self::DeliveryPending | Self::SettlementPending(_) => None,
+        }
+    }
+}
 struct Prepared {
     original: CheckedOriginalPureCase,
     observation_bytes: String,
@@ -232,18 +255,28 @@ pub(crate) async fn read(
     context: &PrivateExecutionContext,
     source: &QualifiedPureSourceReview,
 ) -> Result<Option<SettledOriginalPureCase>, AgentLoopDriverError> {
+    Ok(read_state(tx, id, context, source).await?.into_settled())
+}
+/// Same verified read, retaining its original for the operator projection when
+/// the exact settlement row has not yet been acknowledged. No check is omitted.
+pub(crate) async fn read_state(
+    tx: &Transaction<'_>,
+    id: Uuid,
+    context: &PrivateExecutionContext,
+    source: &QualifiedPureSourceReview,
+) -> Result<OriginalCaseRead, AgentLoopDriverError> {
     match prepare(tx, id, context, source).await? {
         Some(prepared) => {
             if require_record(tx, &prepared).await? {
-                Ok(Some(prepared.into_settled()))
+                Ok(OriginalCaseRead::Settled(prepared.into_settled()))
             } else {
-                Ok(None)
+                Ok(OriginalCaseRead::SettlementPending(prepared.original))
             }
         }
         None => {
             if tx.query_one("SELECT EXISTS(SELECT 1 FROM reborn_original_pure_case_settlements WHERE case_id=$1)",&[&id])
                 .await.map_err(|_|unavailable())?.get::<_,bool>(0) {return Err(invalid());}
-            Ok(None)
+            Ok(OriginalCaseRead::DeliveryPending)
         }
     }
 }

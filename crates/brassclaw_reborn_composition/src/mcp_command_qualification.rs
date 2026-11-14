@@ -145,7 +145,9 @@ async fn qualify_catalogue_commands(
     owner: Option<&crate::installed_monty_catalogue::InstalledMontyCatalogue>,
 ) -> Result<QualifiedCommands, McpDiscoveryError> {
     let contracts = McpRecipeDiscovery::contracts(generation, programs)?;
-    let mut client = pool.get().await.map_err(unavailable)?;
+    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+        pool.get().await.map_err(unavailable)?,
+    );
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -304,6 +306,7 @@ async fn qualify_catalogue_commands(
         return Err(McpDiscoveryError::Unqualified);
     }
     tx.commit().await.map_err(unavailable)?;
+    client.recycle_after_commit();
     Ok(QualifiedCommands {
         generation,
         contracts: contracts

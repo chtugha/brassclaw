@@ -555,17 +555,30 @@ impl SessionThreadService for PgSessionThreadService {
         &self,
         request: AppendCapabilityDisplayPreviewRequest,
     ) -> Result<ThreadMessageRecord, SessionThreadError> {
+        request
+            .preview
+            .validate()
+            .map_err(SessionThreadError::Serialization)?;
+        let content = serde_json::to_string(&request.preview).map_err(map_json)?;
         let thread_id = request.thread_id.clone();
-        self.apply(&thread_id, |mut snapshot| {
+        self.apply_optional(&thread_id, |mut snapshot| {
             let request = request.clone();
+            let content = content.clone();
             async move {
                 check_thread_scope(&snapshot, &request.thread_id, &request.scope)?;
+                for message in &snapshot.messages {
+                    if request
+                        .preview
+                        .matches_original(message, &request.turn_run_id)?
+                    {
+                        return Ok((message.clone(), None));
+                    }
+                }
                 let message_id = Self::new_message_id();
                 let sequence = snapshot.next_sequence.checked_add(1).ok_or_else(|| {
                     SessionThreadError::Backend("thread message sequence exhausted".into())
                 })?;
                 snapshot.next_sequence = sequence;
-                let content_str = serde_json::to_string(&request.preview).unwrap_or_default();
                 let message = ThreadMessageRecord {
                     message_id,
                     thread_id: request.thread_id,
@@ -577,13 +590,13 @@ impl SessionThreadService for PgSessionThreadService {
                     reply_target_binding_id: None,
                     turn_id: None,
                     turn_run_id: Some(request.turn_run_id),
-                    tool_result_ref: None,
+                    tool_result_ref: request.preview.result_ref.clone(),
                     tool_result_provider_call: None,
-                    content: Some(content_str),
+                    content: Some(content),
                     redaction_ref: None,
                 };
                 snapshot.messages.push(message.clone());
-                Ok((message, snapshot))
+                Ok((message, Some(snapshot)))
             }
         })
         .await

@@ -15,15 +15,15 @@ use crate::title::derive_thread_title;
 use crate::{
     AcceptInboundMessageRequest, AcceptedInboundMessage, AcceptedInboundMessageReplay,
     AppendAssistantDraftRequest, AppendCapabilityDisplayPreviewRequest,
-    AppendToolResultReferenceRequest, CapabilityDisplayPreviewEnvelope, ContextMessage,
-    ContextMessages, ContextWindow, CreateSummaryArtifactRequest, EnsureThreadRequest,
-    LatestThreadMessageRequest, ListThreadsForScopeRequest, ListThreadsForScopeResponse,
-    LoadContextMessagesRequest, LoadContextWindowRequest, MessageContent, MessageKind,
-    MessageStatus, RedactMessageRequest, ReplayAcceptedInboundMessageRequest, SessionThreadError,
-    SessionThreadRecord, SessionThreadService, SummaryArtifact, SummaryModelContextPolicy,
-    ThreadHistory, ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange,
-    ThreadMessageRangeRequest, ThreadMessageRecord, ThreadScope, ToolResultReferenceEnvelope,
-    UpdateAssistantDraftRequest, UpdateToolResultReferenceRequest,
+    AppendToolResultReferenceRequest, ContextMessage, ContextMessages, ContextWindow,
+    CreateSummaryArtifactRequest, EnsureThreadRequest, LatestThreadMessageRequest,
+    ListThreadsForScopeRequest, ListThreadsForScopeResponse, LoadContextMessagesRequest,
+    LoadContextWindowRequest, MessageContent, MessageKind, MessageStatus, RedactMessageRequest,
+    ReplayAcceptedInboundMessageRequest, SessionThreadError, SessionThreadRecord,
+    SessionThreadService, SummaryArtifact, SummaryModelContextPolicy, ThreadHistory,
+    ThreadHistoryRequest, ThreadMessageId, ThreadMessageRange, ThreadMessageRangeRequest,
+    ThreadMessageRecord, ThreadScope, ToolResultReferenceEnvelope, UpdateAssistantDraftRequest,
+    UpdateToolResultReferenceRequest,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -364,24 +364,18 @@ impl SessionThreadService for InMemorySessionThreadService {
             .preview
             .validate()
             .map_err(SessionThreadError::Serialization)?;
+        let content = serde_json::to_string(&request.preview)
+            .map_err(|error| SessionThreadError::Serialization(error.to_string()))?;
         let mut state = self.state.lock().await;
         let thread = get_thread_mut(&mut state, &request.scope, &request.thread_id)?;
-        for message in thread.messages.iter() {
-            if message.kind != MessageKind::CapabilityDisplayPreview
-                || message.status != MessageStatus::Finalized
-                || message.turn_run_id.as_deref() != Some(request.turn_run_id.as_str())
-            {
-                continue;
-            }
-            if CapabilityDisplayPreviewEnvelope::invocation_id_from_json(message.content.as_deref())
-                .map_err(SessionThreadError::Serialization)?
-                == Some(request.preview.invocation_id)
+        for message in &thread.messages {
+            if request
+                .preview
+                .matches_original(message, &request.turn_run_id)?
             {
                 return Ok(message.clone());
             }
         }
-        let content = serde_json::to_string(&request.preview)
-            .map_err(|error| SessionThreadError::Serialization(error.to_string()))?;
         let message = ThreadMessageRecord {
             message_id: ThreadMessageId::new(),
             thread_id: request.thread_id.clone(),

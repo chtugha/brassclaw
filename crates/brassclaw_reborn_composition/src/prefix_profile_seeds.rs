@@ -49,7 +49,9 @@ const PROFILES: [(&str, &str, &str, &str, i32); 6] = [
 ];
 
 pub(crate) async fn retain(pool: &PgPool) -> Result<(), crate::RebornBuildError> {
-    let mut client = pool.get().await.map_err(|_| invalid())?;
+    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+        pool.get().await.map_err(|_| invalid())?,
+    );
     let tx = client.transaction().await.map_err(|_| invalid())?;
     for (name, label, description, entry, order) in PROFILES {
         tx.execute(
@@ -70,7 +72,9 @@ pub(crate) async fn retain(pool: &PgPool) -> Result<(), crate::RebornBuildError>
             return Err(invalid());
         }
     }
-    tx.commit().await.map_err(|_| invalid())
+    tx.commit().await.map_err(|_| invalid())?;
+    client.recycle_after_commit();
+    Ok(())
 }
 fn invalid() -> crate::RebornBuildError {
     crate::RebornBuildError::InvalidConfig {

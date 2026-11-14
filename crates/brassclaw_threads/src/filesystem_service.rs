@@ -434,20 +434,10 @@ where
         scope: &ThreadScope,
         thread_id: &ThreadId,
         turn_run_id: &str,
-        invocation_id: InvocationId,
+        preview: &CapabilityDisplayPreviewEnvelope,
     ) -> Result<Option<ThreadMessageRecord>, SessionThreadError> {
-        let messages = self.list_thread_messages(scope, thread_id).await?;
-        for message in messages {
-            if message.kind != MessageKind::CapabilityDisplayPreview
-                || message.status != MessageStatus::Finalized
-                || message.turn_run_id.as_deref() != Some(turn_run_id)
-            {
-                continue;
-            }
-            if CapabilityDisplayPreviewEnvelope::invocation_id_from_json(message.content.as_deref())
-                .map_err(SessionThreadError::Serialization)?
-                == Some(invocation_id)
-            {
+        for message in self.list_thread_messages(scope, thread_id).await? {
+            if preview.matches_original(&message, turn_run_id)? {
                 return Ok(Some(message));
             }
         }
@@ -1043,12 +1033,14 @@ where
             .preview
             .validate()
             .map_err(SessionThreadError::Serialization)?;
+        let content = serde_json::to_string(&request.preview)
+            .map_err(|error| SessionThreadError::Serialization(error.to_string()))?;
         let existing = self
             .find_capability_display_preview_message(
                 &request.scope,
                 &request.thread_id,
                 &request.turn_run_id,
-                request.preview.invocation_id,
+                &request.preview,
             )
             .await?;
         if let Some(existing) = existing {
@@ -1060,8 +1052,6 @@ where
             &request.turn_run_id,
             request.preview.invocation_id,
         )?;
-        let content = serde_json::to_string(&request.preview)
-            .map_err(|error| SessionThreadError::Serialization(error.to_string()))?;
         let sequence = self
             .reserve_sequence(&request.scope, &request.thread_id)
             .await?;
@@ -1075,7 +1065,7 @@ where
             source_binding_id: None,
             reply_target_binding_id: None,
             turn_id: None,
-            turn_run_id: Some(request.turn_run_id),
+            turn_run_id: Some(request.turn_run_id.clone()),
             tool_result_ref: request.preview.result_ref.clone(),
             tool_result_provider_call: None,
             content: Some(content),
@@ -1097,16 +1087,27 @@ where
                     .await?;
                 Ok(message)
             }
-            Err(PutError::VersionMismatch) => self
-                .read_message_versioned(&request.scope, &request.thread_id, message_id)
-                .await?
-                .map(|(existing, _)| existing)
-                .ok_or_else(|| {
-                    SessionThreadError::Backend(format!(
-                        "filesystem CAS Absent rejected new capability display preview at {} but no existing message could be read",
-                        path.as_str()
-                    ))
-                }),
+            Err(PutError::VersionMismatch) => {
+                let (existing, _) = self
+                    .read_message_versioned(&request.scope, &request.thread_id, message_id)
+                    .await?
+                    .ok_or_else(|| {
+                        SessionThreadError::Backend("preview CAS original missing".into())
+                    })?;
+                if !request
+                    .preview
+                    .matches_original(&existing, &request.turn_run_id)?
+                {
+                    return Err(SessionThreadError::Backend(
+                        "preview original invocation differs".into(),
+                    ));
+                }
+                // The original record may have committed before its sequence
+                // index ACK was lost. Repair only that original index.
+                self.write_message_sequence_index(&request.scope, &request.thread_id, &existing)
+                    .await?;
+                Ok(existing)
+            }
             Err(PutError::Other(error)) => Err(error),
         }
     }

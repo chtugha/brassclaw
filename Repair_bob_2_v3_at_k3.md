@@ -114,6 +114,33 @@ needing new own-function/pure/qualification references. Use an explicitly new
 selection format version, with an explicit compatible reader of old `/1`.
 Do not create a second persistent BuildInstruction or manifest store.
 
+**Prepared-work audit follow-up — serializer allocation, existing B2-02 owner:**
+before connecting any ordinary `/3` producer, repair
+`brassclaw_skills::retained_selection_contract::build_v3_bytes`. It currently
+clones the complete borrowed base into a new `Value` before checking the new
+bounds; a smaller new policy must not first duplicate a larger original graph.
+Current repository callers of this builder are passive contract tests, not an
+ordinary production writer; general `/3` publication/execution stays closed.
+This is remaining B2-02 implementation, not a reason to introduce another codec,
+resource monitor, quota or workflow service.
+
+Use the existing canonical serialization owner and shared bounded/counting JSON
+helpers. Validate the supplied supported parser profile first. Count/bound the
+complete intended output under that exact profile before allocating a complete
+output; preserve borrowing of original base values rather than cloning their
+trees. If private borrowed serialization adapters are necessary, keep their wire
+field/encoding rules in this same owner and reuse them from `to_value` so two
+competing encoders cannot drift. Preserve the established canonical `/3` output
+bytes and every historical reader/hash; no normalization of retained originals.
+Then decode once through the existing strict version reader. Exercise real
+serializer output with a large allowed original and smaller new bounds,
+exact-byte N/N-1, original node/depth bounds and identical canonical positive
+bytes. Do not allocate gigabytes or use timing/RSS thresholds to claim the
+property: the borrowed/counting path, existing capacity failures and exact-byte
+regressions must demonstrate it. The new ordinary writer/cutover cannot be
+accepted until this check is connected; B1's supported Legacy-R1 path does not
+need this unused successor builder.
+
 Before implementing serializers, write and review the exact successor schema
 and its typed representation with B1. The following information is mandatory;
 these are requirements for the **new contract**, not fields accepted by old APIs:

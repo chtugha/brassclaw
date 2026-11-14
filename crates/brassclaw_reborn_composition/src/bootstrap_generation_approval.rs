@@ -342,7 +342,7 @@ pub(super) async fn qualify(
     ];
     // First consult the stable functional subject. Completed and unresolved
     // originals never regenerate today's mutable fixture inputs.
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -352,10 +352,12 @@ pub(super) async fn qualify(
         .map_err(invalid)?;
     if let Some(approved) = read_group(&tx, &subjects).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(approved);
     }
     let allowed = enabled(&tx, subjects[0].ids.tool).await?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     if !allowed {
         return Ok(Vec::new());
@@ -374,7 +376,7 @@ pub(super) async fn qualify(
     .await
     .map_err(invalid)?;
     let generation = evidence::checksum(&package);
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -385,10 +387,12 @@ pub(super) async fn qualify(
     // ran. Only these exact IDs compete; unrelated subjects/writers are free.
     if let Some(approved) = read_group(&tx, &subjects).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(approved);
     }
     if !enabled(&tx, subjects[0].ids.tool).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(Vec::new());
     }
     let revision:i64 = tx.query_one("SELECT coalesce((SELECT profile_revision FROM reborn_prefix_generations WHERE profile_name='base-prompt' AND generation_id=$1), revision) FROM reborn_prefix_profiles WHERE name='base-prompt'", &[&generation]).await.map_err(invalid)?.get(0);
@@ -409,6 +413,7 @@ pub(super) async fn qualify(
         }
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     #[cfg(test)]
     if INTERRUPT_AFTER_INTENT.try_with(|_| ()).is_ok() {
@@ -432,7 +437,7 @@ pub(super) async fn qualify(
         .await?;
         observations.push((index, observed));
     }
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -464,6 +469,7 @@ pub(super) async fn qualify(
         );
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(approved)
 }
 

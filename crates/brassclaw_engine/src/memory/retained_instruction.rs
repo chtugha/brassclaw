@@ -80,6 +80,9 @@ impl RetainedRecipeInstruction {
         &self,
         limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<RetainedRecipeSelection, RetainedSelectionError> {
+        let limits = limits
+            .validate_binding_limits()
+            .map_err(|_| RetainedSelectionError::Invalid)?;
         let recipe = self
             .snapshot
             .revisions()
@@ -126,16 +129,22 @@ impl RetainedRecipeInstruction {
             return Err(RetainedSelectionError::Capacity);
         }
         let checksum = Sha256::digest(bytes.as_bytes()).into();
-        Ok(RetainedRecipeSelection { bytes, checksum })
+        Ok(RetainedRecipeSelection {
+            bytes,
+            checksum,
+            limits,
+        })
     }
 }
 
 /// Exact bytes from the retained compiler or versioned structural builder.
 /// This passive metadata grants no approval, activation or execution authority.
 /// Sensitive authoring metadata has no Debug.
+#[derive(Clone)]
 pub struct RetainedRecipeSelection {
     bytes: String,
     checksum: [u8; 32],
+    limits: brassclaw_skills::value_contract::ContractLimits,
 }
 impl RetainedRecipeSelection {
     pub fn exact_bytes(&self) -> &str {
@@ -145,10 +154,24 @@ impl RetainedRecipeSelection {
         self.checksum
     }
 
+    /// Actual bounds used by the serializer/validator that produced these bytes.
+    /// This original parser policy is not a current runtime budget or approval.
+    pub fn data_limits(&self) -> brassclaw_skills::value_contract::ContractLimits {
+        self.limits
+    }
+
     /// Used by the versioned `/3` builder only. Callers may not construct
     /// arbitrary selections; the bytes must be pre-validated by the builder.
-    pub(super) fn from_parts(bytes: String, checksum: [u8; 32]) -> Self {
-        Self { bytes, checksum }
+    pub(super) fn from_parts(
+        bytes: String,
+        checksum: [u8; 32],
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Self {
+        Self {
+            bytes,
+            checksum,
+            limits,
+        }
     }
 }
 #[derive(Debug, thiserror::Error)]

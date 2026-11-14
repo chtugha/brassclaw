@@ -349,7 +349,7 @@ pub(super) async fn qualify(
     let subject = Subject::from_program(&candidate)?;
 
     // Check existing evidence before running oracle.
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -358,6 +358,7 @@ pub(super) async fn qualify(
         .map_err(invalid)?;
     if let Some(approved) = subject.read(&tx).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(Some(approved));
     }
     // Store Q1 intent (atomic DO NOTHING; failure means concurrent begin happened).
@@ -375,6 +376,7 @@ pub(super) async fn qualify(
         ));
     }
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
 
     // Execute the pure oracle (no model Tool invocation).
@@ -389,7 +391,7 @@ pub(super) async fn qualify(
     .await?;
 
     // Store behavior evidence and read back coherently.
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -442,6 +444,7 @@ pub(super) async fn qualify(
         .await?
         .ok_or_else(|| invalid("free-workflow qualification readback missing"))?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(Some(approved))
 }
 

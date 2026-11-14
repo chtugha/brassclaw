@@ -129,7 +129,9 @@ pub(crate) async fn retain(
     // Compatibility projection only. Never overwrite an operator edit or an
     // older projection on upgrade. The exact current package above is the
     // source owner; unchanged/older revisions remain independently readable.
-    let mut client = pool.get().await.map_err(|_| invalid())?;
+    let mut client = crate::pg_transaction_client::TransactionClient::from_client(
+        pool.get().await.map_err(|_| invalid())?,
+    );
     let tx = client.transaction().await.map_err(|_| invalid())?;
     for document in &documents {
         let path = document.document()["path"].as_str().ok_or_else(invalid)?;
@@ -144,6 +146,7 @@ pub(crate) async fn retain(
             &[&document.uuid(),&scope.tenant_id,&scope.user_id,&scope.agent_id,&scope.project_id,&path,&DESCRIPTION,&text,&hash]).await.map_err(|_| invalid())?;
     }
     tx.commit().await.map_err(|_| invalid())?;
+    client.recycle_after_commit();
     Ok(package)
 }
 

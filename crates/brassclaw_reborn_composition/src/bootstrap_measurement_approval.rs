@@ -269,7 +269,7 @@ pub(super) async fn qualify(
         encoding.clone(),
     )
     .await?;
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -278,6 +278,7 @@ pub(super) async fn qualify(
         .map_err(invalid)?;
     if let Some(approved) = read(&tx, &subject).await? {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(Some(approved));
     }
     let tool_ids: Vec<_> = subject
@@ -303,10 +304,12 @@ pub(super) async fn qualify(
     }
     if policies.iter().any(|row| !row.get::<_, bool>(0)) {
         tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
         return Ok(None);
     }
     begin(&tx, &subject).await?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     drop(client);
     let observed = Box::pin(validation::execute(
         executor.clone(),
@@ -318,7 +321,7 @@ pub(super) async fn qualify(
         subject.fixture.clone(),
     ))
     .await?;
-    let mut client = pool.get().await.map_err(invalid)?;
+    let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
@@ -350,6 +353,7 @@ pub(super) async fn qualify(
         .await?
         .ok_or_else(|| invalid("measurement qualification readback missing"))?;
     tx.commit().await.map_err(invalid)?;
+    client.recycle_after_commit();
     Ok(Some(approved))
 }
 async fn begin(tx: &Transaction<'_>, subject: &Arc<Subject>) -> Result<(), RebornBuildError> {

@@ -249,12 +249,13 @@ async fn filesystem_store_persists_preview_history_while_hiding_it_from_context(
         .unwrap();
 
     let invocation_id = InvocationId::new();
+    let original_preview = preview_envelope(invocation_id);
     let first = service
         .append_capability_display_preview(AppendCapabilityDisplayPreviewRequest {
             scope: scope.clone(),
             thread_id: thread.thread_id.clone(),
             turn_run_id: "run-1".into(),
-            preview: preview_envelope(invocation_id),
+            preview: original_preview.clone(),
         })
         .await
         .unwrap();
@@ -263,11 +264,32 @@ async fn filesystem_store_persists_preview_history_while_hiding_it_from_context(
             scope: scope.clone(),
             thread_id: thread.thread_id.clone(),
             turn_run_id: "run-1".into(),
-            preview: preview_envelope(invocation_id),
+            preview: original_preview.clone(),
         })
         .await
         .unwrap();
     assert_eq!(first.message_id, duplicate.message_id);
+    let mut changed_time = original_preview.clone();
+    changed_time.updated_at += chrono::Duration::seconds(1);
+    let mut changed_payload = original_preview.clone();
+    changed_payload.output_preview = Some("foreign preview".into());
+    for (run, preview) in [
+        ("run-1", changed_time),
+        ("run-1", changed_payload),
+        ("foreign-run", original_preview),
+    ] {
+        assert!(
+            service
+                .append_capability_display_preview(AppendCapabilityDisplayPreviewRequest {
+                    scope: scope.clone(),
+                    thread_id: thread.thread_id.clone(),
+                    turn_run_id: run.into(),
+                    preview,
+                })
+                .await
+                .is_err()
+        );
+    }
 
     service
         .create_summary_artifact(CreateSummaryArtifactRequest {
@@ -482,8 +504,10 @@ async fn filesystem_preview_append_retries_converge_on_one_message() {
         .await
         .unwrap();
     let invocation_id = InvocationId::new();
+    let original_preview = preview_envelope(invocation_id);
 
     let left = {
+        let original_preview = original_preview.clone();
         let service = Arc::clone(&service);
         let scope = scope.clone();
         let thread_id = thread.thread_id.clone();
@@ -493,12 +517,13 @@ async fn filesystem_preview_append_retries_converge_on_one_message() {
                     scope,
                     thread_id,
                     turn_run_id: "run-race".into(),
-                    preview: preview_envelope(invocation_id),
+                    preview: original_preview.clone(),
                 })
                 .await
         }
     };
     let right = {
+        let original_preview = original_preview.clone();
         let service = Arc::clone(&service);
         let scope = scope.clone();
         let thread_id = thread.thread_id.clone();
@@ -508,7 +533,7 @@ async fn filesystem_preview_append_retries_converge_on_one_message() {
                     scope,
                     thread_id,
                     turn_run_id: "run-race".into(),
-                    preview: preview_envelope(invocation_id),
+                    preview: original_preview.clone(),
                 })
                 .await
         }
