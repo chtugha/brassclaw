@@ -122,6 +122,27 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 ## Shared source and central build ownership (2026-10-30)
 
+**Latest operator instruction — 2026-11-14, single leading chat:** the package
+orchestrator is stopped. The leading chat now reviews, corrects, validates and
+integrates prepared work itself, without delegating corrections or creating new
+package chats. Before continuing new B1 implementation, inventory every prepared
+package/subpackage/code fragment and integrate those whose required supporting
+implementation already exists. Distinguish actual missing prerequisites from work
+that merely needs review, repair or validation. Preserve dependency-blocked work
+with exact owner/caller evidence; do not hide missing support behind stubs or
+claim blocked code is accepted. Afterwards the user's B1 -> B2 -> B3 order remains.
+
+Stop previously commissioned source work before taking it over. Preserve all
+private commits and uncommitted files, current shared inputs and source evidence.
+Use real connected review and scoped acceptance; merge only accepted source and
+reuse unchanged valid checks. Fully integrated branches may be consolidated after
+ancestry/final-source verification, without overwriting newer Main fixes, force
+updates or concealing unintegrated deltas. The canonical target, per-environment
+serial Cargo lock, Screen, disk gates and inactive-Modal policy remain unchanged.
+The two-package-chat instructions below are historical where they conflict with
+this latest direction; they do not prevent the leading chat implementing fixes.
+
+
 **Two package chats and one supervisor — latest user instruction, 2026-11-03:**
 the leading chat assigns bounded implementation packages, reviews their complete
 connected changes, performs local validation/final acceptance and integrates

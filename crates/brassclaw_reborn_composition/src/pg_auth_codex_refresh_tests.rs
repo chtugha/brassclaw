@@ -502,7 +502,7 @@ async fn native_codex_refresh_late_return_never_installs_into_a_new_login() {
         })
         .await
         .expect("new login publication must complete while the old refresh is held");
-    assert!(returned.is_err());
+    assert_eq!(returned.unwrap_err(), AuthProductError::BackendConflict);
     assert_ne!(new_head, head);
     assert_ne!(new_account.id, old_account.id);
     assert_eq!(issuer.state.token_calls.load(Ordering::SeqCst), 3);

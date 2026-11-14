@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native Auth diagnostics**: Keep rejected database payloads out of shared
+  account read/write/list logs. Verify real PostgreSQL account recovery and late
+  refresh returns after revocation or a newer login, preserving original results
+  and rejecting stale publication without another refresh.
 - **Native Codex preparation**: Preserve the existing native session capability
   when startup replaces its Auth facade, so later Sempai selections can prepare
   through the original owner without retaining credentials or weakening live guards.

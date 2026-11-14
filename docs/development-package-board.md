@@ -1,12 +1,26 @@
 # Development package board
 
-Latest user direction, reiterated 2026-11-04: a supervisor and at most two implementing
-package chats, a fresh chat for each new package, one shared Modal compiler.
+Current user direction, 2026-11-14: package orchestration is stopped. The leading
+chat reviews, repairs, validates and integrates prepared work alone before new B1
+implementation. Earlier two-chat assignments below are historical.
 The [development policy](development-policy.md#shared-source-and-central-build-ownership-2026-10-30)
 defines the workflow. This board is development coordination, not a new product
 queue, component approval or evidence of completed Bob plans.
 
 ## Responsibilities
+
+**Current mode — 2026-11-14:** package orchestration is stopped by explicit user
+instruction. Root handles all review, correction, validation and integration
+alone. No further handoff of fixes/new package chats. First reconcile and accept
+all prepared independent packages/subpackages/fragments, then resume B1 -> B2 ->
+B3. Old package assignments below are preserved historical ownership, not active
+delegation. The prepared-work audit is retained under
+`target/validation/prepared-integration-20261114/`; no inventory entry is itself
+an acceptance claim. Existing private/WIP work is preserved until reviewed.
+The [prepared source inventory](validation/2026-11-14-prepared-integration-inventory.md)
+records the backlog. [R05 is accepted](validation/2026-11-14-prepared-r05-acceptance.md)
+with three actual native cases; independent R04/T fragments remain under review.
+
 
 - Supervisor: `/Volumes/SSDE/brassclaw` on `main`; package definition, architecture
   review, native tests/final acceptance, integration and release. No new source
