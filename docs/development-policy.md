@@ -124,14 +124,19 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 **Temporary operator override — 2026-11-15:** the log-silence requirement
 (the five-minute trigger for additional session/process/log investigation) is
-paused until the operator explicitly releases it. The at-most-60-second local
-status/notification checks and prohibition on ending a turn with an owned Screen
-session remain active. This does not pause implementation or validation.
+paused until the operator explicitly releases it. Status/notification checks
+remain a roughly 60-second target when safely possible; do not interrupt a
+running process or blocking tool operation merely to meet that interval. Wait
+until the next safe opportunity and then inspect the status. The prohibition on
+ending a turn with an owned Screen session remains active. This does not pause
+implementation or validation.
 
 **Global Screen rule — explicit operator instruction, 2026-11-15:** do not
 end a turn while a Screen session assigned to that chat exists. Continue
-independent work and inspect the local status/notification files at least every
-60 seconds. If more than five minutes have passed since launch or the last
+independent work and inspect the local status/notification files roughly every
+60 seconds when available without interrupting running processes/tool operations;
+otherwise wait and check at the next safe opportunity. If more than five minutes
+have passed since launch or the last
 successfully queued alive without a build message, inspect the session, actual
 build process and logs. On completion, evaluate the result and confirm that the
 owned session closed. If independent work is exhausted, wait only until the next
