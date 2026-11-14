@@ -162,8 +162,10 @@ capability across that replacement, with no credential/account snapshot or
 strong facade/coordinator cycle. Real factory/runtime/PG/local-issuer regression
 sources cover later model selection, missing-then-published login and the original
 PG provider/head guard. They do not execute the request-local access-token guard
-or model transport. Strict/native acceptance remains pending in Root's combined
-B2/B3 batch; this source checkpoint does not close B3-03 or serving qualification.
+or model transport. The combined [strict/native gate](docs/validation/2026-11-14-bob-b2r01-b3r03-acceptance.md) now passes, including both actual runtime lifetime
+cases. This scoped correction does not close B3-03 or serving qualification.
+Further assignments follow the operator's B1 -> B2 -> B3 priority; no extra
+Codex/transport expansion precedes upstream work without a concrete prerequisite.
 
 **2026-11-10 source checkpoint:** M-01's M1/M2 source is reviewed, all six
 manifest files verified and integrated as `813154d33`. Explicit Use and Sempai

@@ -1,3 +1,27 @@
+## Latest — 2026-11-14: accepted bounded correction, then B1 -> B2 -> B3
+
+The [exact B2-R01/B3-R03 receipt](validation/2026-11-14-bob-b2r01-b3r03-acceptance.md)
+records tested source `61b456b41711ccbdc55a1e1d019bc938a2ec64f5`: strict Clippy,
+native compilation and 109 scoped cases pass. Root integrates only accepted
+source plus unembedded evidence/status. Historical failed runs remain preserved.
+No complete Bob/general approval/serving/release/platform claim follows.
+
+Follow the latest user priority: finish current bounded corrections, then assign
+B1 -> B2 -> B3. Wider private B2-R04 Capture2 work is checkpointed, not merged;
+B3-R05 privacy/regression source is pending acceptance, with API/TLS expansion
+held. Fresh B1-R06 audits the smallest genuine independent Pure S qualification
+against current real Source/Case/native owners. Use the current package board
+for exact chats/commits/reservations and actual outstanding gates. The private
+supervisor journal `/private/tmp/brassclaw-supervisor-current-20261105.md` retains
+active Screen/artifact/source-freeze details; reconcile its latest entry first.
+
+System cold-cache relocation is complete and verified. Current target remains
+`/Users/ollama/brassclaw-target`; old optional caches are under
+`/Volumes/SSDE/target-auslagerung/brassclaw-kaltbestand-20261114`. Its original-path
+inventory, hashes and README make selective recovery possible. Never rerun the
+consumed mover or previous cleaners, and never overwrite current graph files
+wholesale. Actual completion free space is 36.1 GiB; recheck before compiling.
+
 ## Latest — 2026-11-13 rc.6 published; rc.7 compatibility repairs under validation
 
 **Priority Speedup2 source integration completed:** Root reviews

@@ -94,14 +94,15 @@ per-product approval verifier is proposed.
 - [ ] **B2-02 — Extend the existing retained format deliberately.**
 
 **2026-11-14 bounded acceptance:** the shared flat `/1`/passive own `/3`
-contract passes strict all-targets lint and 101 native cases on `c1ae9c4a3`,
-including three real PG retention/V215 migration cases and restoration under the
-original preparation. The aggregate remains failed: the additional V209 Source
-upgrade fixture used a V213-aware store before upgrade. Reviewed package correction
-`8b67a4efb` constructs actual historical rows and requires the current sealed
-reader/coverage writer to reproduce their exact bytes afterwards; its execution
-is pending. Ordinary `/1` emission and all general approval/publication gates
-remain unchanged. Parsing a `/3` carrier is not execution or approval activation.
+contract and original-limit/store/migration readers pass the combined strict and
+native gate on `61b456b41`: 42 current cases plus 67 byte-identical lower-layer
+cases, 109 scoped passes. The actual historical V209 Source fixture is corrected
+and passes its native upgrade/readback case. See [the exact acceptance receipt](docs/validation/2026-11-14-bob-b2r01-b3r03-acceptance.md).
+Ordinary `/1` emission and all general approval/publication gates remain unchanged;
+parsing `/3` is not execution or approval activation. B2-02 remains open for the
+complete producer/reader cutover. The latest operator order is B1 -> B2 -> B3;
+the wider private Capture2 port is preserved pending its proper downstream stage,
+not a mandatory first-B1 dependency without concrete caller evidence.
 
 Current `/1` selections have eight required fields and existing optional
 `association_approvals`/`model_input_binding`. Preserve their exact historical

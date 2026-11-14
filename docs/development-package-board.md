@@ -40,6 +40,20 @@ The supervisor accepts the connected behavior, not a successful build alone.
 
 ## Packages and exact acceptance
 
+**Latest operator priority — 2026-11-14:** after the currently running bounded
+corrections, assign implementation in dependency order **B1 → B2 → B3** wherever
+possible. Root accepts this order: trustworthy checks/evidence/approval precede
+catalogue selection/publication, which precede dependent scheduling integration.
+The two-package-chat/supervisor workflow stays in force. Complete the actual
+in-flight B2-R01/B3-R03 gate and bring begun B2-R04/B3-R05 corrections to safe,
+reviewable checkpoints; do not expand them into more independent B2/B3 work.
+New packets focus on B1. A genuinely missing B2/B3 prerequisite may be pulled
+forward only with its exact existing owner, actual caller and smallest connected
+claim identified. Old private branch coupling is not sufficient dependency proof.
+Preserve partial private work with its explicit remaining owning-plan steps;
+never replace missing support with a stub, default success or false activation.
+
+
 ### Active continuation packages — 2026-11-13
 
 Latest user instruction renews the two-package-chat/supervisor workflow through
@@ -112,7 +126,7 @@ Composition incremental session was retired under the existing lock; the one-use
 Do not rerun its consumed cleaner. All current programs, snapshots and warm current
 build graphs are preserved; tests restarted without compilation, writing to SSDE.
 
-**Combined follow-up source, not yet accepted:** Root cherry-picks B2's actual
+**Combined follow-up, now scoped-accepted:** Root cherry-picks B2's actual
 V209 fixture correction `8b67a4efb` as `821718614`, then reviewed Codex capability
 repair `cd654b869` as `b351ae931` on its combined integration branch. Both authors
 are source-idle for concrete validation findings. The same current native graph
@@ -126,6 +140,37 @@ space is 22,331,748,352 bytes; system free space becomes 36.1 GiB/84.2% used.
 No target/configuration change, symlink, routine clean, compiler/toolchain move,
 other-app cache mutation or runtime/deployment change. Its consumed one-time
 mover must not be rerun. The normal compile disk gate is restored; recheck it.
+
+**Final combined gate:** Run-74 passes native compilation without warnings,
+then 42 actual tests plus 67 identical-program cases pass: 109 scoped cases.
+Both original Source restore/upgrade and seven actual native Codex product cases
+pass. Root reads all result/diagnostic logs and seals `accepted.json` under the
+canonical lock. The source freeze is released; only reviewed unembedded status
+and [the acceptance receipt](validation/2026-11-14-bob-b2r01-b3r03-acceptance.md)
+are added before Main integration. The wider B2-R04 branch is not merged.
+
+**Next two package chats — 2026-11-14:** B2-R01 and B3-R03 are source-idle
+for concrete acceptance findings. Their reviewed integration revision is
+`61b456b41711ccbdc55a1e1d019bc938a2ec64f5`; Main/origin remain `3ca800ed6`.
+Run-72 strict all-targets Skills/Engine/Composition passes without warnings in
+121.479 seconds. Run-73 stops before Cargo on Root's missing Python import;
+its failed receipt stays unchanged. Corrected Run-74 starts only the remaining
+native/test stages; it reuses the exact current Worker after graph/configuration,
+environment/compiler and hash checks, and keeps the same warmed native graph.
+
+| Next package | Chat / worktree | Ownership and current grant |
+| --- | --- | --- |
+| B2-R04 | `01a1db0c-b051-7751-b5e7-0c52a39e3faa`, local; `/Users/ollama/.codex/worktrees/798e/brassclaw` | Reconcile private N/R/Q against current shared `/1`/`/3` base. Phase-1 audit `c9d4d83c3` is reviewed. Source grant covers actual flat Capture2/Base/ProgramOriginal store/native-reader support and full three-setting DB/API/WebUI/live-ACK integration; public SEL2/Installation2/Catalogue5, History and structured flows stay closed until their connected owners qualify them. Reserve only new V216 for this actual existing-table capture-policy slice, preserving applied V214/V215 and valid `/3`. |
+| B3-R05 | `01a1db1d-ed2d-7ca1-83ee-7d355de4c3f7`, local; `/Users/ollama/.codex/worktrees/38ed/brassclaw` | Audit actual current native device-login/refresh/factory/egress/secret/receipt boundaries, then repair genuine remaining production or meaningful native-acceptance gaps. No Capture/Retained/N/R/Q, duplicate connector, permissive transport or replay. Shared original-limits serialization belongs to B2-R04; actual Auth callers consume that one owner after Root interface coordination. No SQL reservation. |
+
+Both read the required guides before product edits, use isolated branches and
+may depend privately on the reviewed Root candidate without calling it accepted.
+No local Cargo/DB/SSH, Modal job, target mutation or nested delegation. Root alone
+reviews, validates, accepts and integrates. Additional shared contracts return
+exact definitions/callers to Root before edits. `kohai.md`/`sempai.md` are new
+independent untracked documentation work, preserved and excluded only after actual
+embedding-owner/inventory/reference proof; they are not staged or interpreted as
+activated product support by this batch.
 
 Private Q/N's old V214/V215 allocations conflict with current Main V214 and B2
 V215; their later adoption must coordinate unapplied successor numbers and exact

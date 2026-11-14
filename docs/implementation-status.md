@@ -1,3 +1,26 @@
+## 2026-11-14 — bounded B2/Codex corrections accepted; B1-first continuation
+
+The [combined strict/native receipt](validation/2026-11-14-bob-b2r01-b3r03-acceptance.md)
+accepts shared flat `/1`/passive `/3` retention, original parser/graph/export checks,
+V215 migration, genuine V209 upgrade fixture and the native Codex capability
+lifetime repair on `61b456b41`. All compiler/link diagnostics are clear; 42 cases
+execute now and 67 apply from identical current programs, total 109 scoped passes.
+No new authored approval, public successor execution, general publication,
+platform, serving or deployment support is claimed.
+
+The operator now prioritizes **B1 -> B2 -> B3** after current corrections. New
+packets repair trusted qualification/Q1/behavior/human-Q2 first; pull forward a
+B2/B3 contribution only for its proven actual upstream caller. Wider private
+Capture2/settings/reader source stays preserved and unaccepted. Current Case/
+Source/native Legacy-R1 paths do not establish a need for the whole private Q/N
+stack. New B1 work must use their real supported contracts.
+
+Cold build-data offloading completes with current artifacts/graphs unchanged:
+10,529 old files archived on SSDE, 20.8 GiB actual space reclaimed, 36.1 GiB free
+at completion. The [development build contract](build-environments.md#cold-build-data-storage-on-this-host)
+records original paths, checksum verification and safe selective restoration;
+the canonical active Cargo target remains on NVMe.
+
 ## 2026-11-13 — Prioritized Speedup2 source integration complete
 
 Root's complete review rejects the original cache-glob Remote artifact export
