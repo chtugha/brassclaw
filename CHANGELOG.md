@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Shipped component startup**: Inherit validation completed before provisioning
+  instead of repeating Q1/behavior workflows, creating model fixtures or opening
+  installed review requests on fresh startup and restart. Bind transfer records
+  to exact canonical definitions and artifacts, identify their provisioning
+  origin, and preserve authored review and live Tool-policy enforcement.
+- **Legacy seed review cleanup**: Archive untouched pending requests only when
+  their complete definitions match the shipped package. V216 preserves immutable
+  queue, component and package snapshots before transactional removal from active
+  work. Keep operator edits, original review subjects, findings and other scopes;
+  align v3/v3.5 plans with validation before provisioning.
+- **Child cancellation regression**: Check the supervisor's terminal resource-limit
+  outcome, including when child Python catches cancellation. Verify that no
+  successful child result or second resume can escape the cancellation boundary.
+
 - **CI cache and storage checks**: Preserve normal trusted Main compilation caches,
   including partial dependency progress after a failed job. Keep pull requests
   read-only. Exercise immutable-record TRUNCATE triggers past the foreign-key
@@ -23,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PostgreSQL jobs with the bundled runtime ABI.
 - **Seed approval integrity**: Retire the startup qualifier that invented
   placeholder implementations and successful checks without execution. Keep
-  actual seed content and pending requests, preserve historical originals, and
+  actual seed content and historical originals; later cleanup archives only
+  proven untouched canonical seed requests. Continue to
   reject its known Pure approval/evidence identities at positive decision
   boundaries. Actual remaining library qualification is still required.
 - **Dependency security**: Update TLS verification, trust roots, Tokio, constant-time
