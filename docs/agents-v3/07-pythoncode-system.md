@@ -1,353 +1,125 @@
-# 07 — PythonCode System
-
-## Binding Recipe architecture (v3)
-
-Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
-
-- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
-  many small PythonCode components provide reusable executable building blocks.
-  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
-  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
-- Each Recipe component step references exactly one stable component UUID.
-  PythonCode may internally compose smaller PythonCode components; this is not
-  a multi-component Recipe step. Keep all independent Tool calls in separate
-  execution steps; the existing direct dependent-chain exception still applies.
-- IBS/composition reads the newest activated, approved versions at task start
-  from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
-  no version numbers. Execution, child steps, waits and resumption retain that
-  selection; do not look up latest again during the task.
-- Approved versions are immutable. Changes create new versions; authored
-  versions pass Q1 and human Q2 before activation. Replacement neither deletes
-  nor invalidates originals used by running/suspended tasks. Current global
-  Tool policy is checked independently before every dispatch.
-- Inputs and results are typed data. Use the exact input-reference grammar and
-  step-local binding convention in recipe.md. Runtime values never become
-  Python source. Monty owns each task's intermediate results; unrelated tasks
-  and attempts stay isolated, including across child execution and waits.
-- Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
-  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
-
-The legacy composer still contains source-substitution and historical step-body
-paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
-typed inputs, checked single-component steps and preloaded exports on the global
-Monty service. Full-library migration, general pure approval, dynamic occurrences
-and durable recovery remain open; see the current implementation status index.
-
-> **Subsystem:** PythonCode (class 22) — the orchestrator-channel component that carries an
-> executable Python body the orchestrator runs to drive a recipe. It is the "body" half of the
-> recipe step pair: a `type:"component"` step `include`s a PythonCode UUID and the component's
-> `content` *is* the orchestrator instruction.
-> **Grounded in:** `crates/brassclaw_pg/migrations/V052__reborn_python_code.sql`,
-> `crates/brassclaw_pg/migrations/V069__reborn_python_code_includes.sql`,
-> `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs`,
-> `crates/brassclaw_engine/src/memory/component_validator.rs`,
-> `crates/brassclaw_engine/src/memory/retrieval_source.rs`,
-> `crates/brassclaw_engine/src/memory/intent_system.rs`,
-> `crates/brassclaw_engine/src/memory/composition.rs` (composer),
-> `saved_plan_to_v3.md` (Phase B, C.4.5.2, Phase N, Phase L).
-> **Status:** **shipped.** `V052` (table), `V069` (`includes` column), `pg_python_code_store.rs`,
-> the class-22 validator arm, the class-22 retrieval arms, and `22 => "python_code"` in
-> `class_label` are all landed.
+# 07 — PythonCode components
 
 ## 1. Purpose
 
-A **PythonCode** (class 22) is the component that turns a recipe step into actual orchestrator
-behavior. Where a **ToolSkill** (class 13) teaches the *Rust* executioner how to call one tool, a
-PythonCode is the *orchestrator*-channel body: a small Python program (run inside the Monty VM via
-`host.run_program`) that calls host functions (`host.<tool>(...)`, `host.resolve_intent`,
-`host.compose_orchestrator`, …) to glue tools together, format results, and drive a Tier-0 recipe
-to completion **without an LLM round-trip**.
+PythonCode (class 22) provides reusable executable definitions for a Skill's one
+Tool usage or for pure logic. Recipes supply sequencing and typed input/result
+wiring. A Skill combines usage prose with explicitly associated preloadable code;
+pure code needs no artificial Skill or ToolSkill. Follow
+[skills.md](../../skills.md) and [recipe.md](../../recipe.md). This source map was
+checked on 2026-11-15.
 
-### PythonCode as the executable part of a Skill
+## 2. Location — verified sources
 
-A Skill is defined as **prose plus an explicitly associated preloadable function interface** (see
-[skills.md §1](../../skills.md#1-what-a-skill-is) and
-[05-skills-system.md §3.1](05-skills-system.md#31-preloadable-function-interface-target--skillsmd-preloadable)).
-The class-22 PythonCode component is the executable half of that interface. It:
-- Declares **public exported function names and signatures** that the orchestrator invokes
-  (e.g. `def publish_turn_reply(inputs): return host.post_reply(answer=inputs["answer"])`).
-- Declares **private helpers and constant dependencies** that may be shared (but never mutable
-  task state).
-- Is loaded in dependency-first topological order before any invocation; loading defines
-  functions without executing the usage or enabling a Tool.
-- Is associated with its owning Skill prose by a stable UUID pair recorded in
-  `skill-association/1`; matching names alone do not establish a validated association.
+| Source | Symbols / role |
+| --- | --- |
+| [pg_python_code_store.rs](../../crates/brassclaw_reborn_composition/src/pg_python_code_store.rs) | `PgPythonCodeStore` and the existing save/review-submission surface. |
+| [retained_preload.rs](../../crates/brassclaw_engine/src/executor/retained_preload.rs) | `PreloadDeclaration`, `ExportDeclaration` and invocation generation from `python-preload/2`. |
+| [retained_source.rs](../../crates/brassclaw_engine/src/executor/retained_source.rs) | `InspectedRetainedProgram`, `InspectedPureSelection` and `InspectedPureComponent` expose exact inspected source/exports. |
+| [retained_inputs.rs](../../crates/brassclaw_engine/src/memory/retained_inputs.rs) | Recursive input/result contracts and prepared typed bindings. |
+| [retained_tools.rs](../../crates/brassclaw_engine/src/memory/retained_tools.rs) | Usage association and native binding preparation. |
+| [retained_recipe.rs](../../crates/brassclaw_engine/src/executor/retained_recipe.rs) | `RetainedRecipeExecution` / `run_step` execute selected child work and retain actual Tool/result boundaries. |
+| [pg_retained_q1.rs](../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs) | `StructuralReviewSet` and `BehavioralReviewSet` produce evidence for their supported retained adapter, not arbitrary caller success reports. |
+| [q1_orchestrator.rs](../../crates/brassclaw_reborn_composition/src/q1_orchestrator.rs) | `Q1Outcome` distinguishes structural observation, passed, failed and deferred outcomes; the historical `run_q1_validation_retained` helper is gated by test + skills-db. |
 
-A pure-logic class-22 component (zero `host.<tool>(...)` calls) is a valid standalone building
-block and does not need to be paired with a Skill prose row. Only Tool-calling PythonCode
-belonging to one specific usage pattern forms the executable half of a Skill.
+## 3. Stored content and retained declarations
 
-PythonCode is born one of two ways:
+[V052](../../crates/brassclaw_pg/migrations/V052__reborn_python_code.sql) created
+`reborn_python_code`, including `content`, component lifecycle/provenance metadata
+and dependency registry. [V069](../../crates/brassclaw_pg/migrations/V069__reborn_python_code_includes.sql)
+added `includes`. Those columns alone do not establish qualified recursive
+assembly, approved dependencies or permission to execute current row bytes.
+The queue tracks review work separately; `validation_status` is not live Tool policy.
 
-1. **Authored directly** in the WebUI as a standalone component (the grain-rule sibling of a
-   Skill — see §0.16), or seeded by the C.2 builtin bootstrap (`source='system'`).
-2. **Promoted from a `codesnippet`** inside a StepDescription: an author writes inline Python in
-   a step's `codesnippet` field, the WebUI *creates* a PythonCode row (class 22, `pending`) on
-   save, the row enters the Q1 queue, and once it passes Q1 + Q2 the step is rewritten to
-   `type:"component"` referencing the new UUID. Until then the IBS **refuses to assemble** the
-   recipe (`IbsError::UnpromotedSnippet`).
+The retained document declares input/result contracts and `python-preload/2`:
+public exports with implementation symbols, parameters and mapping form; private
+functions, constants, imports, code dependencies and an optional `default_export`.
+These are checksummed revision-document records, not invented additions to legacy
+INSERT constructors. The code/Skill association and Recipe invocation must agree.
 
-The Q1/Q2 graduation gate that *completes* the snippet→component promotion (the rewrite + boot-
-integrity check) is a **Phase N** capability. Until Phase N lands, only **system-seeded** or
-**operator-validated** PythonCode is usable in `type:"component"` steps — but the table, store,
-validator, retrieval, and intent label are all in place today.
+A concrete packaged mapping export exists in
+[global_bootstrap_components.rs](../../crates/brassclaw_skills/src/global_bootstrap_components.rs):
 
-### Current implementation note
-
-The schema and Q1 sections below describe the target validation behavior. Note:
-
-- `component_validator.rs` **does not exist** at the path
-  `crates/brassclaw_engine/src/memory/component_validator.rs`.
-- The body-scan functions referenced in §6 Shipped below
-  (`validate_python_code_body`, `validate_python_code_placeholders`,
-  `Generic(GenericComponent)`) **are not present by those names** in the current
-  Rust codebase. The Python injection-scan logic lives in
-  `crates/brassclaw_safety/`. The Q1 orchestration path (retained IBS/Recipe-
-  driven structural validator) is implemented in
-  `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` — currently
-  gated `#[cfg(feature = "skills-db")]` and `#[cfg(test)]`; not in production
-  without Phase N / Phase P.0 seeding. Do not infer from §6 Shipped text that
-  these named functions gate production PythonCode submissions today.
-- The engine `memory/composition.rs` **does exist** but does not implement
-  general recursive `includes` expansion. Do not infer from the `includes` column
-  alone that nested source expansion is currently enforced; inspect the actual
-  retained path (`retained_source.rs`, `retained_preload.rs`) and record
-  behavioral evidence before claiming a component passed those gates.
-
-## 2. Location
-
-- **Migration (table):** `crates/brassclaw_pg/migrations/V052__reborn_python_code.sql`
-  (class 22; the V051 slot is the validation-queue table).
-- **Migration (includes):** `crates/brassclaw_pg/migrations/V069__reborn_python_code_includes.sql`
-  (C.4.5.2 — adds the `includes` JSONB column the composer inlines).
-- **Store:** `crates/brassclaw_reborn_composition/src/pg_python_code_store.rs`
-  (+ WebUI facade).
-- **Validator dispatch:** `crates/brassclaw_engine/src/memory/component_validator.rs` — the
-  `22 =>` arm of `validate_by_class` uses the `Generic(GenericComponent { name, description,
-  content, extra })` payload (FINDING E — `GenericComponent` has no `class_code` field; the class
-  is implicit from the dispatch arm) and calls `validate_python_code_body` +
-  `validate_python_code_placeholders`.
-- **Retrieval:** `crates/brassclaw_engine/src/memory/retrieval_source.rs` — the class-22 arm is
-  in **both** `fetch_for_consumer` (the UNION ALL fallback, lines ~601–606) and
-  `fetch_component_by_id` (the direct UUID lookup, line ~1096); `class_code_to_table` maps
-  `(22, "reborn_python_code", "content")` (line ~1663).
-- **Intent label:** `crates/brassclaw_engine/src/memory/intent_system.rs` — `22 => "python_code"`
-  in `class_label` (line ~289); the legend doc-comment lists `21=recipe, 22=python_code,
-  23=extension_catalogue, 50=scaffold` (line ~264).
-- **Composer:** `crates/brassclaw_engine/src/memory/composition.rs` — inlines each
-  internal includes under the target composition contract; general expansion is
-  not implemented by the inspected engine composer.
-- **Validation queue:** `reborn_validation_queue` (V051 — shipped; the Phase N populate/trigger/
-  legacy-DROP is still pending).
-- **Seeder:** `crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs` (C.2 system seeds).
-
-## 3. Data model — `reborn_python_code` (V052, class 22; + `includes` V069)
-
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `tenant_id`,`user_id`,`agent_id`,`project_id` | TEXT NOT NULL | scope tuple |
-| `name` | TEXT NOT NULL | `length(name) BETWEEN 1 AND 256`; unique per scope |
-| `description` | TEXT NOT NULL DEFAULT '' | `<= 1024` |
-| `content` | TEXT NOT NULL DEFAULT '' | **the executable Python body** — *is* the orchestrator instruction |
-| `prior_knowledge_content` | TEXT | Solution-Override (§3.13/§3.14, SCH-02); present at creation, no retrofit |
-| `override_prompt_creation` | BOOL NOT NULL DEFAULT false | enables the Solution-Override LLM path |
-| `class_code` | SMALLINT NOT NULL DEFAULT 22 | `CHECK = 22` |
-| `prompt_uid` | BIGINT NOT NULL DEFAULT `nextval(reborn_python_code_prompt_uid_seq)` | required for the `fetch_for_consumer` UNION ALL sub-select (casts `prompt_uid::bigint` per arm) — missing it makes the UNION ALL fail at runtime (FIND-AUDIT-15) |
-| `consumer_tags` | TEXT[] NOT NULL DEFAULT '{}' | default `{02:orchestrator, 05:validator}` until validated |
-| `intent_examples` | JSONB | `[{input, class}]` for the intent system |
-| `validation_status` | TEXT NOT NULL DEFAULT 'pending' | `CHECK IN (pending, auto_passed, auto_failed, validated, review_requested, rejected, garbage, upgrade_queued)` — **stays on the component table** (post-validation gate, §0.18) |
-| `source` | TEXT NOT NULL DEFAULT 'authored' | `CHECK IN ('authored','extracted','migrated','imported','system')` — **`'system'` allowed from day one** (FIND-P6-02; C.2 seeds with `source='system'`) |
-| `content_hash` | TEXT | lineage |
-| `similarity_parent_id` | UUID | lineage |
-| `replaces_id` | UUID | lineage |
-| `parent_version` | TEXT | lineage |
-| `last_audit_at` | TIMESTAMPTZ | lineage |
-| `audit_failure_count` | SMALLINT NOT NULL DEFAULT 0 | lineage |
-| `parent_mission_id` | UUID | lineage (slated for V064-style drop, already done on some tables) |
-| `dependency_registry` | JSONB | included at creation (Phase J.2; V055 retrofits the 13 older tables) |
-| `includes` | JSONB NOT NULL DEFAULT '[]' | **V069 (C.4.5.2)** — stored internal PythonCode references; target assembly must resolve and pin them; storage alone does not prove expansion |
-| `created_at`,`updated_at` | TIMESTAMPTZ | `set_updated_at()` trigger |
-
-**Deliberately absent** (§0.18 — centralised on `reborn_validation_queue`): `queue_code`,
-`review_attempts`, `review_feedback`, `rejected_at`, `validation_errors`. This table carries
-**only** `validation_status` (the post-validation gate that stays on the component). V052 is the
-**final authoritative shape**: all solution-override columns present at creation (no V046-style
-retrofit), the five queue-tracking columns omitted, `prompt_uid` present, and V069 adds `includes`.
-
-Unique: `(scope, name)`. Indexes: scope, scope+status, scope+prompt_uid (UNION ALL assembly
-order), `consumer_tags` GIN, `similarity_parent` (partial), `replaces` (partial). Auto
-`updated_at` trigger.
-
-### `ComponentPayload` for class 22 (FINDING E)
-
-There is **no** `ComponentPayload::PythonCode` variant. Class-22 validation reuses the existing
-`Generic(GenericComponent)` payload, where `GenericComponent` carries `{ name, description,
-content, extra }` (`extra` transiently carries the `includes` array on the Q1 save path; the
-canonical store is the `includes` column). The class is implicit from the `validate_by_class`
-dispatch arm.
-
-## 4. Behavior / flow
-
-### 4.1 Snippet → PythonCode → component promotion (§0.5)
-
-```
-Author types inline Python in a StepDescription step's `codesnippet` field
-        │
-        ▼  (WebUI save; requires authenticated `component:write` session — ACL is first line of defense)
-[WebUI] creates a `reborn_python_code` row (class 22, validation_status='pending')
-        │
-        ▼  (save path calls ValidationQueueStore::submit(scope, component_id, 22))
-[reborn_validation_queue] state=1 (Q1 queue)   ← queue row created here
-        │
-        ▼  (Gate 1 / Q1 runs the shell-injection scan + name/content/token-budget checks)
-[Q1 pass] queue state → 2 (Q1_passed; awaiting Q2 manual review)
-        │  (Q1 fail → snippet field cleared, PythonCode row removed)
-        ▼
-[Q2 manual approval] queue row DELETED; component validation_status → 'validated'
-        │  (Q2 reject → state=3, counter++, author revises)
-        ▼
-[WebUI rewrites the step] type:"snippet" → type:"component" with the new PythonCode UUID;
-        parent Recipe re-queued to Q1
+```python
+def publish_turn_reply(inputs):
+    return host.post_reply(answer=inputs['answer'])
 ```
 
-- The step stays **greyed out** in the WebUI while the PythonCode is pending.
-- The **Q1/Q2 gate logic that performs the `snippet`→`component` rewrite + the boot-integrity
-  check is a Phase N capability**: until Phase N lands, only system-seeded or operator-validated
-  PythonCode is usable in `type:"component"` steps (§0.5 caveat).
-- **IBS guard:** if `build_instruction` encounters a step with `type:"snippet"` it returns
-  `IbsError::UnpromotedSnippet { step_id }` and refuses to assemble the `BuildInstruction`.
-  So a recipe containing an un-promoted snippet can never reach the runtime two-channel split.
+Its declared input is a required string `answer`. The selected Recipe supplies
+that value as data. Loading the function posts nothing; the actual invocation
+uses the admitted task's reply adapter. Reusing these source bytes does not
+approve a new Recipe or replace exact qualification/implementation evidence.
 
-### 4.2 Q1 shell-injection scan (FIND-AUDIT-12, shipped)
+## 4. Preparation and execution
 
-`validate_python_code_body` scans the raw `content` string (simple substring search — no AST)
-before execution. The scan is **additive** to Q1 checks; it does not replace them.
+1. Select one coherent active approved graph and pin exact code/interface,
+   dependencies, contracts, usage evidence and native artifacts.
+2. Validate declared references and symbols. Load qualified definitions and
+   immutable constants dependency-first with stable-UUID tie-breaking. Reject
+   cycles, collisions, unsafe imports and effectful initialization/defaults.
+3. Select a supported Recipe invocation or the code's declared default export.
+   A missing/invalid export is an error. Do not execute prose, infer names from
+   documentation or generate `eval`/`getattr` from task values.
+4. Bind typed task/local inputs, applying defaults only to missing values.
+   Monty invokes the retained export and captures its return. The native boundary
+   validates actual arguments/results against the selected contracts.
+5. Keep mutable data isolated per task/attempt/invocation. New activated code
+   does not replace exports used by running, waiting or child execution.
 
-**Hard errors (Q1 fail):** `import os`, `import subprocess`, `import sys`, `import socket`,
-`import ctypes`, `import importlib`, `__import__(`, `exec(`, `eval(`, `open(`, `compile(`,
-`__builtins__`, `globals()`, `locals()`. The error message directs authors to the new host-call
-model: *"use host tool calls (`host.<tool>(...)`) for host access instead"* (the retired
-`__execute_action__` meta-primitive was removed in C.1).
+A Tool-calling component needs its exact Skill association and preceding ToolSkill
+binding. Ordinary retained execution accepts one bound Tool call per executable
+step and stop-only failure. Independent calls stay separate even when hidden
+inside helper code. Reconciliation/retry is not an implicit call inside a helper.
 
-**Warnings (Q1 soft — flag, do not block):** `print(` (stdout is VM-captured, not the host
-terminal), `input(` (hangs in the VM; likely a copy-paste error).
+Pure code has zero host Tool calls across its selected closure. Its own interface,
+source/dependency and behavioral approval remains distinct from merely appearing
+as a helper in a qualified Tool usage. See
+[the pure-component review contract](../reborn/pure-component-review.md#exact-remaining-cutover-contract).
 
-False-positive rate is low because PythonCode bodies are authored to call host functions, not
-OS/subprocess. Correct usage — `host.read_file(path=...)` — passes Q1.
+## 5. Validation evidence and compatibility
 
-### 4.3 Placeholder + includes validation (C.4.5.2, shipped)
+Contained source inspection, contract parsing, observed execution, full functional
+Q1, human Q2 and activation prove different things. A parse/body scan cannot prove
+semantic agreement. The supported retained evidence producers preserve actual
+source/subject/run/attempt/result custody; a caller-provided pass flag is not Q1.
+The [validation guide](14-validation-queue.md) maps these owners and remaining gates.
 
-`validate_python_code_placeholders` runs two structural checks (Q1 never bakes; the composer
-C.4.5.17 is the sole baker):
+There is no current engine `memory/component_validator.rs` at the historical path,
+and the old names `validate_python_code_body` / `validate_python_code_placeholders`
+are not a current class-22 production validator API. Their former substring-scan
+and placeholder descriptions must not be presented as shipped qualification.
+The test-gated Q1 runner is not enabled in production merely by seeding a Recipe.
+Production discovery/selection and complete review require their actual owners.
 
-- **Placeholder grammar** (shared `validate_placeholder_grammar`, C.4.5.3): every `{{ ... }}` in
-  `content` must have balanced braces and a recognised kind — `vars.NAME` (identifier),
-  `vars.slotN` (non-negative integer), `user_input`, or `component_name`. Variables
-  (`{{vars.NAME}}` / `{{user_input}}`) flow from the recipe/caller; PythonCode carries no
-  `variable_patterns` field.
-- **Includes non-nil** (Fork 2-B=B): each UUID in the `includes` array (carried in `extra` on the
-  save path) must parse and be non-nil. Referential placeholder↔include matching (each
-  `{{component_name}}` resolves to a real fetched component, and every include is consumed) is
-  deferred to Phase I/N (requires a pool); Q1 checks structure only.
+The `snippet` enum and `UnpromotedSnippet` assembly guard exist in
+[instruction_builder.rs](../../crates/brassclaw_engine/src/memory/instruction_builder.rs).
+They do not prove a complete current WebUI promotion/review implementation.
+Author new v3 code as qualified retained exports through supported authoring/review
+paths; do not invent inline-execution permission or promise a historical Phase N
+migration will supply it automatically.
 
-### 4.4 At turn time (shipped host-call layer; VM activation pending C.5/C.6)
+## 6. Approval and remaining work
 
-A recipe `Match` → Monty calls `host.compose_orchestrator(component_id, step_link, user_input)`;
-the composition system fetches each `type:"component"` step's PythonCode by UUID (class-22
-retrieval arm) and returns the concrete per-step Python in the orchestrator
-program. Internal includes are permitted by the target, but the current engine
-composer does not implement general recursive source expansion. Monty runs each step via `host.run_program`. In a **Tier-0**
-recipe the PythonCode body (not a Skill — see the S7-extension guard) is what drives the Rust
-executioner **without an LLM call**. (The engine Monty VM that hosts this loop is dormant in
-production today — activation is the C.5/C.6 driver; the Tier-0 deterministic path is active via
-the turns `PgOrchestratorLookup` bridge.)
+Installed authored changes require applicable Q1, observed behavior and human Q2.
+The own-functional A successor reviews a Skill and implementing code jointly
+with separate IDs; unchanged approved counterparts/dependencies are context.
+Current exact authored readers keep their supported scope until connected cutover.
+S bootstrap separately qualifies prerequisite Tool, ToolSkill and Skill/code with
+noncircular integrity/behavior evidence and null human Q2. Labels do not select S.
+See [05-skills-system.md](05-skills-system.md).
 
-### 4.5 The S7-extension guard (Tier 0)
-
-For a Tier-0 recipe (`llm_call_required == false`) whose `rust_steps` carry `tool_bindings`,
-the IBS requires `orchestrator_steps` to contain **≥1 PythonCode UUID (class 22)** — **not** a
-Skill UUID, because Skill bodies need an LLM interpreter (§0.4.1 / assembly-algorithm step 4).
-A Tier-0 recipe with `tool_bindings` and empty `orchestrator_steps` is a Q1 hard error
-(§tier0-orchestrator-channel Rule 2). This is the structural reason PythonCode exists: it is the
-orchestrator-channel component that can run without an LLM.
-
-## 5. Relations
-
-- **StepDescription / IBS** (`03`/`04`): `codesnippet` creates a PythonCode; the `snippet` step
-  type blocks IBS assembly until promotion to `component`; `StepContextSpec` for class 22 =
-  `PythonCode` (`## [PythonCode: {name}]`).
-- **Composition system** (`composition.rs` / `pg_composition_port.rs`): returns
-  per-step Python to Monty. Internal code composition is a target requirement;
-  verify the actual expansion path rather than infer it from the includes column.
-- **Skills** (`05`): one reusable Tool usage consists of prose and associated
-  executable PythonCode. A multi-tool domain overview belongs in an Extension,
-  not a Skill. Tier-0 steps execute the associated class-22 component, not prose.
-- **Validation Queue** (`14`): every authored PythonCode gets a `reborn_validation_queue` row
-  on creation (`submit(scope, id, 22)`); Q1 (state 1→2) + Q2 (queue row deleted,
-  `validation_status='validated'`) graduate it; `source='system'` (C.2) bypasses Q2.
-- **Retrieval** (`11`): `fetch_for_consumer` (UNION ALL) + `fetch_component_by_id` both carry the
-  class-22 arm; ordering is `(class_code ASC, prompt_uid ASC)`.
-- **Tools** (`06`): a PythonCode reaches a Tool indirectly — it calls `host.<tool>(...)`, which
-  the Rust executioner services (the retired `__execute_action__` dispatcher was removed in C.1).
-- **Component Catalog** (`15`): `reborn_python_code` is the class-22 component table; `DocType`
-  is frozen (no `PythonCode` variant — §0.11 FINDING B).
-
-## 6. Status — shipped vs. pending
-
-**Shipped:**
-- `reborn_python_code` (V052) — the final authoritative shape (FIND-AUDIT-15): solution-override
-  columns at creation, the five queue-tracking columns omitted (centralised on
-  `reborn_validation_queue` V051), `prompt_uid` present, `source` CHECK allows `'system'`.
-- `includes` JSONB column (V069, C.4.5.2) — the composer-include list.
-- `pg_python_code_store.rs` (+ WebUI facade).
-- Class-22 validator arm (`Generic(GenericComponent)`, FINDING E) with
-  `validate_python_code_body` (FIND-AUDIT-12 scan) + `validate_python_code_placeholders`
-  (C.4.5.2 placeholder grammar + includes non-nil); 6 unit tests.
-- Class-22 `fetch_for_consumer` + `fetch_component_by_id` + `class_code_to_table` arms (FINDING C
-  resolved).
-- `22 => "python_code"` in `class_label` + the legend doc-comment.
-- `reborn_validation_queue` (V051) DDL + `ValidationQueueStore` (submit/approve/reject).
-- C.2 builtin bootstrap seeds system PythonCode helpers (`source='system'`, `validated`).
-- The includes column stores internal component references. General recursive
-  expansion and immutable transitive version selection remain implementation work.
-
-**Pending:**
-- **Phase N:** the gate logic that completes the `snippet`→`component` rewrite + the boot-
-  integrity check; populate `reborn_validation_queue` from existing component tables + the
-  `last_graduation_at` trigger (`reborn_python_code` never had the five legacy queue columns, so
-  no DROP is needed here).
-- **Phase I/N:** referential placeholder↔include matching (each `{{component_name}}` resolves to
-  a real fetched component; every include is consumed) — requires a pool.
-- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
-  activate the engine Monty VM so the `host.run_program` loop runs in production (today the
-  Tier-0 deterministic path is active via the turns `PgOrchestratorLookup` bridge; the engine
-  VM host-call path is wired but dormant). V35-05 owns retained selection / typed preload /
-  export selection acceptance.
-- **Standalone pure approval (path_to_v3.5.md V35-03/04):** independent pure-step reuse and
-  publication requires the shared evidence schema, trusted immutable writer and checked
-  activation/task readers owned by the validator's remaining work.
-- **Future:** a WebUI PythonCode-authoring route.
+Typed retained inputs, preloading, selected exports, source inspection and exact
+usage association support exist. General independent pure approval/publication,
+broader successor readers, full-library migration, dynamic-occurrence qualification
+and durable recovery remain with existing owners. A legacy `includes` column,
+raw compose/run program or successful contained test does not complete those gates.
+Use [the implementation index](../implementation-status.md) for scoped acceptance.
 
 ## 7. LLM-relevant summary
 
-A PythonCode (class 22, `reborn_python_code` V052) is the orchestrator-channel component whose
-`content` column **is** the executable orchestrator instruction (Python run in the Monty VM via
-`host.run_program`, calling `host.<tool>(...)`). It is born authored directly, seeded by the C.2
-builtin bootstrap (`source='system'`), or promoted from a StepDescription `codesnippet` (on WebUI
-save → class-22 `pending` row → Q1 queue → Q1+Q2 pass → step rewritten `snippet`→`component` with
-the new UUID; IBS refuses un-promoted snippets with `IbsError::UnpromotedSnippet`). The Q1/Q2
-promotion *gate logic* is a **Phase N** capability — until then only system-seeded or operator-
-validated PythonCode is usable. Q1 runs a shell-injection scan (hard-fail on `import
-os/subprocess/sys/socket/ctypes/importlib`, `__import__`, `exec`, `eval`, `open`, `compile`,
-`__builtins__`, `globals`/`locals`; warn on `print`/`input`) and the C.4.5.2 placeholder-grammar +
-includes-non-nil checks. The table omits the five queue-tracking columns (centralised on
-`reborn_validation_queue`, V051) and keeps only `validation_status`; V069 adds the `includes`
-JSONB column the composer inlines. Shipped: V052/V069/store/validator/retrieval/class_label/C.2
-seed/composer. Pending: Phase N gate logic, Phase I/N referential matching, the C.5/C.6 VM driver,
-a WebUI authoring route.
+PythonCode exports implement one Tool usage or pure logic. Preload exact declared
+definitions without effects; invoke selected exports with typed isolated inputs.
+Associations, source inspection, behavior, approval and activation are separate.
+The ordinary retained Tool runner is single-call/stop-only. Do not substitute
+legacy source interpolation, prose execution or absent validator APIs for the
+supported retained path, and never replay effects after downstream failure.

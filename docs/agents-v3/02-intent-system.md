@@ -1,268 +1,115 @@
-# 02 — Intent System — f1
-
-## Binding Recipe architecture (v3)
-
-Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
-
-- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
-  many small PythonCode components provide reusable executable building blocks.
-  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
-  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
-- Each Recipe component step references exactly one stable component UUID.
-  PythonCode may internally compose smaller PythonCode components; this is not
-  a multi-component Recipe step. Keep all independent Tool calls in separate
-  execution steps; the existing direct dependent-chain exception still applies.
-- IBS/composition reads the newest activated, approved versions at task start
-  from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
-  no version numbers. Execution, child steps, waits and resumption retain that
-  selection; do not look up latest again during the task.
-- Approved versions are immutable. Changes create new versions; authored
-  versions pass Q1 and human Q2 before activation. Replacement neither deletes
-  nor invalidates originals used by running/suspended tasks. Current global
-  Tool policy is checked independently before every dispatch.
-- Inputs and results are typed data. Use the exact input-reference grammar and
-  step-local binding convention in recipe.md. Runtime values never become
-  Python source. Monty owns each task's intermediate results; unrelated tasks
-  and attempts stay isolated, including across child execution and waits.
-- Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
-  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
-
-The legacy composer still contains source-substitution and historical step-body
-paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
-typed inputs, checked single-component steps and preloaded exports on the global
-Monty service. Full-library migration, general pure approval, dynamic occurrences
-and durable recovery remain open; see the current implementation status index.
-
-> **Subsystem:** **f1 — the Intent-Matching-System.** Classifies a user message and resolves it
-> to a component (typically a recipe) by an exact, DB-backed lookup against
-> `reborn_intent_inputs`, or falls back to keyword retrieval / the non-matching LLM path. It is
-> the entry point of the "match → recipe" branch of the message flow: the Orchestrator (Monty)
-> calls `host.resolve_intent(user_input)` and dispatches on the returned status.
-> **Grounded in:** `crates/brassclaw_engine/src/memory/intent_system.rs`
-> (`classify_query`, `match_order`, `resolve_intent`, `record_disambiguation_choice`,
-> `seed_intent_input`, `purge_component_inputs`, `class_label`, `IntentResolution`,
-> `InputClass`, `IntentSource`), `crates/brassclaw_engine/src/executor/orchestrator.rs`
-> (`handle_resolve_intent` — the `host.resolve_intent` arm), `crates/brassclaw_engine/src/memory/retrieval_source.rs`
-> (`PostgresSource::fetch_for_turn`, `FetchForTurnResult`),
-> `crates/brassclaw_reborn_composition/src/retrieval_lookup_impl.rs` +
-> `pg_intent_inputs_store.rs` (seeding call sites),
-> `crates/brassclaw_pg/migrations/V028__reborn_intent_inputs.sql` +
-> `V054__reborn_intent_inputs_step_link.sql`, `saved_plan_to_v3.md` (Phases D, E, E.0, J).
+# 02 — Intent system
 
 ## 1. Purpose
 
-The intent system replaces the legacy intent-detection helpers (`signals_tool_intent`,
-`signals_execution_intent`, `score_skill`, `extract_explicit_skills`, …) with a single
-DB-backed routing lookup. Given a user message, it classifies the query, looks it up in
-`reborn_intent_inputs`, and returns one of: an unambiguous **match** (a component id + class
-code + `step_link` + name — typically a recipe), a **disambiguation** request (multiple
-near-equal candidates), or **no match** (fall back to keyword retrieval / the non-matching LLM
-path). Monty calls `host.resolve_intent(user_input)` and dispatches:
-`match` (with `step_link`) → `host.compose_orchestrator(component_id, step_link, user_input)`;
-`disambiguation` → surface candidates to the user; `no_match` → Non-Matching-Mode
-(`host.non_match_llm_answer`).
+Intent matching selects an eligible Recipe workflow or reports disambiguation
+or actual No-Match. It does not execute components, approve revisions or grant
+Tool permission. Ordinary retained routing uses the catalogue owner's coherent
+active approved selection, not every mutable intent row. This source map was
+checked on 2026-11-15 against [recipe.md](../../recipe.md),
+[Simplified v3](../../simplified_v3.md) and [the roadmap](../../path_to_v3.5.md).
 
-## 2. Location
+## 2. Location — verified sources
 
-- **Rust (pure helpers + DB):** `crates/brassclaw_engine/src/memory/intent_system.rs` —
-  pure-Rust helpers (`classify_query`, `match_order`, `class_label`) always compiled; DB
-  functions (`resolve_intent`, `record_disambiguation_choice`, `seed_intent_input`,
-  `purge_component_inputs`, `increment_score`) behind `#[cfg(feature = "skills-db")]`.
-- **Host call:** `crates/brassclaw_engine/src/executor/orchestrator.rs::handle_resolve_intent`
-  (the `host.resolve_intent` arm) — calls `resolve_intent` and returns a JSON status to Monty.
-- **Retrieval integration:** `crates/brassclaw_engine/src/memory/retrieval_source.rs`
-  (`RetrievalSource::fetch_for_turn`, `PostgresSource::fetch_for_turn`, `FetchForTurnResult`).
-- **Seeding call sites:** `crates/brassclaw_reborn_composition/src/retrieval_lookup_impl.rs`
-  + `pg_intent_inputs_store.rs` (the `seed_intent_input` callers — auto-seeding on component
-  validation + the WebUI intent-input store).
-- **Migrations:** `V028__reborn_intent_inputs.sql` (table + indexes; requires `pg_trgm`),
-  `V054__reborn_intent_inputs_step_link.sql` (adds `step_link TEXT` for variant-aware recipe
-  dispatch — Phase D).
-- **Spec:** §3.12 (design), §4 (table), §6.1 (SEC-05 / PERF-01..04), §7 Q10/Q11/Q12/Q16/Q18.
+| Source | Symbols / responsibility |
+| --- | --- |
+| [intent_system.rs](../../crates/brassclaw_engine/src/memory/intent_system.rs) | `classify_query`, `match_order`, `IntentResolution`, `IntentCandidate`, `RetainedIntentEligibility`, `resolve_intent`, `resolve_intent_in_transaction`, `resolve_catalogue_intent_in_transaction`, `record_disambiguation_choice`, `seed_intent_input`, `class_label`. |
+| [installed_monty_catalogue.rs](../../crates/brassclaw_reborn_composition/src/installed_monty_catalogue.rs) | Captures and verifies a catalogue view, derives eligible retained instructions and resolves matching in a repeatable-read transaction; `TaskCatalogue` serves that captured result. |
+| [retained_instruction.rs](../../crates/brassclaw_engine/src/memory/retained_instruction.rs) | `compile_matched_retained_recipe` checks exact Recipe/variant intent membership rather than choosing the first compatible-looking variant. |
+| [global_recipe_ports.rs](../../crates/brassclaw_reborn_composition/src/global_recipe_ports.rs) | `MontyIntentSelection` and `MontyTaskCatalogue` carry routing through the global task boundary. |
+| [global_mode.py](../../crates/brassclaw_engine/orchestrator/global_mode.py) | `_execute_task` distinguishes routing outcomes; `_execute_recipe` and `_non_match` own their execution paths. |
+
+Storage originated in [V028](../../crates/brassclaw_pg/migrations/V028__reborn_intent_inputs.sql),
+with variant links in [V054](../../crates/brassclaw_pg/migrations/V054__reborn_intent_inputs_step_link.sql)
+and template metadata in [V076](../../crates/brassclaw_pg/migrations/V076__reborn_intent_inputs_template.sql).
+Those migrations are history, not the whole retained selection contract.
 
 ## 3. Data model
 
-### `reborn_intent_inputs` (V028 + V054)
+`InputClass` has `Word=1`, `Partial=2`, `Sentence=3`, `KeywordFallback=4`.
+`classify_query` emits sentence for at least five whitespace tokens or terminal
+`.` / `!` / `?`, partial for two to four tokens otherwise, and word otherwise.
+Keyword fallback is not a classifier output. `match_order` prefers `3,2,1` for
+sentence, `2,3,1` for partial and `1,2,3` for word/fallback.
 
-One row per `(scope, input_text, input_class, component_id)`:
+The actual `IntentResolution` variants are:
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | `gen_random_uuid()` |
-| `tenant_id`,`user_id`,`agent_id`,`project_id` | TEXT NOT NULL | the 4-part scope tuple |
-| `input_text` | TEXT NOT NULL | `CHECK length BETWEEN 1 AND 2048` |
-| `input_class` | SMALLINT NOT NULL | 1–4 (see below); `CHECK BETWEEN 1 AND 4` |
-| `component_id` | UUID NOT NULL | the component this input maps to |
-| `component_class_code` | INT NOT NULL | class of the mapped component |
-| `score` | INT NOT NULL DEFAULT 1 | `CHECK BETWEEN 1 AND 100` (SEC-05 hard cap) |
-| `source` | TEXT NOT NULL DEFAULT 'seeded' | `seeded`/`learned_user`/`learned_llm`/`learned_fallback` |
-| `needs_review` | BOOLEAN NOT NULL DEFAULT false | `true` for `learned_llm` (SEC-05) |
-| `step_link` | TEXT | **V054** — the Recipe variant `step_link` formula; `None` for non-variant/non-Recipe intents |
+- `Match { component_id, component_class_code, step_link, input_text, is_template }`.
+  A link is optional in this compatibility type; ordinary retained Recipe selection
+  requires its exact supported Recipe workflow identity.
+- `Disambiguation { candidates }`, with candidates carrying `row_id`, component
+  UUID/class, input class, score, class label and optional step link.
+- `NoMatch`.
 
-- **Unique:** `(tenant_id, user_id, agent_id, project_id, input_text, input_class, component_id)`.
-- **Indexes:** `scope_text_class_idx` (B-tree, PERF-01 exact match), `scope_text_idx`
-  (disambiguation + learning), `scope_component_idx` (purge on component delete),
-  `text_trgm_idx` (GIN `pg_trgm` for future fuzzy partial matching, Q16).
+`component_name` is not a current field of `IntentResolution::Match`. Do not
+copy historical JSON/type examples that include it. A component UUID or shared
+step link alone does not identify a retained variant/input layout.
 
-### Rust types
+`reborn_intent_inputs` retains the existing scope tuple, text/class, component
+identity, score/provenance/review state and template/link metadata. Existing
+scope keys describe present storage; they do not add final-v3 operator roles or
+Tool permission checks. The instance-wide policy contract is separate.
 
-- `InputClass` (`i16`): `Word=1`, `Partial=2`, `Sentence=3`, `KeywordFallback=4` (class 4 is
-  created by the retrieval keyword-fallback only — never by the classifier).
-- `IntentScope { tenant_id, user_id, agent_id, project_id }` (feature-gated).
-- `IntentCandidate { row_id, component_id, component_class_code, input_class, score, class_label, step_link }`.
-- `IntentResolution` (serde `tag="type"`): `Match { component_id, component_class_code,
-  step_link: Option<String>, component_name: String }` | `Disambiguation { candidates:
-  Vec<IntentCandidate> }` | `NoMatch`. (The legacy `DbLessFallback` variant was removed in
-  `Goals_pre_v3_review.md` Step 9.) `Match.step_link` is the Recipe variant formula (V054) —
-  `None` for legacy/non-variant intents; `Match.component_name` is populated for class-16
-  Actions via the `resolve_intent` LEFT JOIN on `reborn_actions` (empty string otherwise).
-- `IntentSource`: `Seeded`/`LearnedUser`/`LearnedLlm`/`LearnedFallback`; `learned_llm` ⇒
-  `needs_review = true`.
-- Constants: `DISAMBIGUATION_SPREAD = 2`, `MAX_DISAMBIGUATION_CANDIDATES = 3`, `SCORE_CAP = 100`,
-  `SCORE_RATE_LIMIT_PER_HOUR = 50`.
+## 4. Ordinary behavior and failure boundary
 
-### `class_label` (authoritative class-code → label table — shipped)
+1. The installed catalogue owner captures its active view and verifies that
+   source selection in the same transaction used for matching. It builds
+   `RetainedIntentEligibility` from selected instructions. Eligibility restricts
+   matching before ranking; drafts/stale rows cannot displace eligible workflows.
+2. `resolve_catalogue_intent_in_transaction` requires repeatable-read or
+   serializable isolation. SQL/snapshot failures propagate as errors. The matcher
+   ranks exact/template candidates and distinct workflows using the existing
+   classifier and score spread; no fixed top-three claim is part of this guide.
+3. `TaskCatalogue::resolve_intent` serves the captured resolution only for the
+   original query. Its source explicitly rejects rematching or latest lookup
+   during child execution. A match binds the original selected variant example
+   into typed task inputs.
+4. Retained compilation checks the Recipe UUID/class, exact link and intent
+   expression against its immutable embedded variants. Missing or ambiguous
+   membership is an error, not an invitation to choose the first variant.
+5. Only a successful `NoMatch` result permits the non-matching model path.
+   Database, catalogue-integrity, matching, composition and begun execution
+   errors never become No-Match or authorize Tier-2 replay.
 
-`0=tool, 1=skill_rusty, 2=skill_monty, 3=skill_llm, 4–9=extensions
-(worker/cron/trigger/webhook/plan/revision), 10=orchestrator, 11=reserved, 12=spec,
-13=tool_skill, 14=plan, 15=summary, 16=action, 17=docu, 18=lesson, 19=issue, 20=note,
-21=recipe, 22=python_code, 23=extension_catalogue, 50=scaffold`. The 22/23 arms are shipped
-(Phase B/C).
+For a standalone legacy lookup, `resolve_intent` also increments the selected
+row's score. `resolve_intent_in_transaction` does not commit or mutate score
+telemetry; its caller supplies the coherent view. Neither helper alone approves
+or activates a catalogue. Score increments are capped at 100 and rate-limited to
+50 per existing scope/hour; these are telemetry safeguards, not task/token caps.
 
-## 4. Behavior / flow
+`record_disambiguation_choice` verifies row UUID, component UUID/class and all
+existing scope fields under a row lock, scores and commits, and returns the
+stored template/link. That standalone helper does not establish the complete
+retained catalogue selection or permit an already selected task to rematch.
 
-1. **Classify** the query with `classify_query(query)` → `InputClass`:
-   - Class 3 (sentence): ≥5 whitespace tokens **or** ends with `.`/`!`/`?` (the `?`-rule).
-   - Class 2 (partial): 2–4 tokens, no terminal punctuation.
-   - Class 1 (word): 0–1 tokens.
-   - Class 4 is never produced here.
-2. **Match order** (`match_order`): sentence `3→2→1`; partial `2→3→1`; word/fallback `1→2→3`.
-3. **Resolve** (`resolve_intent(pool, scope, query)`) — a **single SQL query** (PERF-02) with a
-   `CASE WHEN` order + a security-scoped LEFT JOIN on `reborn_actions` (all 4 scope filters on
-   the JOIN, FIND-P6-05, so a cross-tenant `component_id` collision cannot leak another
-   tenant's Action name):
-   `SELECT ii.id, ii.component_id, ii.component_class_code, ii.input_class, ii.score,
-   ii.step_link, COALESCE(a.name,'') AS component_name FROM reborn_intent_inputs ii LEFT JOIN
-   reborn_actions a ON … WHERE <scope> AND input_text = $q AND input_class = ANY($order)
-   ORDER BY CASE input_class … END, score DESC LIMIT 30`.
-   - Empty → `NoMatch`.
-   - Current lookup ranks by exact text, class preference, descending score and
-     row UUID. Deduplicate by `(component_id, component_class_code, step_link)`
-     before the candidate limit; separate workflows of one Recipe remain
-     ambiguous. Apply `top_score - score <= DISAMBIGUATION_SPREAD` (2) to every
-     distinct workflow, including later class groups after a low-score row.
-     Return at most three eligible workflows. Template `%` is the only wildcard;
-     `_`, backslash and the SQL escape character are literal text. This legacy
-     selection is not yet an immutable active-catalogue generation.
-   - One candidate → `Match { component_id, component_class_code, step_link (rows[0].col 5),
-     component_name (rows[0].col 6) }` and atomically increment its score. Multiple →
-     `Disambiguation(candidates)` (≤3).
-4. **Score increment** (PERF-03, atomic): `UPDATE … SET score = LEAST(score + 1, 100)
-   RETURNING score` — no SELECT-then-UPDATE race. Rate-limited in-process (SEC-05): ≤50
-   increments per scope per hour (bucket keyed by the exact 4-part tuple).
-   Both the update and the exhausted-bucket read filter the full scope. The
-   process cache retains at most 4096 live scope buckets and reclaims expired
-   entries on new-scope admission. Exhaustion skips score telemetry and preserves
-   the actual match; it never grants a Tool or limits task/token consumption.
-5. **Host contract** (`handle_resolve_intent` → Monty): `host.resolve_intent(user_input)`
-   returns JSON —
-   `match`: `{status:"match", component_id, component_class_code, step_link, component_name}`;
-   `disambiguation`: `{status:"disambiguation", candidates:[{component_id, component_class_code,
-   score, class_label}]}`; `no_match`: `{status:"no_match"}`; `error`: `{status:"error",
-   error}`. No pool / non-`skills-db` build → `{status:"no_match"}`. Monty dispatches: `match`
-   (with `step_link`) → `host.compose_orchestrator`; `disambiguation` → surface; `no_match` →
-   Non-Matching-Mode.
-6. **Disambiguation choice** (`record_disambiguation_choice`): validate the exact
-   row UUID, component UUID/class and all four existing scope fields against the
-   stored row. Keep that row locked through scoring and commit, then return its
-   actual `step_link`, `input_text` and `is_template`. Missing/mismatched choices
-   fail before scoring. Candidates expose `row_id` and `step_link`; a component
-   UUID alone cannot select among workflows. No re-fetch of latest is authorized
-   by this result. Retained v3 selection/resumption still requires the complete
-   approved generation and snapshot contract.
-7. **Seeding** (`seed_intent_input`): `INSERT … ON CONFLICT DO UPDATE` (idempotent). Called
-   from `retrieval_lookup_impl.rs` (auto-seeding on component validation) +
-   `pg_intent_inputs_store.rs` (the WebUI intent-input store). Carries `step_link` for Recipe
-   (class 21) variant intents (FIND-NEW-03); `None` for non-Recipe inputs. `purge_component_inputs`
-   deletes all inputs for a component (on wipe/Q4).
-8. **Retrieval integration** (`PostgresSource::fetch_for_turn`): `resolve_intent` → on `Match`
-   fetch the exact component by id + increment score; on `Disambiguation` return candidates to
-   the orchestrator; on `NoMatch`/error fall back to `fetch_for_consumer` (keyword UNION ALL).
-   `RamSource` has no intent store and uses the default `fetch_for_turn` (→ `fetch_for_consumer`).
-   `FetchForTurnResult` (shipped): `Components(Vec<ComponentItem>)` |
-   `Disambiguation(Vec<IntentCandidate>)` | `ActionShortCircuit { component_id, name }` |
-   `SplitResult { rust_items, orchestrator_items, routing }`.
+## 5. Compatibility readers
 
-## 5. Relations
+[PostgresSource::fetch_for_turn](../../crates/brassclaw_engine/src/memory/retrieval_source.rs)
+uses the standalone matcher for its retrieval path. Its current source propagates
+matching errors and enters keyword `fetch_for_consumer` only on No-Match; no
+second score increment is needed. This retrieval helper is distinct from the
+ordinary task's captured catalogue routing.
 
-- **Recipe System** (`03-recipe-system.md`): a `Match` whose `component_class_code == 21` is a
-  recipe; Monty then calls `host.compose_orchestrator(component_id, step_link, user_input)` and
-  runs its steps via `host.run_program` (the IBS two-channel split is `04-ibs.md`).
-- **Retrieval System** (`11-retrieval-system.md`): `PostgresSource` is the intent-driven
-  backend. The engine loop wires `RamSource` (the `PostgresSource` path is dormant in the
-  engine Monty VM); the active production Tier-0/Tier-1 path is the TURNS `PgOrchestratorLookup`
-  bridge. The C.5/C.6 driver activates the engine VM host-call path in production.
-- **Orchestrator** (`13-orchestrator-default-py.md`): Monty consumes the `host.resolve_intent`
-  JSON status and dispatches (the retired `default.py` had no disambiguation handler; Monty
-  does).
-- **Composition / IBS** (`04-ibs.md`): `Match.step_link` drives variant-aware recipe
-  composition.
-- **Component Catalog** (`15-component-catalog.md`): `component_id`/`component_class_code`
-  reference the unified class tables; `class_label` is the authoritative label table.
-- **Sempai-Kohai** (`09-sempai-kohai.md`): the Sempai proposes new `intent_examples` for
-  existing components (`SempaiReviewOutcome.proposed_intent_examples`), which enter Q1 and on
-  graduation are seeded via `seed_intent_input`.
+The legacy [orchestrator bridge](../../crates/brassclaw_engine/src/executor/orchestrator.rs)
+returns an error for a missing composition port or input. It must not manufacture
+No-Match from unavailability. These host-handler details do not replace the
+ordinary global task adapter described in [12-agent-loop.md](12-agent-loop.md).
 
-## 6. Shipped vs. pending
+## 6. Support and remaining work
 
-**Shipped:**
-- `resolve_intent`, `classify_query`, `match_order`, `record_disambiguation_choice`,
-  `seed_intent_input`, `purge_component_inputs`, and the `reborn_intent_inputs` table (V028).
-- **`step_link` (V054)** — `reborn_intent_inputs.step_link` + `IntentResolution::Match.step_link`
-  + the `resolve_intent` LEFT JOIN (`component_name` for class-16 Actions) + the
-  `seed_intent_input` `step_link` param (Phase D).
-- **`host.resolve_intent` (C.2)** — the Monty host call + `handle_resolve_intent` returning the
-  JSON status contract.
-- **`class_label` 22/23 arms** (`python_code`/`extension_catalogue`) — Phase B/C.
-- **`FetchForTurnResult`** all four variants: `Components`/`Disambiguation`/`ActionShortCircuit`/`SplitResult`
-  (Phase E).
-- **Auto-seeding** on component validation (`retrieval_lookup_impl.rs`) + the WebUI intent-input
-  store (`pg_intent_inputs_store.rs`).
-- `DbLessFallback` removed (no DB-less mode — Postgres is always used).
-
-**Pending:**
-- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a)** —
-  activates the engine Monty VM host-call path (`host.resolve_intent` →
-  `host.compose_orchestrator` → `host.run_program`) in production; today the engine VM path is
-  dormant and the active Tier-0/Tier-1 path is the TURNS `PgOrchestratorLookup` bridge.
-- **Coherent catalogue generation:** `simplified_v3.md` §1.1 and recipe.md §2 require that IBS
-  selection uses one coherent activated, approved catalogue generation (snapshot). The current
-  intent selection is a live `reborn_intent_inputs` query, not yet a full coherent snapshot with
-  one approved generation pinned at match time. This gap is tracked under V35-02 and
-  `simplified_v3.md` Phase 3a. A disambiguation choice or resume must not trigger a fresh
-  catalogue lookup; retained v3 selection/resumption still requires the complete generation
-  and snapshot contract.
-- **WebUI disambiguation UX** — the clickable-candidates surface for `role:"disambiguation"`.
-- **Phase J** — `intent_examples` formalization + `dependency_registry`; the real wiring is
-  `auto_passed → seed_intent_input` (the `{input, class}` shape is already in V028).
+Coherent retained routing already has source support; it is not an entirely
+missing V35-02 feature. V35-01/02 reconcile legacy descriptions and exact support;
+new publication/compatibility and remaining runtime acceptance stay with their
+existing catalogue, validator and Simplified owners. Use
+[the implementation index](../implementation-status.md) for accepted scope.
+Public workflows need genuine per-variant positive/negative intent coverage and
+at least ten Recipe examples; private workflows qualify trusted typed admission.
+MCP exposure separately requires a qualified command Recipe/variant.
 
 ## 7. LLM-relevant summary
 
-The intent system classifies a user query into 4 classes (word/partial/sentence/keyword) and
-resolves it against `reborn_intent_inputs` in a **single ordered SQL query** with a
-security-scoped LEFT JOIN: a unique high-score row → `Match(component_id, class_code,
-step_link, component_name)` (a recipe when class 21; `step_link` drives variant-aware
-composition via `host.compose_orchestrator`); several rows within a 2-point spread →
-`Disambiguation(≤3 candidates)` surfaced to the user, whose choice is recorded and scored (and
-returns the actual selected template and `step_link` after validating the stored row); nothing → `NoMatch` →
-keyword UNION ALL fallback / Non-Matching-Mode. Monty calls `host.resolve_intent(user_input)`
-and dispatches on the JSON status. Scores are atomic (`LEAST(score+1,100)`), capped at 100,
-rate-limited to 50/scope/hour; `learned_llm` rows are flagged for review. Auto-seeding runs on
-component validation; the Sempai may propose new intent examples. The engine VM host-call path
-is dormant until C.5/C.6; the active production Tier-0/Tier-1 path is the TURNS
-`PgOrchestratorLookup` bridge.
+Match only eligible workflows from the task's coherent active approved catalogue.
+Keep exact Recipe/variant/template/link and typed captures. Disambiguation is
+explicit. Only actual No-Match enters Tier 2; technical errors and begun failures
+remain errors. Scoring is telemetry, binding is not authority, and resumption or
+child execution never selects latest again.

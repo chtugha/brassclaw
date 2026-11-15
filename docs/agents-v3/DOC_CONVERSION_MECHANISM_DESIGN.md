@@ -1,92 +1,55 @@
-# Auto-Documentation-Conversion Mechanism — Design & Approach (item 4)
+# Documentation conversion — historical design and current boundaries
 
-> **Status — design presented, not currently active (2026-Q3).**
-> This design was presented before implementation and stopped pending approval.
-> The described component stack (Recipe `doc-convert` class 21, Action `doc-sync` class 16,
-> PythonCode class 22, Skills/ToolSkills class 1–3/13) predates the v3 preloadable function
-> interface requirement and the `simplified_v3.md` authorization model. Any future
-> implementation would need to be re-designed from scratch against
-> [`recipe.md`](../../recipe.md), [`skills.md`](../../skills.md) and
-> [`simplified_v3.md`](../../simplified_v3.md) before component authoring begins.
-> Do not treat the component designs below as ready-to-use or pending-only components;
-> they are design notes from an earlier architectural generation.
+## Current applicability — source checked 2026-11-15
 
-## Binding Recipe architecture (v3)
+The numbered design below preserves an earlier proposal and its recorded decisions.
+Its old status, approval rules, Action execution, source interpolation, budget
+prescriptions and phase/migration references are **historical**, not current
+implementation instructions. The current component authorities are
+[recipe.md](../../recipe.md), [skills.md](../../skills.md),
+[tools.md](../../tools.md) and [toolskills.md](../../toolskills.md), with
+[Simplified v3](../../simplified_v3.md) and [path to v3.5](../../path_to_v3.5.md).
+Do not infer either complete absence of implementation or current v3 qualification
+from this design record.
 
-Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
+Verified source already contains compatibility pieces:
 
-- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
-  many small PythonCode components provide reusable executable building blocks.
-  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
-  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
-- Each Recipe component step references exactly one stable component UUID.
-  PythonCode may internally compose smaller PythonCode components; this is not
-  a multi-component Recipe step. Keep all independent Tool calls in separate
-  execution steps; the existing direct dependent-chain exception still applies.
-- IBS/composition reads the newest activated, approved versions at task start
-  from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
-  no version numbers. Execution, child steps, waits and resumption retain that
-  selection; do not look up latest again during the task.
-- Approved versions are immutable. Changes create new versions; authored
-  versions pass Q1 and human Q2 before activation. Replacement neither deletes
-  nor invalidates originals used by running/suspended tasks. Current global
-  Tool policy is checked independently before every dispatch.
-- Inputs and results are typed data. Use the exact input-reference grammar and
-  step-local binding convention in recipe.md. Runtime values never become
-  Python source. Monty owns each task's intermediate results; unrelated tasks
-  and attempts stay isolated, including across child execution and waits.
-- Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
-  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+- [builtin_bootstrap.rs](../../crates/brassclaw_reborn_composition/src/builtin_bootstrap.rs)
+  contains `seed_doc_sync_group`, including historical source-substitution helpers.
+- [doc_sync_watcher.rs](../../crates/brassclaw_reborn_composition/src/doc_sync_watcher.rs)
+  contains `DocSyncWatcher` and file/DB-event trigger wiring; the WebUI setup in
+  [webui.rs](../../crates/brassclaw_reborn_composition/src/webui.rs) attaches those
+  compatibility watchers under its PostgreSQL configuration.
+- [V040](../../crates/brassclaw_pg/migrations/V040__reborn_docus.sql) defines
+  `reborn_docus`, **class 17**, for document content. Class 23 is an
+  ExtensionCatalogue/domain inventory, not the converted document-text class.
+- [prefix_release_documents.rs](../../crates/brassclaw_reborn_composition/src/prefix_release_documents.rs)
+  and [prefix_reference_seeds.rs](../../crates/brassclaw_reborn_composition/src/prefix_reference_seeds.rs)
+  retain exact release reference documents as immutable class-17 revisions.
+  Release-reference capture is separate from executing this conversion proposal.
 
-The legacy composer still contains source-substitution and historical step-body
-paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
-typed inputs, checked single-component steps and preloaded exports on the global
-Monty service. Full-library migration, general pure approval, dynamic occurrences
-and durable recovery remain open; see the current implementation status index.
+These observations prove source existence, not successful deployed doc-sync or
+qualified current preload/approval support. Event-trigger wiring is not proof of
+an idle-time Sempai optimization loop. A future migration must inventory/reuse
+compatible existing pieces through the current owners; no from-scratch duplicate
+service or replacement catalogue is justified by this historical design.
 
-## Binding Skill definition (v3)
+For updated implementation, Recipes sequence typed inputs/results and invoke
+pinned preload exports; ToolSkill bindings execute nothing and grant no permission.
+Ordinary retained Tool steps are single-call and stop-only. Installed authored
+changes require applicable Q1/behavior/human-Q2. Controlled S bootstrap qualifies
+Tool, then ToolSkill, then Skill/code noncircularly with integrity/behavior and null
+human Q2; `source='system'` alone grants no exemption. The historical automated
+system-Q2 extension proposed below is not that current contract. Preserve original
+approved revisions/pins; do not implement content refresh by overwriting approved
+component bytes. Use [the current validation guide](14-validation-queue.md) and
+[implementation index](../implementation-status.md) for the exact owning gates.
 
-A **Skill** is one reusable Tool-usage pattern exposed as a **preloadable
-function interface**: prose plus explicitly associated PythonCode, exported
-names/signatures, helper/constant dependencies and typed invocation/result
-contracts. Loading defines functions without executing the usage. The prose
-explains the exported commands; associated PythonCode implements them. "Leaf
-Skill" means this same unit, not a different kind of Skill. A broader domain or
-multi-tool overview belongs to an **Extension**, documented by its
-ExtensionCatalogue; a **Recipe** defines the ordered workflow and references
-reusable components by UUID.
+## Historical design record
 
-**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
-the ToolSkill describes its IBS binding. Binding executes nothing and grants no
-permission. The Orchestrator invokes a pinned export from the preloaded associated
-PythonCode, which calls `host.<tool>(...)`; the kernel checks the current global
-tool policy.
-
-**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
-(classes 1–3), while executable code is stored separately in `reborn_python_code`
-(class 22). The current composer emits `SkillRef.body` and
-`ComposedStep.executable_code` separately. The target requires an explicit,
-validated UUID/revision association between the two parts; separate rows are
-permitted and do not make the Skill prose-only. A code example inside prose is
-documentation, not an implicit executable entry point. The class labels
-`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
-not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
-records sharing the table, not additional tool-usage Skill types.
-
-**Execution and validation:** deterministic Tier-0 execution uses the associated
-PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
-explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
-in steps with `knowledge:"rust"`; executable PythonCode UUIDs stay in steps with
-`knowledge:"orchestrator"` (the persisted field is `knowledge`, not `channel` —
-see recipe.md §7). Q1/Q2, step isolation and the existing dependent-chain
-exception remain applicable. This documentation change does not implement a
-new database schema, association editor or runtime path.
-
+All numbered sections and recorded decisions below belong to the earlier design.
+Their original statements are retained for provenance, subordinate to the current
+applicability above and the owning contracts; none is a current activation receipt.
 
 > **Status:** DESIGN — presented for approval, **NOT implemented**. This
 > document proposes how repeat item 4 will be built. Per the user's

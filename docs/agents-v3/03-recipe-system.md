@@ -1,332 +1,128 @@
-# 03 — Recipe System
+# 03 — Recipe system
 
-## Binding Recipe architecture (v3)
+## 1. Purpose and governing contract
 
-Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
+A Recipe (class 21) selects, orders and connects reusable component usages to
+fulfil a task. It declares variants, typed inputs/results, bindings, failure
+behavior and completion. Design the Recipe first and reuse existing Skills,
+PythonCode, ToolSkills and primitives. A specialized Rust workflow Tool is not a
+substitute for reusable steps. [recipe.md](../../recipe.md) is the authoring
+contract; this guide is a source map checked on 2026-11-15.
 
-- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
-  many small PythonCode components provide reusable executable building blocks.
-  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
-  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
-- Each Recipe component step references exactly one stable component UUID.
-  PythonCode may internally compose smaller PythonCode components; this is not
-  a multi-component Recipe step. Keep all independent Tool calls in separate
-  execution steps; the existing direct dependent-chain exception still applies.
-- IBS/composition reads the newest activated, approved versions at task start
-  from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
-  no version numbers. Execution, child steps, waits and resumption retain that
-  selection; do not look up latest again during the task.
-- Approved versions are immutable. Changes create new versions; authored
-  versions pass Q1 and human Q2 before activation. Replacement neither deletes
-  nor invalidates originals used by running/suspended tasks. Current global
-  Tool policy is checked independently before every dispatch.
-- Inputs and results are typed data. Use the exact input-reference grammar and
-  step-local binding convention in recipe.md. Runtime values never become
-  Python source. Monty owns each task's intermediate results; unrelated tasks
-  and attempts stay isolated, including across child execution and waits.
-- Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
-  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+## 2. Location — verified sources
 
-The legacy composer still contains source-substitution and historical step-body
-paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
-typed inputs, checked single-component steps and preloaded exports on the global
-Monty service. Full-library migration, general pure approval, dynamic occurrences
-and durable recovery remain open; see the current implementation status index.
+| Source | Role |
+| --- | --- |
+| [types/recipe.rs](../../crates/brassclaw_engine/src/types/recipe.rs) | `Recipe`, `RecipeVariant` and legacy `RecipeStep` types. |
+| [instruction_builder.rs](../../crates/brassclaw_engine/src/memory/instruction_builder.rs) | `StepDescriptionEntry`, `build_instruction` and `build_ordered_instruction`. |
+| [retained_instruction.rs](../../crates/brassclaw_engine/src/memory/retained_instruction.rs) | `compile_retained_recipe`, `compile_matched_retained_recipe`, `WorkflowClass` and `RetainedRecipeInstruction`. |
+| [retained_inputs.rs](../../crates/brassclaw_engine/src/memory/retained_inputs.rs) | `prepare_retained_inputs` and typed data bindings. |
+| [retained_source.rs](../../crates/brassclaw_engine/src/executor/retained_source.rs) | `InspectedRetainedProgram` and invocation/export preparation. |
+| [pg_recipe_store.rs](../../crates/brassclaw_reborn_composition/src/pg_recipe_store.rs) | `PgRecipeStore` and existing mutable Recipe projections / review submission integration. |
+| [component_deployment.rs](../../crates/brassclaw_reborn_composition/src/component_deployment.rs) | Deployment preparation and exact proposal provenance checks. |
+| [authored_monty_catalogue.rs](../../crates/brassclaw_reborn_composition/src/authored_monty_catalogue.rs) | Prepares and verifies candidate retained catalogue selections, usage evidence and implementation availability. |
 
-> **Subsystem:** Recipes — the unit of v3 orchestration. A recipe is a trigger plus an ordered
-> list of steps; each step says exactly which skills/tools/Python code/LLM prompts are needed and
-> how the orchestrator and the Rust executor should run it.
-> **Grounded in:** `crates/brassclaw_engine/src/types/recipe.rs`,
-> `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`,
-> `crates/brassclaw_engine/src/memory/composition.rs`,
-> `crates/brassclaw_reborn_composition/src/pg_composition_port.rs`,
-> `crates/brassclaw_pg/migrations/V033__reborn_recipes.sql`,
-> `crates/brassclaw_pg/migrations/V050__reborn_recipe_step_descriptions.sql`,
-> `saved_plan_to_v3.md` (Phases A, HI, C.2, N).
+The [component deployment guide](../reborn/component-deployment.md) and
+[implementation index](../implementation-status.md) establish the supported
+publication route and attributed acceptance. No table row alone is activation.
 
-## 1. Purpose
+## 3. Persisted and retained model
 
-A **Recipe** (class 21) tells the orchestrator how to fulfill a task by using
-Rust Tools, many ToolSkills, many Skills and many small reusable PythonCode
-components. It carries ordered instructions and the component inventory needed
-by IBS to assemble each step and prepare its bindings/context. The Recipe is
-the ordering and wiring, not a specialized Rust workflow implementation.
+The authored step schema is `StepDescriptionEntry.steps` with `stepnumber`,
+`knowledge`, `type`, `include` and applicable binding/dependency fields. IBS reads
+the structured array, not the YAML display or prose goal. Use `knowledge:
+"rust"` for a ToolSkill binding and the immediately following `knowledge:
+"orchestrator"` step for its associated class-22 executable. A component step
+references exactly one stable UUID. `text` is annotation; `snippet` cannot be
+assembled before supported promotion. There is no persisted `llm` step type.
+See the [complete persisted example](../../recipe.md#7-emit-the-actual-persisted-ibs-schema).
 
-Each component step references exactly one stable UUID. A referenced PythonCode
-may internally compose smaller components; IBS must resolve and version-pin
-the entire graph. Pure logic and Tool usages have explicit reusable contracts.
-More clear steps are preferable to hiding complex behavior in a new Rust Tool;
-add a primitive only if the existing Tools cannot provide the operation.
+A variant identifies its `variant_key`, human explanation, exact `step_link`,
+intent examples and variable patterns. Retained Recipe documents additionally
+carry per-variant `input_layouts` and supported `invocations`; these are not extra
+fields on the legacy SQL INSERT constructor. Their placement and exact shapes
+are described in [04-ibs.md](04-ibs.md).
 
-IBS reads newest activated approved versions at task start from a consistent
-catalogue snapshot and records exact UUID/version/checksum references in
-BuildInstruction. Recipes contain no version numbers. Authored replacements
-pass Q1 and human Q2; approved versions remain immutable and available for
-running/suspended tasks. New tasks select the new active versions, while current
-global Tool permission is checked before every dispatch in all tasks.
+Recipe references carry stable UUIDs, not authored version numbers. At task start
+the catalogue/IBS path selects exact immutable revisions/checksums, variant/link,
+order/layout, dependencies, usage approvals and actual Tool implementations.
+`RetainedRecipeInstruction::retained_selection` retains those component references
+and workflow metadata. The instruction itself is ephemeral, not another persisted
+instruction table. Selection records do not create approval or permission.
 
-Inputs captured from the matched user message are validated typed values.
-Recipe bindings supply step-local inputs and pass earlier result fields to later
-steps as data; they do not paste runtime strings into Python source. Monty owns
-sequencing and task context across steps, child execution and waits. The exact
-binding grammar and target inputs mapping are specified in
-[recipe.md](../../recipe.md); current source substitution and fresh-step state
-are implementation gaps, not authoring constraints.
+## 4. Ordinary behavior
 
-Tier 0 runs associated class-22 code with no LLM. Tier 1 uses only its explicitly
-wired reasoning/composition steps. Only an actual No-Match enters Tier 2; errors,
-ambiguity and begun Recipe failures stay distinct and cannot replay effects.
+1. Capture one coherent active approved catalogue for matching and assembly.
+   Match the exact Recipe variant and intent expression; reject absent/ambiguous
+   membership. Private workflows use their trusted admission contract instead.
+2. Compile the ordered instruction from immutable selected Recipe bytes. Resolve
+   dependencies and check data edges, Tool bindings, exports and applicable
+   approval/implementation evidence before allowing effects.
+3. Bind task values as typed data. Per-step inputs may use task inputs, constants,
+   supported consumer defaults or earlier result fields. Defaults apply only to
+   missing values; null and invalid values are not missing.
+4. Load selected definitions dependency-first without effects. Monty invokes
+   pinned exports, validates/retains results and decides the next selected step.
+   The current ordinary retained adapter allows one bound Tool call per executable
+   step and stop-only failure. Independent calls need separate binding/execution
+   pairs; internal code composition cannot bypass that boundary.
+5. Complete through the qualified reply/history owner. Do not publish another
+   reply or repeat a completed Tool because a downstream operation failed.
 
-## 1.1 Dual-nature syntax (human-readable + machine-readable)
+Tier 0 is qualified deterministic execution with no LLM calls. Tier 1 contains
+its declared reasoning/composition work; shell and subagent Recipes always belong
+there. Legacy maturity/Wilson fields are not retained workflow approval or a way
+to classify arbitrary work as deterministic. Only true No-Match enters Tier 2.
+Errors, disambiguation and begun failures are separate outcomes.
 
-A recipe is **dual-nature**: the same `Recipe` / `RecipeVariant` structs carry
-both natures — no separate rendering or transpilation. The `step_link` formula
-stays as-is; the dual-nature need is met by a concise **human-readable
-explanation of what happens** carried alongside the machine form.
+Publicly matched Recipes require at least ten genuine intent examples and
+positive/negative coverage for every public variant, including exact command
+syntax, separator/escaping and malformed input boundaries. Private workflows
+qualify trusted typed admission rather than fabricating public commands. MCP
+publication separately requires a qualified command Recipe/variant.
 
-- **Machine-readable exact logic (deterministic, never changed by Step B):**
-  `RecipeVariant.step_link` + `Recipe.step_descriptions` → IBS
-  `build_instruction` → `BuildInstruction` (`rust_steps` + `orchestrator_steps`).
-- **Human-readable explanation (concise — "what happens", not too much detail):**
-  `Recipe.description` (recipe-level), `RecipeVariant.description`
-  (variant-level — added in Phase HI / Step B), `StepDescriptionEntry.label` +
-  `StepEntry.goal` (step-level).
-- **Q1 gate (Phase HI / Step B):** a v3-migrated variant (`step_link` present) MUST have a
-  non-empty `RecipeVariant.description` (≤ 512 chars); legacy variants
-  (`step_link == None`) are exempt. Enforced in
-  `RecipeValidator::validate_recipe` (`check_variant_descriptions`).
-- **Read surface:** `RecipeDetail.recipe` is opaque full-engine JSON, so new
-  variant fields ride along to the WebUI with no DTO recompile. No WebUI
-  recipe-authoring route exists yet (future work).
+## 5. Review, successors and compatibility
 
-## 2. Location
+The [own-functional approval successor](../../skills.md#own-functional-approval-and-successor-compatibility)
+is a binding target, not an already general publication API. A new/changed Recipe
+validates its own supported variants, effects, data handoffs, failures and
+completion. It does not reapprove unchanged qualified components. Skill/code
+functions have their own joint review subject; independent pure steps need their
+own applicable evidence.
 
-- **Data types:** `crates/brassclaw_engine/src/types/recipe.rs` (`Recipe`, `RecipeStep`,
-  `RecipeVariant`, `ToolSkill`, `RecipeTrigger`, `RecipeValidation`, `ValidationStatus`,
-  `RecipeSource`).
-- **Production store (Postgres, class 21):** `crates/brassclaw_reborn_composition/src/pg_recipe_store.rs`
-  (`PgRecipe`, `NewPgRecipe`, `PgRecipeStore`, `RECIPE_SELECT`, `decode_recipe_row`,
-  `PgRecipeLibrary`, `PgRecipeStoreFacade`).
-- **Composition system (split + assemble):** `crates/brassclaw_engine/src/memory/composition.rs`
-  (`ComposedProgram`, `compose_program`, `ComponentResolver`, `MapComponentResolver`) and
-  `crates/brassclaw_reborn_composition/src/pg_composition_port.rs` (`PgCompositionPort` — the
-  engine `CompositionPort` impl that runs the 8-step compose pipeline against Postgres).
-- **Legacy MemoryDoc-backed store (slated for Phase K deletion):**
-  `crates/brassclaw_reborn_composition/src/recipe_store.rs` (`StoreBackedRecipeStore`),
-  `crates/brassclaw_reborn_composition/src/recipe_library.rs`.
-- **Migrations:** `V033__reborn_recipes.sql` (create, class 21), `V050__reborn_recipe_step_descriptions.sql`
-  (adds the three v3 authoring columns), `V046` (Solution Override columns),
-  `V061`/`V064` (component-registry touch-ups).
-- **Spec:** §3.3, §3.5/§3.5.1 (validation lifecycle), §3.6 (Wilson scoring), §3.7 (class 21),
-  §3.9 (consumer_tags), §3.12 (intent_examples), §3.13/§3.14 (Solution Override).
+Existing exact authored association profiles and complete-Recipe deployment keep
+their actual supported meaning until connected successor cutover. Controlled S
+bootstrap separately requires noncircular integrity/Q1/behavior qualification;
+`source='system'` alone supplies none of it. Installed authored edits require
+human Q2. Preserve operator overrides and historical approved bytes.
 
-## 3. Data model
+Compatible A successors preserve required consumer contracts without new approvals
+for unchanged consumers. New tasks select the coherent active successor graph;
+running, child, waiting and resumed tasks keep their exact original selection and
+artifacts. Unsupported newest combinations fail before effects; do not downgrade
+silently or rematch after failure.
 
-### `reborn_recipes` (V033, class 21)
+## 6. Legacy paths and remaining work
 
-| Column | Idx | Type | Notes |
-|--------|-----|------|-------|
-| `id` | 0 | UUID PK | `gen_random_uuid()` |
-| `tenant_id`,`user_id`,`agent_id`,`project_id` | 1–4 | TEXT NOT NULL | scope tuple |
-| `name` | 5 | TEXT NOT NULL | kebab-case `^[a-z0-9]…$`, 1–64; unique per scope |
-| `description` | 6 | TEXT NOT NULL | 1–1024 |
-| `trigger` | 7 | JSONB | `{type: exact\|pattern\|keyword, …}` |
-| `steps` | 8 | JSONB NOT NULL DEFAULT '[]' | ordered legacy step array |
-| `status` | 9 | TEXT default 'active' | active/archived/draft |
-| `prior_knowledge_content` | 10 | TEXT | §3.13/§3.14 Solution Override (used verbatim instead of assembling from steps); added V046 |
-| `override_prompt_creation` | 11 | BOOL default false | enables the Solution Override path; added V046 |
-| `class_code` | 12 | SMALLINT default 21 | `CHECK = 21` |
-| `prompt_uid` | 13 | BIGINT | monotonic sequence → deterministic assembly order |
-| `consumer_tags` | 14 | TEXT[] default '{}' | `^[0-9]{2}(:[a-z0-9-]+)?$`; `05:validator` greys out others until validated |
-| `intent_examples` | 15 | JSONB | `[{input, class:1\|2\|3}]` for the intent system (§3.12). **Publicly matched Recipes require ≥10 intent examples per recipe.md §3**, covering command and natural-language forms and positive/negative cases per variant. Private workflows qualify their actual trusted typed admission instead (no fabricated public intents). |
-| `tier` | 16 | TEXT default 'seedling' | seedling/growing/mature/candidate (maturity) |
-| `usage_count`,`success_count`,`failure_count` | 17–19 | INT | Wilson inputs |
-| `wilson_lower` | 20 | FLOAT8 default 0.0 | Wilson lower bound at last recompute |
-| `validation_status` | 21 | TEXT default 'pending' | pending/auto_passed/auto_failed/validated/review_requested/rejected/garbage/upgrade_queued |
-| `validation_errors` | 22 | TEXT[] | `[]` — **legacy queue col (Phase N drop pending)** |
-| `review_feedback` | 23 | TEXT | **legacy queue col (Phase N drop pending)** |
-| `review_attempts` | 24 | SMALLINT default 0 | **legacy queue col (Phase N drop pending)** |
-| `rejected_at` | 25 | TIMESTAMPTZ | **legacy queue col (Phase N drop pending)** |
-| `queue_code` | 26 | TEXT | q1_auto/q2_manual/q3_revision/q4_rejection/garbage — **legacy queue col (Phase N drop pending)** |
-| `source` | 27 | TEXT default 'authored' | authored/extracted/migrated/imported/system — **no CHECK** (V066 widened the CHECK on `reborn_tools`/`reborn_skills` only; `reborn_recipes` never had one, so `'system'` works for the C.2 builtin seeder) |
-| `content_hash` | 28 | TEXT | |
-| `created_at`,`updated_at` | 29–30 | TIMESTAMPTZ | `set_updated_at()` trigger |
-| `step_descriptions` | 31 | JSONB | the authored `StepDescription` array (§0.4.1, the IBS authoring model) — **added V050** |
-| `variants` | 32 | JSONB | `Vec<RecipeVariant>` — variant_key, step_link, intent_examples, nested variable_patterns (§0.16.1). **Recipe-specific; no other component table has this column. Added V050.** |
-| `dependency_registry` | 33 | JSONB | the component dependency-graph entry (§0.19) — **added V050** |
-| `input_layouts` | (persisted in the Recipe document, not a separate DB column) | JSONB | maps each variant key → step local input bindings (`recipe-input-layout/1` format: `task_inputs` + `steps` map of `step_id → {local_name: {kind, value}}`). Required in the persisted Recipe document per recipe.md §7. |
-| `invocations` | (persisted in the Recipe document, not a separate DB column) | JSONB | maps each variant key → step ID → export function name (e.g. `{"fixed-reply": {"0:2": "publish_turn_reply"}}`). Required in the persisted Recipe document per recipe.md §7. |
+The mutable SQL projection, legacy `RecipeStep { skill, tool, params, description }`,
+Wilson scoring and legacy `compose_program` are distinct from immutable retained
+workflow selection. Legacy source substitution and prompt-hint execution are not
+the v3 authoring interface. Do not activate the old `ExecutionLoop` bridge as a
+replacement for ordinary global execution.
 
-Unique: `(scope, name)`. Indexes: scope, scope+status, scope+prompt_uid (assembly order),
-`consumer_tags` GIN, partial `WHERE validation_status='validated'` on (scope, tier). (The
-`consumer_tags` format CHECK was removed — PG16 disallows subqueries in CHECK; enforced at the
-app layer.) The five per-table queue columns (22–26) are **still present** — the V072–V075 drops
-hit `reborn_skills`/`reborn_actions`/the memory-class tables/`reborn_extensions_unified` only;
-`reborn_recipes` was not touched. Their removal (and the positional re-index of
-`decode_recipe_row`) is **Phase N**, still pending (next migration V076+).
-
-### Rust types (`types/recipe.rs`)
-
-- `Recipe` — ordered ToolSkill invocations + trigger + Wilson metrics + lifecycle + the v3
-  authoring fields `variants: Vec<RecipeVariant>`, `step_descriptions: serde_json::Value`,
-  `dependency_registry` (raw JSONB). `is_tier0_eligible()` = tier `mature`/`candidate` **and**
-  `Validated` **and** `wilson_lower ≥ 0.70` **and** `validation != None`.
-- `RecipeVariant` — `variant_key`, `step_link` (the machine-readable IBS formula), `description:
-  Option<String>` (the Phase HI human-readable explanation), `intent_examples`, nested
-  `variable_patterns`.
-- `RecipeStep` (legacy data model) = `{ skill: String, tool: String, params: Value, description: String }`
-  — references a `ToolSkill` by name; `tool` denormalized for cheap lookup; `params` are Tier-0
-  overrides; `description` is the Tier-1 prompt-injection text. **This is the old v2 Rust struct,
-  not the v3 IBS authoring format.** The v3 authoring format is the `step_descriptions` JSONB
-  (`StepDescriptionEntry` containing `steps` with `knowledge`, `stepnumber`, `type`, `include`
-  — one UUID per component step, per recipe.md §7 and `04-ibs.md`). Do not conflate the two.
-- `ToolSkill` = tight description of one tool-usage pattern; target < 5000 tokens
-  (agentskills.io progressive disclosure; `RecipeValidator` enforces the ceiling). Fields include
-  `param_template`, `param_schema: Vec<ToolSkillParam>`, `preconditions`, `error_handling`,
-  `code_snippet`, Wilson metrics, tier.
-- `RecipeTrigger` (`tag="type"`): `Exact { command }` | `Pattern { patterns }` (human-authored
-  only — LLM regex is a ReDoS risk; validator blocks extracted recipes) | `Keyword { keywords,
-  threshold }`. Has `signature()` (duplicate detection) and `trigger_tokens()` (FTS/Jaccard).
-- `RecipeValidation` (`tag="type"`): `None` | `ShellCheck { command }` | `FileExists { path }` |
-  `Custom { code }` — runs after a recipe executes.
-- `ValidationStatus`: `Pending → AutoPassed/UpgradeQueued → Validated` (or `Rejected` after 3
-  failed review cycles, then `Garbage` after the 30-day re-review window).
-- `RecipeSource`: `Extracted` (default, lifted from a successful thread) | `Authored` |
-  `Imported`.
-- `recipe_to_memory_doc` / `tool_skill_to_memory_doc` — the **legacy** MemoryDoc round-trip
-  (the v2 design stored both as `MemoryDoc`; the production path now uses the dedicated
-  `reborn_recipes` table via `pg_recipe_store.rs`).
-
-### Production store round-trip (`pg_recipe_store.rs`)
-
-- `PgRecipe` — fully decoded row (34 fields, incl. `step_descriptions`/`variants`/
-  `dependency_registry` as `Option<Value>`); `has_validator_tag()`, `is_deliverable()` (validated
-  + no `05:validator` tag, §3.9 SEC-01), `is_tier0_eligible()` (deliverable + tier mature/candidate).
-- `NewPgRecipe` — insert payload (scope, name, description, trigger, steps,
-  prior_knowledge_content, override_prompt_creation, consumer_tags, intent_examples, source,
-  step_descriptions, variants, dependency_registry).
-- `RECIPE_SELECT` — canonical **34-column** list (indices 0–33); the three V050 columns are
-  appended at 31/32/33 so the existing `row.get(0..30)` base stays in place.
-  `decode_recipe_row` reads positionally `row.get(0..=33)`.
-- `PgRecipeStore::insert` writes the three v3 columns at `$14/$15/$16` (`RETURNING id`); `get`
-  (by id+scope), `get_by_name`, …
-- `PgRecipeLibrary` / `PgRecipeStoreFacade` — the loop adapter + the WebUI v2 `RecipeStore` port
-  facade (the production path; the legacy `StoreBackedRecipeStore` is `#![allow(dead_code)]` with
-  `TODO(Phase K): delete this entire module`).
-
-## 4. Behavior / flow
-
-1. **Author/seed:** a recipe is authored in the WebUI (source `authored`), seeded by the C.2
-   builtin bootstrap (source `system`) — the `host.*` builtins + their leaf Skills are seeded as
-   validated system rows — or extracted from a successful thread (source `extracted`). New rows
-   start `validation_status='pending'` with `05:validator` in `consumer_tags`.
-2. **Match:** Monty calls `host.resolve_intent(user_input)`; the intent system returns a `Match`
-   carrying `component_id`, `component_class_code=21`, `step_link`, and `component_name`. (See
-   `02-intent-system.md`.)
-3. **Compose:** Monty calls `host.compose_orchestrator(component_id, step_link, user_input)`. The
-   **composition system** (`PgCompositionPort::compose_program` / `compose_program` in
-   `composition.rs`) fetches the recipe by id, matches the variant on `step_link`, resolves every
-   step's `include` UUIDs against the component tables, and splits the result into:
-   - **`rust_directives`** — ToolSkill / Rust-plugin bodies for the **Rust executioner** (loaded
-     as a dynamic cdylib plugin at runtime, a C.5/C.6 concern), and
-   - a returned **orchestrator program** — concrete per-step Python for Monty, plus the **skills
-     array** (leaf Skill usage docs) Monty consults while stepping, so the step list itself need
-     not carry that level of detail.
-   See `04-ibs.md` (the IBS `build_instruction` that compiles `step_link` + `step_descriptions` +
-   variable patterns into the `rust_steps` + `orchestrator_steps` channels).
-4. **Step + run:** Monty steps through the orchestrator program, calling `host.run_program` per
-   step (the dynamically-provided code string, with prompt variables like paths bound in). The
-   Rust executioner services every concrete tool call under the mandatory orchestrator-command-
-   driven rule (`12-agent-loop.md`). Dispatch is tiered:
-   - **Tier 0** (`is_tier0_eligible`): deterministic execution, **no LLM call**
-     (`tier_zero: true` pkr signal).
-   - **Tier 1** (matched, not Tier 0): the orchestrator items inject known-good patterns into the
-     assembled prompt; the Sempai interceptor reviews; the LLM is called guided by the recipe.
-   - **Tier 2** (no match): Non-Matching-Mode — normal prompt assembly + full LLM reasoning; on
-     success, extraction lifts the thread into a new Recipe + ToolSkill pair.
-5. **Validate & graduate:** the 4-queue lifecycle (Q1 auto / Q2 manual / Q3 revision / Q4
-   rejection) gates the recipe; `auto_passed → validated` removes `05:validator`. Wilson score +
-   tier are recomputed from `usage/success/failure`. See `14-validation-queue.md`.
-6. **Solution Override:** if `override_prompt_creation=true` and `prior_knowledge_content` is
-   non-NULL, the recipe's prior-knowledge text is used verbatim instead of assembling from steps
-   (§3.13/§3.14) — the Solution-Override LLM path.
-
-> **Production path note.** The Tier-0 deterministic path is **active today** via the turns
-> `PgOrchestratorLookup` bridge (wrapping `TierZeroOrchestrator::run_tier_zero`). The
-> engine-resident Monty VM `execute_orchestrator` host-call path that hosts the
-> `host.compose_orchestrator` → `host.run_program` loop is **wired at the host-call layer**
-> (composition core + `PgCompositionPort` + the orchestrator dispatch arms) but the VM itself is
-> **dormant in production** — no `ThreadManager`/`ConversationManager` is constructed by
-> `build_reborn_runtime`. Activating that VM (and the dynamic cdylib tool loading) is the **C.5/C.6
-> driver** step.
-
-## 5. Relations
-
-- **Intent System** (`02-intent-system.md`): a `Match` (class 21, with `step_link`) selects a
-  recipe and hands its id + step_link to `host.compose_orchestrator`.
-- **IBS** (`04-ibs.md`): `build_instruction` turns the recipe's `step_link` + `step_descriptions`
-  into the two-channel `BuildInstruction` (`rust_steps` + `orchestrator_steps`).
-- **Composition System** (`composition.rs` / `pg_composition_port.rs`): the engine `CompositionPort`
-  impl that fetches + matches the variant + resolves includes + splits rust/orchestrator and
-  returns the per-step program + skills array to Monty.
-- **Skills / Tools / PythonCode** (`05`/`06`/`07`): step `include` UUIDs reference ToolSkills
-  (class 13), Skills (class 1/10), PythonCode (class 22), etc. Skills ride along as the array
-  Monty consults while stepping.
-- **Validation Queue** (`14-validation-queue.md`): the Q1/Q2 graduation + Wilson scoring (the five
-  per-table queue columns are still on `reborn_recipes` pending Phase N).
-
-## 6. Status — shipped vs. pending
-
-**Shipped:**
-- `reborn_recipes` (V033) and the production `pg_recipe_store.rs` round-trip
-  (`PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT` 34 cols/`decode_recipe_row`/`PgRecipeStore`/
-  `PgRecipeLibrary`/`PgRecipeStoreFacade`), incl. the three V050 authoring columns
-  (`step_descriptions`/`variants`/`dependency_registry` at indices 31–33, INSERT `$14–$16`).
-- `Recipe`/`RecipeVariant`/`RecipeStep`/`ToolSkill` data types (`types/recipe.rs`), with
-  `is_tier0_eligible()`; `Recipe.variants: Vec<RecipeVariant>` + `step_descriptions` +
-  `dependency_registry` (raw JSONB).
-- **Phase A (V050):** `step_descriptions` + `variants` + `dependency_registry` JSONB columns +
-  the full store round-trip (so the WebUI authoring path can read/write them).
-- **Phase HI / Step B:** `RecipeVariant.description` + the Q1 `check_variant_descriptions` gate
-  (v3 variants require a human-readable explanation; legacy `step_link == None` variants exempt).
-- **C.2 builtin bootstrap:** system recipes + the `host.*` Tool rows + their leaf Skills seeded
-  as validated `source='system'` rows (no source CHECK needed on `reborn_recipes`).
-- **C.4.5.17 composition system:** `compose_program` + `PgCompositionPort` (engine
-  `CompositionPort`) + the `host.compose_orchestrator`/`host.run_program` orchestrator arms.
-- The Tier-0 deterministic path **active** via the turns `PgOrchestratorLookup` bridge.
-
-**Pending:**
-- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
-  activate the engine-resident Monty VM so the `host.compose_orchestrator` → `host.run_program`
-  loop runs in production; wire dynamic cdylib tool loading for `rust_directives`. V35-05 owns
-  retained selection / typed preload / export selection acceptance. V35-13/14 own dynamic
-  occurrence support (checksummed branches, item bindings, repeated selected usages).
-- **Phase N (V076+):** drop the five per-table queue columns (`validation_errors`=22,
-  `review_feedback`=23, `review_attempts`=24, `rejected_at`=25, `queue_code`=26) in favor of the
-  central `reborn_validation_queue` (V051); **re-index `decode_recipe_row`** positionally
-  (`source` 27→22, `content_hash` 28→23, `created_at` 29→24, `updated_at` 30→25,
-  `step_descriptions` 31→26, `variants` 32→27, `dependency_registry` 33→28).
-- **Phase K:** delete the legacy `StoreBackedRecipeStore` (MemoryDoc) dead code.
-- **Future:** a WebUI recipe-authoring route (the read surface already rides along via opaque
-  `RecipeDetail.recipe`).
+General independent pure approval/publication, broader own-functional successor
+readers, full-library migration, qualified dynamic occurrences and durable recovery
+remain with existing owners. V35-03/04 consume pure approval; V35-13/14 own remaining
+occurrence support; V35-05/06 qualify reference workflows using retained support.
+Use current owner evidence rather than old Phase N migration-number predictions.
+Class-50 Scaffold is historical storage, not a new validator or protected root;
+future-use flows use normal Recipes while preserving old UUIDs/pins.
 
 ## 7. LLM-relevant summary
 
-A recipe (class 21) is a trigger + ordered steps; each step names the skills/tools/Python code to
-preload and how to run them. Recipes are Wilson-scored and tiered (seedling/growing/mature/
-candidate). On an intent `Match`, Monty calls `host.compose_orchestrator(component_id, step_link,
-user_input)`; the composition system fetches the recipe, matches the variant, resolves `include`
-UUIDs, and returns concrete per-step Python + a skills array; Monty steps through it via
-`host.run_program`. Tier 0 (mature/candidate + validated + wilson ≥ 0.70 + a validation hook) runs
-with no LLM; Tier 1 injects known-good patterns into the prompt; Tier 2 is full LLM reasoning and
-can extract a new recipe on success. The production store is `pg_recipe_store.rs`
-(`PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT` 34 cols/`decode_recipe_row`); the three v3 authoring
-columns (`step_descriptions`/`variants`/`dependency_registry`, V050) + `RecipeVariant.description`
-(Phase HI) + the C.2 system seed + the C.4.5.17 composition system are shipped. Pending: Global
-Monty VM activation (path_to_v3.5.md V35-01/V35-05; simplified_v3.md Phase 3a), and Phase N (drop
-the five legacy queue columns + re-index the decoder).
+A Recipe assembles reusable usages and pure exports with typed data and exact
+retained identities. ToolSkill binding executes nothing; Monty invokes the
+selected class-22 export and the kernel checks every real dispatch. Tier 0 is
+model-free; Tier 1 has explicit model work. Only No-Match enters Tier 2. Preserve
+original selections/results and effect certainty across waits, cancellation and
+successors; approval, activation and live Tool permission remain distinct.

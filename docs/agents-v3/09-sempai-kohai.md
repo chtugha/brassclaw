@@ -323,8 +323,9 @@ the Executioner on `host.*` calls (not in the prompt bundle at all).
 
 ### 4.5 New-component-creation process (f8)
 
-The Sempai is the **only** path by which the running system invents new components. The loop,
-per component class:
+This historical section describes Sempai proposals; it is not an exclusive
+component-authoring API. Operator-authored changes use the supported authoring/
+review owners too. The historical proposal sequence, per component class:
 
 1. **Observe** — during a rerouting review the Sempai sees the turn's composition plan +
    outcome and decides a new/revised component would help.
@@ -347,7 +348,10 @@ per component class:
    composition `include` UUIDs).
 
 The Sempai never bypasses validation — every invented component is a draft through the same Q1/Q2
-gate an authored component passes. Builtins (`source='system'`) skip Q2 but not Q1.
+gate an authored component passes. Controlled shipped S qualification uses its
+separate noncircular integrity/Q1/behavior path, without installed human Q2. A
+`source='system'` label cannot supply provenance; installed edits still require
+authored human review. See [the exact approval distinction](05-skills-system.md#5-approval-paths-and-supported-profiles).
 
 ## 5. Relations
 
@@ -384,18 +388,30 @@ gate an authored component passes. Builtins (`source='system'`) skip Q2 but not 
 - The proposals are produced **inline** during the rerouting review (not a separate idle-time
   sweep).
 
-**Pending:**
-- **Idle-time self-optimization:** the live inline proposal mechanism is the foundation; a
-  background Sempai-driven refresh loop (re-deriving/optimizing components and the converted
-  documentation — see `DOC_CONVERSION_MECHANISM_DESIGN.md`) extends it to true idle-time
-  operation rather than turn-coupled review.
-- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
-  the engine Monty VM host-call path that the interceptor's `PromptStage`/`ModelStage` feed is
-  inert in production until the remaining acceptance gates are met. The active production path
-  is the TURNS `PgOrchestratorLookup` bridge.
-- **Prefix runtime cutover:** `SempaiReviewOutcome` returns `adjusted_volatile_messages`/
-  `bridge_messages` (historical shape); the required conversion to returning the final dynamic
-  prompt string is owned by the [Prefix plan](../plans/prefix_v3_upgrade.md) (V35-20).
+**Current follow-up ownership — checked 2026-11-15:**
+
+- **Ordinary global execution already exists:**
+  [runtime.rs](../../crates/brassclaw_reborn_composition/src/runtime.rs) supplies
+  `GlobalMontyDriver`, with `orchestrator_lookup: None` for ordinary work.
+  The older stage-pipeline description above is compatibility history, not a
+  missing global VM to activate. See [12-agent-loop.md](12-agent-loop.md).
+- **Review conversion and qualification:** follow the existing Sempai/validator
+  owners and V35-09–19/28 in [path_to_v3.5.md](../../path_to_v3.5.md). Pre-call
+  correction and eligible No-Match post-turn analysis have distinct inputs and
+  completion contracts. A wrapper Recipe or native reconciliation is not proof
+  that business policy has moved into qualified PythonCode.
+- **Prefix runtime handoff:** the historical `SempaiReviewOutcome` adjusted-message
+  shape does not establish the required final-dynamic-prompt return or exact
+  prefix join. Qualification/Serving boundaries stay with the
+  [Prefix plan](../plans/prefix_v3_upgrade.md) and current implementation evidence,
+  including V35-20. Do not reformat Sempai's returned final prompt.
+- **Documentation refresh:**
+  [doc_sync_watcher.rs](../../crates/brassclaw_reborn_composition/src/doc_sync_watcher.rs)
+  and [webui.rs](../../crates/brassclaw_reborn_composition/src/webui.rs) contain
+  compatibility file/DB-event wiring. This is not an idle-time optimization
+  promise or qualification of the historical doc-sync graph against the current
+  preload/approval contracts. See the
+  [historical conversion design](DOC_CONVERSION_MECHANISM_DESIGN.md).
 
 <a id="7-llm-relevant-summary"></a>
 

@@ -1,235 +1,125 @@
-# BrassClaw Reborn — Agents v3 System Documentation
+# Agents v3 documentation
 
-## Binding prefix and prompt assembly order — 2026-10-27
+This directory explains component authoring, retained execution and related
+compatibility code. The source maps listed as reconciled below were checked on
+2026-11-15. A documentation status is not component approval, deployment or
+full-v3 acceptance.
 
-The [four-rule contract](../reborn/model-token-limits.md#prefix-selection-pair-design-and-assembly--binding-target-2026-10-26)
-supersedes earlier prompt/prefix sequences in this documentation and its historical
-subplans. Generate and immutably store the finished prefix for the concrete
-provider/model pair. Generator, Kohai and Sempai use the same saved accepted design
-revision whenever they target that same pair; role-specific prefix content remains
-separate.
+## Authority and how to read this set
 
-Kohai first formats only the dynamic Orchestrator prompt for the final target pair.
-If Sempai is connected/enabled, it corrects that already formatted prompt using its
-own generated reviewer prefix and its own target-pair design, then returns the
-final dynamic prompt to Kohai. Kohai inserts the intended finished prefix unchanged
-and exactly once before that prompt, without formatting Sempai's return again.
-Without Sempai, the initially formatted dynamic prompt is the final one.
-The complete-request guard follows assembly. The
-[Prefix plan](../plans/prefix_v3_upgrade.md) owns the remaining implementation;
-historical completion marks below do not establish that serving cutover.
+1. [recipe.md](../../recipe.md), [skills.md](../../skills.md),
+   [tools.md](../../tools.md) and [toolskills.md](../../toolskills.md) govern
+   component semantics, persisted schema, typed interfaces, approval, binding and
+   native execution. Applicable later binding amendments retain their precedence.
+2. [simplified_v3.md](../../simplified_v3.md) governs runtime/authorization targets;
+   [path_to_v3.5.md](../../path_to_v3.5.md) assigns forward work and acceptance
+   handoffs to existing owners. A plan requirement is not implementation proof.
+3. [The implementation index](../implementation-status.md), its exact scoped
+   receipts and actual current callers establish implemented/accepted boundaries.
+   Preserve historical evidence with its original source/artifact/configuration
+   scope. Source existence alone is not runtime or installed-instance evidence.
+4. These subsystem guides summarize and link to those authorities. They cannot
+   override them. Historical examples and older subplans are compatibility context,
+   not alternate schemas, approval mechanisms or future execution architectures.
+   [The development policy](../development-policy.md) governs development checks.
 
-## Binding Recipe architecture (v3)
+Ordinary PostgreSQL/skills-db startup already wires one global Monty service and
+`GlobalMontyDriver`. Recipes and pinned exports own task sequencing; Rust owns
+primitives, integrity, authority, transport, accounting and effect custody. Only
+actual No-Match enters Tier 2. Runtime values are typed data, not Python source.
+ToolSkill binding performs no operation and grants no permission. New tasks select
+coherent active approved successors; existing tasks keep exact original pins.
 
-Read [recipe.md](../../recipe.md) before authoring or changing components. This contract
-supersedes older examples below where they conflict; it specifies the target,
-not completed runtime or database functionality.
+## Documentation map
 
-- Rust Tools supply primitives; many ToolSkills describe their IBS bindings;
-  many Skills explain one Tool usage and have associated executable PythonCode;
-  many small PythonCode components provide reusable executable building blocks.
-  Recipes tell the orchestrator how to use them to fulfill task goals. Prefer
-  explicit reusable steps, not fewer steps or specialized Rust workflow Tools.
-- Each Recipe component step references exactly one stable component UUID.
-  PythonCode may internally compose smaller PythonCode components; this is not
-  a multi-component Recipe step. Keep all independent Tool calls in separate
-  execution steps; the existing direct dependent-chain exception still applies.
-- IBS/composition reads the newest activated, approved versions at task start
-  from one consistent catalogue snapshot and pins exact UUID/version/checksum
-  references in BuildInstruction, including nested dependencies. Recipes carry
-  no version numbers. Execution, child steps, waits and resumption retain that
-  selection; do not look up latest again during the task.
-- Approved versions are immutable. Changes create new versions; authored
-  versions pass Q1 and human Q2 before activation. Replacement neither deletes
-  nor invalidates originals used by running/suspended tasks. Current global
-  Tool policy is checked independently before every dispatch.
-- Inputs and results are typed data. Use the exact input-reference grammar and
-  step-local binding convention in recipe.md. Runtime values never become
-  Python source. Monty owns each task's intermediate results; unrelated tasks
-  and attempts stay isolated, including across child execution and waits.
-- Rust-channel ToolSkill binding executes nothing and grants no permission.
-  Orchestrator-channel PythonCode calls `host.<tool>(...)`. Only an actual
-  No-Match enters Tier 2; errors or begun Recipe failures never replay there.
+| Guide | Reading scope |
+| --- | --- |
+| [01 — Architecture](01-architecture-overview.md) | Reconciled source map: global lifecycle, component ownership and ordinary execution. |
+| [02 — Intent](02-intent-system.md) | Reconciled source map: captured eligible catalogue matching, current result types, explicit error boundary. |
+| [03 — Recipes](03-recipe-system.md) | Reconciled authoring/source map: variants, typed handoffs, workflow qualification and retained selection. |
+| [04 — IBS](04-ibs.md) | Reconciled source map and partial design example: ordered IBS, exact layouts, exports, binding and stop-only support. |
+| [05 — Skills](05-skills-system.md) | Reconciled interface/approval map: one-Tool usage, preload, current exact profiles and the own-functional successor. |
+| [06 — Tools](06-tools-system.md) | Reconciled source map: primitive/native identity, registration, approval, live policy and effects. |
+| [07 — PythonCode](07-pythoncode-system.md) | Reconciled source map: declarations, inspected exports, pure logic and evidence limits. |
+| [08 — Actions](08-actions-system.md) | Older Action/step-machine compatibility walkthrough; verify its actual callers before reuse. It is not the retained Recipe execution specification. |
+| [09 — Kohai/Sempai](09-sempai-kohai.md) | Binding prompt handoff and construction successor, with a separately labelled historical interceptor walkthrough. |
+| [10 — Prefix](10-prefix-base-prompt.md) | Binding selection/design/construction contracts; historical placeholder/store/prewarm descriptions are not Serving acceptance. |
+| [11 — Retrieval](11-retrieval-system.md) | Older retrieval/UNION/loop-bridge map; use 02/12 for ordinary captured routing and global execution. |
+| [12 — Turn driver](12-agent-loop.md) | Reconciled source map: actual worker/global driver, task custody, shutdown and live resource contract. |
+| [13 — Legacy orchestrator](13-orchestrator-default-py.md) | Historical compose/run script and compatibility context; ordinary retained execution is documented in 01/04/12. |
+| [14 — Validation](14-validation-queue.md) | Reconciled evidence/queue map: actual producers, incomplete qualification, human review, class labels and release-reference scope. |
+| [15 — Component catalogue](15-component-catalog.md) | Older storage/taxonomy walkthrough; current definitions and approval/selection rules are in the four component guides. |
+| [16 — Kernel/composition](16-kernel-composition.md) | Older integration/source walkthrough; verify current runtime wiring and policy through 01/06/12 and the owning contracts. |
+| [17 — Prefix UI](17-webui-prefix-tab.md) | Prefix contract plus historical UI/store details; current Serving/Generate acceptance remains with the Prefix owner. |
+| [Conversion design](DOC_CONVERSION_MECHANISM_DESIGN.md) | Historical design/decisions plus a verified compatibility-source map, not a qualified current conversion workflow. |
 
-The legacy composer still contains source-substitution and historical step-body
-paths. Ordinary PostgreSQL/skills-db execution uses immutable retained selections,
-typed inputs, checked single-component steps and preloaded exports on the global
-Monty service. Full-library migration, general pure approval, dynamic occurrences
-and durable recovery remain open; see the current implementation status index.
+The older sibling walkthroughs and named `subplan_*` files preserve historical
+context. Their completion marks are not a second status authority. Follow the
+current source maps and owning contracts when a legacy execution description
+conflicts. Migration/support gaps stay explicit with their existing owner.
 
-## Binding Skill definition (v3)
+## Component reuse and review
 
-A **Skill** is one reusable tool-usage pattern for the Orchestrator. It comprises
-**both prose instructions and explicitly associated executable PythonCode**:
-the prose explains purpose, parameters, prerequisites and result/error handling;
-the PythonCode implements that usage. “Leaf Skill” means this same unit, not a
-different kind of Skill. A broader domain or multi-tool overview belongs to an
-**Extension**, documented by its ExtensionCatalogue; a **Recipe** defines the
-ordered workflow and references reusable components by UUID.
+A Skill comprises prose and an explicitly associated preloadable function
+interface for one Tool usage. A Recipe provides ordering/data flow; pure PythonCode
+needs no artificial Skill/ToolSkill. Each component step references one stable UUID
+using persisted `knowledge` and `stepnumber` fields. Preload selected definitions
+without effects, dependency-first with stable-UUID ties. Mutable data is isolated.
 
-**Tool + ToolSkill belong to the Rust side.** The Tool provides the primitive;
-the ToolSkill describes its IBS binding. Binding executes nothing and grants no
-permission. The Orchestrator executes the associated PythonCode, which calls
-`host.<tool>(...)`; the kernel checks the current global tool policy.
+Current exact authored profiles retain their supported meaning. The binding
+own-functional A successor reviews Skill/implementation together with separate IDs,
+unchanged approved prerequisite context and human Q2; broader publication remains
+an existing-owner cutover. Controlled S qualification independently qualifies Tool,
+ToolSkill, then Skill/code and consuming workflows with integrity/Q1/behavior and
+null human Q2. Labels never select S. Approval, activation, task selection and
+current global Tool permission are separate.
 
-**Storage is not the definition:** today Skill prose is stored in `reborn_skills`
-(classes 1–3), while executable code is stored separately in `reborn_python_code`
-(class 22). The current composer emits `SkillRef.body` and
-`ComposedStep.executable_code` separately. The target requires an explicit,
-validated UUID/revision association between the two parts; separate rows are
-permitted and do not make the Skill prose-only. A code example inside prose is
-documentation, not an implicit executable entry point. The class labels
-`skill_rusty`, `skill_monty`, `skill_llm` are existing consumer classifications,
-not leaf/domain hierarchy levels. Classes 10 and 50 are Orchestrator/Scaffold
-records sharing the table, not additional tool-usage Skill types.
+Ordinary retained Tool steps currently permit one bound dispatch and stop-only
+failure. A parsed retry declaration, helper include or historical enum does not
+supply broader execution support. Preserve completed/unresolved effects and
+original selections across waits and failure. See [04](04-ibs.md), [05](05-skills-system.md)
+and [14](14-validation-queue.md) for the verified interfaces and owning limits.
 
-**Execution and validation:** deterministic Tier-0 execution uses the associated
-PythonCode without an LLM interpreting prose. Tier 1 can use the prose in its
-explicit LLM steps. Prose must never be executed as Python. ToolSkill UUIDs stay
-in `channel:"rust"`; executable PythonCode UUIDs stay in
-`channel:"orchestrator"`. Q1/Q2, isolation between unrelated tasks/attempts and the existing dependent-chain
-exception remain applicable. Monty preserves needed state within each Recipe. This documentation change does not implement a
-new database schema, association editor or runtime path.
+## Relationship to forward work
 
+Use the roadmap's actual [owner handoffs](../../path_to_v3.5.md#ongoing-plan-handoffs-not-parallel-implementations):
 
-> **Purpose.** This directory is the authoritative, human-readable documentation set for the
-> **agents v3 system**: every system, subsystem, functionality, skill kind, recipe/tool
-> construct, and the supporting kernel/composition/WebUI surface that together make up the
-> v3 agent. It is written to be **grounded in the real codebase** (`crates/…`) and the v3
-> implementation plan (`./saved_plan_to_v3.md`), and to be **machine-convertible** into
-> LLM-optimized form by the documentation auto-conversion mechanism (see
-> `DOC_CONVERSION_MECHANISM_DESIGN.md`).
->
-> **Scope vs. existing docs.** The repo already has rich per-subsystem contracts under
-> `docs/reborn/contracts/` and architecture notes under `docs/reborn/`. Those describe the
-> *current* runtime. This `docs/agents-v3/` set is **v3-grounded**: for each topic it states
-> (a) what is **shipped** in the codebase today, (b) what **remains pending** in the v3 plan,
-> and (c) the **LLM-relevant summary** that the conversion mechanism will distill into the base
-> prompt / prefix cache / on-demand context. Where a `docs/reborn/contracts/*` contract already
-> covers a subsystem authoritatively, this set links to it rather than duplicating it, and
-> focuses on the v3 delta.
+- V35-01/02 reconcile current source/evidence and guidance, rather than repeating
+  global startup or inventing another typed loader.
+- V35-03/04 consume the existing validator's independent-pure approval work.
+- V35-05/06 qualify the reusable reference workflow through the existing retained
+  selection, preload, native implementation and publication paths.
+- V35-13/14 own remaining qualified dynamic occurrences; Python syntax alone does
+  not establish durable repeated-effect addressing.
+- V35-17–19 consume the existing validator/review owners; a helper or nonempty-body
+  runner does not prove the eight real class routes.
+- V35-20 consumes the Prefix owner's exact compiler/qualification/Generate/Serving
+  boundaries. Source-only qualification does not establish current serving.
+- Shared lifecycle, authority, resource, connection and recovery work stays with
+  its existing Simplified/v3.5 owners and scoped acceptance. No new owner/store
+  follows from this documentation.
 
----
+`saved_plan_to_v3.md` and dated subplans remain historical per-phase references
+where superseded. They do not replace the current binding guides, amendments,
+owning plans or implementation index. Do not retire an owning plan or claim its
+remaining acceptance complete merely by replacing its old phase label with a V35 ID.
 
-## Documentation taxonomy
+## Documentation content and release references
 
-Each row is one documentation file in this directory. The status column tracks creation in this
-documentation effort.
+[The conversion design](DOC_CONVERSION_MECHANISM_DESIGN.md) contains earlier
+source/converted-document proposals. Verified compatibility seeds and file/DB-event
+wiring exist; their existence proves neither deployed doc-sync nor qualification
+against current preload/approval requirements. Event refresh is not proof of an
+idle-time Sempai optimization loop. Reuse compatible parts through current owners.
 
-| # | File | Subsystem / topic | Status |
-|---|------|-------------------|--------|
-| 01 | `01-architecture-overview.md` | Three-layer model (Products / Loops / Kernel); v3 target message flow; how the new subsystems fit | done |
-| 02 | `02-intent-system.md` | Intent matching: `resolve_intent`, 4-class classifier, `reborn_intent_inputs` (V028), `step_link` (Phase D/V053), disambiguation | done |
-| 03 | `03-recipe-system.md` | Recipes, `step_descriptions` JSONB (Phase A/V050), variants/steps, tiers 0/1/2, store round-trip | done |
-| 04 | `04-ibs.md` | Instruction Builder System: `build_instruction`, `VariablePattern`/`ToolBinding`/`ErrorPolicy`, `SplitResult`, two-channel delivery | done |
-| 05 | `05-skills-system.md` | Skill = prose + associated PythonCode; Rust ToolSkills; ExtensionCatalogues; storage and execution contracts | done |
-| 06 | `06-tools-system.md` | `reborn_tools` + `capability_id` (V071 — the Executioner's dispatch id; dropped `cdylib_artifact_path` + 5 legacy cols), builtin bootstrap (`host.*` tools), tool approval/auth, Rust-Executioner framing | done |
-| 07 | `07-pythoncode-system.md` | `reborn_python_code` (V052 + `includes` JSONB V069), snippet→component promotion, `{{...}}` placeholder-grammar Q1 gate (`validate_python_code_placeholders` — shipped), `UnpromotedSnippet`, shell-injection scan, class 22 in retrieval UNION/by-id | done |
-| 08 | `08-actions-system.md` | Class-16 Actions, 13 step types, `execute_action_procedure` (no-LLM), `override_prompt_creation` (Solution Override, LLM path), `action_short_circuit` (Phase E/G), dead `__retrieve_docs__` shim (§0.9), `call_action` by-name→UUID migration (Phase G) | done |
-| 09 | `09-sempai-kohai.md` | Kohai formats the dynamic prompt first; optional Sempai corrects it using its own generated prefix and returns the final dynamic prompt; Kohai prepends the finished target prefix unchanged once. Same-pair roles share the generator's accepted design revision. Historical interceptor/result structures are distinguished from the required handoff. | documented; runtime migration open in Prefix plan |
-| 10 | `10-prefix-base-prompt.md` | Immutable finished prefixes per provider/model pair, shared accepted pair design and separate role content; exact prefix insertion after dynamic formatting and optional correction. Historical placeholder/store/prewarm observations do not qualify current serving. | documented; runtime migration open in Prefix plan |
-| 11 | `11-retrieval-system.md` | `RetrievalSource` trait, `PostgresSource` (active prod backend via `PgRetrievalLookup`, intent-driven UNION ALL across class tables 1–23), `RamSource` (keyword-over-postgres, dormant → deleted Phase K.3), `fetch_for_turn` vs `fetch_for_consumer`, all 4 `FetchForTurnResult` variants, `fetch_component_by_id`, SEC-01 validated gate, class 22/23 shipped | done |
-| 12 | `12-agent-loop.md` | Canonical executor pipeline (`DefaultExecutorPipeline` stages incl. `tier_zero`) IS the production turn driver via `PlannedDriver`→`CanonicalAgentLoopExecutor::execute_family`; `ExecutorStage` trait; real `RecipeStage` (H.9 retrieval + H.10 `Continue`/`TierZero` dispatch, not a stub); 15-port `AgentLoopDriverHost` (`LoopRetrievalPort`+`LoopOrchestratorPort` added); `TierZeroExecutionStage`; engine Monty VM `execute_orchestrator` dormant → activated C.5/C.6 (`host.run_program`) | done |
-| 13 | `13-orchestrator-default-py.md` | The Orchestrator/Executioner split: Monty (Python) = brain (recipe/intent-driven, calls tools via `host.<tool>(...)`, assembles every LLM prompt, runs composed code via `host.run_program`); Rust = executioner (precompiled Tools + ToolSkills, executes on call, no sequencing). The retired `default.py` Model-A outer loop + meta-primitives (`__execute_action__` etc.) are gone; the composed-program runner is the C.5/C.6 activation | done |
-| 14 | `14-validation-queue.md` | `reborn_validation_queue` (Phase A.5/V051 + Phase N/V059), two-state-machine model (queue pre-validation vs `validation_status` post-validation), Q1 Gate-1 (`ComponentValidator` + `q1_orchestrator.rs`) / Q2 manual review, state-2 security invariant, Wilson scoring + `classify_tier` (live), `is_tier0_eligible` missing-guard fix (`FIND-P7-11`), graduation trigger + `last_graduation_at` upsert (FINDING D resolved), V059 populate/column-drop + `decode_recipe_row` re-index | done |
-| 15 | `15-component-catalog.md` | Full class-code taxonomy (0–23), `COMPONENT_TABLES` + `class_label`, common content-table shape (V036 canonical), content-column dispatch (`fetch_component_by_id`), `prompt_uid` stable ordering key, SCH-02 `prior_knowledge_content`, lineage, legacy `MemoryDoc`→class-table import (`component_import.rs`), hierarchy (§0.1), ExtensionCatalogue (§0.2), StepContextSpec (§0.5), cognitive-weight/`FINDING B` (frozen `DocType`), V050–V059 additive migrations | done |
-| 16 | `16-kernel-composition.md` | Kernel authority crates (`brassclaw_trust`/`secrets`/`safety`/`capabilities`/`runtime_policy`/`process_sandbox`/`reborn_identity`/`outbound`/`approvals`) with non-negotiable boundaries; composition wiring (`brassclaw_reborn_composition`: `factory.rs` `RebornServices`/`build_reborn_services`, `runtime.rs` `RebornRuntime`, `webui_v2_app` security middleware stack); runtime profile (Goal 1 done: `RebornCompositionProfile` removed, `BRASSCLAW_RUNTIME_PROFILE` = capability policy only; Goal 2 done: Postgres always, no DB-less mode); `PostgresSource`/`PgBasicPromptStore`/15 loop ports/`ValidationQueueStore` all shipped; kernel is not a v3 migration target | done |
-| 17 | `17-webui-prefix-tab.md` | WebUI v2 SPA (React + Rust route layer + host ingress), descriptor-driven routes, 18 settings tabs incl. `prefix`; **Prefix Tab shipped** (item 8: `prefix` SPA route + `usePrefixes` hook + `fetchPrefixes`/`regeneratePrefix` API; `GET /api/webchat/v2/prefixes` + `POST …/prefixes/{name}/regenerate`; `do_assemble_bundle`/`regenerate_prefix`/`get_system_bundle`; `reborn_basic_prompt_store` V063 + `PgBasicPromptStore`; `mark_stale`-on-graduation; `base-prompt` placeholder substitution §0.13); SKILL.md export (item 5.1, pending) | done |
-| — | `DOC_CONVERSION_MECHANISM_DESIGN.md` | Design/approach (presented, not yet implemented, stopped for approval) for the auto-conversion mechanism (repeat item 4): converts each `docs/agents-v3/*.md` to LLM-optimized form, stores as `reborn_docus` (class 17) components, auto-updates via `content_hash` + idle-time Sempai-Kohai loop, injects into base prompt (Prefix Tab) + per-turn retrieval; built AS v3 artifacts per the **recycling principle** (§4.0: many one-tool reusable leaf skills/tools the library recycles + ONE doc-specific Extension overview `doc-convert-method`) — Recipe `doc-convert` (class 21) + Action `doc-sync` (class 16, no-LLM) **compose** the leaves; PythonCode `sha256`/`hash_changed`/`markdown_section`/`token_estimate`/`format_component_header` (class 22, pure logic); one generic `component_db` Tool (class 0) with three leaf Skills (`component_get_content_hash`, `docu_upsert`, `mark_prefix_stale`) each covering one operation + ToolSkills (class 13); ExtensionCatalogue `doc-sync` (class 23) | presented |
+Document text belongs to **Docu, class 17**, not ExtensionCatalogue class 23.
+A catalogue organizes the domain; reference capture, conversion, review,
+publication and prefix generation are separate responsibilities.
 
----
-
-## How each document is structured (convention)
-
-Every doc in this set follows the same skeleton so it is both readable by humans and reliably
-parseable by the conversion mechanism:
-
-1. **Purpose** — one paragraph: what this subsystem is and why it exists.
-2. **Location** — the crates, files, tables, and migrations that implement it, with paths.
-3. **Data model** — the key types, enums, DB tables/columns, and their relationships.
-4. **Behavior / flow** — how the subsystem behaves at runtime, step by step.
-5. **Relations** — what it depends on and what depends on it (links to sibling docs).
-6. **Status — shipped vs. pending** — an explicit split of what is shipped in the current
-   codebase versus what `saved_plan_to_v3.md` still adds. Each pending item cites the plan
-   phase/migration that will deliver it.
-7. **LLM-relevant summary** — the compact, concept-dense form the conversion mechanism will
-   further optimize for inclusion in the base prompt / prefixes / on-demand retrieval. This is
-   the seed the mechanism refines, not the final compiled form.
-
----
-
-## v3 architecture principle — recycling (read this before authoring any recipe)
-
-**The library is the asset.** A Skill is one reusable tool-usage pattern with
-prose and associated executable PythonCode. A Recipe references components by
-UUID and provides ordering and wiring. Reuse existing units before authoring
-new ones. A larger domain or multi-tool mechanism is an Extension, documented
-by its ExtensionCatalogue; it is not a larger kind of Skill. The doc-sync
-example uses an Extension overview plus reusable Skills and their code.
-
----
-
-## Relationship to the documentation auto-conversion mechanism (repeat item 4)
-
-The files here are the **source** documentation. The auto-conversion mechanism (designed in
-`DOC_CONVERSION_MECHANISM_DESIGN.md`, to be implemented as v3 artifacts — recipe + skills + tools
-+ PythonCode + action — **not** as Rust code) will:
-
-- **Convert** each source doc into an LLM-optimized form (token-compact, concept-dense, stripped
-  of human-only navigation).
-- **Store** the converted form in the database (the ExtensionCatalogue namespace, class 23, and
-  the base-prompt store — see `10-prefix-base-prompt.md`).
-- **Keep it updated** automatically via an idle-time Sempai-Kohai-driven refresh loop that
-  re-converts when a source doc changes.
-- **Make it injectable** into an LLM prompt on demand (selected by intent) and into the
-  precompiled prefix prompts (base prompt and future prefixes).
-
-Per the task, the approach for that mechanism is **presented before implementation**; this
-README is the index for the source docs that the mechanism consumes.
-
----
-
-## Relationship to current plans (binding forward-work frame)
-
-The following are the **currently governing** forward-work documents. They supersede
-`saved_plan_to_v3.md` for future-state claims in the areas they cover:
-
-- **[simplified_v3.md](../../simplified_v3.md)** — binding runtime and authorization target.
-  Phase 3a governs global Monty lifecycle, durable recovery, settings cutover and
-  platform acceptance. K0–K7 conformance steps govern the reconciliation work.
-- **[path_to_v3.5.md](../../path_to_v3.5.md)** — Recipe-first execution roadmap.
-  Work IDs V35-01 through V35-30 track the specific implementation items; each
-  agents-v3 subsystem doc now references the relevant V35 IDs in its pending section.
-  Key open items:
-  - **V35-01** — global Monty lifecycle / PG connection policy
-  - **V35-02** — IBS typed inputs / `build_ordered_instruction` reconciliation
-  - **V35-03/04** — standalone pure approval, interface/source/dependency coverage
-  - **V35-05** — retained selection / typed preload / export selection
-  - **V35-13/14** — dynamic occurrence support
-  - **V35-17/18/19** — eight class validator routes / review backend / association review
-  - **V35-20** — prefix compiler qualification boundaries
-  - **V35-24, V35-27, V35-29** — durable recovery, resource, platform acceptance
-
-## Prior planning documents
-
-The planning documents that informed this system remain active references:
-
-- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N); historical reference for
-  per-phase/per-migration tracking. Forward-work phases (C.5/C.6, K, L, N) are now described
-  in `path_to_v3.5.md` V35-* work IDs and `simplified_v3.md` Phase 3a.
-- `Goals_pre_v3_review.md` — two-goals audit (both goals accomplished).
-- `saved_plan_to_v3_review.md` — 18-finding plan review (all findings resolved).
-- `MESSAGE_FLOW_AND_PLAN_AUDIT.md` — message-flow audit.
-- `builtin_stuff_v3.md`, `tomedo_v3.md`, `automations_v3.md`, others — reference material
-  (historical; specific sections may be superseded by the four ground-truth guides).
-
-> **Note on `DOC_CONVERSION_MECHANISM_DESIGN.md`:** this design was presented before
-> implementation and is not currently active. The described component stack (Recipes, PythonCode,
-> Skills, Actions) predates the v3 preloadable function interface and would need to be
-> re-designed against `recipe.md`, `skills.md` and `simplified_v3.md` before implementation.
-> It is retained for reference only.
-
-These are preserved for reference. The `docs/agents-v3/` files are the current
-authoritative documentation; where they conflict with historical planning documents,
-the agents-v3 docs and the four ground-truth guides (`recipe.md`, `skills.md`,
-`tools.md`, `toolskills.md`) take precedence.
+The validation guide is embedded in the declared release reference inventory.
+Its current [inventory entry](../../scripts/prefix/release-reference-inventory.json)
+is **development-only**; do not silently promote it into a qualified model view.
+Changed source changes exact reference bytes. Preserve old immutable revisions
+and receipts; a reviewed documentation successor is not installed uptake or
+permission to regenerate/activate a prefix. Existing source-package validation
+can establish exact snapshot integrity without claiming component approval.

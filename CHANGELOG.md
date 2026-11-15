@@ -27,29 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mechanical reference resolution by Kohai while excluding additional content
   reformulation.
 
-- **docs/agents-v3/ architecture adjacency update**: Align the 17 subsystem docs
-  with the current v3/v3.5 architecture. Key changes: add §4a Global Monty
-  lifecycle (GlobalMontyOwner/GlobalMontyDriver; turn ≠ new VM) and correct the
-  §4 message-flow diagram in `01-architecture-overview.md` to show the live
-  `TierZeroOrchestrator`/`PgOrchestratorLookup` path vs the target Monty VM path;
-  add §3.1 preloadable function interface (exports, dependency load order,
-  loading≠invocation, mutable-state isolation) and §6.1 approval paths (A authored
-  vs S system seed) to `05-skills-system.md`; add §3.2 typed input bindings
-  (`input_layouts`/`invocations`, corrected `kind` values from the canonical
-  contract: `task_input`, `constant`, `consumer_default`, `result`) and §3.1
-  `knowledge`-vs-`channel` authoring note to `04-ibs.md`; add §1.1 Global Monty
-  lifecycle to `12-agent-loop.md`; add coherent-catalogue-generation gap note to
-  `02-intent-system.md`; replace all C.5/C.6 pending references with V35-01/V35-05
-  (path_to_v3.5.md)/Phase 3a (simplified_v3.md) in §6 and §7 LLM summaries across
-  `01`, `02`, `03`, `04`, `05`, `06`, `07`, `12`; add V35-17/18/19 open-work table
-  to `14-validation-queue.md`; fix `component_validator.rs` caveat in
-  `07-pythoncode-system.md` (functions not present by those names; Q1 orchestration
-  is in `q1_orchestrator.rs`; injection scan in `brassclaw_safety/`); add
-  PythonCode-as-Skill-implementation section to `07`; replace `ThreadManager`
-  (deleted Phase K.3) with `ExecutionLoop`/`execute_orchestrator` in pending
-  sections of `01` and `04`; update `README.md` with governing forward-work plan
-  links and DOC_CONVERSION status note; add status header to
-  `DOC_CONVERSION_MECHANISM_DESIGN.md`.
+- **Agent architecture documentation**: Reconcile twelve `docs/agents-v3/`
+  guides with verified source and the governing v3/v3.5 contracts. Document
+  ordinary global Monty execution and captured catalogue routing separately
+  from legacy loop/compose paths; preserve errors instead of prescribing
+  No-Match fallback. Correct typed input examples, declared default exports,
+  deterministic preload ordering and single-call, stop-only execution limits.
+  Separate implemented association/artifact checks, approval evidence, live
+  Tool permission and remaining own-functional/pure approval work. Replace
+  nonexistent validator APIs and stale migration claims with actual source
+  maps; correct task-compute budgets and class labels. Clarify documentation
+  precedence and historical doc-sync compatibility. Verify named declarations,
+  links, JSON and exact offline source-package integrity; the embedded validation
+  guide remains development-only, with no runtime activation or deployment claim.
 
 - **Original selection metadata**: Retain the actual supported parser limits with
   immutable selection bytes and checksums; reject unsupported profiles before
