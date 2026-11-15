@@ -211,9 +211,13 @@ class DeferredTests(unittest.TestCase):
         a=self.app(state_fn=lambda t:state(['a'] if t<.2 else []),fault='patches',fragmented=True);d=self.dispatcher(a);d.submit('final',final=True);self.assertTrue(self.complete(d)['accepted'])
 
     def test_final_supersedes_all_waiting_heartbeats(self):
-        a=self.app(state_fn=lambda t:state(['a'] if t<.4 else []));d=self.dispatcher(a)
-        for i in range(5):d.submit('alive-'+str(i));time.sleep(.025)
-        d.submit('final',final=True);self.assertTrue(self.complete(d)['accepted']);self.assertEqual([x['text'] for x in a.messages],['final'])
+        # Keep the tool busy until the final message is pending. Elapsed time
+        # cannot establish that ordering on a loaded CI runner.
+        release_tool=threading.Event()
+        a=self.app(state_fn=lambda _:state([] if release_tool.is_set() else ['a']));d=self.dispatcher(a)
+        for i in range(5):d.submit('alive-'+str(i))
+        d.submit('final',final=True);release_tool.set()
+        self.assertTrue(self.complete(d)['accepted']);self.assertEqual([x['text'] for x in a.messages],['final'])
         events=[json.loads(x) for x in (self.state_dir/'notifications.jsonl').read_text().splitlines()];self.assertEqual(sum(e['event']=='superseded' for e in events),5)
 
     def test_inflight_heartbeat_does_not_overwrite_pending_final(self):

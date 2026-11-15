@@ -1,14 +1,16 @@
 # Combined Building v3 at Bob3 — Build-Skripte angleichen
 
-Stand: 2026-11-15. Die unten beschriebenen Apple-Anschlüsse sind implementiert.
-68 lokale Build-/Controllerprüfungen und sechs Source-Sync-Prüfungen bestehen.
-Run88 kompiliert neun aktuelle native Testprogramme warnungsfrei; drei tatsächliche
-Compiler-/PG-/Modell-/Monty-Fälle bestehen aus dem vorhandenen Programm, mit
-explizitem Ressourcenpfad und normalem Worker neben `deps/`. Neue Remote-Wege sind damit noch nicht image-/laufzeitqualifiziert:
-das bisherige Image enthält den geänderten Worker nicht. Kein Modal-Image wurde
-für diese Skriptänderung neu gebaut oder aktiviert; kein bezahlter Compilejob läuft.
-Linux-Testarbeit bleibt ohne konkreten passenden Prüfauftrag ausdrücklich offen.
-Häkchen bezeichnen implementierten Code, keine pauschale Plattformabnahme.
+Stand: 2026-11-15. Die beschriebenen Apple-Anschlüsse sind implementiert.
+Aktuell bestehen 72 lokale Build-/Controllerprüfungen; die unveränderten sechs
+Source-Sync-Fälle behalten ihre gültigen Belege. Der normale notwendige
+CLI-DEV-Auftrag ist im bestehenden Image/Cache erfolgreich durchgelaufen,
+einschließlich echtem Worker, pgvector, regulärem Collector und vier nativen
+Produkt-Build-Prüfungen. Nur Apple-Produktmodus ist dafür aktiviert; siehe
+[Image, Laufzeiten und genaue Grenzen](docs/validation/2026-11-15-modal-canonical-native.md).
+Apple-Testmodus, die separat vorbereitete 1.100-Toolchain und Linux-Testarbeit
+bleiben davon getrennt. Run118/119 sowie die aktuellen PG-/OIDC-Fälle sind
+[lokal scoped akzeptiert](docs/validation/2026-11-15-history-ci-security.md).
+Häkchen bezeichnen ihren konkreten Code-/Prüfumfang, keine Plattformgesamtfreigabe.
 
 ## Ziel und logisch begründbarer Nutzen
 
@@ -64,12 +66,12 @@ Die erhaltenen älteren lokalen Imagebelege unten aktivieren den neuen Worker ni
 | Gemeinsamer lokal/remote-Einstieg | Implementiert | `local_build.main --host local|modal --platform apple|linux` delegiert ohne neue Queue; lokale Aufrufe bleiben Standard und ohne Cloudabfrage |
 | Hostbezogene Einstellungen | Vorhanden | `load_settings`/`modal_resources` trennen lokale Jobs von Modal-Ressourcen und Apple-/Linux-Overrides |
 | Source-Sync, Caches und parallele Hosts | Vorhanden | `capture`/`sync_source`, getrennte `cargo_lock`/`modal_lock`, `materialize`/`update_cache`, Image-spezifischer Remote-Targetcache |
-| Apple-CLI-Produktbuild | Implementiert; Imageabnahme offen | CLI Dev/Test/Release bleibt ein normales Programm; ein eigener normaler `monty_worker` wird über denselben vorhandenen Cache gebaut |
+| Apple-CLI-Produktbuild | Implementiert; normaler DEV-Auftrag und native Build-Prüfungen bestanden | CLI Dev/Test/Release bleibt ein normales Programm; ein eigener normaler `monty_worker` wird über denselben vorhandenen Cache gebaut |
 | Apple-Composition-Testkompilierung | Angeschlossen; Imageabnahme offen | Exakter `--lib --no-run`-Collector plus normaler Worker und lokale exakte Testauswahl; kein beliebiger Harness |
 | Testfeatures des benötigten Aufrufs | Implementiert | `brassclaw_pg/test-support` wird am tatsächlichen nichtoptionalen Dependency-Manifest geprüft und getrennt von Composition-Features im Subject behalten |
 | Exakter Testbinary-Export | Vorhanden, begrenzter Testmodus | `collect_test_artifacts` prüft aktuellen Cargo-Erfolg, Package/Target/Features, `profile.test` und auch `fresh`; `snapshot_executable` kopiert genau ein verifiziertes Mach-O-Executable |
 | Abholung und Wiederaufnahme | Vorhanden | `collect_result`, `atomic_download`, `status`: Request-/Receiptprüfung, temporärer Hashdownload, Wiederverwendung passender lokaler Bytes, Nachholen ohne neuen Build |
-| Vollständiges Runtimepaket | Implementiert; echte Remoteabnahme offen | `deps/<Testbinary>`, normaler Worker daneben; aktuelle Cargo-Meldungen wählen PG-Ausgabe; Archive und System-Dylib-Abhängigkeiten werden geprüft, nicht benötigte PG-Laufzeitdaten bleiben eingebettet |
+| Vollständiges Runtimepaket | Produktpaket real abgeholt/geprüft; Testmodus-Abnahme offen | `deps/<Testbinary>`, normaler Worker daneben; aktuelle Cargo-Meldungen wählen PG-Ausgabe; Archive und System-Dylib-Abhängigkeiten werden geprüft, nicht benötigte PG-Laufzeitdaten bleiben eingebettet |
 | Automatische lokale Testausführung | Implementiert; echte Remoteabnahme offen | `run --native-test <exakter Name>` / `accept-native --test` nutzen direkt das gesammelte Programm und bestehenden Native-Lock; echte Liste, genau ein erfolgreicher/nicht ignorierter Fall je Name, keine Wiederholung |
 | Linux-Testkompilierung/-ausführung | Offen | `command_options` lehnt Linux-`cargo test` ab; Worker führt Cargo aus, aber keinen Testlauf danach |
 | Policy-Gate | Korrigiert | Kein technisches 60-Sekunden-Minimum mehr; explizite Modalwahl und Bildaktivierung bleiben nötig; freiwillige Laufzeitschätzung muss endlich/nichtnegativ sein |
@@ -78,16 +80,18 @@ Die erhaltenen älteren lokalen Imagebelege unten aktivieren den neuen Worker ni
 | Konfliktregel innerhalb eines Jobverzeichnisses | Implementiert | Identische Bytes werden wiederverwendet, fehlende Kopien nachgeholt; abweichende veröffentlichte Bytes/Symlinks bleiben als Konflikt erhalten. Private Downloadreste werden verworfen, nie über fremde Bytes veröffentlicht |
 | Regulärer Apple-Testbetrieb | Aktivierungsanschluss implementiert, derzeit nicht qualifiziert | Eigene `--test-mode`-Aktivierung benötigt aktuelle Worker-/Imageidentität, vollständiges Paket und echte erfolgreiche Native-Fälle; alte Produktaktivierung genügt nicht |
 
-**Lokale Imagebelege:** Unter
-`/Users/ollama/brassclaw-target/modal-build/` referenziert `image-apple.json`
-das vorbereitete Rust-1.98.1-Image `im-Wxm74Dwhp6v20AWvy6T6aj`, enthält aber
-keine Identität/Modusdeklaration des jetzigen Testworkers. Der aktuelle
-Testcontroller lehnt dieses alte Receipt deshalb vor Aufnahme ab.
-`activation-apple.json` verweist weiterhin auf das andere, frühere Image
-`im-S1cpT9G1fsMPpwjISvBSlK`; es aktiviert weder das vorbereitete neue Image noch
-den Testmodus. Linux-Image-/Aktivierungsreceipts sind an diesem lokalen
-Records-Pfad nicht vorhanden. Das ist eine lesende lokale Bestandsaufnahme,
-keine Abfrage des aktuellen Modal-Kontostands.
+**Aktuelle lokale Imagebelege:** `image-apple.json` und die bestehende
+Produktaktivierung unter `/Users/ollama/brassclaw-target/modal-build/` verweisen
+nun auf `im-J1hA8cNV5PRbk7mGWK8pH0` (Rust 1.98.1, aktueller unveränderlicher
+Worker). Job `e2bea7ca-cac8-4a59-9b50-8384cc135c02` hat ein vollständiges normales
+CLI-/Worker-/pgvector-Paket geliefert; native `file`/Abhängigkeiten/Version/Hilfe
+bestehen. Aktiviert ist ausschließlich `apple-cli-build/1`. Ältere Image- und
+Fehlerbelege bleiben erhalten und aktivieren den Testmodus nicht.
+Das zusätzliche 1.100-Image `im-T18jhSVqHi1K0LFzz8mGeW` enthält nur eine tatsächlich
+geprüfte Toolchain/Linkprobe, mit leeren unterstützten Modi und ohne Aktivierung.
+Linux-Image-/Aktivierungsreceipts fehlen hier weiterhin. Der Produktlauf dauert
+insgesamt 20m39.662s und baut große Teile nach der kanonischen Pfadumstellung neu;
+ein genereller Geschwindigkeitsvorteil ist daraus nicht belegt.
 
 Der Testmodus `apple-composition-lib-test-build/1` akzeptiert bereits
 `cargo test --no-run`, das Apple-Target, Composition `--lib`, das Testprofil und
@@ -95,8 +99,9 @@ JSON-Artefaktmeldungen. Der lokale Ausführungspfad und die separate Aktivierung
 Normaler Testbetrieb bleibt ohne tatsächliche Image- und Native-Abnahme geschlossen. Er ist kein allgemeiner Linux-Testmodus.
 
 `--profile test` ist gültige Cargo-Syntax und im begrenzten Testmodus bereits
-vorgesehen. Dagegen bleibt der Apple-Produktmodus derzeit auf CLI Dev/Release
-beschränkt. Diese verschiedenen Grenzen nicht zu einer pauschalen Aussage
+vorgesehen. Der Apple-Produktmodus unterstützt inzwischen CLI Dev/Test/Release; das
+Produkt im Testprofil bleibt ein normales Programm. Andere Produktziele sind
+weiterhin nicht pauschal freigegeben. Diese Grenzen nicht zu einer Aussage
 „Tests unterstützt“ oder „Testprofil unmöglich“ zusammenziehen.
 
 [Entwicklungspolicy](docs/development-policy.md),
@@ -140,10 +145,10 @@ Apple-Testablauf. Linux-Tests bleiben ohne konkreten Auftrag offen.
 - [x] Den vorhandenen Apple-Composition-Testexport fertig anschließen, statt
   ihn erneut zu implementieren. Der benötigte Aufruf bestimmt Features und
   Profil; der Validator darf erlaubte Cargo-Syntax nicht irrtümlich ablehnen.
-  Konkret: Der bisherige `test_subject()` akzeptiert nur benannte Composition-
-  Features; der bestehende Prüfauftrag nutzt auch `brassclaw_pg/test-support`.
-  Diese tatsächlich benötigte Dependency-Featureform gezielt unterstützen und
-  korrekt dem Package zuordnen, ohne einen neuen allgemeinen Feature-Resolver.
+  Konkret: `test_subject()` unterstützt nun zusätzlich zu benannten Composition-
+  Features auch `brassclaw_pg/test-support`, prüft dessen bestehendes Dependency-
+  Manifest und hält die Auswahl getrennt im Subject. Kein neuer allgemeiner
+  Feature-Resolver ist erforderlich.
 - [x] Im begrenzten Apple-Testmodus: aufgenommene Auswahl und von Cargo gemeldete Artefakte abgleichen.
   `fresh=true` ist zulässig; das gemeldete aktuelle Executable verwenden.
   Unit-Test-Targetkind kann `lib` sein. Nicht im gesamten Cache nach irgendeinem
@@ -227,7 +232,8 @@ bleibt sichtbar getrennt von Collector- und Skriptprüfungen.
 - [x] Bestehende Sicherheits-, Disk-, Hash-, Aktivierungs- und Ressourcenprüfungen
   erhalten. Ein Test mit falschem Binary oder null verlangten ausgeführten
   Fällen zählt nicht als erfolgreich; dafür kein neues Prüfverfahren erfinden.
-- [ ] Normale notwendige Arbeit genügt zur praktischen Bestätigung: den nächsten
+- [x] Für den Produktmodus durch den realen Job und native Build-Prüfungen belegt.
+  Normale notwendige Arbeit genügt zur praktischen Bestätigung: den nächsten
   tatsächlich benötigten Build über den geänderten Pfad ausführen und die
   ohnehin verlangten Tests aus genau dessen Artefakten laufen lassen. Keine
   zusätzliche große Neukompilierung ausschließlich für diesen Skriptumbau.
@@ -246,6 +252,29 @@ bleibt sichtbar getrennt von Collector- und Skriptprüfungen.
   korrekt weiterverwenden: der Watchdog erhält nur das um
   tatsächliche Vorbereitung und Abschlussreserve verminderte Restbudget, keine
   neue volle Frist pro Buildphase.
+
+### Konkrete Custody- und Kompatibilitätsgrenzen
+
+- Der native Runner hält derzeit `cargo_lock()` während Auflistung und Ausführung
+  seiner Binary-Fälle. Das ist bestehende konservative Custody, kein neuer
+  Backend-Lock. Ein unabhängiger Remote-Build darf überlappen; gleichzeitige
+  native Cargo-Kompilierung wird hier nicht versprochen. Kein Lockumbau ist nötig.
+- `verify_source(ROOT, source)` verlangt vor/nach den nativen Fällen den exakten
+  aufgenommenen HEAD und den vollständigen synchronisierten Dateistand. Lokale
+  Edits während eines isolierten Remote-Compiles ändern dessen Snapshot nicht,
+  können aber die anschließende automatische lokale Testannahme verhindern.
+  Für diesen Ablauf den passenden Quellstand koordinieren; keine alten Quellen
+  zurückspielen und keinen neuen selektiven Fixture-/Fingerprintdienst einführen.
+- Der normale Begleitworker übernimmt nur `--offline`/`--frozen` des validierten
+  Hauptbefehls. Sein eigener Dev-Profil-/Target-/Package-Vertrag bleibt erhalten.
+  Diese Cargo-Flags garantieren keinen allgemeinen Netzwerkentzug für externe
+  Build-Skripte; deren technische Grenzen bleiben eigenständig wirksam.
+- Bereits erhaltene Pakete des exakt bekannten älteren Workers können ihren
+  ursprünglichen Begleitbefehl ohne diese Flags behalten. Collector-Kompatibilität
+  erlaubt nur deren unveränderte Abholung; unbekannte Workeridentitäten bleiben
+  gesperrt. Historische Requests/Receipts nicht ändern oder automatisch nachbauen.
+  Alte Abholung ist weder eine neue Offline-/Frozen-Qualifikation noch Aktivierung
+  eines alten Images für neue Aufträge. Aktuelle Worker müssen die Flags erhalten.
 
 Für Start, Begleitung und Abschluss von Screen-Läufen gilt verbindlich die
 jeweils aktuelle globale Agent-Regel **„Screen-Builds und offene Chat-Turns“**.
@@ -278,9 +307,9 @@ versprechen, das durch zusätzliche Builds erst erzwungen werden müsste.
 - `accept-native <Job-ID> --test <exakter Name> --test-timeout-secs <Deadline>` nimmt ein bereits abgeholtes Testpaket an. `--test-env <lokales JSON>` liefert bestehende Fixturepfade, nicht Modell-/Produktkonfiguration. Der Runner verifiziert die Original-Quellen und setzt `BRASSCLAW_TEST_SOURCE_ROOT` für die betroffenen vorhandenen Testhelfer. Er startet kein Cargo und wiederholt nach Fehlern keine Fälle automatisch.
 - `activate --test-mode <Job-ID>` schaltet ausschließlich den unabhängig qualifizierten Testmodus dieser Worker-/Imageidentität frei. Produkt- und Testaktivierung bleiben getrennt. Eine neue Workerdatei im Source-Sync ersetzt keinen unveränderlichen Image-Worker.
 - Source-Vorbereitung, Produkt und notwendiger normaler Worker teilen sich eine monotone Gesamtdeadline mit der vorhandenen 120-Sekunden-Abschlussreserve. Ein abgelaufener Vorbereitungsanteil startet kein Cargo mehr.
-- Noch auszuführen ist die echte neue Image-/Remote-/Native-Verbindung beim nächsten ohnehin benötigten, vorteilhaften Apple-Auftrag. Bisherige Produktbelege werden nicht als neue Testabnahme verwendet. Keine zusätzliche große Kompilierung oder Linux-Testserie nur zur Demonstration starten.
+- Der normale Produktauftrag und seine native Build-Abnahme sind tatsächlich abgeschlossen und aktiviert. Offen bleibt die echte Apple-Testmodus-Verbindung beim nächsten ohnehin benötigten, vorteilhaften Testauftrag. Produktbelege werden nicht als Testabnahme verwendet. Keine zusätzliche große Kompilierung oder Linux-Testserie nur zur Demonstration starten.
 
-### Aktuelle lokale Belege
+### Historische lokale Anschlussbelege (vor der aktuellen Produktabnahme)
 
 - Run87: `cargo clippy --all-targets -- -D warnings` unter Rust 1.100 für die
   tatsächlichen Production-/Testfeatures endet mit 0 und ohne Warnungen. Der

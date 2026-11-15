@@ -257,3 +257,6 @@ Licensed under either of:
 - MIT License ([LICENSE-MIT](LICENSE-MIT))
 
 at your option.
+
+Bundled dependencies retain their own licenses; see
+[third-party notices](THIRD_PARTY_NOTICES.md).

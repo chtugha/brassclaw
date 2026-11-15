@@ -111,7 +111,8 @@ brassclaw_turns = { path = "../brassclaw_turns" }
 brassclaw_webui_v2 = { path = "../brassclaw_webui_v2" }
 # WebUI v2 static SPA bundle — mounted under `/v2`
 brassclaw_webui_v2_static = { path = "../brassclaw_webui_v2_static" }
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
+# The migration importer opens local legacy files only.
+libsql = { version = "0.6", optional = true, default-features = false, features = ["core"] }
 # axum + tower middleware stack used by the `webui_serve` module
 axum = "0.8"
 tower = "0.5"
@@ -163,7 +164,7 @@ rust_decimal_macros = "1"
 refinery = { version = "0.8", features = ["tokio-postgres"] }
 sha2 = "0.10"
 tempfile = "3"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 tokio = { version = "1", features = ["macros", "net", "rt", "rt-multi-thread", "time"] }
 # Real WebSocket client for the v2 stream-events-ws caller-level test.
 # Oneshot via `tower::ServiceExt::oneshot` cannot complete a true WS

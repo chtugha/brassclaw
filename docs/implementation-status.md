@@ -1,3 +1,31 @@
+## 2026-11-15 — History root, dependency and build compatibility acceptance
+
+The actual retained History formatter now has independent shipped own-function
+qualification through the existing installation owner and a separately checked
+private text instrument. Typed task inputs preserve literal NUL/escaping without
+embedding runtime data in JSONB Recipe constants or Python source. Canonical
+formatter bytes, legacy fixture serialization, null-Q2 S provenance, exact
+consumer identity and original reuse remain checked; authored approval stays
+closed. Run118 strict lint and Run119 native compilation pass without warnings.
+The scoped native cases, OIDC and real SQLite migration pass; see the
+[exact acceptance and preserved failures](validation/2026-11-15-history-ci-security.md).
+This does not finish the History usage/workflow, B1 or general Pure publication.
+
+Actual Main CI findings drive compatible dependency/lock repairs, removal of
+advisory waivers, current Docker request APIs, Cargo 1.100 worker discovery,
+Ubuntu 24.04 PostgreSQL ABI jobs and synchronized Screen tests. Final cargo-deny has
+no advisory/license/source errors or warnings; 47 duplicate warnings stay visible.
+Full GitHub results remain separate. Existing Docker cleanup/operation custody
+and fixed sandbox resource settings still require their connected owning repair;
+not every cap is WebUI-adjustable.
+
+The existing Modal product owner now successfully collects the complete normal
+CLI/worker/pgvector package after canonical SDK-mount resolution. Native file,
+dependency, version and help checks pass, and only its existing Apple product
+build mode is activated. The separate test mode and prepared 1.100 image are not
+qualified by that receipt. See the [actual image, timing and scope](validation/2026-11-15-modal-canonical-native.md).
+Root continues B1 -> B2 -> B3 alone after this accepted checkpoint.
+
 ## 2026-11-15 — Monty lifetime and Main CI repair
 
 The runtime owns its global driver through worker exit and all supported shutdown

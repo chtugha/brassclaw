@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Dependency security**: Update TLS verification, trust roots, Tokio, constant-time
+  helpers and the executor; remove unused libSQL network clients from the local
+  migration importer. Replace archived YAML/archive dependencies and the old RSA
+  test-key generator, and remove the previous advisory waivers.
+- **CI compatibility**: Refresh both standalone Monty lockfiles, recognize the
+  Cargo 1.100 test layout for the packaged worker, keep native PostgreSQL jobs on
+  the release's Ubuntu 24.04 runtime ABI, and synchronize the Screen coalescing
+  test explicitly instead of relying on elapsed time.
+- **Build command custody**: Preserve admitted Offline/Frozen flags for the
+  companion worker. Keep exact known historical package collection separate
+  from current-worker activation and offline qualification.
+- **Shipped History formatter**: Add independent exact-function qualification
+  with a separately checked private text-receipt instrument and literal escaping
+  oracles. This does not qualify the whole History usage/workflow or open general
+  authored Pure approval.
+
 - **Global Monty lifetime**: Keep the driver owned by the runtime through turn
   worker exit and service shutdown. Validator and private-claim registrations use
   non-owning attachments, retain their owner for each operation and reject calls

@@ -1,6 +1,7 @@
 """Local settings/lock/controller regression tests; no Cargo or Modal compute."""
 
 import argparse
+import ast
 from contextlib import nullcontext
 import json
 import hashlib
@@ -532,6 +533,66 @@ class CollectionBoundaryTests(unittest.TestCase):
                       "cargo.log": b"fixture stdout log", "brassclaw-reborn": self.body}
         self.volume = SimpleNamespace(read_file=lambda path: [self.files[path.rsplit("/", 1)[-1]]])
 
+    def test_companion_network_policy_and_exact_legacy_collection_boundary(self):
+        # Transport/file boundary only; no Cargo, target execution or new receipt approval.
+        current = modal_build.worker_identity()
+        legacy = modal_build.LEGACY_COMPANION_WORKER_IDENTITY
+        unknown = {**legacy, "modal_build_worker.py": "0" * 64}
+        command = ["cargo", "build", "--locked", "--frozen", "-p", "brassclaw_reborn_cli",
+                   "--bin", "brassclaw-reborn", "--target", "aarch64-apple-darwin"]
+        from modal_build_worker import worker_command
+        baseline = worker_command("aarch64-apple-darwin")
+        propagated = [*baseline[:3], "--frozen", *baseline[3:]]
+        cases = ((current, current, propagated, True),
+                 (current, current, baseline, False),
+                 (legacy, legacy, baseline, True),
+                 (legacy, legacy, propagated, False),
+                 (unknown, unknown, baseline, False),
+                 (unknown, unknown, propagated, False),
+                 (legacy, current, baseline, False))
+        for index, (original_identity, reported_identity, companion, allowed) in enumerate(cases):
+            with self.subTest(index=index):
+                destination = self.directory / str(index)
+                destination.mkdir()
+                original = {**self.original, "command": command, "original_command": command,
+                            "runtime_package": 1, "mode": modal_build.APPLE_BUILD_MODE,
+                            "target_triple": "aarch64-apple-darwin", "worker_identity": original_identity}
+                artifact = {"sha256": hashlib.sha256(self.body).hexdigest(), "size": len(self.body)}
+                artifacts = {name: {**artifact, "role": role} for name, role in (
+                    ("brassclaw-reborn", "product"), ("monty_worker", "monty_worker"),
+                    ("pgvector.tar.gz", "embedded-pgvector"))}
+                result = {**original, "returncode": 0, "artifacts": artifacts,
+                          "runtime_package": {"version": 1}, "companion_command": companion,
+                          "worker_identity": reported_identity}
+                retained = encoded(result)
+                def read_file(path):
+                    name = path.rsplit("/", 1)[-1]
+                    return [retained if name == "completed.json" else b"{}" if name == "image-provenance.json"
+                            else b"recorded log" if name == "cargo.log" else self.body]
+                volume = SimpleNamespace(read_file=read_file)
+                if allowed:
+                    modal_build.collect_result(volume, destination, original, result)
+                    self.assertEqual((destination / "completed.json").read_bytes(), retained)
+                    for name in artifacts:
+                        self.assertEqual((destination / name).read_bytes(), self.body)
+                    self.assertFalse((destination / "native-tests-accepted.json").exists())
+                else:
+                    with self.assertRaises(ValueError):
+                        modal_build.collect_result(volume, destination, original, result)
+                    self.assertEqual(list(destination.iterdir()), [])
+
+    def test_known_legacy_collection_identity_cannot_activate_new_worker(self):
+        # Historical collection compatibility does not authorize fresh execution.
+        legacy = modal_build.LEGACY_COMPANION_WORKER_IDENTITY
+        image = {"image_id": "im-legacy", "worker_identity": legacy,
+                 "supported_modes": [modal_build.APPLE_BUILD_MODE]}
+        record = {"active": True, "image_id": "im-legacy", "mode": modal_build.APPLE_BUILD_MODE}
+        (self.directory / "image-apple.json").write_bytes(encoded(image))
+        (self.directory / "activation-apple.json").write_bytes(encoded(record))
+        with patch.object(modal_build, "records_root", return_value=self.directory):
+            with self.assertRaisesRegex(ValueError, "worker protocol"):
+                modal_build.require_activation("apple", modal_build.APPLE_BUILD_MODE)
+
     def status_fixture(self, state_name="unresolved", call_error=None):
         directory = self.directory / "jobs" / self.original["job_id"]
         directory.mkdir(parents=True)
@@ -777,6 +838,7 @@ class CollectionBoundaryTests(unittest.TestCase):
         image.write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
                                       "environment": "brassclaw", "image_id": "im-old-product"}))
         with patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.dict(os.environ, {"CARGO_TARGET_DIR": str(self.directory / "isolated-target")}), \
                 patch.dict(sys.modules, {"modal": None}), patch.object(modal_build, "sync_source") as upload:
             with self.assertRaisesRegex(ValueError, "exact worker/image"):
                 modal_build.run(arguments(cargo=test_command()))
@@ -838,6 +900,48 @@ class NativeSelectionTests(unittest.TestCase):
         self.assertEqual(remote.call_args.args[0], ["--platform", "apple", "run", "--confirmed-modal", "--", *command])
         native.assert_not_called()
 
+
+
+class ModalMountBoundaryTests(unittest.TestCase):
+    def test_sdk_mount_is_canonical_before_evidence_and_worker(self):
+        # Execute the actual serialized entry point without SDK/cloud/Cargo.
+        tree = ast.parse(Path(modal_build.__file__).read_text())
+        function = next(node for node in ast.walk(tree)
+                        if isinstance(node, ast.FunctionDef) and node.name == "compile_source")
+        function.decorator_list = []
+        module = ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[]))
+        for symlink in (False, True):
+            with self.subTest(symlink=symlink), tempfile.TemporaryDirectory() as tmp:
+                storage = Path(tmp) / "canonical-volume"
+                storage.mkdir()
+                mount = Path(tmp) / "build"
+                if symlink:
+                    mount.symlink_to(storage, target_is_directory=True)
+                else:
+                    mount = storage
+                calls = []
+                commits = []
+                volume = SimpleNamespace(commit=lambda: commits.append(True))
+                def worker(root, original, commit, **kwargs):
+                    calls.append(root)
+                    self.assertIs(commit, volume.commit)
+                    return {"observed_root": str(root)}
+                def redirected_path(value):
+                    return mount if value == "/build" else type(storage)(value)
+                namespace = {"volume": volume}
+                exec(compile(module, modal_build.__file__, "exec"), namespace)
+                original = {"job_id": "d8a42e90-223e-4a96-94fa-268ead97433a"}
+                with patch.dict(sys.modules, {"modal_build_worker": SimpleNamespace(run_build=worker)}), \
+                        patch("pathlib.Path", side_effect=redirected_path), \
+                        patch.object(sys, "path", list(sys.path)), \
+                        patch.object(modal_build.shutil, "disk_usage", return_value=SimpleNamespace(
+                            total=100 * 1024**3, used=10 * 1024**3, free=90 * 1024**3)) as disk:
+                    result = namespace["compile_source"](original)
+                self.assertEqual(calls, [storage.resolve(strict=True)])
+                self.assertEqual(result, {"observed_root": str(storage.resolve(strict=True))})
+                self.assertEqual(disk.call_args_list[0].args, (storage.resolve(strict=True),))
+                self.assertTrue((storage / "cache/jobs" / original["job_id"] / "image-provenance.json").is_file())
+                self.assertEqual(commits, [True])
 
 if __name__ == "__main__":
     unittest.main()

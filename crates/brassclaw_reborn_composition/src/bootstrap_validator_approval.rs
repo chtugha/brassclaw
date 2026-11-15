@@ -58,7 +58,7 @@ pub(crate) use shipped_policy::OriginalPolicy as OriginalShippedR1Policy;
 #[path = "bootstrap_shipped_r1.rs"]
 mod shipped;
 pub(crate) use pure::{CheckedPureCheckerClosure, pure_source_cases, qualify as qualify_pure};
-pub(crate) use shipped::qualify as qualify_shipped_generation_revision;
+pub(crate) use shipped::{ShippedFunction, qualify as qualify_shipped_function};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -94,6 +94,7 @@ async fn qualify_inner(
             || json!({"format":"original-pure-case-receipt/1","observation":input}),
         );
         suites.push(Suite {
+            runtime_input: None,
             variant: variant.into(),
             steps: vec![fixtures::FixtureStep {
                 id: "0:1".into(),

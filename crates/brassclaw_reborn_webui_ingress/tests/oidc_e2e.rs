@@ -24,7 +24,7 @@ use brassclaw_reborn_webui_ingress::{OidcAuthenticator, OidcAuthenticatorConfig}
 use jsonwebtoken::{Algorithm, EncodingKey, Header, encode};
 use rsa::pkcs8::{EncodePrivateKey, LineEnding};
 use rsa::traits::PublicKeyParts;
-use rsa::{RsaPrivateKey, RsaPublicKey};
+use rsa::{PrivateKey, PublicKey};
 use serde_json::json;
 
 const TEST_ISSUER: &str = "https://issuer.test";
@@ -39,26 +39,26 @@ const TEST_EXPIRED_JWT_SECS: i64 = 60;
 
 struct TestKey {
     private_pem: String,
-    public: RsaPublicKey,
+    public: PublicKey,
 }
 
 fn generate_test_key() -> TestKey {
-    let mut rng = rand::thread_rng();
-    let private = RsaPrivateKey::new(&mut rng, 2048).expect("rsa gen");
+    let mut rng = rand10::rng();
+    let private = PrivateKey::new(&mut rng, 2048).expect("rsa gen");
     let pem = private
         .to_pkcs8_pem(LineEnding::LF)
         .expect("pkcs8 pem")
         .to_string();
-    let public = RsaPublicKey::from(&private);
+    let public = private.to_public_key();
     TestKey {
         private_pem: pem,
         public,
     }
 }
 
-fn jwk_for(public: &RsaPublicKey, kid: &str) -> serde_json::Value {
-    let n = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public.n().to_bytes_be());
-    let e = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public.e().to_bytes_be());
+fn jwk_for(public: &PublicKey, kid: &str) -> serde_json::Value {
+    let n = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public.n_bytes());
+    let e = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(public.e_bytes());
     json!({
         "kty": "RSA",
         "alg": "RS256",

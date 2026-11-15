@@ -230,11 +230,40 @@ fn draft(
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Suite {
+    // Runtime data is retained as JSON text, not embedded in a JSONB Recipe
+    // constant. PostgreSQL cannot represent U+0000 inside JSONB strings.
+    // Omitted for legacy suites to preserve their exact serialized bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_input: Option<FixtureRuntimeInput>,
     pub variant: String,
     pub steps: Vec<FixtureStep>,
     pub expected_receipt: Option<Value>,
     pub python_stop: bool,
     pub expected_python_line: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct FixtureRuntimeInput {
+    pub contract: Value,
+    pub json: String,
+}
+impl Suite {
+    pub(super) fn task_input(&self) -> Result<Value, RebornBuildError> {
+        match &self.runtime_input {
+            None => Ok(json!({})),
+            Some(input) => {
+                let value = strict_json(&input.json, REVISION_LIMITS).map_err(invalid)?;
+                brassclaw_skills::value_contract::InputContract::from_value(
+                    &input.contract,
+                    REVISION_LIMITS,
+                )
+                .map_err(invalid)?
+                .bind(&value)
+                .map(Value::Object)
+                .map_err(invalid)
+            }
+        }
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -274,6 +303,7 @@ pub(super) fn checker_suites(class: i16, root: Uuid) -> Vec<Suite> {
     encode.results = edges;
     steps.push(encode);
     let mut suites = vec![Suite {
+        runtime_input: None,
         variant: "selected".into(),
         steps,
         expected_receipt: None,
@@ -291,6 +321,7 @@ pub(super) fn checker_suites(class: i16, root: Uuid) -> Vec<Suite> {
         ("stop_document", "{}", "KeyError: candidate"),
     ] {
         suites.push(Suite {
+            runtime_input: None,
             variant: name.into(),
             steps: vec![step(
                 1,
@@ -326,6 +357,7 @@ pub(super) fn receipt_suites() -> Vec<Suite> {
         }
         args["expected_json"] = json!(Value::Array(matrix).to_string());
         suites.push(Suite {
+            runtime_input: None,
             variant: name.into(),
             steps: vec![step(
                 1,
@@ -352,6 +384,7 @@ pub(super) fn receipt_suites() -> Vec<Suite> {
         ("stop_matrix", "[]".into(), yes),
     ] {
         suites.push(Suite {
+            runtime_input: None,
             variant: name.into(),
             steps: vec![step(
                 1,
@@ -421,6 +454,7 @@ pub(super) fn receipt_suites() -> Vec<Suite> {
     for (name, matrix, mut inputs, line) in extra_stops {
         inputs["expected_json"] = json!(matrix.to_string());
         suites.push(Suite {
+            runtime_input: None,
             variant: name.into(),
             steps: vec![step(
                 1,
@@ -475,6 +509,30 @@ pub(super) fn recipe_at(
             {
                 inputs.insert(name.clone(), json!({"kind":"constant","value":value}));
             }
+            if ordinal == 0
+                && let Some(input) = &suite.runtime_input
+            {
+                // The existing retained task-input path supplies the first
+                // invocation; runtime strings never become Python source.
+                suite.task_input()?;
+                for name in input
+                    .contract
+                    .as_object()
+                    .ok_or_else(|| invalid("fixture task contract must be object"))?
+                    .keys()
+                {
+                    if inputs
+                        .insert(
+                            name.clone(),
+                            json!({"kind":"task_input","reference":format!("{{{{vars.{name}}}}}")}),
+                        )
+                        .is_some()
+                        || fixture.results.contains_key(name)
+                    {
+                        return Err(invalid("fixture task input has conflicting binding"));
+                    }
+                }
+            }
             for (name, producer) in &fixture.results {
                 inputs.insert(
                     name.clone(),
@@ -501,7 +559,7 @@ pub(super) fn recipe_at(
         descriptions.push(json!({"desc_idx":desc,"label":"Closed installation export fixtures","yaml_source":"","steps":steps}));
         layouts.insert(
             suite.variant.clone(),
-            json!({"format":"recipe-input-layout/1","task_inputs":{},"steps":bindings}),
+            json!({"format":"recipe-input-layout/1","task_inputs":suite.runtime_input.as_ref().map(|input| &input.contract).cloned().unwrap_or_else(|| json!({})),"steps":bindings}),
         );
         invocations.insert(suite.variant.clone(), Value::Object(calls));
     }
@@ -525,7 +583,7 @@ pub(super) fn normalize_suite(desc: usize, suite: &Suite) -> Result<Suite, Rebor
             .ok_or_else(|| invalid("fixture step identity invalid"))?;
         step.id = format!("{desc}:{number}");
         if (step.component == super::pure::encoder_id()
-            || step.component == super::shipped::integer_instrument_id())
+            || super::shipped::is_instrument(step.component))
             && !step.results.is_empty()
         {
             let original = step.constants["step_id"]

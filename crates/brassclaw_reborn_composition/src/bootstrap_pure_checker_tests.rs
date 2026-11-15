@@ -11,6 +11,7 @@ fn pure_fixture_receipt_key_matches_variant_producer_and_manifest() {
     // subject of this test. No fabricated native observation or approval exists.
     let producer = checker_suites(22, root)[0].steps[0].clone();
     let suite = |name: &str| Suite {
+        runtime_input: None,
         variant: name.into(),
         steps: vec![
             producer.clone(),
@@ -75,6 +76,7 @@ fn pure_fixture_receipt_key_matches_variant_producer_and_manifest() {
     // A direct encoder test supplies a literal key rather than a result edge.
     // Namespace conversion must leave that actual typed input untouched.
     let direct = |name: &str| Suite {
+        runtime_input: None,
         variant: name.into(),
         steps: vec![FixtureStep {
             id: "0:1".into(),

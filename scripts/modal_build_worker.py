@@ -138,9 +138,12 @@ def command_mode(command, target):
     return "linux-compile/1"
 
 
-def worker_command(target):
-    # A normal executable, never a libtest binary or a worker in every profile.
-    return ["cargo", "build", "--locked", "-p", "brassclaw_monty_host", "--bin", "monty_worker",
+def worker_command(target, original_command=None):
+    # Preserve the admitted Cargo network policy; other product/test options
+    # do not apply to the normal companion's own dev-profile build.
+    options = command_options(original_command, target) if original_command is not None else {}
+    network = [flag for flag in ("--offline", "--frozen") if flag in options]
+    return ["cargo", "build", "--locked", *network, "-p", "brassclaw_monty_host", "--bin", "monty_worker",
             "--target", target, "--message-format=json"]
 
 
@@ -628,7 +631,7 @@ def run_build(storage, request, commit, *, started_monotonic=None):
                 artifacts = collect_product_artifact(messages, finished, cache, job, command)
             if packaged:
                 artifacts.update(collect_pgvector(messages, cache, job))
-                companion_command = worker_command(target)
+                companion_command = worker_command(target, request.get("original_command", command))
                 worker_code, worker_messages, worker_finished = execute(companion_command)
                 result["companion_command"] = companion_command
                 result["returncode"] = worker_code

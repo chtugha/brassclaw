@@ -73,7 +73,10 @@ class WorkerTests(SourceFixture):
     def test_failed_companion_cannot_publish_a_runnable_partial_package(self):
         self.exercise_invocation(packaged=True, companion_code=1)
 
-    def exercise_invocation(self, packaged=False, companion_code=0):
+    def test_complete_package_keeps_offline_and_frozen_for_companion(self):
+        self.exercise_invocation(packaged=True, main_flags=("--offline", "--frozen"))
+
+    def exercise_invocation(self, packaged=False, companion_code=0, main_flags=()):
         # Synthetic Popen/stdout/header IO boundary, not a Rust build or native
         # executable qualification. Source archives/materialization remain real.
         package = self.root / "crates" / worker.TEST_PACKAGE
@@ -87,7 +90,7 @@ class WorkerTests(SourceFixture):
                 (dependency / "Cargo.toml").write_text('[package]\nname="' + name + '"\nversion="0.1.0"\n')
         storage, manifest, checksum = self.records()
         storage = storage.resolve()
-        original = [*test_command(), "--message-format", "json-render-diagnostics"]
+        original = [*test_command(), *main_flags, "--message-format", "json-render-diagnostics"]
         command = worker.validate_command(original)
         request = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe", "command": command,
                    "original_command": original, "mode": worker.APPLE_TEST_MODE,
@@ -101,7 +104,9 @@ class WorkerTests(SourceFixture):
         def popen(actual, **kwargs):
             invocations.append(actual)
             companion = len(invocations) == 2
-            self.assertEqual(actual, worker.worker_command(worker.APPLE_TARGET) if companion else command)
+            expected_companion = worker.worker_command(worker.APPLE_TARGET)
+            expected_companion[3:3] = list(main_flags)
+            self.assertEqual(actual, expected_companion if companion else command)
             cache = storage / "cache/images/im-fixture"
             self.assertEqual(kwargs["env"]["CARGO_TARGET_DIR"], str(cache / "target"))
             binary = cache / "target" / worker.APPLE_TARGET / ("debug/monty_worker" if companion else "debug/deps/composition-123")
@@ -350,6 +355,11 @@ class ArtifactBoundaryTests(unittest.TestCase):
         self.assertEqual(worker.worker_command(worker.APPLE_TARGET), ["cargo", "build", "--locked", "-p",
                          "brassclaw_monty_host", "--bin", "monty_worker", "--target", worker.APPLE_TARGET,
                          "--message-format=json"])
+        baseline = worker.worker_command(worker.APPLE_TARGET)
+        for flags in (("--offline",), ("--frozen",), ("--offline", "--frozen")):
+            with self.subTest(flags=flags):
+                expected = [*baseline[:3], *flags, *baseline[3:]]
+                self.assertEqual(worker.worker_command(worker.APPLE_TARGET, [*product, *flags]), expected)
         package = self.repository / "crates/brassclaw_reborn_cli"
         package.mkdir()
         manifest = package / "Cargo.toml"

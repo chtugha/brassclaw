@@ -65,18 +65,12 @@ fn default_adapter_reserve() -> usize {
 }
 
 /// Locate the separately packaged worker beside the trusted application.
-/// Cargo test executables live in `deps`; their companion is in the profile
-/// directory. Never search PATH or accept a task/model-selected executable.
+/// Cargo test executables use `deps` or Cargo 1.100's package/hash output
+/// layout; their companion is in the profile directory. Never search PATH or
+/// accept a task/model-selected executable.
 pub fn installed_worker() -> io::Result<PathBuf> {
     let executable = std::env::current_exe()?;
-    let mut directory = executable
-        .parent()
-        .ok_or_else(|| io::Error::other("application directory missing"))?;
-    if directory.file_name().is_some_and(|name| name == "deps") {
-        directory = directory
-            .parent()
-            .ok_or_else(|| io::Error::other("Cargo profile directory missing"))?;
-    }
+    let directory = packaged_worker_directory(&executable)?;
     let name = if cfg!(windows) {
         "monty_worker.exe"
     } else {
@@ -90,6 +84,75 @@ pub fn installed_worker() -> io::Result<PathBuf> {
         ));
     }
     Ok(worker)
+}
+
+fn packaged_worker_directory(executable: &Path) -> io::Result<&Path> {
+    let directory = executable
+        .parent()
+        .ok_or_else(|| io::Error::other("application directory missing"))?;
+    if directory.file_name().is_some_and(|name| name == "deps") {
+        return directory
+            .parent()
+            .ok_or_else(|| io::Error::other("Cargo profile directory missing"));
+    }
+    // Recognize only the exact observed Cargo layout and matching executable
+    // hash. Do not walk arbitrary ancestors in search of an executable.
+    if directory.file_name().is_some_and(|name| name == "out")
+        && let Some(variant) = directory.parent()
+        && let Some(hash) = variant.file_name().and_then(|name| name.to_str())
+        && !hash.is_empty()
+        && hash.bytes().all(|byte| byte.is_ascii_hexdigit())
+        && executable
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(&format!("-{hash}")))
+        && let Some(build) = variant.parent().and_then(Path::parent)
+        && build.file_name().is_some_and(|name| name == "build")
+    {
+        return build
+            .parent()
+            .ok_or_else(|| io::Error::other("Cargo profile directory missing"));
+    }
+    Ok(directory)
+}
+
+#[cfg(test)]
+mod worker_location_tests {
+    use super::packaged_worker_directory;
+    use std::path::Path;
+
+    #[test]
+    fn packaged_and_cargo_layouts_use_their_exact_companion_directory() {
+        for (executable, expected) in [
+            ("installation/brassclaw", "installation"),
+            ("target/debug/deps/check-abc123", "target/debug"),
+            (
+                "target/debug/build/package/abc123/out/check-abc123",
+                "target/debug",
+            ),
+            (
+                "target/release/build/package/abc123/out/check-abc123.exe",
+                "target/release",
+            ),
+            (
+                "target/debug/build/package/abc123/out/check-other",
+                "target/debug/build/package/abc123/out",
+            ),
+            (
+                "target/debug/build/package/not-a-hash/out/check-not-a-hash",
+                "target/debug/build/package/not-a-hash/out",
+            ),
+            (
+                "installation/other/package/abc123/out/check-abc123",
+                "installation/other/package/abc123/out",
+            ),
+        ] {
+            assert_eq!(
+                packaged_worker_directory(Path::new(executable)).unwrap(),
+                Path::new(expected)
+            );
+        }
+    }
 }
 
 /// A finite physical allocator backstop, distinct from adaptive logical heap

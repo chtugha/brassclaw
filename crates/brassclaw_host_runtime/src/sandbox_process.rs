@@ -15,11 +15,12 @@ use std::{
 use async_trait::async_trait;
 use bollard::{
     Docker,
-    container::{
-        Config, CreateContainerOptions, LogOutput, LogsOptions, RemoveContainerOptions,
-        StartContainerOptions, WaitContainerOptions,
+    container::LogOutput,
+    models::{ContainerCreateBody, HostConfig},
+    query_parameters::{
+        CreateContainerOptions, LogsOptions, RemoveContainerOptions, StartContainerOptions,
+        WaitContainerOptions,
     },
-    models::HostConfig,
 };
 use brassclaw_host_api::ResourceScope;
 use futures_util::StreamExt;
@@ -333,8 +334,8 @@ impl RebornScopedSandboxCommandTransport {
             .docker
             .create_container(
                 Some(CreateContainerOptions {
-                    name: container_name.clone(),
-                    platform: None,
+                    name: Some(container_name.clone()),
+                    ..Default::default()
                 }),
                 launch,
             )
@@ -349,7 +350,7 @@ impl RebornScopedSandboxCommandTransport {
 
         let result = async {
             self.docker
-                .start_container(&container_id, None::<StartContainerOptions<String>>)
+                .start_container(&container_id, None::<StartContainerOptions>)
                 .await
                 .map_err(|error| {
                     RuntimeProcessError::ExecutionFailed(format!(
@@ -392,7 +393,7 @@ impl RebornScopedSandboxCommandTransport {
         request: CommandExecutionRequest,
         workspace: &Path,
         workdir: ContainerWorkdir,
-    ) -> Result<Config<String>, RuntimeProcessError> {
+    ) -> Result<ContainerCreateBody, RuntimeProcessError> {
         let env = self.config.command_env(request.extra_env)?;
         let container_user = self.config.container_identity.container_user()?;
         let mut binds = self
@@ -420,7 +421,7 @@ impl RebornScopedSandboxCommandTransport {
             ),
             ..Default::default()
         };
-        Ok(Config {
+        Ok(ContainerCreateBody {
             image: Some(self.config.image.clone()),
             cmd: Some(vec!["sh".to_string(), "-c".to_string(), request.command]),
             working_dir: Some(workdir.into_string()),
@@ -499,7 +500,7 @@ async fn wait_for_container(
     let mut stream = docker.wait_container(
         container_id,
         Some(WaitContainerOptions {
-            condition: "not-running",
+            condition: "not-running".to_string(),
         }),
     );
     match stream.next().await {
@@ -520,7 +521,7 @@ async fn collect_logs(
 ) -> Result<String, RuntimeProcessError> {
     let mut stream = docker.logs(
         container_id,
-        Some(LogsOptions::<String> {
+        Some(LogsOptions {
             stdout: true,
             stderr: true,
             follow: false,
@@ -622,6 +623,12 @@ fn validate_relative_workdir(path: &Path) -> Result<(), RuntimeProcessError> {
 mod tests {
     use super::*;
     use brassclaw_host_api::{MountAlias, MountGrant, MountPermissions, MountView, VirtualPath};
+
+    fn configuration_client() -> Docker {
+        // These cases inspect real launch configuration or reject before
+        // dispatch. A lazy client needs no daemon or operator-owned socket.
+        Docker::connect_with_http("http://127.0.0.1:1", 120, bollard::API_DEFAULT_VERSION).unwrap()
+    }
 
     #[test]
     fn relative_workdir_rejects_escape() {
@@ -818,7 +825,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn container_launch_config_applies_unix_socket_broker_env_binds_and_none_network() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -830,10 +836,7 @@ mod tests {
             .unwrap()
             .with_secret_broker_unix_socket(&secret_socket)
             .unwrap();
-        let transport = RebornScopedSandboxCommandTransport::new(
-            Docker::connect_with_local_defaults().unwrap(),
-            config,
-        );
+        let transport = RebornScopedSandboxCommandTransport::new(configuration_client(), config);
         let launch = transport
             .container_launch_config(
                 CommandExecutionRequest {
@@ -872,7 +875,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn container_launch_config_applies_http_proxy_broker_env_and_drops_none_network() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = temp.path().join("workspace");
@@ -880,10 +882,7 @@ mod tests {
         let config = RebornSandboxConfig::new(temp.path().join("workspaces"))
             .with_network_broker_proxy_url("http://broker.internal:8181")
             .unwrap();
-        let transport = RebornScopedSandboxCommandTransport::new(
-            Docker::connect_with_local_defaults().unwrap(),
-            config,
-        );
+        let transport = RebornScopedSandboxCommandTransport::new(configuration_client(), config);
         let launch = transport
             .container_launch_config(
                 CommandExecutionRequest {
@@ -916,10 +915,9 @@ mod tests {
     }
 
     #[tokio::test]
-    #[ignore = "requires Docker daemon (/var/run/docker.sock)"]
     async fn run_command_rejects_unconfigured_scoped_mount_before_container_create() {
         let temp = tempfile::tempdir().unwrap();
-        let docker = Docker::connect_with_local_defaults().unwrap();
+        let docker = configuration_client();
         let transport = RebornScopedSandboxCommandTransport::new(
             docker,
             RebornSandboxConfig::new(temp.path().join("workspaces")),

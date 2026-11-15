@@ -671,6 +671,7 @@ fn suites(
             expected.insert(value.name.clone(), BTreeMap::new());
         }
         suites.push(Suite {
+            runtime_input: None,
             variant: value.name,
             steps,
             expected_receipt: (direct && value.failure.is_none()).then_some(value.expected),

@@ -79,6 +79,7 @@ jobs:
           cp target/${{ matrix.target }}/release/brassclaw.sha256 ${{ matrix.artifact_name }}.sha256
           cp target/${{ matrix.target }}/release/monty_worker ${{ matrix.artifact_name }}-monty-worker
           cp target/${{ matrix.target }}/release/monty_worker.sha256 ${{ matrix.artifact_name }}-monty-worker.sha256
+          cp THIRD_PARTY_NOTICES.md ${{ matrix.artifact_name }}-third-party-notices.md
 
       - name: Upload artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -89,6 +90,7 @@ jobs:
             ${{ matrix.artifact_name }}.sha256
             ${{ matrix.artifact_name }}-monty-worker
             ${{ matrix.artifact_name }}-monty-worker.sha256
+            ${{ matrix.artifact_name }}-third-party-notices.md
 
   release:
     name: Create Release
@@ -114,6 +116,7 @@ jobs:
         uses: softprops/action-gh-release@e598afbe1493e6b1bafb1f389cabb956eab91231 # v3.0.3
         with:
           files: artifacts/*
+          body: 'Bundled minicbor libraries use the [Blue Oak Model License 1.0.0](https://blueoakcouncil.org/license/1.0.0); see the accompanying third-party notices.'
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}

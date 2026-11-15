@@ -95,7 +95,8 @@ rustls-native-certs = { version = "0.8", optional = true }
 webpki-roots = { version = "0.26", optional = true }
 
 # Database - libSQL/Turso (upgrade-release migration path only)
-libsql = { version = "0.6", optional = true, default-features = false, features = ["core", "replication", "remote", "tls"] }
+# Only reads local legacy files during migration; no remote/replication/TLS client.
+libsql = { version = "0.6", optional = true, default-features = false, features = ["core"] }
 
 # Error handling
 thiserror = "2"
@@ -192,7 +193,7 @@ rig-core = { version = "0.30", default-features = false, features = ["reqwest-ru
 # to brassclaw_reborn_composition in S10 refactor).
 
 # Docker sandbox
-bollard = "0.18"
+bollard = "0.20"
 
 # Archive extraction for WASM extension bundles
 flate2 = "1"
@@ -232,7 +233,7 @@ zbus = "4"
 [dev-dependencies]
 tokio-test = "0.4"
 tracing-test = "0.2"
-testcontainers-modules = { version = "0.11", features = ["postgres"] }
+testcontainers-modules = { version = "0.15", features = ["postgres"] }
 pretty_assertions = "1"
 tempfile = "3"
 insta = { version = "1.46.3", features = ["yaml"] }

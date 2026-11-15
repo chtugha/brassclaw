@@ -121,6 +121,29 @@ pub fn verify_packaged_usage(
     })
 }
 
+fn history_inputs() -> Value {
+    let string = json!({"type":"string","required":true,"checks":[]});
+    json!({"user_input":string,"answer":string,"reply_ref":string})
+}
+
+fn history_formatter_document() -> Value {
+    json!({"content":
+        "def format_turn_history(inputs):\n    import json\n    return json.dumps({'format': 'completed-turn/1', 'user_input': inputs['user_input'], 'answer': inputs['answer'], 'reply_ref': inputs['reply_ref']}) + '\\n'",
+        "preload":{"format":"python-preload/2","exports":{"format_turn_history":{"symbol":"format_turn_history","parameters":["inputs"],"mapping":true}},
+            "private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"format_turn_history"},
+        "input_contract":history_inputs(),"result_contract":{"type":"string"}})
+}
+
+/// Canonical packaged pure formatter, shared by its actual History consumer
+/// and independent installation qualification. This grants no approval.
+pub fn history_formatter_draft(id: Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    ComponentRevisionDraft::from_json(
+        &json!({"format":"component-revision/1","uuid":id,"class_code":22,
+        "document":history_formatter_document(),"dependencies":[],"association":null})
+        .to_string(),
+    )
+}
+
 /// Construct immutable authoring drafts using the supported revision envelope.
 /// The Tool row is deliberately absent: reuse its real immutable definition and
 /// implementation, rather than inventing a primitive from a usage contract.
@@ -254,17 +277,17 @@ Examples and acceptance
         "failure":failure})
         .to_string();
     let task_inputs = if history {
-        json!({"user_input":string,"answer":string,"reply_ref":string})
+        history_inputs()
     } else {
         inputs.clone()
     };
     let offset = i32::from(history);
     let mut steps = Vec::new();
     let mut layouts = serde_json::Map::new();
-    if history {
+    if let Some(formatter) = formatter {
         steps.push(
             json!({"stepnumber":1,"knowledge":"orchestrator","goal":"Format the completed turn",
-            "content":"","type":"component","include":[formatter.expect("validated history formatter")]}),
+            "content":"","type":"component","include":[formatter]}),
         );
         layouts.insert(
             "0:1".into(),
@@ -366,13 +389,15 @@ Examples and acceptance
         ),
     ];
     let mut dependencies = vec![descriptor, code, skill];
-    if history {
-        dependencies.push(formatter.expect("validated history formatter"));
-        drafts.push((formatter.expect("validated history formatter"),22,json!({"content":
-            "def format_turn_history(inputs):\n    import json\n    return json.dumps({'format': 'completed-turn/1', 'user_input': inputs['user_input'], 'answer': inputs['answer'], 'reply_ref': inputs['reply_ref']}) + '\\n'",
-            "preload":{"format":"python-preload/2","exports":{"format_turn_history":{"symbol":"format_turn_history","parameters":["inputs"],"mapping":true}},
-                "private_functions":{},"constants":[],"imports":["json"],"dependencies":[],"default_export":"format_turn_history"},
-            "input_contract":task_inputs,"result_contract":{"type":"string"}}),vec![],Value::Null));
+    if let Some(formatter) = formatter {
+        dependencies.push(formatter);
+        drafts.push((
+            formatter,
+            22,
+            history_formatter_document(),
+            vec![],
+            Value::Null,
+        ));
     }
     drafts.push((root, 21, recipe, dependencies, Value::Null));
     drafts

@@ -1,40 +1,8 @@
 [advisories]
 unmaintained = "workspace"
 yanked = "deny"
-ignore = [
-    # Pre-existing advisories — tracked for upgrade in separate PRs
-    # serde_yml unsound/unmaintained — direct dep, upgrade tracked separately
-    "RUSTSEC-2025-0068",
-    # tokio-tar PAX header parsing — sandbox containers only
-    "RUSTSEC-2025-0111",
-    # rustls-webpki advisories — 0.102.8 remains pinned by a libsql 0.6.0 transitive dep
-    # (via rustls 0.22 → hyper-rustls 0.25); keep ignored until that pin is gone.
-    # RUSTSEC-2026-0104: panic on empty `onlySomeReasons` BIT STRING during CRL parsing.
-    # We do not use CRLs, and the advisory explicitly notes apps that don't parse CRLs
-    # are unaffected. Same transitive pin as 0049/0098/0099 — tracked with them.
-    "RUSTSEC-2026-0049",
-    "RUSTSEC-2026-0098",
-    "RUSTSEC-2026-0099",
-    "RUSTSEC-2026-0104",
-    # lopdf: stack overflow via deeply nested PDF objects (RUSTSEC-2026-0187).
-    # lopdf is pulled in by the document-extraction path (src/document_extraction).
-    # We do not accept untrusted PDFs in the critical path; extraction is user-initiated
-    # from trusted local files. Remove once lopdf releases a patched version.
-    "RUSTSEC-2026-0187",
-    # rsa: Marvin Attack timing side-channel (RUSTSEC-2023-0071). Pulled in by the OIDC
-    # stack (brassclaw_reborn_webui_ingress → openidconnect → rsa). The rsa crate is used
-    # for JWT verification only, not for decryption of attacker-controlled ciphertexts on
-    # a shared host, so the Marvin Attack is not exploitable in our deployment model.
-    # Remove once openidconnect/jwt-simple upgrades to an rsa release without this advisory.
-    "RUSTSEC-2023-0071",
-    # h2: unbounded empty DATA frames CPU exhaustion (RUSTSEC-2026-0258).
-    # The affected h2 0.3.27 is a transitive dep via libsql 0.6.0 → hyper 0.14.
-    # The h2 0.3.x branch has no patched release; h2 0.4.x is updated to 0.4.19
-    # (patched). BrassClaw does not expose the h2/hyper 0.14 path to untrusted
-    # callers — it is used only for outbound libsql connections under operator
-    # control. Remove once libsql upgrades off hyper 0.14 / h2 0.3.
-    "RUSTSEC-2026-0258",
-]
+# All known advisories are checked; dependency repairs must not add waivers.
+ignore = []
 
 [licenses]
 version = 2
@@ -46,6 +14,9 @@ allow = [
     "MIT-0",
     "Apache-2.0",
     "Apache-2.0 WITH LLVM-exception",
+    # minicbor / minicbor-serde: permissive copyright and patent grant;
+    # redistribution must retain the license text or its canonical link.
+    "BlueOak-1.0.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
     "ISC",
@@ -76,9 +47,6 @@ allow-wildcard-paths = true
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = [
-    # Monty (Pydantic's embedded Python interpreter) — not yet on crates.io.
-    # Pulls in ruff_* crates from astral-sh/ruff at a pinned revision.
-    "https://github.com/pydantic/monty.git",
-    "https://github.com/astral-sh/ruff.git",
-]
+# The product uses reviewed vendored Monty and registry Ruff sources. The
+# separate upstream-version comparison harness is not the product graph.
+allow-git = []

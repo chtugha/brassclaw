@@ -200,7 +200,12 @@ impl Context {
             .collect::<Vec<_>>();
         program
             .inputs()
-            .verify_recorded_input_fingerprints(&json!({}), &order, &results, &fingerprints)
+            .verify_recorded_input_fingerprints(
+                &suite.task_input()?,
+                &order,
+                &results,
+                &fingerprints,
+            )
             .map_err(invalid)?;
         Ok(())
     }
@@ -358,7 +363,12 @@ impl Context {
             inspected
                 .pure_component(self.claim.root.uuid)
                 .map_err(invalid)?;
+            let inputs = program
+                .inputs()
+                .bind_task_inputs(&suite.task_input()?)
+                .map_err(invalid)?;
             let source = Arc::new(CheckerSource {
+                inputs,
                 context: self.clone(),
                 suite: suite.clone(),
                 reference: reference_string,
@@ -514,6 +524,7 @@ impl Context {
     }
 }
 struct CheckerSource {
+    inputs: Value,
     context: Arc<Context>,
     suite: Suite,
     reference: String,
@@ -644,7 +655,7 @@ impl InternalRecipeSource for CheckerSource {
         Ok(SelectedMontyRecipe {
             normal_match: None,
             inspected: self.inspected.clone(),
-            inputs: Some(json!({}).into()),
+            inputs: Some(self.inputs.clone().into()),
             tools: None,
         })
     }

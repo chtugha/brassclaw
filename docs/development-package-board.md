@@ -50,8 +50,16 @@ original failed Run109 preserved. See the
 [scoped receipt](validation/2026-11-15-global-monty-lifetime.md).
 The reviewed Main CI repair and unembedded development-skill addition are
 integrated in the same publication batch; live GitHub results remain separate.
-Root continues B1 -> B2 -> B3 alone. A private next History-formatter
-qualification patch is uncompiled and unaccepted; it is not part of this batch.
+Root continues B1 -> B2 -> B3 alone. The subsequent History-formatter slice
+now passes strict Run118/native119 and scoped execution; see the
+[current History/CI receipt](validation/2026-11-15-history-ci-security.md).
+It qualifies only the exact formatter, not complete History usage or general
+Pure publication. Actual compatible dependency repairs and final all-feature
+advisory/license/source checks pass; 47 duplicate warnings remain visible.
+The [current Modal product receipt](validation/2026-11-15-modal-canonical-native.md)
+replaces the historical image observation below: only Apple product mode for
+im-J1hA8cNV5PRbk7mGWK8pH0 is now natively checked and activated; test mode and
+prepared 1.100 remain separate/unqualified. No new Bob package delegation resumes.
 
 **Historical roles below (not current assignment):**
 

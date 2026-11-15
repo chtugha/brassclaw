@@ -310,6 +310,18 @@ qualified evidence through its own connected publication/selection cutover. Do
 not import blocked private N/Q/R/T code or claim their prerequisites from this
 narrow first-root receipt.
 
+**Second shipped function accepted, 2026-11-15:** the actual canonical History
+formatter now receives independent own S qualification after its private text
+receipt prerequisite. Runtime fixture data uses the existing typed task-input
+path, preserving real NUL/CRLF/Unicode values without invalid JSONB constants or
+source substitution. Exact consumer identity, null Q2, one-root closure and
+reuse without execution pass. Strict Run118/native119 plus the six real
+PG/recovery/migration cases pass; see the
+[exact scoped acceptance](docs/validation/2026-11-15-history-ci-security.md).
+This does not qualify complete History usage/workflow, repair general authored
+producers, remove V102/V200 limits, or close B1-05. Preserve the noncircular
+installation owner and continue remaining B1 gates before dependent publication.
+
 **Lifecycle prerequisite repaired, 2026-11-15:** the runtime explicitly owns the
 global driver through worker exit and shutdown. Non-owning validator and private
 claim registrations remove the actual strong ownership cycles without losing

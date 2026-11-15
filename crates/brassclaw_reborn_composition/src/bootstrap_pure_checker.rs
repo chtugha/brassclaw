@@ -175,7 +175,7 @@ impl Profile {
         };
         let base = json!({"execution_context":claim,
             "instruments":claim.components.iter().filter(|r| r.uuid == encoder_id() || r.uuid == witness_id()
-                || (self.is_shipped() && r.uuid == super::shipped::integer_instrument_id())).collect::<Vec<_>>(),
+                || (self.is_shipped() && super::shipped::is_instrument(r.uuid))).collect::<Vec<_>>(),
             "suites":pin(json!({"variants":claim.suites,"expected_returns":self.expected})),
             "original_native_fixture_inputs":self.native_inputs.iter().map(|(r,_)|r).collect::<Vec<_>>(),
             "factory_checksum":evidence::checksum(include_str!("bootstrap_pure_checker.rs")),

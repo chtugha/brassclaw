@@ -510,6 +510,32 @@ remain open.
    custody, stops/joins the single worker, then releases PG last. Neither new
    wrapper starts a VM. Test failures/cancellation on both entries.
 
+**Concrete remaining native-process custody finding, 2026-11-15:**
+`brassclaw_host_runtime::sandbox_process::execute_in_container` currently ignores
+`remove_container` failure and does not bound that cleanup; dropping its future
+can also drop cleanup. `CommandExecutionRequest` currently carries storage scope,
+not durable operation/attempt custody. This is not fixed by the compatible
+Bollard API update or daemon-independent configuration tests. Resolve it in the
+existing Simplified Phase 3a native-effect/process owner and consume the result
+here; do not introduce another workflow executor or a fake successful cleanup.
+Preserve the original command outcome separately from confirmed/unresolved
+container cleanup. Fence the original attempt, retain the exact owned resource
+identity before uncertain effects, bound cancellation/cleanup through confirmed
+settings and reconcile only that original resource. A failed cleanup must be
+visible and retained; it must not turn a known completed command into a generic
+retryable error or permit command replay. Prove start failure, completion,
+withheld/lost cleanup acknowledgement and cancellation using the real isolated
+Docker transport/backend, including orderly final cleanup. No Docker daemon is
+present on the current Mac; config-only cases are not this acceptance.
+
+The same adapter's private fixed defaults remain in the Simplified resource
+migration: 2 GiB container memory, 1024 CPU shares, 64 KiB captured output and 512 MiB
+`/tmp`. Reuse existing instance Tool technical-settings/runtime wiring; provide
+validated adjustable values and short explanations, preserve acknowledged
+revision/accepted-operation semantics, and keep applicable native bounds.
+These are remaining steps, not a claim that current Monty WebUI settings already
+control every process limit. No generic global pressure monitor is introduced.
+
 **Exit:** one driver lifecycle implementation, preserved internal/ordinary
 semantics, and actual retention/cleanup behavior accepted through native tests.
 

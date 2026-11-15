@@ -29,6 +29,14 @@ from build_settings import modal_resources, load_settings
 from modal_source_sync import ROOT, MANIFEST_PATH, modal_lock, assert_remote_settled, sync_source, verify_source
 
 
+# Exact pre-forwarding sources at 829bd0f2a2cfdcae3b6f3c5a07309f50e82536dc.
+# Collection compatibility only: never new-job or activation authority.
+LEGACY_COMPANION_WORKER_IDENTITY = {
+    'modal_build_worker.py': '43569e338199699eb47542e83d1b34eef0c8ccd22d1145ddac6dd1dcdd880ee9',
+    'modal_source_sync.py': 'c53d9cc3738689a878c43410219704c3c48b7f48d0c275126ba0edf4fe3a55ea',
+}
+
+
 def records_root():
     return Path(os.environ.get("CARGO_TARGET_DIR", str(ROOT / "target"))) / "modal-build"
 
@@ -211,18 +219,19 @@ def run(args):
             import json
             from pathlib import Path
             from uuid import UUID
-            evidence = Path("/build/cache/jobs") / str(UUID(original["job_id"]))
+            storage = Path("/build").resolve(strict=True)
+            evidence = storage / "cache/jobs" / str(UUID(original["job_id"]))
             evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
             evidence.chmod(0o700)
             (evidence / "image-provenance.json").write_text(json.dumps({p.name: p.read_text() for p in Path("/opt/brassclaw").glob("*.txt")}))
-            for filesystem in ["/build", "/tmp"]:
+            for filesystem in [storage, Path("/tmp")]:
                 usage = shutil.disk_usage(filesystem)
                 print(f"Disk preflight {filesystem}: {usage}", flush=True)
                 if usage.free < 15 * 1024**3 or usage.used > usage.total * 0.90:
                     raise RuntimeError(f"Insufficient build space on {filesystem}")
 
             try:
-                return run_build("/build", original, volume.commit, started_monotonic=function_started)
+                return run_build(storage, original, volume.commit, started_monotonic=function_started)
             finally:
                 volume.commit()
 
@@ -356,10 +365,20 @@ def collect_result(volume, directory, original, result):
     if packaged and result["returncode"] == 0:
         package = result.get("runtime_package", {})
         roles = [artifact.get("role") for artifact in result["artifacts"].values()]
+        identity = original.get("worker_identity")
+        if identity == worker_identity():
+            expected_companion = worker_command(original["target_triple"],
+                                                original.get("original_command", original["command"]))
+        elif identity == LEGACY_COMPANION_WORKER_IDENTITY:
+            # The original recorded command used no propagated network flags.
+            # Fetch its original bytes; do not reinterpret/replay the old job.
+            expected_companion = worker_command(original["target_triple"])
+        else:
+            raise ValueError("Unrecognized runtime-package worker identity; preserve original evidence")
         if (package.get("version") != 1 or roles.count("monty_worker") != 1
                 or roles.count("embedded-pgvector") != 1
                 or roles.count("test" if original["mode"] == APPLE_TEST_MODE else "product") != 1
-                or len(roles) != 3 or result.get("companion_command") != worker_command(original["target_triple"])):
+                or len(roles) != 3 or result.get("companion_command") != expected_companion):
             raise ValueError("Incomplete/mismatched runtime package")
         if ({name for name, artifact in result["artifacts"].items() if artifact["role"] == "monty_worker"} != {"monty_worker"}
                 or {name for name, artifact in result["artifacts"].items() if artifact["role"] == "embedded-pgvector"} != {"pgvector.tar.gz"}

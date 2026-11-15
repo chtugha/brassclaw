@@ -115,7 +115,7 @@ mod tests {
 
     #[test]
     fn component_type_yaml_roundtrip() {
-        let types: Vec<ComponentType> = serde_yml::from_str("- llm\n- kohai\n- agent").unwrap();
+        let types: Vec<ComponentType> = serde_norway::from_str("- llm\n- kohai\n- agent").unwrap();
         assert_eq!(
             types,
             vec![
