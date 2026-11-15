@@ -21,7 +21,7 @@ import uuid
 helper = str(Path(sys.argv.pop(1)).resolve())
 sys.path.insert(0, str(Path(helper).parent))
 sys.dont_write_bytecode = True
-from screen_chat_notify import check_channel, default_socket, send_message
+from screen_chat_notify import check_channel, default_socket, Dispatcher
 
 
 def stamp():
@@ -42,7 +42,10 @@ def launch(arguments):
         'Requires bash, Python 3, GNU Screen and a running desktop app owning this chat.\n'
         'The starter prints launch JSON and exits; the helper runs inside Screen.\n'
         'Notifications use the versioned local Desktop IPC protocol without Node,\n'
-        'a bridge or a queue. Active chats are steered; inactive chats get a new\n'
+        'a bridge or a chat queue. Messages wait for observed tool completion.\n'
+        'A 300ms quiet interval reduces the non-atomic check/send race.\n'
+        'Final delivery waits at most 600s from build end; uncertain sends are not replayed.\n'
+        'Active chats are steered; inactive chats get a new\n'
         'turn using their existing settings. No turn ID is needed.\n'
         'The protocol is internal and may change with desktop app updates.\n'
         'Launch exit status covers startup; inspect status.json for the build result\n'
@@ -56,9 +59,11 @@ def launch(arguments):
     parser.add_argument('--build-path', '--cwd', default=os.getcwd(), help='Command working directory')
     parser.add_argument('--thread', default=os.environ.get('CODEX_THREAD_ID'), help='Codex chat UUID (default: CODEX_THREAD_ID)')
     parser.add_argument('--name', help='Unique Screen name (default: chat prefix plus random ID)')
-    parser.add_argument('--state-root', default='/private/tmp', help='Parent of private per-run logs/state directory')
+    parser.add_argument('--state-root', default=tempfile.gettempdir(), help='Parent of private per-run logs/state directory (default: system temporary directory)')
     parser.add_argument('--heartbeat-seconds', type=float, default=180, help='alive interval; default 180, smaller values for tests')
-    parser.add_argument('--notify-timeout', type=float, default=20, help='Maximum seconds per direct notification')
+    parser.add_argument('--notify-timeout', type=float, default=20, help='Maximum seconds per IPC operation/send attempt')
+    parser.add_argument('--notify-quiet-seconds', type=float, default=.3, help='Tool-free quiet interval before sending')
+    parser.add_argument('--notify-final-wait-seconds', type=float, default=600, help='Final notification deadline from build end')
     parser.add_argument('--ipc-socket', default=default_socket(), help='Local Desktop IPC socket (default: CODEX_HOME/ipc/ipc.sock)')
     parser.add_argument('--env', action='append', default=[], metavar='NAME=VALUE', help='Additional build environment variable; repeatable')
     parser.add_argument('command', nargs=argparse.REMAINDER, help='Executable and arguments after --')
@@ -66,7 +71,7 @@ def launch(arguments):
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     if not args.thread or not command:
         parser.error('--thread (or CODEX_THREAD_ID) and a command after -- are required')
-    for field in ('heartbeat_seconds', 'notify_timeout'):
+    for field in ('heartbeat_seconds', 'notify_timeout', 'notify_quiet_seconds', 'notify_final_wait_seconds'):
         value = getattr(args, field)
         if not math.isfinite(value) or value <= 0:
             parser.error(field.replace('_', '-') + ' must be finite and positive')
@@ -95,6 +100,7 @@ def launch(arguments):
     config = dict(thread=args.thread, name=name, cwd=str(cwd), command=command,
                   environment=environment, heartbeat=args.heartbeat_seconds,
                   timeout=args.notify_timeout, socket=args.ipc_socket,
+                  quiet=args.notify_quiet_seconds, final_wait=args.notify_final_wait_seconds,
                   started_at=stamp())
     write_json(state / 'launch.json', config)
     write_json(state / 'status.json', dict(state='launching', name=name, thread=args.thread, started_at=config['started_at']))
@@ -124,7 +130,7 @@ def run(state):
     def handle_signal(number, frame):
         nonlocal interrupted
         interrupted = number
-        if child is not None:
+        if child is not None and child.poll() is None:
             try:
                 os.killpg(child.pid, number)
             except ProcessLookupError:
@@ -133,20 +139,12 @@ def run(state):
     for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         signal.signal(number, handle_signal)
 
-    def notify(message):
-        event = dict(at=stamp(), message=message, transport='desktop-ipc',
-                     message_id=str(uuid.uuid4()))
-        try:
-            result = send_message(config['socket'], config['thread'],
-                                  '[Screen ' + config['name'] + '] ' + message,
-                                  config['timeout'], config['cwd'], event['message_id'])
-            event.update(accepted=result.get('accepted') is True, output=result)
-        except (OSError, ValueError, RuntimeError) as error:
-            event.update(accepted=False, error=str(error))
-        event['finished_at'] = stamp()
-        with (state / 'notifications.jsonl').open('a') as log:
-            log.write(json.dumps(event) + '\n')
-        return event['accepted']
+    dispatcher = Dispatcher(config, state)
+
+    def notification_fields():
+        view = dispatcher.snapshot()
+        return dict(notification=view,
+                    notification_accepted=view.get('accepted') if view.get('kind') == 'final' else None)
 
     started = time.monotonic()
     code = 1
@@ -159,8 +157,10 @@ def run(state):
                                      env=dict(os.environ, **config['environment']),
                                      stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
                                      start_new_session=True)
-            write_json(state / 'status.json', dict(state='running', name=config['name'],
-                       thread=config['thread'], pid=child.pid, started_at=config['started_at']))
+            status = dict(state='running', name=config['name'], thread=config['thread'],
+                          pid=child.pid, helper_pid=os.getpid(), started_at=config['started_at'],
+                          **notification_fields())
+            write_json(state / 'status.json', status)
             next_heartbeat = started + config['heartbeat']
             stop_deadline = None
             while child.poll() is None:
@@ -175,7 +175,11 @@ def run(state):
                             pass
                 elif now >= next_heartbeat:
                     next_heartbeat = now + config['heartbeat']
-                    notify('alive')
+                    dispatcher.submit('[Screen ' + config['name'] + '] alive')
+                fields = notification_fields()
+                if status.get('notification') != fields['notification']:
+                    status.update(fields)
+                    write_json(state / 'status.json', status)
                 time.sleep(0.1)
             code = child.wait()
     except Exception as exception:
@@ -183,14 +187,28 @@ def run(state):
         if child is not None and child.poll() is None:
             os.killpg(child.pid, signal.SIGKILL)
             child.wait()
+    finished = time.monotonic()
     success = code == 0 and interrupted is None and error is None
     message = 'Build erfolgreich' if success else 'Build fehlgeschlagen'
     # Persist the outcome before notifying; delivery failure never becomes success.
     status = dict(state='completed', name=config['name'], thread=config['thread'],
                   exit_code=code, signal=interrupted, error=error, message=message,
-                  finished_at=stamp(), elapsed_seconds=round(time.monotonic() - started, 3))
+                  helper_pid=os.getpid(), finished_at=stamp(),
+                  elapsed_seconds=round(finished - started, 3),
+                  notification=dict(state='waiting_state', accepted=None, kind='final'),
+                  notification_accepted=None)
     write_json(state / 'status.json', status)
-    status['notification_accepted'] = notify(message)
+    try:
+        dispatcher.submit('[Screen ' + config['name'] + '] ' + message, final=True, finished=finished)
+        while not dispatcher.done.wait(.05):
+            fields = notification_fields()
+            if status.get('notification') != fields['notification']:
+                status.update(fields)
+                write_json(state / 'status.json', status)
+    finally:
+        dispatcher.close()
+    status.update(notification_fields())
+    status['notification_finished_at'] = stamp()
     write_json(state / 'status.json', status)
     # This is Screen's sole foreground command: returning closes the session.
     return 0 if success and status['notification_accepted'] else 1

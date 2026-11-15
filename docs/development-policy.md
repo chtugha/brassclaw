@@ -158,6 +158,19 @@ confirm the session ended in the recorded socket directory. `state: completed`
 alone precedes the final send and does not prove session closure. Leave foreign
 sessions/processes intact. These monitoring rules do not pause implementation.
 
+The helper defers notification delivery while observed tool calls are active.
+It keeps one pending message, coalesces heartbeats and lets completion replace
+an unsent heartbeat; build supervision and signal forwarding stay independent.
+The default quiet interval is 0.3 seconds and the final-notification wait is
+600 seconds from actual build completion, configurable through
+`--notify-quiet-seconds` and `--notify-final-wait-seconds`. The IPC operation
+timeout remains separately configurable. Unknown protocol/tool states withhold
+delivery; uncertain sends remain unknown and are not replayed. This does not
+make observation and sending atomic or guarantee delivery after app restart.
+Continue local status/log checks when a notification is waiting; never interrupt
+a tool to make room for its notification. A completed build with pending or
+failed delivery remains distinct from successful notification and session exit.
+
 **Global temporary-PostgreSQL test authorization — 2026-11-15:** after an
 actual unchanged sandbox syscall denial, the operator has already authorized the
 necessary reviewed initialization/start/query/test-data/stop/cleanup commands

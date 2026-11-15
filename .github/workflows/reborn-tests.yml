@@ -69,6 +69,14 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+      - name: Install GNU Screen for helper regressions
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y screen
+      - name: Select GNU Screen for macOS helper regressions
+        if: runner.os == 'macOS'
+        run: |
+          brew list --versions screen || brew install screen
+          echo "$(brew --prefix screen)/bin" >> "$GITHUB_PATH"
       - name: Validate installer and uninstaller file operations
         run: |
           bash -n install.sh uninstall.sh
@@ -78,6 +86,7 @@ jobs:
           python3 scripts/test_modal_build_worker.py
           python3 scripts/test_modal_source_sync.py
           python3 scripts/test_sweepfix.py
+          python3 tests/screen/test_deferred_notifications.py
           bash scripts/ci/test-classify-test-scope.sh
 
   native-memory-gate:

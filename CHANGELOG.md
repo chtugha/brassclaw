@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Screen notifications**: Wait for observed tool calls to finish before direct
+  chat delivery. Coalesce pending heartbeats and replace them with completion
+  messages while build supervision continues independently. Keep uncertain
+  delivery outcomes explicit without automatic replay; expose configurable quiet
+  and final-wait intervals.
+
 - **Native PostgreSQL test cleanup**: Preserve the private cluster and report
   failed orderly shutdown instead of triggering an immediate-stop destructor
   or deleting live data. Verify both fixture owners with real failure,
