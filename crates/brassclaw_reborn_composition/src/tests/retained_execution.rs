@@ -149,26 +149,13 @@ async fn blocked_dispatch_intent_allows_cancel_and_rolls_back_before_effects() {
     assert_eq!(selections, 1);
 }
 
-#[path = "support/admission.rs"]
-mod admission;
-#[path = "../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
-mod native_pg;
-#[path = "../../../crates/brassclaw_reborn_composition/src/pg_monty_admission_core.rs"]
-mod pg_monty_admission;
-
-// Same observation parser as Composition; never a native qualification source.
-#[path = "support/retained_kernel.rs"]
-mod retained_kernel;
-#[path = "support/retained_program.rs"]
-mod retained_program;
-#[path = "support/retained_program_variants.rs"]
-mod retained_program_variants;
-#[path = "../../../crates/brassclaw_reborn_composition/src/task_model_capture_record.rs"]
-mod task_model_capture_record;
+// Reuse the actual Composition owners and already shared native fixtures.
+use crate::native_admission_fixture as admission;
+use crate::pg_association_review::tests::native_evidence::{
+    retained_kernel, retained_program, retained_program_variants, support,
+};
+use crate::runtime::test_pg::native_pg;
 use retained_program_variants::{program_with_preload_source, program_with_source};
-
-#[path = "support/runtime.rs"]
-mod support;
 
 struct KernelPort {
     runtime: Arc<RetainedFirstPartyCapability>,
@@ -359,10 +346,9 @@ async fn retained_steps_use_real_kernel_policy_and_keep_success_before_output_fa
         let inputs = json!({"data":data.to_string()});
         let admitted_fixture =
             Arc::new(admission::reserve(rig.pool.clone(), inputs["data"].as_str().unwrap()).await);
-        let definitions =
-            include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py")
-                .strip_suffix("asyncio.run(_global_main())\n")
-                .unwrap();
+        let definitions = include_str!("../../../brassclaw_engine/orchestrator/global_mode.py")
+            .strip_suffix("asyncio.run(_global_main())\n")
+            .unwrap();
         let source = format!(
             "{definitions}\nasync def validate_draft():\n    task = await host.await_next_task(0)\n    host.enter_task(task['task_token'])\n    value = await _execute_recipe(task['task_token'], 'retained-draft', '0:1-0:E', {{'user_input': task['user_input']}})\n    await host.validation_result(task['task_token'], value)\nasyncio.run(validate_draft())\n"
         );
@@ -760,7 +746,7 @@ async fn recipe_children_share_one_task_parent_with_explicit_result_handoff() {
     let initial = json!({"data":first_value.to_string()});
     let admitted_fixture =
         Arc::new(admission::reserve(rig.pool.clone(), initial["data"].as_str().unwrap()).await);
-    let definitions = include_str!("../../../crates/brassclaw_engine/orchestrator/global_mode.py")
+    let definitions = include_str!("../../../brassclaw_engine/orchestrator/global_mode.py")
         .strip_suffix("asyncio.run(_global_main())\n")
         .unwrap();
     // Actual Monty sequences both constrained draft workflows. Rust responds
@@ -1006,6 +992,3 @@ async fn selected_export_preflight_rejects_unsafe_libraries_before_execution() {
         "invalid libraries must not record a dispatch intent or invoke a Tool"
     );
 }
-
-#[path = "../../../crates/brassclaw_reborn_composition/src/monty_result_reference.rs"]
-mod monty_result_reference;

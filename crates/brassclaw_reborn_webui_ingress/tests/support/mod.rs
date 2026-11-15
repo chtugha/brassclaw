@@ -14,16 +14,16 @@ use serde::Serialize;
 /// A verified/unverified email entry returned by a mock `/user/emails`
 /// endpoint.
 #[derive(Serialize, Clone)]
-pub struct MockEmail {
-    pub email: &'static str,
-    pub verified: bool,
-    pub primary: bool,
+pub(crate) struct MockEmail {
+    pub(crate) email: &'static str,
+    pub(crate) verified: bool,
+    pub(crate) primary: bool,
 }
 
 /// Aborts the spawned mock-server task when the test's binding goes out
 /// of scope, so neither the task nor its `TcpListener` outlives the
 /// test that created it.
-pub struct AbortOnDrop(pub tokio::task::JoinHandle<()>);
+pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
@@ -33,7 +33,7 @@ impl Drop for AbortOnDrop {
 
 /// Bind an ephemeral loopback port, serve `router` on it, and return
 /// the bound address plus a drop guard that aborts the server.
-pub async fn spawn_router(router: axum::Router) -> (SocketAddr, AbortOnDrop) {
+pub(crate) async fn spawn_router(router: axum::Router) -> (SocketAddr, AbortOnDrop) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("bind");

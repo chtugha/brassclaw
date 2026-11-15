@@ -143,6 +143,10 @@ class FakeApp:
                     revision=client['revision']
                     change={'type':'snapshot','revision':revision,'conversationState':self.state_fn(time.monotonic()-self.start)}
                     version=99 if self.fault=='version' else 13
+                    # First observe a busy tool, then the invalid update. An idle
+                    # first snapshot could complete before the injected fault.
+                    if self.fault in {'regress_once','gap_once','boolean_base_once','invalid_patch_once'} and client.get('subscription')==1:
+                        change['conversationState']=state(['await-invalid-update'])
                     if self.fault=='regress_once' and client.get('subscription')==1:
                         change['revision']=10 if revision==1 else 1
                     if self.fault=='burst' and not client.get('burst_sent') and time.monotonic()-self.start>.09:

@@ -305,6 +305,28 @@ versprechen, das durch zusätzliche Builds erst erzwungen werden müsste.
 - Gemeinsamer Einstieg: `python3 scripts/local_build.py --host modal --platform apple --confirmed-modal --qualification --native-test <exakter Libtestname> --test-timeout-secs <bestehende Falldeadline> -- cargo test --locked --no-run --lib -p brassclaw_reborn_composition --features skills-db,brassclaw_pg/test-support --target aarch64-apple-darwin`.
   `--qualification` darf nur für den tatsächlich nächsten benötigten Image-Abnahmelauf verwendet werden; es aktiviert nichts. Ohne diese Option gilt die bestehende Aktivierung. Lokale Aufrufe ohne `--host modal` fragen weder nach Standort noch nach Modalzugang.
 - `accept-native <Job-ID> --test <exakter Name> --test-timeout-secs <Deadline>` nimmt ein bereits abgeholtes Testpaket an. `--test-env <lokales JSON>` liefert bestehende Fixturepfade, nicht Modell-/Produktkonfiguration. Der Runner verifiziert die Original-Quellen und setzt `BRASSCLAW_TEST_SOURCE_ROOT` für die betroffenen vorhandenen Testhelfer. Er startet kein Cargo und wiederholt nach Fehlern keine Fälle automatisch.
+
+**Offene native PostgreSQL-Lebenszyklusgrenze, 2026-11-15:**
+`accept_native_tests` signalisiert bei Deadline/Abbruch derzeit die Testprozessgruppe
+mit TERM und anschließend KILL. Dies qualifiziert keine geordnete Beendigung
+eigener PostgreSQL-Fixtures und fällt nicht unter die globale PG-Vorabautorisierung.
+Die separate Testmodus-Abnahme bleibt für solche Fälle offen; die angenommene
+Produktmodus-Abnahme gilt weiterhin nur für ihren bisherigen Umfang. Vor einer
+automatischen PG-Abnahme muss der bestehende lokale Native-Test-Owner den tatsächlichen
+Test-/Clusterbesitz bis zum Ende beaufsichtigen, eine unterstützte geordnete
+Stop-/Cleanup-Verbindung verwenden und bei unbekanntem oder fehlgeschlagenem Stop
+Prozesse/Daten und den ungeklärten Zustand erhalten. Keine automatische erzwungene
+Beendigung, kein Freigeben der Native-Sperre während eigener Tests weiterlaufen und
+keine neue Abnahmerechnung aus einem Timeout. Ohne unterstützte Stop-Verbindung
+die betreffende Ausführung vor dem Start explizit ablehnen; nicht durch einen
+zweiten Runner oder eine gefälschte Abschlussdatei ersetzen. Die gemeinsame
+Lebenszyklus-Unterstützung gehört zum bestehenden Simplified-Phase-3a-Owner;
+dieser Build-Owner verbindet sie mit den exakten Original-Test-/Artefaktreferenzen.
+Abnahme benötigt echte eigene Cluster bei normalem Ende, Deadline und Stop-Fehler,
+nachgewiesenes Prozessende vor Cleanup, erhaltene Fehlerbelege und keine Wiederholung
+von Testeffekten. Aktuelle Root-PG-Fälle laufen über ihren bestehenden beaufsichtigten
+nativen Aufruf ohne diesen automatischen Deadline-Kill; daraus folgt keine Modal-
+Testmodus-Aktivierung oder allgemeine Recovery-Qualifikation.
 - `activate --test-mode <Job-ID>` schaltet ausschließlich den unabhängig qualifizierten Testmodus dieser Worker-/Imageidentität frei. Produkt- und Testaktivierung bleiben getrennt. Eine neue Workerdatei im Source-Sync ersetzt keinen unveränderlichen Image-Worker.
 - Source-Vorbereitung, Produkt und notwendiger normaler Worker teilen sich eine monotone Gesamtdeadline mit der vorhandenen 120-Sekunden-Abschlussreserve. Ein abgelaufener Vorbereitungsanteil startet kein Cargo mehr.
 - Der normale Produktauftrag und seine native Build-Abnahme sind tatsächlich abgeschlossen und aktiviert. Offen bleibt die echte Apple-Testmodus-Verbindung beim nächsten ohnehin benötigten, vorteilhaften Testauftrag. Produktbelege werden nicht als Testabnahme verwendet. Keine zusätzliche große Kompilierung oder Linux-Testserie nur zur Demonstration starten.

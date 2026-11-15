@@ -21,7 +21,7 @@ permissions:
 jobs:
   replay-snapshots:
     name: Replay snapshot gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Checkout repository
@@ -29,6 +29,9 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.sha }}
           persist-credentials: false
+
+      - name: Install the native PostgreSQL runtime ABI
+        run: sudo apt-get update && sudo apt-get install -y libxml2
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable

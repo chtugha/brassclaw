@@ -192,12 +192,14 @@ jobs:
     name: Reborn CLI smoke tests
     needs: changes
     if: needs.changes.outputs.has_reborn_cli == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           persist-credentials: false
+      - name: Install the native PostgreSQL runtime ABI
+        run: sudo apt-get update && sudo apt-get install -y libxml2
       - name: Install Rust
         uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2

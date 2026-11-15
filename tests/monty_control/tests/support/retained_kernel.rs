@@ -17,7 +17,7 @@ use brassclaw_trust::{
 };
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
-pub(super) fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySnapshot {
+pub(crate) fn snapshot(revision: u64, enabled: bool, tool: Uuid) -> StableToolPolicySnapshot {
     StableToolPolicySnapshot {
         revision,
         tools: HashMap::from([(

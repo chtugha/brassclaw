@@ -1,3 +1,16 @@
+## 2026-11-15 — CI callers use actual native owners
+
+Five retained-execution cases and canonical Q1 fixtures now run against the actual
+Composition admission/review owners instead of copying private production source
+into a different crate. Main CI explicitly selects those owners. OAuth helper
+visibility, invalid Screen-frame ordering, real file-presence coverage and the two
+remaining Linux PostgreSQL ABI jobs are repaired. Strict Run124, native125/126,
+standalone Rust1.96 all-targets Clippy127, all28 selected source/native cases and
+55 Screen cases pass; see the [exact scope](validation/2026-11-15-ci-native-owner-repair.md).
+Actual global-runtime restart and CLI startup failures from the subsequent GitHub
+run remain separate next repairs. No full CI, activation, release or completed Bob
+plan is claimed. Root continues alone, then resumes B1 -> B2 -> B3.
+
 ## 2026-11-15 — Retired fabricated bootstrap producer
 
 Production startup no longer invents L013 placeholder revisions and unperformed

@@ -35,18 +35,13 @@ use sha2::{Digest, Sha256};
 use crate::native_admission_fixture as admission;
 #[path = "../../../../crates/brassclaw_reborn/tests/common/native_pg.rs"]
 mod native_pg;
-#[allow(clippy::duplicate_mod)] // intentional: needs private access to pub(crate) module
-#[path = "../../../../crates/brassclaw_reborn_composition/src/pg_retained_q1.rs"]
-mod pg_retained_q1;
-#[allow(clippy::duplicate_mod)] // intentional: needs private access to pub(crate) module
-#[path = "../../../../crates/brassclaw_reborn_composition/src/pg_workflow_review.rs"]
-mod pg_workflow_review;
+use crate::{pg_retained_q1, pg_workflow_review};
 #[path = "retained_kernel.rs"]
 pub(crate) mod retained_kernel;
 #[path = "retained_program.rs"]
 pub(crate) mod retained_program;
 #[path = "retained_program_variants.rs"]
-mod retained_program_variants;
+pub(crate) mod retained_program_variants;
 use retained_program_variants::{program_with_preload_source, program_with_source};
 #[path = "runtime.rs"]
 pub(crate) mod support;

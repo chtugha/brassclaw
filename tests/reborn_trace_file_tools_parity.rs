@@ -97,3 +97,81 @@ async fn reborn_trace_file_tools_parity() {
 
     harness.shutdown().await;
 }
+
+#[tokio::test]
+async fn reborn_trace_file_exists_reports_actual_presence_and_absence() {
+    let _dispatch_trace = reborn_support::harness::trace_fixture_runtime_dispatch();
+    let capability = CapabilityId::new(brassclaw_host_runtime::FILE_EXISTS_CAPABILITY_ID).unwrap();
+    let gateway = RebornTraceReplayModelGateway::with_scripted_steps([
+        RebornModelReplayStep::ProviderToolCalls {
+            calls: vec![
+                RebornScriptedProviderToolCall::new(
+                    capability.clone(),
+                    "exists-present",
+                    serde_json::json!({"path":"/workspace/present.txt"}),
+                ),
+                RebornScriptedProviderToolCall::new(
+                    capability.clone(),
+                    "exists-absent",
+                    serde_json::json!({"path":"/workspace/absent.txt"}),
+                ),
+            ],
+            expected_tool_results: Vec::new(),
+        },
+        RebornModelReplayStep::Response {
+            response: HostManagedModelResponse::assistant_reply("file presence inspected"),
+            expected_tool_results: Vec::new(),
+        },
+    ]);
+    let mut harness = RebornBinaryE2EHarness::with_host_runtime_file_capabilities(
+        "room-trace-file-exists",
+        gateway,
+    )
+    .await
+    .unwrap();
+    let present = harness.host_workspace_file_path("present.txt").unwrap();
+    std::fs::write(&present, "actual isolated workspace file").unwrap();
+    assert!(
+        !harness
+            .host_workspace_file_path("absent.txt")
+            .unwrap()
+            .exists()
+    );
+    harness.start();
+    let submitted = harness
+        .submit_text("event-trace-file-exists", "inspect file presence")
+        .await
+        .unwrap();
+    harness
+        .wait_for_status(submitted.run_id, TurnStatus::Completed)
+        .await
+        .unwrap();
+    harness
+        .assert_final_reply("file presence inspected")
+        .await
+        .unwrap();
+    let results = harness.capability_results();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].capability_id, capability);
+    assert_eq!(results[1].capability_id, capability);
+    assert_eq!(
+        results[0].output,
+        serde_json::json!({"kind":"success","path":"/workspace/present.txt"})
+    );
+    assert_eq!(
+        results[1].output,
+        serde_json::json!({"kind":"not_found","path":"/workspace/absent.txt"})
+    );
+    assert_eq!(
+        std::fs::read_to_string(present).unwrap(),
+        "actual isolated workspace file"
+    );
+    assert!(
+        !harness
+            .host_workspace_file_path("absent.txt")
+            .unwrap()
+            .exists()
+    );
+    harness.assert_model_exhausted();
+    harness.shutdown().await;
+}

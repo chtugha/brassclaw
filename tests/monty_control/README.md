@@ -225,3 +225,14 @@ shrink. The process case allocates and retains a 70 MiB Monty string beyond the
 original 64 MiB worker cap, preserves its locals/root/PID through rejected edits,
 and reduces the budget only after releasing that context. These are worker
 resize cases; adaptive OS measurements and WebUI policy uptake remain separate.
+
+## Composition-owned retained execution
+
+Retained PostgreSQL admission and Q1 review cases run in the actual Composition
+crate, using its private production admission/evidence owners and shared native
+fixtures. They no longer compile those production files into this standalone
+harness. The Reborn CI gate runs `retained_execution_tests::` and
+`pg_association_review::tests::native_evidence::` with `skills-db`, in addition
+to this harness's actual interpreter/process/kernel cases. All five retained
+execution assertions and the original Q1 cases remain in the gate. This relocation
+supplies no new approval or catalogue activation.

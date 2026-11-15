@@ -9,6 +9,15 @@ queue, component approval or evidence of completed Bob plans.
 
 ## Responsibilities
 
+**CI caller acceptance — 2026-11-15:** actual retained-execution/Q1 owners,
+OAuth helper visibility, Screen fixture ordering, real file-presence coverage and
+Linux runtime ABI configuration pass scoped strict/native checks. Runs124–127,
+28 selected source/native cases and55 Screen cases pass; see the
+[receipt](validation/2026-11-15-ci-native-owner-repair.md).
+The subsequent Main run's global restart count and CLI startup failures remain
+open diagnosis; no green CI/full-plan claim. Root continues alone after this
+independent checkpoint, without renewed package delegation.
+
 **Current B1 acceptance — 2026-11-15:** the startup L013 placeholder approval
 producer is removed. Known historical Pure identities cannot create, resolve or
 link a positive decision, and old Q1/behavior cannot be borrowed. Original rows,

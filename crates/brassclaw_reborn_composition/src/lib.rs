@@ -1346,6 +1346,10 @@ mod claimed_child_admission_tests;
 #[path = "../../../tests/monty_control/tests/support/admission.rs"]
 mod native_admission_fixture;
 
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+#[path = "tests/retained_execution.rs"]
+mod retained_execution_tests;
+
 #[cfg(all(
     test,
     feature = "postgres",

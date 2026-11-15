@@ -1709,6 +1709,7 @@ impl HostRuntimeCapabilityHarness {
             vec![
                 CapabilityId::new(WRITE_FILE_CAPABILITY_ID)?,
                 CapabilityId::new(READ_FILE_CAPABILITY_ID)?,
+                CapabilityId::new(brassclaw_host_runtime::FILE_EXISTS_CAPABILITY_ID)?,
             ],
             vec![EffectKind::ReadFilesystem, EffectKind::WriteFilesystem],
             Vec::new(),

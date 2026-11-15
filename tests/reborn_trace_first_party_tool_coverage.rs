@@ -40,6 +40,9 @@ const REBORN_FIRST_PARTY_E2E_COVERED_CAPABILITIES: &[&str] = &[
     MEMORY_TREE_CAPABILITY_ID,
     SHELL_CAPABILITY_ID,
     READ_FILE_CAPABILITY_ID,
+    // Actual present/missing scoped files through the native handler:
+    // reborn_trace_file_tools_parity::reborn_trace_file_exists_reports_actual_presence_and_absence.
+    brassclaw_host_runtime::FILE_EXISTS_CAPABILITY_ID,
     WRITE_FILE_CAPABILITY_ID,
     LIST_DIR_CAPABILITY_ID,
     GLOB_CAPABILITY_ID,
@@ -76,6 +79,14 @@ const REBORN_FIRST_PARTY_E2E_COVERED_CAPABILITIES: &[&str] = &[
     // composition runtime::tests::source_inspection_tests::
     // native_source_inspection_is_registered_nonexecuting_and_uses_live_limits_and_policy.
     SOURCE_INSPECTION_CAPABILITY_ID,
+    // The private Case primitive is not a public model-selected execution API.
+    // Real original dispatch, return/exception/defect and policy custody:
+    // composition runtime::tests::original_pure_case_tests::
+    // native_original_pure_case_records_real_return_exception_and_contract_defect_without_approval
+    // and native_original_pure_case_uses_its_own_live_policy_and_does_not_inherit_parser_allow.
+    // Public JSON refusal: host_runtime first_party_builtin_tools::
+    // builtin_pure_case_cannot_invoke_an_original_from_request_json.
+    brassclaw_host_runtime::PURE_CASE_CAPABILITY_ID,
 ];
 
 #[test]

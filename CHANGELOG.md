@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **CI ownership and fixtures**: Run retained admission/Q1 tests against the
+  actual Composition owners instead of compiling their private source into a
+  separate crate. Add real file-presence coverage, bind invalid IPC-frame tests
+  to observed busy state, narrow OAuth helper visibility, and align Replay/CLI
+  PostgreSQL jobs with the bundled runtime ABI.
 - **Seed approval integrity**: Retire the startup qualifier that invented
   placeholder implementations and successful checks without execution. Keep
   actual seed content and pending requests, preserve historical originals, and
