@@ -133,9 +133,16 @@ struct Completed {
     catalogue_activation: bool,
 }
 pub(crate) enum InstallationSourceObservations {
+    Shipped {
+        pool: Arc<PgPool>,
+        program: Arc<RetainedToolProgram>,
+        parser: Arc<QualifiedSourceInventoryUsage>,
+    },
     ObservedPositive(Vec<CheckedProfile>),
     CompletedNegative(Vec<CheckedProfile>),
-    UnavailableBeforeFirstExecution { reason: &'static str },
+    UnavailableBeforeFirstExecution {
+        reason: &'static str,
+    },
 }
 pub(crate) struct CheckedProfile {
     context: Arc<Context>,
@@ -146,7 +153,7 @@ impl InstallationSourceObservations {
     /// observations into own Q1, semantic approval or catalogue activation.
     pub(crate) fn require_positive_for_qualification(&self) -> Result<(), RebornBuildError> {
         match self {
-            Self::ObservedPositive(_) => Ok(()),
+            Self::ObservedPositive(_) | Self::Shipped { .. } => Ok(()),
             Self::CompletedNegative(_) => Err(invalid(
                 "required installation source checks completed negative",
             )),
@@ -161,6 +168,13 @@ impl InstallationSourceObservations {
         tx: &Transaction<'_>,
     ) -> Result<(), RebornBuildError> {
         match self {
+            Self::Shipped {
+                program, parser, ..
+            } => {
+                parser.proof.verify_in_transaction(tx).await?;
+                crate::shipped_validation::verify_instruction(tx, program.inputs().instruction())
+                    .await?;
+            }
             Self::ObservedPositive(profiles) | Self::CompletedNegative(profiles) => {
                 if profiles.len() != 2 {
                     return Err(invalid("both installation checking profiles required"));
@@ -200,6 +214,7 @@ impl InstallationSourceObservations {
     }
     pub(crate) fn status(&self) -> &'static str {
         match self {
+            Self::Shipped { .. } => "validation_transferred_from_provisioning",
             Self::ObservedPositive(_) => "source_observed_positive_not_qualified",
             Self::CompletedNegative(_) => "source_completed_negative_not_ready",
             Self::UnavailableBeforeFirstExecution { .. } => "source_observation_unavailable",
@@ -288,6 +303,33 @@ async fn observe_installation_inner(
             },
         )?;
         programs.push((profile, program));
+    }
+    if crate::shipped_validation::transferring() {
+        let (_, binding) = require_inventory_binding(&programs[0].1)?;
+        let proof = qualification::InventoryQualification::install(
+            &pool,
+            programs[0].1.clone(),
+            worker.clone(),
+            storage.clone(),
+            &root,
+        )
+        .await?;
+        let parser = Arc::new(QualifiedSourceInventoryUsage {
+            combination: binding.combination().to_vec(),
+            association: binding.association().exact_bytes().to_owned(),
+            worker,
+            proof,
+        });
+        let program = programs
+            .into_iter()
+            .find(|(profile, _)| *profile == store::InstallationProfile::Pure)
+            .ok_or_else(|| invalid("shipped pure source workflow missing"))?
+            .1;
+        return Ok(InstallationSourceObservations::Shipped {
+            pool,
+            program,
+            parser,
+        });
     }
     let (_, binding) = require_inventory_binding(&programs[0].1)?;
     let enabled = io::bounded(storage.as_ref(), async {
@@ -1491,6 +1533,9 @@ pub(crate) async fn assert_original_installation_readback(
     .unwrap();
     let profiles = match &original {
         InstallationSourceObservations::ObservedPositive(p) => p,
+        InstallationSourceObservations::Shipped { .. } => {
+            panic!("explicit qualification must execute outside installation scope")
+        }
         InstallationSourceObservations::CompletedNegative(_) => {
             panic!("unchanged structural-presence package must pass both checking profiles")
         }

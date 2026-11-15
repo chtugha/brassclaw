@@ -70,7 +70,7 @@ struct Subject {
     q1: Uuid,
     behavior: Uuid,
     approval: Uuid,
-    fixture: Arc<Fixture>,
+    fixture: Option<Arc<Fixture>>,
     worker: Arc<PackagedExecutableImage>,
 }
 impl Subject {
@@ -79,7 +79,7 @@ impl Subject {
         effective: bool,
         native: NativeImplementationRef,
         worker: Arc<PackagedExecutableImage>,
-        fixture: Arc<Fixture>,
+        fixture: Option<Arc<Fixture>>,
     ) -> Result<Arc<Self>, RebornBuildError> {
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect_with_limits(
@@ -140,7 +140,8 @@ impl Subject {
             .iter()
             .map(|(uuid, source)| (uuid.to_string(), source.observations()))
             .collect();
-        let header = json!({"producer":crate::bootstrap_encoding_fixture::PRODUCER,"scope":"packaged-model-encoding-usages/1","effective_template":effective,
+        let header = if let Some(fixture) = &fixture {
+            json!({"producer":crate::bootstrap_encoding_fixture::PRODUCER,"scope":"packaged-model-encoding-usages/1","effective_template":effective,
             "selection_checksum":hex::encode(instruction.retained_selection().map_err(invalid)?.checksum()),"native":native,"worker_checksum":hex::encode(worker.checksum()),
             "specification":fixture.specification,"artifacts":fixture.artifacts,"bad_tokenizer":fixture.bad_tokenizer,
             "cases":validation::cases(effective),"sources":sources,
@@ -148,7 +149,12 @@ impl Subject {
             "validator_checksum":evidence::checksum(include_str!("bootstrap_encoding_validation.rs")),
             "owner_checksum":evidence::checksum(include_str!("bootstrap_encoding_approval.rs")),
             "flow_checksum":evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),
-            "root_checksum":evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)});
+            "root_checksum":evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)})
+        } else {
+            json!({"producer":"shipped-model-encoding/1","validation_origin":"provisioning",
+                "effective_template":effective,"selection_checksum":hex::encode(instruction.retained_selection().map_err(invalid)?.checksum()),
+                "native":native,"worker_checksum":hex::encode(worker.checksum())})
+        };
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         let components=json!(binding.combination().iter().map(|r|json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})).collect::<Vec<_>>());
         let association = binding.association().exact_bytes().to_owned();
@@ -202,7 +208,11 @@ pub(super) async fn qualify(
         .await
         .map_err(invalid)?,
     );
-    let fixture = Arc::new(Fixture::retain(pool.clone()).await?);
+    let fixture = if crate::shipped_validation::transferring() {
+        None
+    } else {
+        Some(Arc::new(Fixture::retain(pool.clone()).await?))
+    };
     let subjects = [
         Subject::prepare(
             &candidates[0],
@@ -221,6 +231,24 @@ pub(super) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        for subject in &subjects {
+            crate::shipped_validation::Transfer::new(subject.header.clone())
+                .retain_association(&tx, &subject.approval_bytes())
+                .await?;
+        }
+        let mut installed = Vec::new();
+        for subject in &subjects {
+            installed.push(
+                read(&tx, subject)
+                    .await?
+                    .ok_or_else(|| invalid("shipped association transfer missing"))?,
+            );
+        }
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        return Ok(installed);
+    }
     if let Some(approved) = begin(&tx, &subjects).await? {
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
@@ -238,7 +266,11 @@ pub(super) async fn qualify(
             kernel.clone(),
             subject.inspected.clone(),
             &subject.worker.path(),
-            subject.fixture.clone(),
+            subject
+                .fixture
+                .as_ref()
+                .ok_or_else(|| invalid("explicit encoding qualification fixture missing"))?
+                .clone(),
             subject.effective,
         ))
         .await?;
@@ -255,7 +287,10 @@ pub(super) async fn qualify(
         validation::verify(
             &tx,
             &subject.inspected,
-            &subject.fixture,
+            subject
+                .fixture
+                .as_ref()
+                .ok_or_else(|| invalid("explicit encoding qualification fixture missing"))?,
             subject.effective,
             &hex::encode(subject.worker.checksum()),
             &observed,
@@ -336,6 +371,17 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapEncodingApproval>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if let Some(declaration) = transfer
+        .read_association(tx, &subject.approval_bytes())
+        .await?
+    {
+        crate::shipped_validation::verify_program(tx, &subject.inspected).await?;
+        return Ok(Some(BootstrapEncodingApproval {
+            declaration,
+            subject: subject.clone(),
+        }));
+    }
     evidence::require_coherent(tx).await?;
     let Some(bytes) = evidence::read_association(tx, subject.approval).await? else {
         return Ok(None);
@@ -389,7 +435,10 @@ async fn read(
     validation::verify(
         tx,
         &subject.inspected,
-        &subject.fixture,
+        subject
+            .fixture
+            .as_ref()
+            .ok_or_else(|| invalid("explicit encoding qualification fixture missing"))?,
         subject.effective,
         &hex::encode(subject.worker.checksum()),
         &report["observed"],
@@ -447,7 +496,7 @@ pub(super) async fn assert_retained_proof_checks_actual_journal(
                 validation::verify(
                     &tx,
                     &subject.inspected,
-                    &subject.fixture,
+                    subject.fixture.as_ref().unwrap(),
                     subject.effective,
                     &hex::encode(subject.worker.checksum()),
                     &changed
@@ -525,4 +574,28 @@ pub(super) async fn assert_retained_proof_checks_actual_journal(
         .get(0);
     assert_eq!(before, after);
     tx.rollback().await.unwrap();
+}
+
+/// Explicit development check of the two delivered usages. Normal boot only
+/// imports their validation and never calls this fixture-producing function.
+#[cfg(test)]
+pub(crate) async fn qualify_for_development(
+    catalogue: &crate::installed_monty_catalogue::InstalledMontyCatalogue,
+) -> Vec<BootstrapEncodingApproval> {
+    let candidates: [Arc<InspectedRetainedProgram>; 2] = catalogue
+        .encoding_approvals
+        .iter()
+        .map(|approval| approval.subject.inspected.clone())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap_or_else(|_| panic!("both delivered encoding usages required"));
+    qualify(
+        catalogue.pool.clone(),
+        catalogue.kernel.clone(),
+        &candidates,
+        &catalogue.worker,
+        catalogue.startup_executor.clone(),
+    )
+    .await
+    .unwrap()
 }

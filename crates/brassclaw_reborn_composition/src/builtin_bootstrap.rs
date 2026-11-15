@@ -29,7 +29,7 @@
 //! `system_seed` bootstrap contract requires no additional external maintainer
 //! approval or human Q2 on the installed instance. Retention here supplies no
 //! qualification. Structural checking functions receive actual own-export
-//! qualification later in the contained installation owner before readiness;
+//! validation inherited from provisioning during canonical installation;
 //! that does not qualify complete candidate-class Q1. The historical L013–L101
 //! placeholder qualifier has been removed. Its immutable records are audit data,
 //! not evidence to reuse; qualifying the actual remaining library is B1-05 work.
@@ -47,7 +47,6 @@
 
 use std::sync::Arc;
 
-use brassclaw_engine::memory::retrieval_source::ComponentScope;
 use brassclaw_host_api::SYSTEM_RESERVED_ID;
 use brassclaw_pg::PgPool;
 use serde_json::{Value, json};
@@ -61,7 +60,6 @@ use crate::pg_recipe_store::{NewPgRecipe, PgRecipeStore};
 use crate::pg_skill_store::{NewPgSkill, PgSkillStore};
 use crate::pg_tool_skill_store::{NewPgToolSkill, PgToolSkillStore};
 use crate::pg_tool_store::{NewPgTool, PgToolStore};
-use crate::validation_queue::ValidationQueueStore;
 
 /// Marker `user_id` for seeded builtins — the system sentinel.
 const SEED_USER: &str = SYSTEM_RESERVED_ID;
@@ -216,8 +214,6 @@ struct BootstrapStores {
     skill: PgSkillStore,
     recipe: PgRecipeStore,
     catalogue: PgExtensionCatalogueStore,
-    /// Legacy pending review requests; seeding cannot produce Q1/Q2 evidence.
-    queue: ValidationQueueStore,
 }
 
 impl BootstrapStores {
@@ -230,33 +226,8 @@ impl BootstrapStores {
             skill: PgSkillStore::new(pool.clone()),
             recipe: PgRecipeStore::new(pool.clone()),
             pool: pool.clone(),
-            queue: ValidationQueueStore::new(pool.clone()),
             catalogue: PgExtensionCatalogueStore::new(pool),
         }
-    }
-
-    /// Seeding is not validation. Keep a pending request, including recovery of
-    /// a row inserted before a failed queue write. Historical validated labels
-    /// remain legacy data; no trusted v3 approval is inferred from them.
-    async fn record_seed_review(
-        &self,
-        component_id: Uuid,
-        class_code: i32,
-        name: &str,
-    ) -> Result<(), SeedBuiltinBootstrapError> {
-        let scope = ComponentScope {
-            tenant_id: self.tenant.clone(),
-            user_id: SEED_USER.to_string(),
-            agent_id: SEED_AGENT.to_string(),
-            project_id: SEED_PROJECT.to_string(),
-        };
-        self.queue
-            .retain_pending_request(&scope, component_id, class_code)
-            .await
-            .map(|_| ())
-            .map_err(|error| SeedBuiltinBootstrapError::Db {
-                reason: format!("seed review retention for {name} failed: {error}"),
-            })
     }
 
     /// Insert-or-recover a Tool id (class 0). `insert` is ON-CONFLICT, so
@@ -270,8 +241,6 @@ impl BootstrapStores {
             reason: e.to_string(),
         };
         if let Some(id) = self.tool.insert(row).await.map_err(map)? {
-            // Retain a pending request; no validation or approval is fabricated.
-            self.record_seed_review(id, 0, name).await?;
             return Ok(id);
         }
         let id = self
@@ -282,7 +251,6 @@ impl BootstrapStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool `{name}` insert no-op but not found"),
             })?;
-        self.record_seed_review(id, 0, name).await?;
         Ok(id)
     }
 
@@ -302,8 +270,6 @@ impl BootstrapStores {
                 reason: e.to_string(),
             };
         if let Some(id) = self.tool_skill.insert(row).await.map_err(map)? {
-            // Retain a pending request; no validation or approval is fabricated.
-            self.record_seed_review(id, 13, name).await?;
             return Ok(id);
         }
         let id = self
@@ -314,7 +280,6 @@ impl BootstrapStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("tool_skill `{name}` insert no-op but not found"),
             })?;
-        self.record_seed_review(id, 13, name).await?;
         Ok(id)
     }
 
@@ -325,16 +290,13 @@ impl BootstrapStores {
         row: NewPgSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
-        let class_code = i32::from(row.class_code);
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
         if let Some(id) = self.skill.insert(row).await.map_err(map)? {
-            // Retain a pending request; no validation or approval is fabricated.
-            self.record_seed_review(id, class_code, name).await?;
             return Ok(id);
         }
-        let (id, stored_class) = self
+        let (id, _stored_class) = self
             .skill
             .get_identity_by_name(&self.tenant, SEED_USER, SEED_AGENT, SEED_PROJECT, name)
             .await
@@ -342,8 +304,6 @@ impl BootstrapStores {
             .ok_or_else(|| SeedBuiltinBootstrapError::Db {
                 reason: format!("skill `{name}` insert no-op but not found"),
             })?;
-        self.record_seed_review(id, i32::from(stored_class), name)
-            .await?;
         Ok(id)
     }
 
@@ -351,7 +311,7 @@ impl BootstrapStores {
     /// ON-CONFLICT, so get-then-insert via [`PgPythonCodeStore::get_by_name`].
     /// System rows are inserted directly with `validation_status='validated'`;
     /// user-authored rows remain pending for Q1/Q2.
-    /// Review requests remain pending until actual validation and approval.
+    /// Shipped validation is inherited; no authored review is submitted.
     async fn upsert_python_code(
         &self,
         row: NewPgPythonCode,
@@ -368,7 +328,6 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
-            self.record_seed_review(existing.id, 22, name).await?;
             return Ok(existing.id);
         }
         let id = self
@@ -376,14 +335,12 @@ impl BootstrapStores {
             .insert_installation_projection(row)
             .await
             .map_err(map)?;
-        // Retain a pending request; no validation or approval is fabricated.
-        self.record_seed_review(id, 22, name).await?;
         Ok(id)
     }
 
     /// Insert-or-recover a Recipe id (class 21). `insert` is not ON-CONFLICT,
     /// so get-then-insert via [`PgRecipeStore::get_by_name`].
-    /// Review requests remain pending until actual validation and approval.
+    /// Shipped validation is inherited; no authored review is submitted.
     async fn upsert_recipe(
         &self,
         row: NewPgRecipe,
@@ -398,7 +355,6 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
-            self.record_seed_review(existing.id, 21, name).await?;
             return Ok(existing.id);
         }
         let id = self
@@ -406,14 +362,12 @@ impl BootstrapStores {
             .insert_installation_projection(row, false)
             .await
             .map_err(map)?;
-        // Retain a pending request; no validation or approval is fabricated.
-        self.record_seed_review(id, 21, name).await?;
         Ok(id)
     }
 
     /// Get-or-insert an ExtensionCatalogue (class 23) legacy row. Its existing
     /// validated label is not Q1/Q2 evidence or v3 catalogue activation.
-    /// Review requests remain pending until actual validation and approval.
+    /// Shipped validation is inherited; no authored review is submitted.
     async fn upsert_catalogue(
         &self,
         row: NewPgExtensionCatalogue,
@@ -430,7 +384,6 @@ impl BootstrapStores {
             .await
             .map_err(map)?
         {
-            self.record_seed_review(existing.id, 23, name).await?;
             return Ok(existing.id);
         }
         let id = self
@@ -438,8 +391,6 @@ impl BootstrapStores {
             .insert_installation_projection(row)
             .await
             .map_err(map)?;
-        // Retain a pending request; no validation or approval is fabricated.
-        self.record_seed_review(id, 23, name).await?;
         Ok(id)
     }
 
@@ -567,7 +518,6 @@ impl BootstrapStores {
 
         if inserted == 1 {
             drop(client);
-            self.record_seed_review(id, 16, name).await?;
             return Ok(id);
         }
 
@@ -586,7 +536,6 @@ impl BootstrapStores {
 
         let id = row.get(0);
         drop(client);
-        self.record_seed_review(id, 16, name).await?;
         Ok(id)
     }
 
@@ -685,7 +634,7 @@ pub(crate) async fn seed_memory_write_binding(
 }
 
 /// Retain the registered immutable-prefix primitive's ordinary Tool identity.
-/// This metadata is pending, not usage/combination approval. The closed prefix
+/// This shipped metadata inherits provisioning validation. The closed prefix
 /// bootstrap owner supplies its independent exact-definition behavioral proof.
 #[cfg(feature = "skills-db")]
 pub(crate) async fn seed_prefix_generation_tool(
@@ -700,7 +649,7 @@ pub(crate) async fn seed_prefix_generation_tool(
 
 /// Register the exact offline encoding primitive without approving any usage.
 /// Reuse the same identity/alias preservation and operator-policy owner as the
-/// other native primitives; a pending Tool row is never an activated Recipe.
+/// other native primitives; a validated Tool row is not Recipe activation.
 #[cfg(feature = "skills-db")]
 pub(crate) async fn seed_model_encoding_tool(
     pool: Arc<PgPool>,
@@ -789,7 +738,7 @@ fn registered_primitive_row(
         error_handling: None,
         consumer_tags: vec!["00:rusty".into()],
         source: "system".into(),
-        validation_status: "pending".into(),
+        validation_status: "validated".into(),
         capability_id: capability.into(),
     }
 }

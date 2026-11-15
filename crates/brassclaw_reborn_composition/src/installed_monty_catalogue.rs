@@ -547,6 +547,25 @@ impl InstalledMontyCatalogue {
         memory_mounts: MountView,
         startup: InstalledCatalogueStartup<'_>,
     ) -> Result<Arc<Self>, RebornBuildError> {
+        crate::shipped_validation::installation(Self::install_packaged(
+            pool,
+            kernel,
+            worker_image,
+            scope,
+            memory_mounts,
+            startup,
+        ))
+        .await
+    }
+
+    async fn install_packaged(
+        pool: Arc<PgPool>,
+        kernel: Arc<dyn MontyKernelSnapshot>,
+        worker_image: Arc<PackagedExecutableImage>,
+        scope: &IntentScope,
+        memory_mounts: MountView,
+        startup: InstalledCatalogueStartup<'_>,
+    ) -> Result<Arc<Self>, RebornBuildError> {
         let InstalledCatalogueStartup {
             root: root_definition,
             settings: startup_settings,

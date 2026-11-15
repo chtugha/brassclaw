@@ -207,6 +207,15 @@ impl Subject {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<Option<QualifiedPrefixFreeWorkflow>, RebornBuildError> {
+        let transfer = crate::shipped_validation::Transfer::new(
+            json!({"workflow":self.program.program().inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes()}),
+        );
+        if transfer.present(tx).await? {
+            crate::shipped_validation::verify_program(tx, &self.program).await?;
+            return Ok(Some(QualifiedPrefixFreeWorkflow {
+                program: self.program.clone(),
+            }));
+        }
         // Q1 evidence must match exactly.
         let q1_stored =
             evidence::read_workflow(tx, &self.program, self.q1, evidence::WorkflowKind::Q1).await?;
@@ -326,7 +335,8 @@ pub(super) async fn qualify(
             .map_err(invalid)?;
         if tool_ids.len() != 2
             || policies.len() != 2
-            || policies.iter().any(|row| !row.get::<_, bool>(0))
+            || (!crate::shipped_validation::transferring()
+                && policies.iter().any(|row| !row.get::<_, bool>(0)))
         {
             return Ok(None);
         }
@@ -347,6 +357,14 @@ pub(super) async fn qualify(
     );
     let candidate = retain_candidate(&pool, &ids, worker, limits, &kohai_artifact_checksum).await?;
     let subject = Subject::from_program(&candidate)?;
+
+    if crate::shipped_validation::transferring() {
+        let transfer = crate::shipped_validation::Transfer::new(
+            json!({"workflow":candidate.program().inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes()}),
+        );
+        transfer.install(&pool).await?;
+        return Ok(Some(QualifiedPrefixFreeWorkflow { program: candidate }));
+    }
 
     // Check existing evidence before running oracle.
     let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;

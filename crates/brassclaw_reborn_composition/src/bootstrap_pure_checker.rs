@@ -480,6 +480,7 @@ fn witness_draft() -> Result<ComponentRevisionDraft, RebornBuildError> {
 }
 
 pub(crate) struct CheckedPureCheckerClosure {
+    deployment: Option<crate::shipped_validation::Components>,
     contexts: Vec<Arc<Context>>,
     structural: CheckedStructuralHelpers,
 }
@@ -488,6 +489,9 @@ impl CheckedPureCheckerClosure {
         &self,
         program: &RetainedToolProgram,
     ) -> Result<(), RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            return deployment.require_program(program);
+        }
         let graph = program.inputs().instruction().snapshot();
         for context in &self.contexts {
             let profile = context
@@ -528,6 +532,10 @@ impl CheckedPureCheckerClosure {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<Vec<Value>, RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            self.structural.verify_in_transaction(tx).await?;
+            return Ok(vec![deployment.verify(tx).await?]);
+        }
         evidence::require_coherent(tx).await?;
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("structural_prerequisites", None);
@@ -603,6 +611,48 @@ pub(crate) async fn qualify(
     base: SessionInput,
     prerequisites: &CheckedStructuralHelpers,
 ) -> Result<CheckedPureCheckerClosure, RebornBuildError> {
+    if crate::shipped_validation::transferring() {
+        let tool = packaged_component_id("validator:inspection:tool");
+        let usage = crate::source_inspection_components::usage_ids(tool, true);
+        let mut drafts = crate::builtin_bootstrap::validator_check_drafts()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(invalid)?;
+        // Only the checking functions required by W, not a test encoder or
+        // an unrelated class/Skill checker, form this exact reused closure.
+        let required = [
+            "validator:preload-definition",
+            "validator:recursive-contract",
+            "validator:review-subject-reader",
+            "validator:subject-sources",
+            "validator:python-definitions",
+            "validator:python-contracts",
+            "validator:python-graph",
+            "validator:python-pure-calls",
+        ]
+        .map(packaged_component_id);
+        drafts.retain(|d| required.contains(&d.uuid()));
+        drafts.extend(
+            brassclaw_skills::validator_components::python_pure_structure_drafts(
+                usage,
+                crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
+                serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+                    .map_err(invalid)?,
+            )
+            .map_err(invalid)?
+            .into_iter()
+            .filter(|d| d.class_code() == 22),
+        );
+        let deployment = crate::shipped_validation::Components::install(base.pool, drafts).await?;
+        return Ok(CheckedPureCheckerClosure {
+            contexts: Vec::new(),
+            deployment: Some(deployment),
+            structural: CheckedStructuralHelpers {
+                contexts: Vec::new(),
+                deployment: prerequisites.deployment.clone(),
+            },
+        });
+    }
     // E01 remains an actual prerequisite. Source presence or a caller flag cannot
     // manufacture its checked completion.
     let receipt = io::bounded_for(
@@ -634,8 +684,10 @@ pub(crate) async fn qualify(
         Arc::make_mut(profile).prerequisites.push(receipt.clone());
     }
     Ok(CheckedPureCheckerClosure {
+        deployment: None,
         contexts: qualify_specs(base, specs).await?,
         structural: CheckedStructuralHelpers {
+            deployment: None,
             contexts: prerequisites.contexts.clone(),
         },
     })

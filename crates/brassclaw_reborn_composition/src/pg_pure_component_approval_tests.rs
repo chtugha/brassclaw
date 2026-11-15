@@ -88,7 +88,7 @@ async fn retired_l013_history_survives_boot_without_becoming_a_decision() {
         .query(
             "SELECT p.id,p.name,p.content,q.state,q.q1_component_bytes,q.q2_actor,
         (SELECT count(*) FROM reborn_component_revisions r WHERE r.component_id=p.id)
-        FROM reborn_python_code p JOIN reborn_validation_queue q ON q.component_id=p.id
+        FROM reborn_python_code p LEFT JOIN reborn_validation_queue q ON q.component_id=p.id
         WHERE p.tenant_id=$1 AND p.name=ANY($2::text[]) ORDER BY p.name",
             &[&tenant, &vec!["pc-path-join", "pc-exec-read-file"]],
         )
@@ -97,12 +97,12 @@ async fn retired_l013_history_survives_boot_without_becoming_a_decision() {
     assert_eq!(
         packaged.len(),
         2,
-        "actual pure and Tool-using seed requests must remain visible"
+        "actual pure and Tool-using shipped components must remain visible"
     );
     let originals: Vec<_> = packaged
         .iter()
         .map(|row| {
-            assert_eq!(row.get::<_, i16>(3), 1);
+            assert!(row.get::<_, Option<i16>>(3).is_none());
             assert!(row.get::<_, Option<String>>(4).is_none());
             assert!(row.get::<_, Option<String>>(5).is_none());
             assert_eq!(

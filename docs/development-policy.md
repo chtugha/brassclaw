@@ -8,6 +8,31 @@
 > activation, deployed support or full-v3 completion.
 
 
+## Shipped validation is transferred at installation — binding, 2026-11-15
+
+Components shipped with BrassClaw are reviewed and validated before provisioning.
+Installation, first startup, restart and upgrade MUST inherit that validation for
+those exact canonical shipped definitions; they MUST NOT run component Q1,
+behavioral qualification, test fixtures or per-instance human Q2 again. Creating
+the shipped rows in an empty database is installation, not new authoring. Missing
+instance-local qualification history MUST NOT trigger requalification.
+
+The existing installation owner retains the exact shipped revisions, associations,
+dependencies and artifacts, and records validation transferred from provisioning.
+Transfer records MUST identify their origin and MUST NOT claim tests executed on
+the installed instance. Package integrity, correct persistence, supported binding/
+loading, migrations and current kernel Tool policy remain technical checks.
+Stored `source`/`system_seed` labels alone do not establish shipped provenance:
+only definitions selected by the canonical packaged constructors use this path.
+Installed operator edits and additions retain their authored Q1/behavior/human-Q2
+requirements. Upgrades preserve authored overrides and old running-task pins.
+
+Development/release qualification remains available as an explicitly invoked test
+workflow outside ordinary startup. Existing test results and immutable historical
+records retain their original meaning. This instruction supersedes older wording
+that puts shipped-component behavioral qualification before instance readiness,
+including B1-05 and the development skill; qualification belongs before shipping.
+
 ## Scope and precedence
 
 This is the authoritative policy for development iteration and validation.

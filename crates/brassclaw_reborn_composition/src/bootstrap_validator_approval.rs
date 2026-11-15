@@ -859,6 +859,7 @@ impl Context {
 }
 
 pub(crate) struct CheckedStructuralHelpers {
+    deployment: Option<crate::shipped_validation::Components>,
     contexts: Vec<Arc<Context>>,
 }
 impl CheckedStructuralHelpers {
@@ -872,6 +873,9 @@ impl CheckedStructuralHelpers {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<RecordRef, RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            return serde_json::from_value(deployment.verify(tx).await?).map_err(invalid);
+        }
         let expected = std::iter::once(fixtures::receipt_id())
             .chain(
                 brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES
@@ -917,6 +921,26 @@ pub(crate) async fn qualify(
     storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     application_checksum: String,
 ) -> Result<CheckedStructuralHelpers, RebornBuildError> {
+    if crate::shipped_validation::transferring() {
+        let mut drafts = Vec::new();
+        for &class in brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES {
+            drafts.extend(
+                crate::builtin_bootstrap::validator_recipe_drafts_for_class(class)
+                    .map_err(invalid)?,
+            );
+        }
+        drafts.extend(
+            crate::builtin_bootstrap::validator_check_drafts()
+                .into_iter()
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(invalid)?,
+        );
+        let deployment = crate::shipped_validation::Components::install(pool, drafts).await?;
+        return Ok(CheckedStructuralHelpers {
+            contexts: Vec::new(),
+            deployment: Some(deployment),
+        });
+    }
     let receipt = fixtures::receipt_draft()?;
     let mut specs = vec![(receipt.clone(), None, fixtures::receipt_suites())];
     for &class in brassclaw_skills::validator_components::VALIDATOR_CLASS_CODES {
@@ -942,6 +966,7 @@ pub(crate) async fn qualify(
         })
         .collect::<Result<Vec<_>, RebornBuildError>>()?;
     Ok(CheckedStructuralHelpers {
+        deployment: None,
         contexts: qualify_specs(
             SessionInput {
                 pool,

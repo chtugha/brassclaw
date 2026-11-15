@@ -12,8 +12,14 @@ struct CheckedCase {
     report: String,
 }
 pub(crate) struct CheckedPureSourceWorkflow {
+    deployment: Option<ShippedWorkflow>,
     cases: Vec<CheckedCase>,
     report: String,
+}
+struct ShippedWorkflow {
+    program: Arc<RetainedToolProgram>,
+    parser: Arc<QualifiedSourceInventoryUsage>,
+    transfer: crate::shipped_validation::Transfer,
 }
 impl CheckedCase {
     fn encode(&self, id: Uuid, success: bool, value: &Value) -> String {
@@ -139,6 +145,9 @@ impl CheckedCase {
 }
 impl CheckedPureSourceWorkflow {
     pub(crate) fn program(&self) -> Result<Arc<RetainedToolProgram>, RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            return Ok(deployment.program.clone());
+        }
         Ok(self
             .cases
             .first()
@@ -148,6 +157,9 @@ impl CheckedPureSourceWorkflow {
             .clone())
     }
     pub(crate) fn parser(&self) -> Result<Arc<QualifiedSourceInventoryUsage>, RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            return Ok(deployment.parser.clone());
+        }
         Ok(self
             .cases
             .first()
@@ -166,6 +178,45 @@ impl CheckedPureSourceWorkflow {
         brassclaw_skills::review_submission_store::selection::SourceQualification,
         RebornBuildError,
     > {
+        if let Some(deployment) = &self.deployment {
+            self.verify_with_prerequisites(tx, checkers).await?;
+            let program = &deployment.program;
+            let graph = program.inputs().instruction().snapshot();
+            let recipe = &graph.revisions()[&program.inputs().instruction().recipe().uuid];
+            let mut prerequisite_proofs = checkers
+                .proof_references(tx)
+                .await?
+                .into_iter()
+                .map(|value| serde_json::from_value(value).map_err(invalid))
+                .collect::<Result<Vec<_>, _>>()?;
+            let parser = deployment.parser.proof.record_reference();
+            prerequisite_proofs.push(
+                brassclaw_skills::review_submission_store::selection::SourceProofReference {
+                    id: parser.id,
+                    checksum: parser.checksum,
+                },
+            );
+            let pins = brassclaw_skills::review_submission_store::selection::SourceQualification {
+                profile: "pure_source_structure".into(),
+                workflow_proof: serde_json::from_value(deployment.transfer.reference())
+                    .map_err(invalid)?,
+                prerequisite_proofs,
+                required_checks_checksum: evidence::checksum(
+                    &recipe.draft().document()["validator_coverage"].to_string(),
+                ),
+                worker_checksum: hex::encode(deployment.parser.worker.checksum()),
+                package_checksum: evidence::checksum(
+                    program
+                        .inputs()
+                        .instruction()
+                        .retained_selection()
+                        .map_err(invalid)?
+                        .exact_bytes(),
+                ),
+            };
+            pins.validate().map_err(invalid)?;
+            return Ok(pins);
+        }
         let prerequisites = self.verify_with_prerequisites(tx, checkers).await?;
         let first = self
             .cases
@@ -299,6 +350,17 @@ impl CheckedPureSourceWorkflow {
         tx: &Transaction<'_>,
         checkers: &CheckedPureCheckerClosure,
     ) -> Result<Vec<Value>, RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            deployment.transfer.require(tx).await?;
+            deployment.parser.proof.verify_in_transaction(tx).await?;
+            crate::shipped_validation::verify_instruction(
+                tx,
+                deployment.program.inputs().instruction(),
+            )
+            .await?;
+            checkers.require_program(&deployment.program)?;
+            return checkers.proof_references(tx).await;
+        }
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("checker_prerequisites", None);
         let prerequisites = checkers.proof_references(tx).await?;
@@ -350,6 +412,28 @@ pub(crate) async fn qualify_pure_workflow(
     executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     preparation: brassclaw_monty_host::utility::UtilityLimits,
 ) -> Result<CheckedPureSourceWorkflow, RebornBuildError> {
+    if let InstallationSourceObservations::Shipped {
+        pool,
+        program,
+        parser,
+    } = observations
+    {
+        checkers.require_program(program)?;
+        let transfer = crate::shipped_validation::Transfer::new(json!({
+            "source_workflow":program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
+            "worker_checksum":hex::encode(parser.worker.checksum()),
+        }));
+        transfer.install(pool).await?;
+        return Ok(CheckedPureSourceWorkflow {
+            cases: Vec::new(),
+            report: String::new(),
+            deployment: Some(ShippedWorkflow {
+                program: program.clone(),
+                parser: parser.clone(),
+                transfer,
+            }),
+        });
+    }
     observations.require_positive_for_qualification()?;
     let InstallationSourceObservations::ObservedPositive(profiles) = observations else {
         return Err(invalid("pure workflow actual parser prerequisite missing"));
@@ -529,6 +613,7 @@ pub(crate) async fn qualify_pure_workflow(
         cases.push(checked);
     }
     let mut package = CheckedPureSourceWorkflow {
+        deployment: None,
         cases,
         report: String::new(),
     };

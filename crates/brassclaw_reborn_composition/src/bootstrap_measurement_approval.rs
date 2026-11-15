@@ -54,7 +54,7 @@ impl BootstrapMeasurementQualification {
 struct Subject {
     inspected: Arc<InspectedRetainedProgram>,
     worker: Arc<PackagedExecutableImage>,
-    fixture: Arc<fixture::Fixture>,
+    fixture: Option<Arc<fixture::Fixture>>,
     digest: BootstrapCompilerApproval,
     encoding: BootstrapEncodingApproval,
     header: Value,
@@ -66,7 +66,7 @@ impl Subject {
         kernel: &dyn MontyKernelSnapshot,
         candidate: &InspectedRetainedProgram,
         worker: Arc<PackagedExecutableImage>,
-        fixture: Arc<fixture::Fixture>,
+        fixture: Option<Arc<fixture::Fixture>>,
         digest: BootstrapCompilerApproval,
         encoding: BootstrapEncodingApproval,
     ) -> Result<Arc<Self>, RebornBuildError> {
@@ -196,7 +196,8 @@ impl Subject {
             .iter()
             .map(|(uuid, source)| (uuid.to_string(), source.observations()))
             .collect();
-        let header = json!({"producer":"brassclaw-prefix-measurement-bootstrap/1","scope":"exact-packaged-measurement-workflow/1",
+        let header = if let Some(fixture) = &fixture {
+            json!({"producer":"brassclaw-prefix-measurement-bootstrap/1","scope":"exact-packaged-measurement-workflow/1",
             "selection_checksum":hex::encode(selection.checksum()),"worker_checksum":hex::encode(worker.checksum()),"native":native,"leaf_approvals":approval_refs,"sources":sources,
             "specification":fixture.specification,"artifact_set":fixture.artifacts,"cases":fixture::CASES,
             "owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_measurement_approval.rs")),
@@ -204,7 +205,12 @@ impl Subject {
             "validator_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_measurement_validation.rs")),
             "storage_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_workflow_evidence.rs")),
             "flow_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),
-            "root_checksum":crate::bootstrap_evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)});
+            "root_checksum":crate::bootstrap_evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)})
+        } else {
+            json!({"producer":"shipped-prefix-measurement/1","validation_origin":"provisioning",
+                "selection_checksum":hex::encode(selection.checksum()),"worker_checksum":hex::encode(worker.checksum()),
+                "native":native,"leaf_approvals":approval_refs})
+        };
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         Ok(Arc::new(Self {
             inspected,
@@ -259,7 +265,11 @@ pub(super) async fn qualify(
         .await
         .map_err(invalid)?,
     );
-    let fixture = fixture::Fixture::retain(pool.clone()).await?;
+    let fixture = if crate::shipped_validation::transferring() {
+        None
+    } else {
+        Some(fixture::Fixture::retain(pool.clone()).await?)
+    };
     let subject = Subject::prepare(
         kernel.as_ref(),
         candidate,
@@ -276,6 +286,15 @@ pub(super) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        crate::shipped_validation::Transfer::new(subject.header.clone())
+            .retain(&tx)
+            .await?;
+        crate::shipped_validation::verify_program(&tx, &subject.inspected).await?;
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        return Ok(Some(BootstrapMeasurementQualification { subject }));
+    }
     if let Some(approved) = read(&tx, &subject).await? {
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
@@ -318,7 +337,11 @@ pub(super) async fn qualify(
         subject.inspected.clone(),
         &subject.worker.path(),
         &hex::encode(subject.worker.checksum()),
-        subject.fixture.clone(),
+        subject
+            .fixture
+            .as_ref()
+            .ok_or_else(|| invalid("explicit workflow qualification fixture missing"))?
+            .clone(),
     ))
     .await?;
     let mut client = crate::bootstrap_evidence::io::acquire(&pool).await?;
@@ -331,7 +354,10 @@ pub(super) async fn qualify(
     validation::verify(
         &tx,
         &subject.inspected,
-        &subject.fixture,
+        subject
+            .fixture
+            .as_ref()
+            .ok_or_else(|| invalid("explicit workflow qualification fixture missing"))?,
         &hex::encode(subject.worker.checksum()),
         &observed,
     )
@@ -386,6 +412,13 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapMeasurementQualification>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if transfer.present(tx).await? {
+        crate::shipped_validation::verify_program(tx, &subject.inspected).await?;
+        return Ok(Some(BootstrapMeasurementQualification {
+            subject: subject.clone(),
+        }));
+    }
     let Some(bytes) = evidence::read_workflow(
         tx,
         &subject.inspected,
@@ -436,7 +469,10 @@ async fn read(
     validation::verify(
         tx,
         &subject.inspected,
-        &subject.fixture,
+        subject
+            .fixture
+            .as_ref()
+            .ok_or_else(|| invalid("explicit workflow qualification fixture missing"))?,
         &hex::encode(subject.worker.checksum()),
         &report["observed"],
     )
@@ -504,7 +540,7 @@ pub(super) async fn assert_retained_proof_checks_journal(
             validation::verify(
                 &tx,
                 &subject.inspected,
-                &subject.fixture,
+                subject.fixture.as_ref().unwrap(),
                 &hex::encode(subject.worker.checksum()),
                 &changed
             )

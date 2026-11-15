@@ -274,10 +274,13 @@ impl Subject {
                 .ok_or_else(|| invalid("bootstrap preload inspection missing"))?;
             sources.insert(id.to_string(), json!(source.observations()));
         }
-        let header = json!({"producer":validation::PRODUCER,"scope":"packaged-public-literal-reply/1",
+        let mut header = json!({"producer":validation::PRODUCER,"scope":"packaged-public-literal-reply/1",
             "selection_checksum":hex(selection),"worker_checksum":worker_checksum,
             "application_checksum":hex(image.checksum()),"cases":validation::cases(),"sources":sources,
             "validator_root_checksum":validation::root_checksum()});
+        if crate::shipped_validation::transferring() {
+            header["validation_origin"] = json!("provisioning");
+        }
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         Ok(Self {
             inspected,
@@ -324,6 +327,16 @@ pub(crate) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        crate::shipped_validation::Transfer::new(subject.header.clone())
+            .retain_association(&tx, &subject.approval_bytes())
+            .await?;
+        let installed = read(&tx, &subject)
+            .await?
+            .ok_or_else(|| invalid("shipped association transfer missing"))?;
+        tx.commit().await.map_err(invalid)?;
+        return Ok(Some(installed));
+    }
     if let Some(approval) = reuse_or_require_unstarted(&tx, &subject).await? {
         tx.commit().await.map_err(invalid)?;
         return Ok(Some(approval));
@@ -404,6 +417,18 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapReplyApproval>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if let Some(declaration) = transfer
+        .read_association(tx, &subject.approval_bytes())
+        .await?
+    {
+        crate::shipped_validation::verify_program(tx, &subject.inspected).await?;
+        return Ok(Some(BootstrapReplyApproval {
+            approval: declaration,
+            subject: subject.clone(),
+            selection: subject.selection,
+        }));
+    }
     crate::bootstrap_evidence::require_coherent(tx).await?;
     let Some(bytes) = crate::bootstrap_evidence::read_association(tx, subject.approval).await?
     else {
@@ -581,12 +606,28 @@ async fn verify_observations(
 }
 
 #[cfg(test)]
+async fn assertion_subject(
+    tx: &Transaction<'_>,
+    candidate: Arc<InspectedRetainedProgram>,
+    worker: &Path,
+) -> Arc<Subject> {
+    let native = Arc::new(Subject::prepare(candidate.clone(), worker).await.unwrap());
+    if read(tx, &native).await.unwrap().is_some() {
+        return native;
+    }
+    Arc::new(
+        crate::shipped_validation::installation(Subject::prepare(candidate, worker))
+            .await
+            .unwrap(),
+    )
+}
+
+#[cfg(test)]
 pub(crate) async fn assert_bootstrap_readback(
     pool: Arc<PgPool>,
     candidate: Arc<InspectedRetainedProgram>,
 ) {
     let worker = brassclaw_monty_host::process::installed_worker().unwrap();
-    let subject = Arc::new(Subject::prepare(candidate.clone(), &worker).await.unwrap());
     let mut client = pool.get().await.unwrap();
     let tx = client
         .build_transaction()
@@ -594,8 +635,19 @@ pub(crate) async fn assert_bootstrap_readback(
         .start()
         .await
         .unwrap();
+    let subject = assertion_subject(&tx, candidate.clone(), &worker).await;
     let actual = read(&tx, &subject).await.unwrap().unwrap();
-    assert_eq!(actual.approval_id(), subject.approval);
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    let inherited = transfer.present(&tx).await.unwrap();
+    let expected = if inherited {
+        transfer
+            .association(&subject.approval_bytes())
+            .unwrap()
+            .approval_id()
+    } else {
+        subject.approval
+    };
+    assert_eq!(actual.approval_id(), expected);
     assert_eq!(actual.selection_checksum(), subject.selection);
     assert_eq!(actual.approval.mode(), ValidationMode::SystemSeed);
     assert!(actual.approval.q2_reference().is_none());
@@ -605,12 +657,24 @@ pub(crate) async fn assert_bootstrap_readback(
         .unwrap()
         .get(0);
     // An internally altered provenance subject cannot accept an existing record.
-    let mut wrong = Subject::prepare(candidate.clone(), &worker).await.unwrap();
+    let mut wrong = if inherited {
+        crate::shipped_validation::installation(Subject::prepare(candidate.clone(), &worker))
+            .await
+            .unwrap()
+    } else {
+        Subject::prepare(candidate.clone(), &worker).await.unwrap()
+    };
     wrong.header["producer"] = json!("untrusted-authored-label");
-    assert!(read(&tx, &Arc::new(wrong)).await.is_err());
+    assert!(!matches!(read(&tx, &Arc::new(wrong)).await, Ok(Some(_))));
     // An unavailable approval with an actual retained Q1 intent is incomplete,
     // even when successful behavior exists. The producer cannot replay effects.
-    let mut incomplete = Subject::prepare(candidate.clone(), &worker).await.unwrap();
+    let mut incomplete = if inherited {
+        crate::shipped_validation::installation(Subject::prepare(candidate.clone(), &worker))
+            .await
+            .unwrap()
+    } else {
+        Subject::prepare(candidate.clone(), &worker).await.unwrap()
+    };
     incomplete.approval = Uuid::new_v4();
     assert!(
         reuse_or_require_unstarted(&tx, &Arc::new(incomplete))
@@ -621,7 +685,7 @@ pub(crate) async fn assert_bootstrap_readback(
     tx.batch_execute("SAVEPOINT immutable_bootstrap")
         .await
         .unwrap();
-    assert!(tx.execute("UPDATE reborn_component_review_evidence SET evidence_bytes=evidence_bytes WHERE evidence_id=$1",&[&subject.behavior]).await.is_err());
+    assert!(tx.execute("UPDATE reborn_component_review_evidence SET evidence_bytes=evidence_bytes WHERE evidence_id=$1",&[&Uuid::parse_str(&actual.approval.behavioral_references()[0]).unwrap()]).await.is_err());
     tx.batch_execute("ROLLBACK TO SAVEPOINT immutable_bootstrap")
         .await
         .unwrap();
@@ -660,7 +724,6 @@ pub(crate) async fn assert_rejects_unapproved_recipe_successor(
         retained_tools::prepare_retained_tool_program,
     };
     let worker = brassclaw_monty_host::process::installed_worker().unwrap();
-    let subject = Arc::new(Subject::prepare(candidate, &worker).await.unwrap());
     let mut client = pool.get().await.unwrap();
     let tx = client
         .build_transaction()
@@ -668,6 +731,7 @@ pub(crate) async fn assert_rejects_unapproved_recipe_successor(
         .start()
         .await
         .unwrap();
+    let subject = assertion_subject(&tx, candidate, &worker).await;
     let approved = read(&tx, &subject).await.unwrap().unwrap();
     let instruction = subject.inspected.program().inputs().instruction();
     let refs: Vec<_> = instruction

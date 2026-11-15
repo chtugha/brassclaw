@@ -199,20 +199,18 @@ Follow the [own functional approval and successor compatibility contract](../../
   for new use. Unchanged consumers keep their approvals; the qualified successor
   path needs no extra authored combination approval. Running/waiting/resumed tasks
   keep their exact original selection and artifacts.
-- **Shipped qualification (S):** the installation owner independently qualifies
-  Tool, then ToolSkill, then Skill/code together through noncircular
-  `system_seed` integrity/Q1/behavior evidence. Retain exact Skill-usage
-  qualification without additional installed or external-maintainer human Q2.
-  Its dependency closure identifies tested bytes, not individual approvals for
-  every member. Provenance belongs to the actual revision/usage, including mixed
-  graphs; a label cannot turn an installed edit into S.
-  Follow [B1-05's existing controlled installation/contained boundary](../../../Repair_bob_1_v3_at_k3.md#5-qualify-actual-shipped-bytes-without-circular-trust),
-  with independently qualified prerequisites and exact retained application,
-  worker and native artifacts. Do not require the unqualified subject to establish
-  its own ordinary admission prerequisites. Preserve kernel policy and technical
-  limits; introduce no permissive bootstrap mode or second production service.
-  Reconcile original qualification evidence after an uncertain commit rather than
-  rerunning behavior.
+- **Shipped validation (S):** qualify actual canonical definitions during
+  development/release before provisioning. Ordinary installation, first start,
+  restart and upgrade inherit that validation; never run component Q1/behavior
+  fixtures again because an instance database is empty. The existing installation
+  owner records exact revision/association/artifact identity and the provisioning
+  origin without claiming local test execution. Preserve integrity, supported
+  loading, current Tool policy, authored overrides and retained running-task pins.
+  Only canonical packaged constructors establish this provenance; source labels
+  and post-installation edits do not. Explicit development qualification remains
+  available outside startup. This supersedes older B1-05 wording requiring
+  installation-time behavioral qualification. See
+  [the binding transfer rule](../../../AGENTS.md#shipped-validation-is-transferred-at-installation--binding-2026-11-15).
 - **Recipe changes:** validate the supported workflows/variants and their actual
   handoffs, effects, failures and completion using approved components; do not
   reapprove unchanged constituent components.

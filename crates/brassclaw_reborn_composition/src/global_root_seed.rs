@@ -4,14 +4,15 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use brassclaw_pg::PgPool;
+#[cfg(test)]
+use brassclaw_skills::review_submission_store::{
+    PgReviewSubmissionStore, RetainedReviewSubmission, ReviewSubmissionDraft, SubmissionStoreError,
+};
 use brassclaw_skills::{
     orchestrator_contract::{GlobalRootDefinition, global_root_draft},
-    review_submission_store::{
-        PgReviewSubmissionStore, RetainedReviewSubmission, ReviewSubmissionDraft,
-        SubmissionStoreError,
-    },
     revision_store::{PgComponentRevisionStore, RevisionStoreError},
 };
+#[cfg(test)]
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -69,6 +70,7 @@ pub(crate) async fn retain_packaged_global_root(
 
 /// Retain the complete class-10 review subject separately from its source
 /// retention. The actor is authoring provenance only, never a review verdict.
+#[cfg(test)]
 pub(crate) async fn retain_packaged_root_review(
     pool: Arc<PgPool>,
     definition: &GlobalRootDefinition,

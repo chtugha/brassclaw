@@ -79,7 +79,7 @@ pub(crate) async fn initialize_runtime_components(
     // coordinated global lifecycle cutover remain independent prerequisites.
     #[cfg(feature = "skills-db")]
     {
-        let definition = crate::global_root_seed::retain_packaged_global_root(
+        crate::global_root_seed::retain_packaged_global_root(
             booted_db.pool().clone(),
             crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED,
         )
@@ -87,11 +87,6 @@ pub(crate) async fn initialize_runtime_components(
         .map_err(|error| RebornBuildError::InvalidConfig {
             reason: format!("global orchestrator draft retention failed: {error}"),
         })?;
-        crate::global_root_seed::retain_packaged_root_review(booted_db.pool().clone(), &definition)
-            .await
-            .map_err(|error| RebornBuildError::InvalidConfig {
-                reason: format!("global orchestrator review subject retention failed: {error}"),
-            })?;
     }
 
     // Load every required prompt before mutating process-wide OnceLocks. A
@@ -276,28 +271,14 @@ mod tests {
                 include_str!("../../brassclaw_engine/orchestrator/global_mode.py")
             );
             assert!(!root.ports().contains("post_reply"));
-            let submission: uuid::Uuid = pool
-                .get()
-                .await
-                .unwrap()
-                .query_one(
-                    "SELECT submission_id FROM reborn_component_review_submissions
-                     WHERE component_id=$1 AND candidate_version=$2",
-                    &[&root.reference().uuid, &retained_version],
-                )
-                .await
-                .expect("ordinary startup retained the exact immutable root review subject")
-                .get(0);
-            let reviewed = brassclaw_skills::review_submission_store::PgReviewSubmissionStore::new(
-                pool.clone(),
-            )
-            .read(submission)
-            .await
-            .unwrap()
-            .unwrap();
-            assert_eq!(reviewed.candidate, root.reference());
-            assert!(reviewed.base.is_none());
-            assert!(reviewed.dependencies.is_empty());
+            let submissions: i64 = pool.get().await.unwrap().query_one(
+                "SELECT count(*) FROM reborn_component_review_submissions WHERE component_id=$1",
+                &[&root.reference().uuid],
+            ).await.unwrap().get(0);
+            assert_eq!(
+                submissions, 0,
+                "shipped root must not enter installed author review"
+            );
         }
         let expected = load_required_prompt(&booted, tenant, "failure_explanation")
             .await
@@ -331,56 +312,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn native_seed_requests_recover_without_fabricated_q1_or_builtin_approval() {
+    async fn native_shipped_seed_needs_no_review_queue_and_preserves_historical_reviews() {
         let rig = crate::runtime::test_pg::native_pg::NativePostgres::start().await;
         let booted = crate::booted_db::run_migrations_and_return_booted_db(rig.pool.clone())
             .await
             .unwrap();
         let tenant = "seed-recovery-test";
         let client = rig.pool.get().await.unwrap();
-        // Actual PostgreSQL failure after a legacy component insert. No fake
-        // successful validator or approval is used to exercise recovery.
         client
             .batch_execute(
                 "CREATE FUNCTION fail_seed_request() RETURNS trigger LANGUAGE plpgsql AS $$
-                 BEGIN
-                   IF NEW.tenant_id='seed-recovery-test' AND NEW.component_class=0 THEN
-                     RAISE EXCEPTION 'injected persistence failure' USING ERRCODE='23514';
-                   END IF;
-                   RETURN NEW;
-                 END $$;
-                 CREATE TRIGGER fail_seed_request BEFORE INSERT ON reborn_validation_queue
-                 FOR EACH ROW EXECUTE FUNCTION fail_seed_request()",
+             BEGIN IF NEW.tenant_id='seed-recovery-test' THEN
+               RAISE EXCEPTION 'shipped seeds must not request qualification' USING ERRCODE='23514';
+             END IF; RETURN NEW; END $$;
+             CREATE TRIGGER fail_seed_request BEFORE INSERT ON reborn_validation_queue
+             FOR EACH ROW EXECUTE FUNCTION fail_seed_request()",
             )
             .await
             .unwrap();
         drop(client);
-        assert!(matches!(
-            initialize_runtime_components(&booted, tenant).await,
-            Err(RebornBuildError::InvalidConfig { reason })
-                if reason.contains("seed review retention")
-        ));
+        for _ in 0..2 {
+            initialize_runtime_components(&booted, tenant)
+                .await
+                .unwrap();
+        }
         let client = rig.pool.get().await.unwrap();
-        let missing: i64 = client
+        let count: i64 = client
             .query_one(
-                "SELECT count(*) FROM reborn_tools t WHERE tenant_id=$1 AND NOT EXISTS
-                 (SELECT 1 FROM reborn_validation_queue q WHERE q.component_id=t.id)",
+                "SELECT count(*) FROM reborn_validation_queue WHERE tenant_id=$1",
                 &[&tenant],
             )
             .await
             .unwrap()
             .get(0);
-        assert!(
-            missing > 0,
-            "failure retained the already inserted legacy rows"
-        );
-        client.batch_execute("DROP TRIGGER fail_seed_request ON reborn_validation_queue; DROP FUNCTION fail_seed_request()").await.unwrap();
-        drop(client);
-        initialize_runtime_components(&booted, tenant)
-            .await
-            .unwrap();
-        let client = rig.pool.get().await.unwrap();
-        let fabricated: i64 = client
+        assert_eq!(count, 0);
+        let receipts: i64 = client
             .query_one(
                 "SELECT count(*) FROM reborn_component_graduation_receipts WHERE tenant_id=$1",
                 &[&tenant],
@@ -388,52 +354,37 @@ mod tests {
             .await
             .unwrap()
             .get(0);
-        assert_eq!(fabricated, 0);
-        let nonpending: i64 = client.query_one(
-            "SELECT count(*) FROM reborn_validation_queue WHERE tenant_id=$1 AND
-             (state<>1 OR q2_actor IS NOT NULL OR q1_component_bytes IS NOT NULL OR q1_queue_bytes IS NOT NULL)",
-            &[&tenant],
-        ).await.unwrap().get(0);
-        assert_eq!(nonpending, 0);
-        let wrong_class: i64 = client.query_one(
-            "SELECT count(*) FROM reborn_validation_queue q JOIN reborn_skills s ON s.id=q.component_id
-             WHERE q.tenant_id=$1 AND q.component_class<>s.class_code",
-            &[&tenant],
-        ).await.unwrap().get(0);
-        assert_eq!(wrong_class, 0);
-        for (table, name, class) in [("reborn_skills", "orchestrator:main", 10_i16)] {
-            // These table names are the fixed test literals above.
-            let sql = format!(
-                "SELECT q.component_class FROM reborn_validation_queue q
-                JOIN {table} c ON c.id=q.component_id WHERE q.tenant_id=$1 AND c.name=$2"
-            );
-            let actual: i16 = client
-                .query_one(&sql, &[&tenant, &name])
-                .await
-                .unwrap()
-                .get(0);
-            assert_eq!(actual, class);
-        }
-        let request: uuid::Uuid = client.query_one(
-            "SELECT q.id FROM reborn_validation_queue q JOIN reborn_skills s ON s.id=q.component_id
-             WHERE q.tenant_id=$1 AND s.name='orchestrator:main'",
-            &[&tenant],
-        ).await.unwrap().get(0);
-        // A pre-existing rejected review is fixture data, not an approval.
-        // Seeding must preserve its identity, state and operator feedback.
-        client.execute(
-            "UPDATE reborn_validation_queue SET state=3,counter=2,review_feedback='keep this review'
-             WHERE id=$1", &[&request],
-        ).await.unwrap();
+        assert_eq!(receipts, 0, "no local Q1/Q2 execution is claimed");
+        client.batch_execute("DROP TRIGGER fail_seed_request ON reborn_validation_queue; DROP FUNCTION fail_seed_request()").await.unwrap();
+        let root: uuid::Uuid = client
+            .query_one(
+                "SELECT id FROM reborn_skills WHERE tenant_id=$1 AND name='orchestrator:main'",
+                &[&tenant],
+            )
+            .await
+            .unwrap()
+            .get(0);
+        drop(client);
+        let scope = brassclaw_engine::memory::retrieval_source::ComponentScope {
+            tenant_id: tenant.into(),
+            user_id: brassclaw_host_api::SYSTEM_RESERVED_ID.into(),
+            agent_id: "default".into(),
+            project_id: "system".into(),
+        };
+        // Historical review fixture only; installation must neither create a
+        // replacement nor erase this original operator feedback.
+        crate::validation_queue::ValidationQueueStore::new(rig.pool.clone())
+            .retain_pending_request(&scope, root, 10)
+            .await
+            .unwrap();
+        let client = rig.pool.get().await.unwrap();
+        client.execute("UPDATE reborn_validation_queue SET state=3,counter=2,review_feedback='keep this review' WHERE component_id=$1", &[&root]).await.unwrap();
         drop(client);
         initialize_runtime_components(&booted, tenant)
             .await
             .unwrap();
         let client = rig.pool.get().await.unwrap();
-        let retained = client.query_one(
-            "SELECT state,counter,review_feedback,q2_actor,q1_component_bytes FROM reborn_validation_queue WHERE id=$1",
-            &[&request],
-        ).await.unwrap();
+        let retained = client.query_one("SELECT state,counter,review_feedback,q2_actor,q1_component_bytes FROM reborn_validation_queue WHERE component_id=$1", &[&root]).await.unwrap();
         assert_eq!(retained.get::<_, i16>(0), 3);
         assert_eq!(retained.get::<_, i32>(1), 2);
         assert_eq!(retained.get::<_, String>(2), "keep this review");

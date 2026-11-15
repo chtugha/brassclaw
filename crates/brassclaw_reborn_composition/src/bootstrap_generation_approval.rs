@@ -39,7 +39,7 @@ const PROFILE: &str = "configured-hold-executor/1";
 pub(super) struct BootstrapGenerationApproval {
     declaration: AssociationApprovalDeclaration,
     subject: Arc<Subject>,
-    original: Arc<OriginalContext>,
+    original: Option<Arc<OriginalContext>>,
 }
 impl BootstrapGenerationApproval {
     pub(super) fn approval_id(&self) -> Uuid {
@@ -62,7 +62,8 @@ impl BootstrapGenerationApproval {
             .await?
             .ok_or_else(|| invalid("generation qualification is missing"))?;
         if actual.approval_id() != self.approval_id()
-            || actual.original.value() != self.original.value()
+            || actual.original.as_ref().map(|o| o.value())
+                != self.original.as_ref().map(|o| o.value())
         {
             return Err(invalid("generation qualification differs"));
         }
@@ -248,7 +249,7 @@ impl Subject {
             .iter()
             .map(|(uuid, source)| (uuid.to_string(), source.observations()))
             .collect();
-        let header = json!({"producer":PRODUCER,"behavior_profile":PROFILE,"behavior_format":crate::bootstrap_generation_validation::BEHAVIOR_FORMAT,"scope":format!("packaged-prefix-generation-{name}/1"),
+        let mut header = json!({"producer":PRODUCER,"behavior_profile":PROFILE,"behavior_format":crate::bootstrap_generation_validation::BEHAVIOR_FORMAT,"scope":format!("packaged-prefix-generation-{name}/1"),
             "selection_checksum":hex::encode(selection),"worker_checksum":hex::encode(worker.checksum()),"native":native,
             "fixture_contract":"prefix-generation-fixture/1","baseline_coverage":"documentation-only",
             "cases":crate::bootstrap_generation_validation::case_inventory(retain),"sources":sources,
@@ -257,6 +258,9 @@ impl Subject {
             "root_checksum":evidence::checksum(crate::bootstrap_validation::CONFIGURED_HOLD_ROOT),
             "executor_owner_checksum":evidence::checksum(include_str!("global_monty_startup.rs")),
             "hold_owner_checksum":crate::bootstrap_validation::owner_checksum()});
+        if crate::shipped_validation::transferring() {
+            header["validation_origin"] = json!("provisioning");
+        }
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         let components = json!(binding.combination().iter().map(|r| json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})).collect::<Vec<_>>());
         let association = binding.association().exact_bytes().to_owned();
@@ -346,10 +350,27 @@ pub(super) async fn qualify(
     let tx = client
         .build_transaction()
         .isolation_level(IsolationLevel::RepeatableRead)
-        .read_only(true)
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        for subject in &subjects {
+            crate::shipped_validation::Transfer::new(subject.header.clone())
+                .retain_association(&tx, &subject.approval_bytes())
+                .await?;
+        }
+        let mut installed = Vec::new();
+        for subject in &subjects {
+            installed.push(
+                read(&tx, subject)
+                    .await?
+                    .ok_or_else(|| invalid("shipped association transfer missing"))?,
+            );
+        }
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        return Ok(installed);
+    }
     if let Some(approved) = read_group(&tx, &subjects).await? {
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
@@ -477,6 +498,18 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapGenerationApproval>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if let Some(declaration) = transfer
+        .read_association(tx, &subject.approval_bytes())
+        .await?
+    {
+        crate::shipped_validation::verify_program(tx, &subject.inspected).await?;
+        return Ok(Some(BootstrapGenerationApproval {
+            declaration,
+            subject: subject.clone(),
+            original: None,
+        }));
+    }
     evidence::require_coherent(tx).await?;
     let Some(bytes) = evidence::read_association(tx, subject.approval).await? else {
         return Ok(None);
@@ -531,7 +564,7 @@ async fn read(
     Ok(Some(BootstrapGenerationApproval {
         declaration,
         subject: subject.clone(),
-        original,
+        original: Some(original),
     }))
 }
 
@@ -614,7 +647,9 @@ async fn read_group(
         }
     }
     if approved.len() == 2 {
-        if approved[0].original.value() != approved[1].original.value() {
+        if approved[0].original.as_ref().map(|o| o.value())
+            != approved[1].original.as_ref().map(|o| o.value())
+        {
             return Err(invalid(
                 "generation original group fixture/executor differs",
             ));
@@ -657,7 +692,10 @@ pub(crate) async fn assert_original_executor_custody(
         .unwrap()
         .get(0);
     drop(client);
-    let later_package = format!("{}\n", approvals[0].original.fixture.package);
+    let later_package = format!(
+        "{}\n",
+        approvals[0].original.as_ref().unwrap().fixture.package
+    );
     crate::prefix_generations::validate_package("base-prompt", &later_package).unwrap();
     let later = crate::prefix_generations::PgPrefixGenerations::new(pool.clone())
         .import(
@@ -671,7 +709,7 @@ pub(crate) async fn assert_original_executor_custody(
         .unwrap();
     assert_ne!(
         later.summary.generation,
-        approvals[0].original.fixture.generation
+        approvals[0].original.as_ref().unwrap().fixture.generation
     );
     assert_eq!(later.summary.profile_revision, revision as u64);
     assert_eq!(later.summary.qualification, "quarantined");

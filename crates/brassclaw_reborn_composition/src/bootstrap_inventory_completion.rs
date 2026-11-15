@@ -51,10 +51,11 @@ impl Subject {
             "root_checksum":hex::encode(root.source_checksum()),"root_reference":revision_reference_value(root.reference())});
         let intent = Uuid::new_v5(&qualification_id, b"inventory-qualification-intent/1");
         let association = crate::bootstrap_evidence::checksum(binding.association().exact_bytes());
-        if program.inputs().instruction().recipe().uuid
-            != brassclaw_skills::global_bootstrap_components::packaged_component_id(
-                "validator:inspection:inventory:qualification-recipe",
-            )
+        if !crate::shipped_validation::transferring()
+            && program.inputs().instruction().recipe().uuid
+                != brassclaw_skills::global_bootstrap_components::packaged_component_id(
+                    "validator:inspection:inventory:qualification-recipe",
+                )
         {
             return Err(invalid("qualification private workflow identity differs"));
         }
@@ -180,6 +181,7 @@ impl Subject {
             .await?;
         }
         Ok(Some(InventoryQualification {
+            deployment: None,
             subject: self.clone(),
             intent_bytes,
             behavior_bytes,
@@ -950,6 +952,7 @@ async fn required(tx: &Transaction<'_>, id: Uuid) -> Result<String, RebornBuildE
 }
 
 pub(in crate::validator_inventory_review) struct InventoryQualification {
+    deployment: Option<crate::shipped_validation::Transfer>,
     subject: Arc<Subject>,
     intent_bytes: String,
     behavior_bytes: String,
@@ -957,9 +960,42 @@ pub(in crate::validator_inventory_review) struct InventoryQualification {
     completion_bytes: String,
 }
 impl InventoryQualification {
+    pub(in crate::validator_inventory_review) async fn install(
+        pool: &Arc<PgPool>,
+        program: Arc<RetainedToolProgram>,
+        worker: Arc<PackagedExecutableImage>,
+        storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+        root: &brassclaw_skills::orchestrator_contract::GlobalRootDefinition,
+    ) -> Result<Self, RebornBuildError> {
+        let identity = json!({"parser":program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
+            "worker_checksum":hex::encode(worker.checksum())});
+        let deployment = crate::shipped_validation::Transfer::new(identity);
+        deployment.install(pool).await?;
+        let subject = Subject::new(
+            program,
+            worker,
+            Uuid::new_v5(&root.reference().uuid, b"shipped-parser"),
+            storage,
+            root,
+        )?;
+        Ok(Self {
+            subject,
+            deployment: Some(deployment),
+            intent_bytes: String::new(),
+            behavior_bytes: String::new(),
+            quiescence_bytes: String::new(),
+            completion_bytes: String::new(),
+        })
+    }
     pub(in crate::validator_inventory_review) fn record_reference(
         &self,
     ) -> brassclaw_skills::review_submission_store::installation::InstallationRecordRef {
+        if let Some(deployment) = &self.deployment {
+            return brassclaw_skills::review_submission_store::installation::InstallationRecordRef {
+                id: deployment.id(),
+                checksum: deployment.checksum(),
+            };
+        }
         brassclaw_skills::review_submission_store::installation::InstallationRecordRef {
             id: self.subject.completion,
             checksum: crate::bootstrap_evidence::checksum(&self.completion_bytes),
@@ -969,6 +1005,20 @@ impl InventoryQualification {
         &self,
         pool: &Arc<PgPool>,
     ) -> Result<(), RebornBuildError> {
+        if self.deployment.is_some() {
+            let mut client = primitives::acquire(pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            self.verify_in_transaction(&tx).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            return Ok(());
+        }
         let read = self
             .subject
             .read(pool)
@@ -990,6 +1040,14 @@ impl InventoryQualification {
         &self,
         tx: &Transaction<'_>,
     ) -> Result<(), RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            deployment.require(tx).await?;
+            return crate::shipped_validation::verify_instruction(
+                tx,
+                self.subject.program.inputs().instruction(),
+            )
+            .await;
+        }
         let read = self
             .subject
             .read_in_transaction(tx)

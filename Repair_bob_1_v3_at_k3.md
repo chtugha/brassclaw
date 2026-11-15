@@ -290,6 +290,12 @@ environment; an example string or parser pass is not behavioral evidence.
 
 ## 5. Qualify actual shipped bytes without circular trust
 
+**Superseding operator instruction, 2026-11-15:** follow
+[the binding installation-transfer rule](AGENTS.md#shipped-validation-is-transferred-at-installation--binding-2026-11-15).
+The qualification described below belongs to development/release before
+provisioning. Ordinary installation and startup transfer that validation and do
+not execute these qualification workflows. Historical results stay unchanged.
+
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
 **Scoped retirement accepted, 2026-11-15:** the production L013 placeholder

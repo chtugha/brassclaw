@@ -95,6 +95,10 @@ impl CheckedPureSourceOriginal {
     }
 }
 impl QualifiedPureSourceReview {
+    #[cfg(test)]
+    pub(crate) async fn assert_shipped_readback(&self, tx: &Transaction<'_>) {
+        self.check_in_transaction(tx).await.unwrap();
+    }
     pub(crate) fn new(
         workflow: CheckedPureSourceWorkflow,
         checkers: CheckedPureCheckerClosure,

@@ -79,11 +79,11 @@ async fn native_shipped_r1_qualifies_exact_generation_revision_and_reuses_withou
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(crate::build_reborn_runtime(
-        crate::RebornRuntimeInput::from_services(
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(crate::RebornRuntimeInput::from_services(
             rig.build_input("shipped-r1-native", home.path())
                 .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
-        ),
+        )),
     ))
     .await
     .unwrap();
@@ -236,10 +236,9 @@ async fn native_ack_case(stage: &str) {
     .unwrap();
     transport.arm(1).unwrap();
     let home = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(crate::build_reborn_runtime(proxy_input(
-        &transport,
-        home.path(),
-    )))
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(proxy_input(&transport, home.path())),
+    ))
     .await
     .unwrap();
     assert_eq!(
@@ -302,10 +301,9 @@ async fn native_shipped_r1_unknown_intent_never_executes_or_replays_the_business
     transport.arm(1).unwrap();
     let home = tempfile::tempdir().unwrap();
     assert!(
-        Box::pin(crate::build_reborn_runtime(proxy_input(
-            &transport,
-            home.path()
-        )))
+        Box::pin(crate::shipped_validation::qualify_package(
+            crate::build_reborn_runtime(proxy_input(&transport, home.path()))
+        ))
         .await
         .is_err()
     );
@@ -328,10 +326,9 @@ async fn native_shipped_r1_unknown_intent_never_executes_or_replays_the_business
         "intent exists, but no business Source or approval can be fabricated"
     );
     assert!(
-        Box::pin(crate::build_reborn_runtime(proxy_input(
-            &transport,
-            home.path()
-        )))
+        Box::pin(crate::shipped_validation::qualify_package(
+            crate::build_reborn_runtime(proxy_input(&transport, home.path()))
+        ))
         .await
         .is_err()
     );
@@ -431,11 +428,11 @@ async fn native_shipped_history_qualifies_actual_formatter_and_reuses_originals(
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(crate::build_reborn_runtime(
-        crate::RebornRuntimeInput::from_services(
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(crate::RebornRuntimeInput::from_services(
             rig.build_input("shipped-history-native", home.path())
                 .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
-        ),
+        )),
     ))
     .await
     .unwrap();

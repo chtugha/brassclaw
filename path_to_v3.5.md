@@ -17,6 +17,18 @@ consume [validator's exact remaining approval/evidence/pin sequence](docs/reborn
 V35-13/14 retain ownership of future dynamic occurrences. Do not create a
 parallel approval store or relax current execution fencing to accelerate either.
 
+## Shipped validation handoff — binding operator correction, 2026-11-15
+
+Shipped components inherit the validation completed before provisioning. V35-16,
+V35-20 and V35-27 consume that exact package/revision/artifact provenance during
+installation, upgrade and restore, without rerunning Q1/behavior fixtures or
+creating installed review requests. Development/release qualification remains
+outside startup. V35-02 reconciles the wording in the existing component guides;
+V35-29/30 acceptance must show no qualification admissions or fixture-model data
+on fresh/repeated boot, with authored edits and retained task pins preserved.
+See [the binding installation rule](AGENTS.md#shipped-validation-is-transferred-at-installation--binding-2026-11-15).
+Historical receipts retain their original meaning and are not rewritten.
+
 ## Purpose, authority and scope
 
 The reference workflow is a Recipe: **read one bounded text preview → select displayed lines containing a literal → format a coverage-aware answer → post one reply**. Its independently reusable components, exact qualification and ordinary publication demonstrate the architecture. A read-only log-inspection Recipe reuses the same selected filter/formatter identities. No new `read_filter_reply` Rust Tool is warranted.

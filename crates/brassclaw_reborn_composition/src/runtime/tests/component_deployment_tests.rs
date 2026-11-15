@@ -90,7 +90,13 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
             brassclaw_product_workflow::default_monty_vm_settings().max_duration_secs,
         ),
     });
-    let runtime = Arc::new(Box::pin(build_reborn_runtime(input)).await.unwrap());
+    let runtime = Arc::new(
+        Box::pin(crate::shipped_validation::qualify_package(
+            build_reborn_runtime(input),
+        ))
+        .await
+        .unwrap(),
+    );
     let catalogue = runtime.installed_catalogue.clone();
     crate::bootstrap_encoding_approval::assert_retained_proof_checks_actual_journal(
         catalogue.pool.clone(),
@@ -2626,10 +2632,12 @@ async fn native_generation_qualification_preserves_configured_slots_and_original
         initial.execution_limits.utility_worker_memory_bytes
     );
     let directory = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(build_reborn_runtime(RebornRuntimeInput::from_services(
-        rig.build_input("generation-executor-owner", directory.path())
-            .with_runtime_policy(local_dev_runtime_policy()),
-    )))
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        build_reborn_runtime(RebornRuntimeInput::from_services(
+            rig.build_input("generation-executor-owner", directory.path())
+                .with_runtime_policy(local_dev_runtime_policy()),
+        )),
+    ))
     .await
     .unwrap();
     let catalogue = &runtime.installed_catalogue;

@@ -300,8 +300,11 @@ impl Subject {
             .iter()
             .map(|(id, check)| (id.to_string(), check.observations()))
             .collect();
-        let header = json!({"producer":"brassclaw-source-compiler-bootstrap/1","selection_checksum":hex::encode(selection),"worker_checksum":hex::encode(image.checksum()),"native":native,"sources":sources,"retain_approval":retain.approval_id(),
+        let mut header = json!({"producer":"brassclaw-source-compiler-bootstrap/1","selection_checksum":hex::encode(selection),"worker_checksum":hex::encode(image.checksum()),"native":native,"sources":sources,"retain_approval":retain.approval_id(),
             "owner_checksum":evidence::checksum(include_str!("bootstrap_compiler_approval.rs")),"validator_checksum":evidence::checksum(include_str!("bootstrap_compiler_validation.rs")),"fixture_checksum":evidence::checksum(include_str!("bootstrap_compiler_fixture.rs")),"observer_checksum":evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),"adapter_checksum":evidence::checksum(include_str!("global_recipe_ports.rs")),"root_checksum":evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED),"scope":"source-compilation-only; model/cache/activation unqualified"});
+        if crate::shipped_validation::transferring() {
+            header["validation_origin"] = json!("provisioning");
+        }
         let identity = Uuid::new_v5(&ids.recipe, header.to_string().as_bytes());
         let association = hash.association().exact_bytes().to_owned();
         let components=json!(hash.combination().iter().map(|r| json!({"uuid":r.uuid,"class_code":r.class_code,"version":r.version,"checksum":hex::encode(r.checksum)})).collect::<Vec<_>>());
@@ -377,6 +380,17 @@ pub(super) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        crate::shipped_validation::Transfer::new(subject.header.clone())
+            .retain_association(&tx, &subject.approval_bytes())
+            .await?;
+        let installed = read(&tx, &subject)
+            .await?
+            .ok_or_else(|| invalid("shipped association transfer missing"))?;
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        return Ok(Some(installed));
+    }
     match begin(&tx, &subject).await? {
         Begin::Reuse(approved) => {
             tx.commit().await.map_err(invalid)?;
@@ -526,6 +540,17 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<BootstrapCompilerApproval>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if let Some(declaration) = transfer
+        .read_association(tx, &subject.approval_bytes())
+        .await?
+    {
+        crate::shipped_validation::verify_program(tx, &subject.inspected).await?;
+        return Ok(Some(BootstrapCompilerApproval {
+            declaration,
+            subject: subject.clone(),
+        }));
+    }
     evidence::require_coherent(tx).await?;
     let Some(bytes) = evidence::read_association(tx, subject.approval).await? else {
         return Ok(None);

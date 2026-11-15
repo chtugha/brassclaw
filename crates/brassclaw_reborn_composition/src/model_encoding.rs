@@ -421,14 +421,15 @@ mod tests {
         ))
         .await
         .unwrap();
-        // Readiness executes both exact packaged encoding Recipes, including
+        // Explicit development qualification executes both encoding Recipes, including
         // physical partition success and boundary/UTF-8 rejections, through the
         // real contained worker. This verifies the retained native answers and
         // rejects altered/missing cases against their actual durable journal.
         let catalogue = runtime.installed_catalogue.clone();
+        let native = crate::bootstrap_encoding_approval::qualify_for_development(&catalogue).await;
         crate::bootstrap_encoding_approval::assert_retained_proof_checks_actual_journal(
             catalogue.pool.clone(),
-            &catalogue.encoding_approvals,
+            &native,
         )
         .await;
     }

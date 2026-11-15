@@ -409,6 +409,7 @@ fn history_specs(root: ComponentRevisionDraft) -> Result<Vec<Spec>, RebornBuildE
 /// Opaque installation evidence. This does not extend the ordinary selection
 /// reader's independent-Pure coverage; that remains the connected B2 owner.
 pub(crate) struct CheckedShippedFunction {
+    deployment: Option<crate::shipped_validation::Components>,
     kind: ShippedFunction,
     contexts: Vec<Arc<Context>>,
 }
@@ -418,6 +419,14 @@ impl CheckedShippedFunction {
         tx: &Transaction<'_>,
         selected: &InspectedRetainedProgram,
     ) -> Result<(), RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            let RetainedProgram::Tools(program) = selected.program() else {
+                return Err(invalid("shipped function requires retained program"));
+            };
+            deployment.require_program(program)?;
+            deployment.verify(tx).await?;
+            return Ok(());
+        }
         evidence::require_coherent(tx).await?;
         if self.contexts.len() != 2 {
             return Err(invalid("shipped R1 instrument/root pair missing"));
@@ -476,11 +485,38 @@ pub(crate) async fn qualify(
         .ok_or_else(|| invalid("retained shipped formatter missing"))?
         .draft()
         .clone();
+    if crate::shipped_validation::transferring() {
+        let expected = match kind {
+            ShippedFunction::GenerationRevision => {
+                brassclaw_skills::prefix_generation_components::generation_revision_draft(
+                    kind.root_id(),
+                )
+            }
+            ShippedFunction::History => {
+                brassclaw_skills::global_bootstrap_components::history_formatter_draft(
+                    kind.root_id(),
+                )
+            }
+        }
+        .map_err(invalid)?;
+        if root.exact_bytes() != expected.exact_bytes() {
+            return Err(invalid("shipped function differs from canonical package"));
+        }
+
+        let deployment =
+            crate::shipped_validation::Components::install(base.pool, vec![root]).await?;
+        return Ok(CheckedShippedFunction {
+            kind,
+            contexts: Vec::new(),
+            deployment: Some(deployment),
+        });
+    }
     let subjects = match kind {
         ShippedFunction::GenerationRevision => specs(root)?,
         ShippedFunction::History => history_specs(root)?,
     };
     Ok(CheckedShippedFunction {
+        deployment: None,
         kind,
         contexts: qualify_specs(base, subjects).await?,
     })

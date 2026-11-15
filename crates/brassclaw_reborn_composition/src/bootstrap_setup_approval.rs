@@ -192,7 +192,10 @@ pub(crate) async fn qualify(
         .instruction()
         .retained_selection()
         .map_err(invalid)?;
-    let header = json!({"producer":"brassclaw-bootstrap-setup-qualification/1","selection_checksum":hex::encode(selection.checksum()),"worker_checksum":hex::encode(image.checksum()),"owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_setup_approval.rs")),"evidence_storage_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_workflow_evidence.rs")),"coherence_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_evidence.rs")),"result_consumer_checksum":crate::bootstrap_evidence::checksum(include_str!("prefix_bootstrap_setup.rs")),"packet_checksum":crate::bootstrap_evidence::checksum(include_str!("prefix_bootstrap_packet.rs")),"source_checksum":crate::bootstrap_evidence::checksum(brassclaw_skills::bootstrap_setup_components::SOURCE),"flow_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),"root_checksum":crate::bootstrap_evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)});
+    let mut header = json!({"producer":"brassclaw-bootstrap-setup-qualification/1","selection_checksum":hex::encode(selection.checksum()),"worker_checksum":hex::encode(image.checksum()),"owner_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_setup_approval.rs")),"evidence_storage_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_workflow_evidence.rs")),"coherence_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_evidence.rs")),"result_consumer_checksum":crate::bootstrap_evidence::checksum(include_str!("prefix_bootstrap_setup.rs")),"packet_checksum":crate::bootstrap_evidence::checksum(include_str!("prefix_bootstrap_packet.rs")),"source_checksum":crate::bootstrap_evidence::checksum(brassclaw_skills::bootstrap_setup_components::SOURCE),"flow_checksum":crate::bootstrap_evidence::checksum(include_str!("bootstrap_recipe_flow.rs")),"root_checksum":crate::bootstrap_evidence::checksum(crate::builtin_bootstrap::GLOBAL_ORCHESTRATOR_SEED)});
+    if crate::shipped_validation::transferring() {
+        header["validation_origin"] = json!("provisioning");
+    }
     let identity = Uuid::new_v5(&recipe, header.to_string().as_bytes());
     let subject = Arc::new(Subject {
         program,
@@ -209,6 +212,15 @@ pub(crate) async fn qualify(
         .start()
         .await
         .map_err(invalid)?;
+    if crate::shipped_validation::transferring() {
+        crate::shipped_validation::Transfer::new(subject.header.clone())
+            .retain(&tx)
+            .await?;
+        crate::shipped_validation::verify_program(&tx, &subject.program).await?;
+        tx.commit().await.map_err(invalid)?;
+        client.recycle_after_commit();
+        return Ok(Qualification { subject });
+    }
     if read(&tx, &subject).await?.is_some() {
         tx.commit().await.map_err(invalid)?;
         client.recycle_after_commit();
@@ -624,6 +636,11 @@ async fn read(
     tx: &Transaction<'_>,
     subject: &Arc<Subject>,
 ) -> Result<Option<()>, RebornBuildError> {
+    let transfer = crate::shipped_validation::Transfer::new(subject.header.clone());
+    if transfer.present(tx).await? {
+        crate::shipped_validation::verify_program(tx, &subject.program).await?;
+        return Ok(Some(()));
+    }
     let Some(bytes) = evidence::read_workflow(
         tx,
         &subject.program,

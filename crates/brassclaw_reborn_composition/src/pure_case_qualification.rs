@@ -419,11 +419,12 @@ async fn retain(
 /// The capability remains private; no public active catalogue is manufactured.
 /// Only this installation owner's completed exact proof can construct the view.
 pub(crate) struct QualifiedCaseHarness {
+    deployment: Option<crate::shipped_validation::Transfer>,
     program: Arc<RetainedToolProgram>,
     proof_id: uuid::Uuid,
     proof_bytes: String,
-    context: Arc<Context>,
-    encoder: CheckedCaseEncoder,
+    context: Option<Arc<Context>>,
+    encoder: Option<CheckedCaseEncoder>,
     prerequisites: Vec<(Uuid, String)>,
 }
 impl QualifiedCaseHarness {
@@ -434,6 +435,22 @@ impl QualifiedCaseHarness {
         &self,
         tx: &tokio_postgres::Transaction<'_>,
     ) -> Result<(), RebornBuildError> {
+        if let Some(deployment) = &self.deployment {
+            deployment.require(tx).await?;
+            return crate::shipped_validation::verify_instruction(
+                tx,
+                self.program.inputs().instruction(),
+            )
+            .await;
+        }
+        let context = self
+            .context
+            .as_ref()
+            .ok_or_else(|| invalid("native case qualification context missing"))?;
+        let encoder = self
+            .encoder
+            .as_ref()
+            .ok_or_else(|| invalid("native case qualification encoder missing"))?;
         let actual = crate::bootstrap_evidence::read_evidence(tx, self.proof_id)
             .await?
             .ok_or_else(|| invalid("original Pure harness qualification missing"))?;
@@ -454,25 +471,24 @@ impl QualifiedCaseHarness {
                 })
             })
             .ok_or_else(|| invalid("original Pure binding qualification absent"))?;
-        if binding["report"]["argument_checks"] != self.context.binding_checks()? {
+        if binding["report"]["argument_checks"] != context.binding_checks()? {
             return Err(invalid("original Pure binding negative checks differ"));
         }
-        let encoder = self.encoder.verify(tx, &self.program).await?;
+        let encoder = encoder.verify(tx, &self.program).await?;
         let final_record: Value = serde_json::from_str(&self.proof_bytes).map_err(invalid)?;
         if final_record["report"]["encoder"] != serde_json::to_value(encoder).map_err(invalid)? {
             return Err(invalid("original Pure harness encoder proof differs"));
         }
         for spec in specs() {
-            let bytes =
-                evidence::read_evidence(tx, self.context.id(&format!("{}:complete", spec.name)))
-                    .await?
-                    .ok_or_else(|| invalid("original Pure harness stage missing"))?;
-            self.context
+            let bytes = evidence::read_evidence(tx, context.id(&format!("{}:complete", spec.name)))
+                .await?
+                .ok_or_else(|| invalid("original Pure harness stage missing"))?;
+            context
                 .verify_stage_bytes_in_transaction(tx, &spec, &bytes)
                 .await?;
             let expected =
                 brassclaw_skills::review_submission_store::selection::SourceProofReference {
-                    id: self.context.id(&format!("{}:complete", spec.name)),
+                    id: context.id(&format!("{}:complete", spec.name)),
                     checksum: evidence::checksum(&bytes),
                 };
             if !final_record["report"]["completed"]
@@ -1078,6 +1094,26 @@ pub(crate) async fn qualify(
             progress.clone(),
         ))
     })?;
+    if crate::shipped_validation::transferring() {
+        let graph = retain(base.pool.clone(), identity, tenant).await?;
+        let transfer = crate::shipped_validation::Transfer::new(json!({
+            "original_pure_case":graph.program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
+            "worker_checksum":hex::encode(base.worker.checksum()),
+        }));
+        transfer.install(&base.pool).await?;
+        return Ok((
+            Some(Arc::new(QualifiedCaseHarness {
+                program: graph.program,
+                proof_id: transfer.id(),
+                proof_bytes: String::new(),
+                context: None,
+                encoder: None,
+                prerequisites: Vec::new(),
+                deployment: Some(transfer),
+            })),
+            None,
+        ));
+    }
     match qualify_inner(base, kernel, tenant, identity, progress.clone()).await {
         Ok(Some(ready)) => {
             *progress
@@ -1420,12 +1456,13 @@ async fn qualify_inner(
     )
     .await?;
     Ok(Some(Arc::new(QualifiedCaseHarness {
+        deployment: None,
         program: context.graph.program.clone(),
         proof_id,
         proof_bytes: proof,
         prerequisites: vec![(slot, bytes), (binding_record, binding)],
-        context: Arc::new(context),
-        encoder,
+        context: Some(Arc::new(context)),
+        encoder: Some(encoder),
     })))
 }
 
