@@ -422,6 +422,14 @@ build-time/CI bug, not a runtime failure.
 no queue row and non-validated status is an inconsistent state detected at
 boot.
 
+**Open work from path_to_v3.5.md:**
+
+| V35 work ID | Area | Status |
+|-------------|------|--------|
+| V35-17 | Eight real class validator routes — the existing Q1 `helper`/`nonempty-body` runner does not prove eight distinct per-class routes; real class-route Q1 coverage and evidence remain open | pending |
+| V35-18 | Workflow review backend: `Backend::run/qualify` still selects/composes evidence in Rust rather than Recipe-owned semantics; conversion open | pending |
+| V35-19 | Association review: separate `pg_association_review.rs` review path and its evidence remain open | pending |
+
 ## 7. LLM Summary (machine-convertible)
 
 The Validation Queue System gates whether an agent component may run. It

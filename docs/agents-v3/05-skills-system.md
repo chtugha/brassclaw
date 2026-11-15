@@ -191,6 +191,52 @@ infer a multi-tool Skill hierarchy from class codes or from the separate tables.
 The doc-sync example therefore comprises an Extension overview, reusable Skills
 with associated code, Recipes and an Action; its overview is not another Skill.
 
+### 3.1 Preloadable function interface (target — skills.md §Preloadable)
+
+This section summarises the binding preloadable function interface contract from
+[skills.md](../../skills.md#preloadable-function-interface-binding-v3-target).
+Selected retained storage, typed-input, preload and invocation support is
+implemented; see the [implementation status index](../implementation-status.md)
+for remaining work. Legacy step-body executors remain migration inputs, not an
+alternative v3 interface.
+
+**Exports and invocation contract.** Every Skill MUST declare:
+- Public exported function names and exact signatures (keyword parameters or a
+  single declared `inputs` mapping; never untyped `*args`/`**kwargs`)
+- Associated PythonCode UUID(s) and the one Tool usage each entry implements
+- Private helper/constant dependencies kept separate from public MCP names
+- Input and result type contracts matching its `skill-association/1` record
+
+Multiple export forms are permitted only for compatible entry forms of the same
+one-Tool usage. Different usage contracts require separately represented Skills.
+
+**Selection, dependencies and loading order** (skills.md §Selection):
+1. Select one coherent activated, approved catalogue snapshot at task start; pin
+   exact Skill/interface/code/dependency/association revisions and checksums.
+2. Resolve the complete declared PythonCode dependency graph by stable UUID;
+   validate classes, signatures, symbol references and recursive contracts.
+3. Load in deterministic dependency-first topological order; ties must be broken
+   consistently (the exact tie-breaking rule is an implementation detail — do not
+   rely on a specific order among same-depth dependencies). Define helpers/constants
+   before their dependent entry points.
+4. Preload only qualified definitions and immutable constants — **no Tool calls,
+   model calls, I/O or effectful initializers run during loading.**
+5. Install a collision-free task-local export table. Name resolution is
+   infrastructure, not `getattr`/`eval` from runtime data.
+6. An invocation calls the retained export with validated typed data and captures
+   its returned value as the step result. Loading and invoking are separate.
+
+**Shared code, isolated mutable state.** Reusable code and genuinely immutable
+constants may be shared across tasks. Arrays, buffers, working objects and
+mutable defaults are allocated fresh per invocation. Forbid shared mutable
+function defaults, closures over another task's inputs, global result arrays
+and captured task objects.
+
+**Preloaded code does not automatically enable a Tool.** The matching ToolSkill
+binding step must precede the executable step in the Recipe, and every actual
+`host.<tool>(...)` dispatch checks current global Tool policy, cancellation,
+attempt freshness and technical limits independently.
+
 ### ExtensionCatalogue (class 23) — `reborn_extension_catalogues` (V053, Phase C)
 
 A documentation container that organises a capability domain. It **does not re-document**
@@ -263,6 +309,29 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 
 ## 6. Status — shipped vs. pending
 
+### 6.1 Approval paths
+
+Two approval paths apply, governed by [skills.md §own-functional-approval](../../skills.md#own-functional-approval-and-successor-compatibility):
+
+**A — Authored (installed-instance):** an operator or Sempai authors or edits a
+Skill and its associated PythonCode. The changed component receives its own Q1
+(deterministic structural + injection scan), behavioral validation and human Q2
+before `validation_status` becomes `'validated'`. Unchanged approved components
+consumed by the same workflow are prerequisites, not new review candidates.
+Approval of a consuming workflow does not approve its dependencies; evidence must
+cover the actual changed subject.
+
+**S — System seed (trusted bootstrap):** components shipped with the installation
+(e.g. via `builtin_bootstrap.rs`, `source='system'`) use the controlled
+`system_seed` path with verified integrity/Q1/behavioral evidence and null human
+Q2. Setting `source='system'` on a post-installation edit does not qualify it as
+a system seed. Bootstrap qualification is noncircular and owned by the
+installation owner; it must not be substituted by a label change.
+
+Both paths keep `skill-association-approval/1` exact format unchanged. Approval
+records remain separate from the selected task manifest; reusing a qualified
+usage neither reapproves it per call nor automatically approves a new workflow.
+
 **Shipped:**
 - `reborn_skills` (V053 standardisation, dropping the 5 legacy `brassclaw_skills` columns V072),
   `reborn_tool_skills` (V037, includes column V070), `reborn_extension_catalogues` (V053) are live
@@ -284,18 +353,29 @@ similarity_parent, replaces. Default consumer tags `{02:orchestrator, 05:validat
 
 **Pending:**
 - **WebUI (Phase K.1):** SKILL.md export + skill/ToolSkill/ExtensionCatalogue authoring UI.
-- **C.5/C.6 driver wiring:** the composition side is built but the engine Monty VM
-  `execute_orchestrator` host-call path is dormant in production (the active Tier-0/Tier-1 path is
-  the TURNS `PgOrchestratorLookup` bridge). The C.5/C.6 driver activates `host.compose_orchestrator`
-  + `host.run_program` in production and applies `rust_directives` via the `DynamicToolLoader`.
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):** the
+  composition side is built but the engine Monty VM `execute_orchestrator` host-call path is dormant
+  in production (the active Tier-0/Tier-1 path is the TURNS `PgOrchestratorLookup` bridge). V35-05
+  owns retained selection / typed preload / export selection acceptance.
+- **Standalone pure approval (path_to_v3.5.md V35-03/04):** shared evidence schema, trusted
+  immutable writer and checked activation/restoration/task readers for independent pure-step
+  reuse/publication. This is a separate gap from usage approval; it is owned by the validator's
+  remaining work (see [the pure-component review contract](../reborn/pure-component-review.md)).
+- **Skill–PythonCode UUID/revision association enforcement:** the explicit `skill-association/1`
+  validated UUID/revision pair between prose and its class-22 code is an implementation requirement;
+  the current composer does not prove it is enforced. See V35-03/04.
 
 ## 7. LLM-relevant summary
 
-A Skill is one reusable tool-usage pattern containing prose instructions and
-associated executable PythonCode. Current storage separates the prose
-(`reborn_skills`, classes 1–3) from code (`reborn_python_code`, class 22).
-Consumer labels are not hierarchy levels. ToolSkill (class 13) binds the Rust
-Tool and never executes it. Recipe (class 21) orders the workflow; Extension
-and its ExtensionCatalogue (class 23) hold the wider domain context. Explicit
-Skill–PythonCode UUID/revision association, validation and UI presentation are
-target requirements; this documentation change does not implement them.
+A Skill is one reusable Tool-usage pattern exposed as a **preloadable function
+interface**: prose (class 1–3, `reborn_skills`) plus explicitly associated
+executable PythonCode (class 22, `reborn_python_code`). Declared exported
+names/signatures, helper/constant dependencies, deterministic dependency-first
+loading order and typed invocation contracts define the target interface (skills.md
+§Preloadable). Loading defines functions only — no Tool calls, I/O or effectful
+initializers run during loading. Mutable state is isolated per task/attempt/
+invocation. Consumer labels (skill_rusty/monty/llm) are not hierarchy levels.
+ToolSkill (class 13) is Rust-side binding metadata only. Recipe (class 21) orders
+the workflow. ExtensionCatalogue (class 23) holds the wider domain context.
+Explicit Skill–PythonCode UUID/revision association (`skill-association/1`), standalone pure
+approval (V35-03/04) and authoring UI (Phase K.1) remain open work.

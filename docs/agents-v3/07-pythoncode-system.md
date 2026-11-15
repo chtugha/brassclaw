@@ -63,6 +63,25 @@ PythonCode is the *orchestrator*-channel body: a small Python program (run insid
 `host.compose_orchestrator`, …) to glue tools together, format results, and drive a Tier-0 recipe
 to completion **without an LLM round-trip**.
 
+### PythonCode as the executable part of a Skill
+
+A Skill is defined as **prose plus an explicitly associated preloadable function interface** (see
+[skills.md §1](../../skills.md#1-what-a-skill-is) and
+[05-skills-system.md §3.1](05-skills-system.md#31-preloadable-function-interface-target--skillsmd-preloadable)).
+The class-22 PythonCode component is the executable half of that interface. It:
+- Declares **public exported function names and signatures** that the orchestrator invokes
+  (e.g. `def publish_turn_reply(inputs): return host.post_reply(answer=inputs["answer"])`).
+- Declares **private helpers and constant dependencies** that may be shared (but never mutable
+  task state).
+- Is loaded in dependency-first topological order before any invocation; loading defines
+  functions without executing the usage or enabling a Tool.
+- Is associated with its owning Skill prose by a stable UUID pair recorded in
+  `skill-association/1`; matching names alone do not establish a validated association.
+
+A pure-logic class-22 component (zero `host.<tool>(...)` calls) is a valid standalone building
+block and does not need to be paired with a Skill prose row. Only Tool-calling PythonCode
+belonging to one specific usage pattern forms the executable half of a Skill.
+
 PythonCode is born one of two ways:
 
 1. **Authored directly** in the WebUI as a standalone component (the grain-rule sibling of a
@@ -78,15 +97,27 @@ integrity check) is a **Phase N** capability. Until Phase N lands, only **system
 **operator-validated** PythonCode is usable in `type:"component"` steps — but the table, store,
 validator, retrieval, and intent label are all in place today.
 
-### Current implementation caveat
+### Current implementation note
 
-The schema/history sections below preserve earlier implementation accounts.
-The referenced `memory/component_validator.rs` and composition-layer
-`src/composition.rs` are not present in the inspected checkout. Do not infer
-that all described Q1 body/placeholder checks or nested source expansion are
-currently enforced. Inspect the actual validation path (`q1_orchestrator.rs`,
-`memory/recipe_validator.rs`) and engine `memory/composition.rs`, and record
-behavioral evidence before claiming a component passed those gates.
+The schema and Q1 sections below describe the target validation behavior. Note:
+
+- `component_validator.rs` **does not exist** at the path
+  `crates/brassclaw_engine/src/memory/component_validator.rs`.
+- The body-scan functions referenced in §6 Shipped below
+  (`validate_python_code_body`, `validate_python_code_placeholders`,
+  `Generic(GenericComponent)`) **are not present by those names** in the current
+  Rust codebase. The Python injection-scan logic lives in
+  `crates/brassclaw_safety/`. The Q1 orchestration path (retained IBS/Recipe-
+  driven structural validator) is implemented in
+  `crates/brassclaw_reborn_composition/src/q1_orchestrator.rs` — currently
+  gated `#[cfg(feature = "skills-db")]` and `#[cfg(test)]`; not in production
+  without Phase N / Phase P.0 seeding. Do not infer from §6 Shipped text that
+  these named functions gate production PythonCode submissions today.
+- The engine `memory/composition.rs` **does exist** but does not implement
+  general recursive `includes` expansion. Do not infer from the `includes` column
+  alone that nested source expansion is currently enforced; inspect the actual
+  retained path (`retained_source.rs`, `retained_preload.rs`) and record
+  behavioral evidence before claiming a component passed those gates.
 
 ## 2. Location
 
@@ -293,9 +324,14 @@ orchestrator-channel component that can run without an LLM.
   no DROP is needed here).
 - **Phase I/N:** referential placeholder↔include matching (each `{{component_name}}` resolves to
   a real fetched component; every include is consumed) — requires a pool.
-- **C.5/C.6 driver:** activate the engine Monty VM so the `host.run_program` loop runs in
-  production (today the Tier-0 deterministic path is active via the turns `PgOrchestratorLookup`
-  bridge; the engine VM host-call path is wired but dormant).
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  activate the engine Monty VM so the `host.run_program` loop runs in production (today the
+  Tier-0 deterministic path is active via the turns `PgOrchestratorLookup` bridge; the engine
+  VM host-call path is wired but dormant). V35-05 owns retained selection / typed preload /
+  export selection acceptance.
+- **Standalone pure approval (path_to_v3.5.md V35-03/04):** independent pure-step reuse and
+  publication requires the shared evidence schema, trusted immutable writer and checked
+  activation/task readers owned by the validator's remaining work.
 - **Future:** a WebUI PythonCode-authoring route.
 
 ## 7. LLM-relevant summary

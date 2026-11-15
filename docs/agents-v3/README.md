@@ -189,18 +189,45 @@ README is the index for the source docs that the mechanism consumes.
 
 ---
 
+## Relationship to current plans (binding forward-work frame)
+
+The following are the **currently governing** forward-work documents. They supersede
+`saved_plan_to_v3.md` for future-state claims in the areas they cover:
+
+- **[simplified_v3.md](../../simplified_v3.md)** — binding runtime and authorization target.
+  Phase 3a governs global Monty lifecycle, durable recovery, settings cutover and
+  platform acceptance. K0–K7 conformance steps govern the reconciliation work.
+- **[path_to_v3.5.md](../../path_to_v3.5.md)** — Recipe-first execution roadmap.
+  Work IDs V35-01 through V35-30 track the specific implementation items; each
+  agents-v3 subsystem doc now references the relevant V35 IDs in its pending section.
+  Key open items:
+  - **V35-01** — global Monty lifecycle / PG connection policy
+  - **V35-02** — IBS typed inputs / `build_ordered_instruction` reconciliation
+  - **V35-03/04** — standalone pure approval, interface/source/dependency coverage
+  - **V35-05** — retained selection / typed preload / export selection
+  - **V35-13/14** — dynamic occurrence support
+  - **V35-17/18/19** — eight class validator routes / review backend / association review
+  - **V35-20** — prefix compiler qualification boundaries
+  - **V35-24, V35-27, V35-29** — durable recovery, resource, platform acceptance
+
 ## Prior planning documents
 
 The planning documents that informed this system remain active references:
 
-- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N); **still active** — phases
-  C.5/C.6, Phase K, Phase L, Phase N and other sub-phases remain pending. It is the primary
-  source of per-phase/per-migration tracking referenced throughout these docs.
+- `saved_plan_to_v3.md` — the v3 implementation plan (phases A–N); historical reference for
+  per-phase/per-migration tracking. Forward-work phases (C.5/C.6, K, L, N) are now described
+  in `path_to_v3.5.md` V35-* work IDs and `simplified_v3.md` Phase 3a.
 - `Goals_pre_v3_review.md` — two-goals audit (both goals accomplished).
 - `saved_plan_to_v3_review.md` — 18-finding plan review (all findings resolved).
 - `MESSAGE_FLOW_AND_PLAN_AUDIT.md` — message-flow audit.
 - `builtin_stuff_v3.md`, `tomedo_v3.md`, `automations_v3.md`, others — reference material
   (historical; specific sections may be superseded by the four ground-truth guides).
+
+> **Note on `DOC_CONVERSION_MECHANISM_DESIGN.md`:** this design was presented before
+> implementation and is not currently active. The described component stack (Recipes, PythonCode,
+> Skills, Actions) predates the v3 preloadable function interface and would need to be
+> re-designed against `recipe.md`, `skills.md` and `simplified_v3.md` before implementation.
+> It is retained for reference only.
 
 These are preserved for reference. The `docs/agents-v3/` files are the current
 authoritative documentation; where they conflict with historical planning documents,

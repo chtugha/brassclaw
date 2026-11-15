@@ -142,43 +142,58 @@ BrassClaw Reborn v3 is an **Orchestrator / Executioner** system:
 - **Executioner** (Rust — the muscle): precompiled Tools + ToolSkills; executes on call; no
   sequencing, no planning. The Rust side is a library the Orchestrator drives, not a second loop.
 
+### 4a. Global Monty lifecycle (binding — simplified_v3.md / AGENTS.md)
+
+**Exactly one `GlobalMontyOwner`** starts during system startup and stays alive for the lifetime of
+the BrassClaw instance. It starts after migrations, component seeding and integrity verification,
+before turn workers and ingress are enabled. `GlobalMontyDriver` delivers admitted turns as bounded
+tasks to that already-running service. **A turn is a bounded task, not a new global VM or OS
+process.** Completing or cancelling a turn does not terminate Monty. While idle Monty awaits work
+without polling or consuming LLM tokens. Only instance shutdown or supervised fatal-runtime
+recovery replaces the global VM — never a parallel VM or per-chat fallback.
+
+The ordinary `skills-db` startup already owns `global_monty_startup.rs`, `GlobalMontyOwner` and
+`GlobalMontyDriver` before turn workers and trigger producers. Remaining durable recovery,
+resource and platform acceptance is governed by `simplified_v3.md` Phase 3a and
+`path_to_v3.5.md` V35-01, V35-24, V35-27, V35-29.
+
+### 4b. Turn execution — two paths
+
+**Path 1 — Live today:** the canonical Rust stage pipeline (`DefaultExecutorPipeline` via
+`PlannedDriver` → `CanonicalAgentLoopExecutor::execute_family`). `RecipeStage` runs
+`fetch_for_turn` → IBS → `SplitResult`. Tier-0 dispatches through `TierZeroExecutionStage` →
+`PgOrchestratorLookup` → `TierZeroOrchestrator::run_tier_zero` without an LLM. Tier-1 injects
+prior-knowledge context and calls the LLM. No Python VM is involved on this live path today.
+
+**Path 2 — Target (V35-01/05, simplified_v3.md Phase 3a):** the full global Monty VM host-call
+path where `host.compose_orchestrator → host.run_program` drives each step. The composition
+system and IBS are already built for this path; the engine Monty VM (`ExecutionLoop::run →
+execute_orchestrator`) is dormant in production until the remaining acceptance gates are met.
+
 ```
 User enters a message in the chat
   │  (WebUI v2 / gateway → bearer-token auth → turn submission)
   ↓
-Orchestrator (Monty) receives the message
+GlobalMontyDriver delivers the turn to the already-running GlobalMontyOwner
+  ↓
+intent match → canonical stage pipeline (live path) OR full Monty VM path (target)
   ↓
 host.resolve_intent(scope, user_text)
   ├── Match → {component_id, step_link, ...}
   │     ↓
-  │   host.compose_orchestrator(component_id, step_link, user_input)
-  │     → the IBS (composition system) composes the recipe + variant into the
-  │       predefined structure { skills[], steplist[], rust_directives[],
-  │       variables{}, assembled_program, tier }:
-  │         • skills     — first-class array Monty consults while stepping
-  │                         (exact tool usage; the steplist need not repeat it);
-  │         • steplist   — [{step_id, instructions, executable_code, tool_bindings}];
-  │         • rust_directives — cdylib load directives for the Executioner
-  │                         (applied by the C.3 DynamicToolLoader; CARRIED, not
-  │                         executed by the Orchestrator);
-  │         • variables  — {{vars.NAME}} slots bound from user_input.
-  │     ↓
-  │   Monty iterates steplist: consults skills for exact tool usage, then runs
-  │   each step's executable_code via host.run_program (Monty 0.0.16 has no
-  │   exec/eval/compile — a host callable is the only way to run a dynamic code
-  │   string). Tools are invoked as host.<tool>(...) and executed by Rust.
-  │     ├── Tier 0 (no LLM): direct reply (Sempai-Kohai may finalize the surface).
-  │     └── Tier 1 (LLM-guided): Orchestrator assembles the prompt →
-  │         InterceptorStage (Sempai review) → ModelStage.
+  │   IBS: build_instruction(step_link, step_descriptions, variable_patterns)
+  │     → BuildInstruction { rust_steps[], orchestrator_steps[],
+  │                          variable_patterns[], llm_call_required }
+  │     ↓ [live path: turns PgOrchestratorLookup bridge]
+  │   host.compose_orchestrator(component_id, step_link, user_input)   [target path]
+  │     → ComposedProgram { skills[], steplist[], rust_directives[],
+  │                          variables{}, assembled_program, tier }
+  │     ├── Tier 0 (live today): TierZeroOrchestrator → direct reply, no LLM
+  │     ├── Tier 0 (target): Monty iterates steplist, calls host.<tool>(...), no LLM
+  │     └── Tier 1: prompt assembly → InterceptorStage (Sempai) → ModelStage (LLM)
   │
-  └── NoMatch → the Orchestrator builds an LLM prompt (head + body)
-        ├── body = chat message + history + selected memories/components
-        ├── head = the "base prompt" (pre-compiled, in the vLLM KV-cache).
-        │   Composition inserts a single "base-prompt" line; the Sempai-Kohai
-        │   system substitutes the real pre-compiled content at the very end of
-        │   prompt creation, just before tokenizing.
-        └── If the base prompt is not yet pre-compiled, Sempai-Kohai substitutes
-            a short minimal-context part.
+  └── NoMatch → Tier 2: Orchestrator assembles LLM prompt (base-prompt prefix +
+        per-turn body from chat history + selected memories/components)
   ↓
 Result / answer / clarifying question returned to the chat
 ```
@@ -237,15 +252,17 @@ The composer never runs anything and never bakes a single program string.
   composition `PgCompositionPort` impl. Migrations through **V075**.
 - **DB-less mode removed**: Postgres is always used (embedded or external). No in-memory fallback.
 
-**Pending (v3):**
-- **C.4.5.18–C.4.5.19**: this doc pass (bring 01–17 to the shipped Orchestrator/Executioner +
-  composition=IBS architecture) + both-configs green + mark C.4.5 done.
-- **C.5/C.6**: the basic-mode Orchestrator script + the driver that activates the engine Monty VM
-  host-call path (wires `PgCompositionPort` into `ThreadManager` + applies `rust_directives` via
-  the `DynamicToolLoader`). Until C.5/C.6 the engine host-call path is constructed + unit-tested
-  but inert in production; the live Tier-0/Tier-1 path runs through the turns
-  `PgOrchestratorLookup` bridge.
-- **C.7**: final Model-A cleanup. **Phase A (reshaped H.12.6)** after C.
+**Pending:**
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  activate the engine Monty VM host-call path (`PgCompositionPort` → `ExecutionLoop`/`execute_orchestrator` +
+  `rust_directives` via `DynamicToolLoader`) as the full production path. Until then the live
+  Tier-0/Tier-1 path runs through the turns `PgOrchestratorLookup` bridge. V35-05 owns
+  retained selection / typed preload / export selection acceptance.
+- **Dynamic occurrence support (path_to_v3.5.md V35-13/14):** checksummed branches, item
+  bindings and repeated selected usages in the flow schema / IBS / qualifier.
+- **Durable recovery, resource and platform acceptance (V35-24, V35-27, V35-29):** governed by
+  simplified_v3.md Phase 3a.
+- **Final cleanup:** Model-A, unused legacy code after the global Monty activation.
 
 (Migration numbers per the plan's Round-2 correction; see `saved_plan_to_v3.md` header table.)
 
@@ -255,13 +272,15 @@ BrassClaw Reborn is a ~70-crate Rust agent system targeting 7B–14B LLMs in 8k 
 layered **Products / Loops / Kernel / Infrastructure** and is an **Orchestrator / Executioner**
 system: a Python Orchestrator (Monty) is the sole sequencing authority; a Rust Executioner runs
 precompiled tools on `host.<tool>(...)` calls with no sequencing of its own. A turn flows: chat →
-Orchestrator → `host.resolve_intent` → (match → `host.compose_orchestrator` composes the recipe
-into `{skills, steplist, rust_directives, variables, assembled_program, tier}`; Monty iterates
-`steplist`, consults `skills`, runs each step's `executable_code` via `host.run_program`; or
-no-match → the Orchestrator builds an LLM prompt with a pre-compiled `base-prompt` prefix + a
-per-turn body). The IBS is the composition system. A multi-kind skills system
+bearer-token auth → `GlobalMontyDriver` delivers the turn to the already-running `GlobalMontyOwner`
+as a bounded task (not a new VM) → canonical stage pipeline → (match → `RecipeStage`/IBS →
+Tier 0: `TierZeroOrchestrator` runs deterministically, no LLM; Tier 1: LLM prompt assembly with
+injected context; or no-match → Tier 2: full LLM over assembled context). The full Monty VM path
+(`host.compose_orchestrator` → `host.run_program`) is the activation target (path_to_v3.5.md
+V35-01/V35-05; simplified_v3.md Phase 3a); the live Tier-0/Tier-1 path today runs through the
+turns `PgOrchestratorLookup` bridge. The IBS is the composition system. A multi-kind skills system
 (Classic/Tool/Orchestrator/ExtensionCatalogue) is carried as a first-class array the Orchestrator
 consults while stepping. A Sempai-Kohai prompt optimizer runs idle and pre-send; vLLM
-prefix-cached base prompts hold the head. Postgres is mandatory; in-memory is unit-test only. The
-four validation queues (Q1 auto / Q2 manual / Q3 revision / Q4 rejection) gate new components,
-scored by Wilson, with a graduation trigger that upserts Monty-VM cursor rows.
+prefix-cached base prompts hold the head. Postgres is mandatory; in-memory is unit-test only.
+Validation gates (Q1 structural auto / Q2 human manual) score components by Wilson lower bound,
+with a graduation trigger that upserts Monty-VM cursor rows.

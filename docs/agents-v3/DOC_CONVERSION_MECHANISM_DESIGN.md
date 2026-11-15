@@ -1,5 +1,16 @@
 # Auto-Documentation-Conversion Mechanism — Design & Approach (item 4)
 
+> **Status — design presented, not currently active (2026-Q3).**
+> This design was presented before implementation and stopped pending approval.
+> The described component stack (Recipe `doc-convert` class 21, Action `doc-sync` class 16,
+> PythonCode class 22, Skills/ToolSkills class 1–3/13) predates the v3 preloadable function
+> interface requirement and the `simplified_v3.md` authorization model. Any future
+> implementation would need to be re-designed from scratch against
+> [`recipe.md`](../../recipe.md), [`skills.md`](../../skills.md) and
+> [`simplified_v3.md`](../../simplified_v3.md) before component authoring begins.
+> Do not treat the component designs below as ready-to-use or pending-only components;
+> they are design notes from an earlier architectural generation.
+
 ## Binding Recipe architecture (v3)
 
 Read [recipe.md](../../recipe.md) before authoring or changing components. This contract

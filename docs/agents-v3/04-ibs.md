@@ -59,7 +59,9 @@ and durable recovery remain open; see the current implementation status index.
 > **Status:** **shipped.** The IBS core (`instruction_builder.rs` + `types/ibs.rs`)
 > landed in Phase A (V050); the composition system (`composition.rs` +
 > `CompositionPort` + `PgCompositionPort` + `host.compose_orchestrator`/
-> `host.run_program`) landed in C.4.5.17. Live activation is C.5/C.6 (driver).
+> `host.run_program`) landed in C.4.5.17. Full live activation (global Monty VM
+> path) is governed by `path_to_v3.5.md` V35-01/V35-05 and `simplified_v3.md`
+> Phase 3a; the turns `PgOrchestratorLookup` bridge is the live Tier-0/1 path today.
 
 ## 1. Purpose
 
@@ -216,7 +218,7 @@ Each array element holds **two synced representations** of one StepDescription:
 | Field | Required | Meaning |
 |-------|----------|---------|
 | `stepnumber` | yes | 1-based ordinal within this StepDescription's sequence |
-| `knowledge` | yes | `orchestrator` \| `rust` \| `both` — which channel reads the step |
+| `knowledge` | yes | `"orchestrator"` \| `"rust"` \| `"both"` — the **persisted enum value** that determines which channel reads the step (see §3.1 note). Do not use `"channel"` in authored JSON; `channel` is used only as a human-readable label in diagrams. |
 | `goal` | yes | human-readable what this step accomplishes |
 | `content` | yes | short description of step content |
 | `type` | yes | `text` \| `component` \| `snippet` (IBS treatment, see below) |
@@ -251,6 +253,64 @@ step_link = "{desc_idx}:{start}-{desc_idx}:{end}" [+ more segments]
 `step_link` is **nullable**; a NULL value means a legacy intent — the IBS is skipped and
 `fetch_for_turn` falls through to the existing `fetch_component_by_id` path. `step_link`
 replaces the old `variant_key`/`link_formula` columns (no `variant_key` column exists).
+
+### 3.1 `knowledge` vs `channel` — authoring note
+
+The persisted per-step enum value is **`knowledge`** (values `"rust"`, `"orchestrator"`,
+`"both"`). Documentation diagrams and explanatory text may use the word "channel" as a
+human-readable synonym. When authoring `step_descriptions` JSON, always use `knowledge`;
+never write a `channel` field — it is not a recognized persisted enum value and will not
+be read by IBS.
+
+### 3.2 Typed input bindings — target contract (path_to_v3.5.md V35-02)
+
+The current composer uses plain `{{vars.NAME}}` string replacement. The target contract
+(recipe.md §7, path_to_v3.5.md V35-02) requires a typed binding layer expressed in two
+per-variant maps stored alongside `step_descriptions` in the Recipe document:
+
+**`input_layouts`** — maps each variant key to a typed layout:
+
+```json
+"input_layouts": {
+  "my-variant": {
+    "format": "recipe-input-layout/1",
+    "task_inputs": {
+      "file_path": {"type": "string", "required": true}
+    },
+    "steps": {
+      "0:2": {
+        "path": {"kind": "task_input", "value": "file_path"}
+      }
+    }
+  }
+}
+```
+
+- `task_inputs` — declares the variant's typed task-level inputs (name → type, required, default).
+- `steps` — maps step ID → `{local_name: {kind, ...}}` per-input binding. The four confirmed `kind`
+  values (from `docs/reborn/contracts/retained-component-inputs.md`):
+  - `{"kind": "task_input", "reference": "{{vars.name}}"}` — bind a captured task input.
+  - `{"kind": "constant", "value": ...}` — supply a typed constant.
+  - `{"kind": "consumer_default"}` — require a valid declared consumer default.
+  - `{"kind": "result", "step_id": "0:1", "path": ["field"]}` — select a prior step result field.
+    Empty `path` selects the complete result. Forward references and list indexing are not supported.
+
+**`invocations`** — maps each variant key to step ID → export function name:
+
+```json
+"invocations": {
+  "my-variant": {"0:2": "read_file_range"}
+}
+```
+
+This tells the orchestrator which preloaded export to call for step `0:2`. Without this, the
+orchestrator cannot deterministically resolve the export; never infer it from prose or array order.
+
+**Current state:** `input_layouts` and `invocations` are accepted in the Recipe document JSON
+(recipe.md §7) and are the authoring target. The legacy SQL Recipe struct and composer do not yet
+enforce or consume these fields; they remain implementation work tracked under V35-02 and V35-05.
+Do not claim typed binding is active on the current retained path without behavioral evidence.
+Runtime values are always data; they never become Python source regardless of which path is used.
 
 ## 4. Behavior / flow
 
@@ -434,10 +494,11 @@ individually via `host.run_program`.
 ### Activation
 
 The engine Monty VM `execute_orchestrator` host-call path (and thus `host.compose_orchestrator` /
-`PgCompositionPort`) is constructed + unit-tested but **inert in production until the C.5/C.6
-driver** wires `PgCompositionPort` into `ThreadManager` and applies `rust_directives` via the C.3
-`DynamicToolLoader`. The live Tier-0/Tier-1 path today runs through the turns
-`PgOrchestratorLookup` bridge. `#![allow(dead_code)]` covers the inert window.
+`PgCompositionPort`) is constructed + unit-tested but **inert in production** until `PgCompositionPort`
+is wired into `ExecutionLoop`/`execute_orchestrator` and `rust_directives` are applied via the C.3
+`DynamicToolLoader` (path_to_v3.5.md V35-01/V35-05; simplified_v3.md Phase 3a). The live
+Tier-0/Tier-1 path today runs through the turns `PgOrchestratorLookup` bridge.
+`#![allow(dead_code)]` covers the inert window.
 
 ## 5. Relations
 
@@ -476,10 +537,16 @@ driver** wires `PgCompositionPort` into `ThreadManager` and applies `rust_direct
   (C.4.5.0–C.4.5.16). DB-less mode removed.
 
 **Pending:**
-- **C.5/C.6:** the driver that wires `PgCompositionPort` into `ThreadManager` + applies
-  `rust_directives` via the C.3 `DynamicToolLoader`, activating the engine Monty VM host-call path
-  as the primary driver (today inert; the turns `PgOrchestratorLookup` bridge is the live path).
-- **C.7 / Phase A (reshaped H.12.6):** final cleanup after C.
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  activate the engine Monty VM host-call path (`PgCompositionPort` → `ExecutionLoop`/`execute_orchestrator` +
+  `rust_directives` via `DynamicToolLoader`) as the primary driver. Today the turns `PgOrchestratorLookup` bridge is
+  the live path. V35-05 owns retained selection / typed preload / export selection acceptance.
+- **Dynamic occurrence support (path_to_v3.5.md V35-13/14):** checksummed legal branches, item
+  bindings/results and repeated selected usages in the flow schema / IBS / qualifier. Required for
+  dynamic Recipe branching and repeated step occurrences; independent of plain reference reuse.
+- **IBS typed input bindings (path_to_v3.5.md V35-02):** reconcile legacy string-substitution
+  with the `input_layouts` / `invocations` target contract from recipe.md §7. See §3.1 below.
+- **C.7 / Phase A (reshaped H.12.6):** final cleanup after global Monty activation.
 
 ## 7. LLM-relevant summary
 

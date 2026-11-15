@@ -238,11 +238,16 @@ only gate, stop, or refuse. Everything else is Orchestrator-command-driven.
   + ABI contract shipped in C.3 (slice 2–4).
 
 **Pending:**
-- **C.5/C.6 driver wiring:** the engine Monty VM `execute_orchestrator` host-call path — and
-  therefore `host.compose_orchestrator` / `PgCompositionPort` / `host.run_program` — is constructed
-  and unit-tested but **inert in production** until the C.5/C.6 driver (the active production path
-  is the TURNS `PgOrchestratorLookup` bridge). The driver also activates `rust_directives`
-  application via the `DynamicToolLoader`.
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  the engine Monty VM `execute_orchestrator` host-call path — and therefore
+  `host.compose_orchestrator` / `PgCompositionPort` / `host.run_program` — is constructed and
+  unit-tested but **inert in production** (the active production path is the TURNS
+  `PgOrchestratorLookup` bridge). V35-05 also activates `rust_directives` application via the
+  `DynamicToolLoader`.
+- **Retained immutable implementation artifacts:** `tools.md` requires pinning actual
+  implementation artifacts (not just metadata checksums) alongside the Tool definition. The current
+  `capability_id` row links to a Rust handler by name but does not pin an exact immutable binary
+  artifact revision. Full artifact retention is part of the V35-05 / Phase 3a acceptance gates.
 - **Phase-L full library:** the `~85–90 component` builtin library across 5 ExtensionCatalogues is
   the starter set recipes compose from (the `host.*` meta-tool seed is shipped; the full
   `builtin.X` task library is Phase L).
@@ -261,5 +266,6 @@ sequence, pick, or assemble. **Exceptions** (safety-critical, kernel-owned, neve
 stop-signal honoring, budget hard-stops, sandbox refusal, approval-gate enforcement. `CapabilityHost`
 is the single authority path (auth → obligations → approval → invoke). Q1 enforces §shell-guard
 (shell ⇒ `llm_call_required=true`, never Tier 0), §spawn_subagent (Tier 1), and §capability-id
-(system rows need a valid `capability_id`). C.5/C.6 activates the composition host-calls +
-`rust_directives` application in production; Phase L fills the full builtin task library.
+(system rows need a valid `capability_id`). Global Monty VM activation (path_to_v3.5.md V35-01/V35-05)
+activates the composition host-calls + `rust_directives` application in production; Phase L fills
+the full builtin task library.

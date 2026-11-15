@@ -143,7 +143,7 @@ explanation of what happens** carried alongside the machine form.
 | `class_code` | 12 | SMALLINT default 21 | `CHECK = 21` |
 | `prompt_uid` | 13 | BIGINT | monotonic sequence → deterministic assembly order |
 | `consumer_tags` | 14 | TEXT[] default '{}' | `^[0-9]{2}(:[a-z0-9-]+)?$`; `05:validator` greys out others until validated |
-| `intent_examples` | 15 | JSONB | `[{input, class:1\|2\|3}]` for the intent system (§3.12) |
+| `intent_examples` | 15 | JSONB | `[{input, class:1\|2\|3}]` for the intent system (§3.12). **Publicly matched Recipes require ≥10 intent examples per recipe.md §3**, covering command and natural-language forms and positive/negative cases per variant. Private workflows qualify their actual trusted typed admission instead (no fabricated public intents). |
 | `tier` | 16 | TEXT default 'seedling' | seedling/growing/mature/candidate (maturity) |
 | `usage_count`,`success_count`,`failure_count` | 17–19 | INT | Wilson inputs |
 | `wilson_lower` | 20 | FLOAT8 default 0.0 | Wilson lower bound at last recompute |
@@ -301,10 +301,11 @@ hit `reborn_skills`/`reborn_actions`/the memory-class tables/`reborn_extensions_
 - The Tier-0 deterministic path **active** via the turns `PgOrchestratorLookup` bridge.
 
 **Pending:**
-- **C.5/C.6 driver:** activate the engine-resident Monty VM (`ThreadManager`/
-  `ConversationManager` wired in `build_reborn_runtime`) so the `host.compose_orchestrator` →
-  `host.run_program` loop runs in production; wire dynamic cdylib tool loading for
-  `rust_directives`.
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  activate the engine-resident Monty VM so the `host.compose_orchestrator` → `host.run_program`
+  loop runs in production; wire dynamic cdylib tool loading for `rust_directives`. V35-05 owns
+  retained selection / typed preload / export selection acceptance. V35-13/14 own dynamic
+  occurrence support (checksummed branches, item bindings, repeated selected usages).
 - **Phase N (V076+):** drop the five per-table queue columns (`validation_errors`=22,
   `review_feedback`=23, `review_attempts`=24, `rejected_at`=25, `queue_code`=26) in favor of the
   central `reborn_validation_queue` (V051); **re-index `decode_recipe_row`** positionally
@@ -326,6 +327,6 @@ with no LLM; Tier 1 injects known-good patterns into the prompt; Tier 2 is full 
 can extract a new recipe on success. The production store is `pg_recipe_store.rs`
 (`PgRecipe`/`NewPgRecipe`/`RECIPE_SELECT` 34 cols/`decode_recipe_row`); the three v3 authoring
 columns (`step_descriptions`/`variants`/`dependency_registry`, V050) + `RecipeVariant.description`
-(Phase HI) + the C.2 system seed + the C.4.5.17 composition system are shipped. Pending: the C.5/C.6
-driver that activates the engine Monty VM in production, and Phase N (drop the five legacy queue
-columns + re-index the decoder).
+(Phase HI) + the C.2 system seed + the C.4.5.17 composition system are shipped. Pending: Global
+Monty VM activation (path_to_v3.5.md V35-01/V35-05; simplified_v3.md Phase 3a), and Phase N (drop
+the five legacy queue columns + re-index the decoder).

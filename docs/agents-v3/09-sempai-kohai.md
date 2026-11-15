@@ -384,14 +384,18 @@ gate an authored component passes. Builtins (`source='system'`) skip Q2 but not 
 - The proposals are produced **inline** during the rerouting review (not a separate idle-time
   sweep).
 
-**Pending (v3 direction):**
+**Pending:**
 - **Idle-time self-optimization:** the live inline proposal mechanism is the foundation; a
   background Sempai-driven refresh loop (re-deriving/optimizing components and the converted
   documentation — see `DOC_CONVERSION_MECHANISM_DESIGN.md`) extends it to true idle-time
   operation rather than turn-coupled review.
-- **C.5/C.6 driver activation:** the engine Monty VM host-call path that the interceptor's
-  `PromptStage`/`ModelStage` feed is inert in production until the driver wires the composition
-  host-calls (active production path is the TURNS `PgOrchestratorLookup` bridge).
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a):**
+  the engine Monty VM host-call path that the interceptor's `PromptStage`/`ModelStage` feed is
+  inert in production until the remaining acceptance gates are met. The active production path
+  is the TURNS `PgOrchestratorLookup` bridge.
+- **Prefix runtime cutover:** `SempaiReviewOutcome` returns `adjusted_volatile_messages`/
+  `bridge_messages` (historical shape); the required conversion to returning the final dynamic
+  prompt string is owned by the [Prefix plan](../plans/prefix_v3_upgrade.md) (V35-20).
 
 <a id="7-llm-relevant-summary"></a>
 

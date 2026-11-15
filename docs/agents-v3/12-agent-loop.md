@@ -93,9 +93,32 @@ crate-internal.
 > invokes `PlannedDriver` per turn via `AgentLoopDriverHost` (the 15-port
 > supertrait). So the canonical pipeline is **not** a skeleton — it is the
 > live turn driver. The engine Monty VM (`ExecutionLoop::run` →
-> `execute_orchestrator`) is the **dormant** path that C.5/C.6 activates as
-> the composed-program runner (`host.run_program`); it is not "production
-> default.py" (default.py was retired in C.1).
+> `execute_orchestrator`) is the **dormant** path that V35-01/V35-05/Phase 3a
+> activates as the composed-program runner (`host.run_program`); it is not
+> "production default.py" (default.py was retired in C.1).
+
+### 1.1 Global Monty lifecycle
+
+Per [AGENTS.md](../../AGENTS.md#global-monty-lifecycle-binding-target) and
+[simplified_v3.md](../../simplified_v3.md):
+
+- **Exactly one `GlobalMontyOwner`** starts during system startup and stays
+  alive for the lifetime of the BrassClaw instance. It starts after migrations,
+  component seeding and integrity verification, before turn workers and ingress.
+- **`GlobalMontyDriver`** delivers admitted tasks (turns) to that already-running
+  service. It does not create a per-chat or per-turn VM.
+- **A turn is a bounded task**, not a new global VM or OS process. Completing or
+  cancelling a turn does not terminate Monty.
+- **While idle** the orchestrator awaits work without polling or consuming LLM
+  tokens.
+- **Only instance shutdown** or supervised fatal-runtime recovery replaces the
+  global VM. Never create a parallel VM or silent per-chat fallback.
+
+The ordinary `skills-db` startup already owns `global_monty_startup.rs`,
+`GlobalMontyOwner` and `GlobalMontyDriver` before turn workers and trigger
+producers. Reuse that service; do not repeat the completed startup move.
+Simplified Phase 3a governs remaining durable recovery, resource and platform
+acceptance (see `path_to_v3.5.md` V35-01, V35-24, V35-27, V35-29).
 
 ## 2. Location
 
@@ -391,7 +414,7 @@ follow-up `continue`.
 | Host ports | 15 (`LoopRetrievalPort` + `LoopOrchestratorPort` added in v3) | — |
 | Tier-0 deterministic channel | `TierZeroExecutionStage` → `PgOrchestratorLookup` → `TierZeroOrchestrator::run_tier_zero` → `execute_tier_zero_channel` (active) | — |
 | Tier-1 guided injection | `run_step_zero` prior-knowledge bundle | — |
-| Engine Monty VM driver | `ExecutionLoop::run` → `execute_orchestrator` exists but **dormant** | **activated C.5/C.6** (`host.run_program` composed-program runner) |
+| Engine Monty VM driver | `ExecutionLoop::run` → `execute_orchestrator` exists but **dormant** | **activated by V35-01/V35-05 (path_to_v3.5.md); simplified_v3.md Phase 3a** (`host.run_program` composed-program runner) |
 | `RamSource` / engine `ThreadManager` | dormant in prod | deleted Phase K.3 |
 
 ## 7. LLM summary (for prompt injection)
@@ -413,7 +436,7 @@ retrieval is wired, stashes `recipe_hint`/`recipe_rust_context`, and dispatches
 `LoopOrchestratorPort::run_tier_zero` → `TierZeroOrchestrator`) or `Continue`
 (Tier-1 guided injection / Tier-2 full LLM). The engine Monty VM path
 (`ExecutionLoop::run` → `execute_orchestrator`) is dormant in production and is
-activated as the composed-program runner (`host.run_program`) in C.5/C.6 — the
+activated as the composed-program runner (`host.run_program`) per path_to_v3.5.md V35-01/V35-05 (simplified_v3.md Phase 3a) — the
 Orchestrator/Executioner split where Monty drives the Rust executioner via
 `host.<tool>(...)`. `RamSource` + the engine `ThreadManager` are deleted in
 Phase K.3.

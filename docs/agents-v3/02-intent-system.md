@@ -236,9 +236,17 @@ One row per `(scope, input_text, input_class, component_id)`:
 - `DbLessFallback` removed (no DB-less mode — Postgres is always used).
 
 **Pending:**
-- **C.5/C.6 driver** — activates the engine Monty VM host-call path (`host.resolve_intent` →
+- **Global Monty VM activation (path_to_v3.5.md V35-01, V35-05; simplified_v3.md Phase 3a)** —
+  activates the engine Monty VM host-call path (`host.resolve_intent` →
   `host.compose_orchestrator` → `host.run_program`) in production; today the engine VM path is
   dormant and the active Tier-0/Tier-1 path is the TURNS `PgOrchestratorLookup` bridge.
+- **Coherent catalogue generation:** `simplified_v3.md` §1.1 and recipe.md §2 require that IBS
+  selection uses one coherent activated, approved catalogue generation (snapshot). The current
+  intent selection is a live `reborn_intent_inputs` query, not yet a full coherent snapshot with
+  one approved generation pinned at match time. This gap is tracked under V35-02 and
+  `simplified_v3.md` Phase 3a. A disambiguation choice or resume must not trigger a fresh
+  catalogue lookup; retained v3 selection/resumption still requires the complete generation
+  and snapshot contract.
 - **WebUI disambiguation UX** — the clickable-candidates surface for `role:"disambiguation"`.
 - **Phase J** — `intent_examples` formalization + `dependency_registry`; the real wiring is
   `auto_passed → seed_intent_input` (the `{input, class}` shape is already in V028).
