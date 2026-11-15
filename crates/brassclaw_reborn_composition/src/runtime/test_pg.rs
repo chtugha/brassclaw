@@ -118,3 +118,49 @@ impl PgRig {
 pub(crate) fn storage_root(reborn_home: &std::path::Path) -> std::path::PathBuf {
     reborn_home.join("db")
 }
+
+#[tokio::test]
+async fn native_postgres_failed_stop_preserves_cluster_without_forced_shutdown() {
+    let database = native_pg::NativePostgres::start().await;
+    let directory = database.directory.path().to_owned();
+    let port = {
+        let client = database.pool.get().await.expect("fixture connection");
+        let row = client
+            .query_one("SELECT inet_server_port()", &[])
+            .await
+            .expect("actual private server port");
+        u16::try_from(row.get::<_, i32>(0)).expect("PostgreSQL port")
+    };
+    let bin = directory.join("bin").join("bin");
+    let control = bin.join(format!("pg_ctl{}", std::env::consts::EXE_SUFFIX));
+    let unavailable = control.with_extension("temporarily-unavailable");
+    std::fs::rename(&control, &unavailable).expect("hide only the fixture control binary");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(database)));
+    // Restore before assertions so the real server can be stopped normally.
+    // If restoration itself fails, retained resources remain for diagnosis.
+    std::fs::rename(&unavailable, &control).expect("restore the fixture control binary");
+    let pid = directory.join("data").join("postmaster.pid");
+    let retained = directory.is_dir() && pid.is_file();
+    let stopped =
+        brassclaw_embedded_postgres::pgctl::PgCtl::new(&bin, &directory.join("data"), port)
+            .stop()
+            .await;
+    let exited = !pid.exists();
+    // Never delete this cluster until pg_ctl -w confirms the orderly stop.
+    if stopped.is_ok() && exited {
+        std::fs::remove_dir_all(&directory).expect("remove confirmed stopped fixture");
+    }
+    assert!(result.is_err(), "a failed stop must fail the test visibly");
+    assert!(retained, "the failed stop must preserve the live cluster");
+    stopped.expect("orderly recovery after restoring the control binary");
+    assert!(exited, "the recovered server must have exited");
+    assert!(!directory.exists());
+
+    let normal = native_pg::NativePostgres::start().await;
+    let directory = normal.directory.path().to_owned();
+    drop(normal);
+    assert!(
+        !directory.exists(),
+        "confirmed cleanup still removes its files"
+    );
+}

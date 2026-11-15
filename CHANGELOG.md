@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native PostgreSQL test cleanup**: Preserve the private cluster and report
+  failed orderly shutdown instead of triggering an immediate-stop destructor
+  or deleting live data. Verify both fixture owners with real failure,
+  restoration, orderly recovery and ordinary cleanup cases.
+- **Development storage**: Delete audited obsolete compiler archives, orphan
+  object files, duplicate test execution images and an unused Python environment.
+  Preserve current caches, original accepted programs, logs and private work;
+  free approximately 127 GiB across the system volume and SSDE.
+
 - **Development policy**: Clarify MCP exposure of existing approved Skill usages
   through qualified execution Recipes, current single-chat ownership, complete
   source-input evidence and authored/shipped/workflow review boundaries. Align

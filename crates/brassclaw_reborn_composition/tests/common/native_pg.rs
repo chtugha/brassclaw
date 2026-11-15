@@ -14,7 +14,7 @@ pub(crate) struct NativePostgres {
     pub(crate) url: SecretMaterial,
     server: Option<ManagedPostgres>,
     // Last field: the cluster must stop before its directory is deleted.
-    directory: tempfile::TempDir,
+    pub(super) directory: tempfile::TempDir,
     _permit: tokio::sync::SemaphorePermit<'static>,
 }
 
@@ -105,18 +105,35 @@ impl Drop for NativePostgres {
         // A test may drop its last owner inside a Tokio runtime or after that
         // runtime exits. A separate thread avoids nested block_on and keeps
         // pg_ctl completion supervised rather than spawning detached cleanup.
-        let result = std::thread::spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("PostgreSQL cleanup runtime")
-                .block_on(server.shutdown())
-        })
-        .join();
+        // Borrow the owner: moving it into the cleanup thread would run its
+        // immediate-stop Drop fallback on a failed stop or a thread panic.
+        // A scoped Builder also reports thread-start failure while ownership
+        // remains here, instead of unwinding through the cluster directory.
+        let result = std::thread::scope(|scope| {
+            std::thread::Builder::new()
+                .name("native-postgres-stop".into())
+                .spawn_scoped(scope, || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("PostgreSQL cleanup runtime")
+                        .block_on(server.shutdown())
+                })
+                .map(|handle| handle.join())
+        });
         match result {
-            Ok(Ok(())) => {}
+            Ok(Ok(Ok(()))) => {}
             other => {
-                let reason = format!("native PostgreSQL cleanup failed: {other:?}");
+                // A failed orderly stop is not permission to force-stop or to
+                // delete live cluster files. Retain the directory for explicit
+                // recovery and deliberately retain this small Rust owner too:
+                // dropping it would send an immediate shutdown behind us.
+                self.directory.disable_cleanup(true);
+                std::mem::forget(server);
+                let reason = format!(
+                    "native PostgreSQL cleanup failed; resources retained at {}: {other:?}",
+                    self.directory.path().display()
+                );
                 if std::thread::panicking() {
                     eprintln!("{reason}");
                 } else {
