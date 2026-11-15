@@ -22,3 +22,5 @@ nonpreemptible = true
 [modal.apple]
 
 [modal.linux]
+# Explicit compiler, independent of the workspace MSRV and Apple image.
+compiler = "1.98.1"

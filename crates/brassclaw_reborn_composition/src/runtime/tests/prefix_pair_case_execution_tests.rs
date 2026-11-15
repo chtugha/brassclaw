@@ -634,7 +634,7 @@ async fn assert_admitted_pair_jobs(runtime: &Arc<RebornRuntime>, document: &Valu
         assert_eq!(
             bytes.as_ref(),
             std::fs::read(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                crate::test_manifest_dir()
                     .join("../brassclaw_webui_v2_static/static")
                     .join(path)
             )

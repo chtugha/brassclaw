@@ -7,25 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **kohai.md / sempai.md — new design documents**: Add authoritative ground-truth
-  design guides for the Kohai and Sempai roles, on par with `recipe.md`,
-  `skills.md`, `tools.md` and `toolskills.md`. `kohai.md` defines what Kohai is
-  (the `host.kohai_complete` boundary), its three stages (format → optional Sempai
-  correction → assemble/dispatch), prefix insertion four-rule contract, No-Match
-  assembly, MCP advertisement lifecycle, hard input limits, and the v3.5 structured
-  Sempai handoff interface with five governing rules. `sempai.md` defines Sempai's
-  two distinct contracts (pre-call correction and completed-turn analysis — never
-  merged), the current `SempaiReviewOutcome`/`recompose()` implementation, the v3.5
-  target structured prompt representation with protected references (§6.2 five
-  rules, §6.3 adjacent plan alignment, §6.4 required Sempai prefix knowledge, §6.5
-  eight successor implementation areas), the required qualification evidence table
-  (§7), the reusable component library targets (§8) and nonnegotiable preservation
-  requirements (§9). Both documents clarify that the current interceptor already
-  passes conversation history to Sempai; what is new in v3.5 are unique protected
-  references, explicitly named editable/protected parts and a structured return
-  format. The updated "use Sempai's return unchanged" rule explicitly permits
-  mechanical reference resolution by Kohai while excluding additional content
-  reformulation.
+- **Build integration**: Connect explicit local/Modal dispatch, independent Linux
+  compiler selection, dependency test features, and Apple product/test runtime
+  packages with the normal Monty worker. Collect exact current Cargo outputs,
+  preserve conflicting published artifacts, and run selected native cases directly
+  with verified local fixture paths. Source preparation and compilation share one
+  deadline. Image/native qualification remains required; Linux test execution is
+  unchanged. Archive 24 already-merged local branch names with exact restore refs.
+
+- **Kohai/Sempai design guides**: Clarify logical roles, verified current
+  interfaces and separate pre-call/post-turn workflows. Define the desired v3.5
+  structured handoff with protected original context, explicit editable
+  derivatives and deterministic reference resolution without editorial rewriting.
+  References retain task/revision ownership and qualified reviewer knowledge.
+  Central contract alignment, connected implementation and qualification remain
+  open; existing captured work keeps its original contract.
 
 - **Agent architecture documentation**: Reconcile twelve `docs/agents-v3/`
   guides with verified source and the governing v3/v3.5 contracts. Document

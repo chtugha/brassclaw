@@ -315,7 +315,7 @@ pub(super) async fn assert_native_source_compiler(catalogue: &Arc<InstalledMonty
         .get(0);
     let serving:Value=client.query_one("SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY to_jsonb(s)::text),'[]'::jsonb) FROM reborn_basic_prompt_store s",&[]).await.unwrap().get(0);
     drop(client);
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let oracle=std::process::Command::new("python3").args(["-c","import json; from test_prefix_compile_logic import native_fixture; print(json.dumps(native_fixture('base-prompt','literal-reference/v2-deduplicated'),ensure_ascii=False))"]).env("PYTHONPATH",checkout.join("scripts/prefix")).output().unwrap();
     assert!(
         oracle.status.success(),

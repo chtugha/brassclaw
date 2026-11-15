@@ -23,82 +23,103 @@ not claim completed runtime enforcement or migration.
 
 ## 1. What Kohai is
 
-**Kohai is the BrassClaw LLM consumer**: the component that formats the final
+**Kohai is the BrassClaw LLM consumer**: the role that formats the final
 outgoing model request, optionally routes it through Sempai for pre-call
 correction, inserts the finished prefix, and dispatches the complete request to
 the target model. It is not a workflow engine or scheduler.
 
-Kohai is a role, not a component class in the catalogue. It describes the
-responsibility boundary of the `host.kohai_complete` Tool call — the moment a
-Recipe step (or the No-Match Recipe) hands an assembled prompt to Kohai. Its
-behaviour is specified here so agents and authors can reason about what Kohai does
-versus what Recipes, the Orchestrator, Sempai and Rust primitives do.
+Kohai is a logical role, not a component class or a universal callable. The
+task-bound `host.kohai_complete` primitive is one model-usage interface. Ordinary
+global No-Match work uses the separate `host.stream_model` task boundary below.
+Neither interface makes Kohai the workflow engine. Tier-0 execution contains no
+model calls; a Tier-1 workflow wires its required model usages explicitly and may
+consume their results in later selected steps.
 
-**Kohai is only invoked when a Recipe step (or the No-Match path) explicitly
-calls `host.kohai_complete`.** Tier-0 Recipes are deterministic (no LLM step)
-and never call `host.kohai_complete`. Tier-1 Recipes include one or more steps
-that call `host.kohai_complete`; those steps can appear anywhere in the Recipe
-sequence, not necessarily at the end — later steps in the same Recipe can use
-the returned answer.
+For ordinary calls with a selected generated prefix, the binding logical order is:
 
-When `host.kohai_complete` is called, Kohai's work consists of exactly three
-stages in order:
+1. **Format** only the dynamic Orchestrator prompt for the final target pair using
+   its accepted design.
+2. **Correct, when enabled:** Sempai reviews that already formatted target prompt
+   and returns its final dynamic value under the agreed handoff contract.
+3. **Insert, guard and submit:** prepend the intended finished prefix unchanged
+   exactly once, attach the qualified MCP advertisement where applicable, check
+   the actual complete request and submit through the selected native transport.
 
-1. **Format** — produce the dynamic prompt for the final target provider/model pair
-   from the assembled prompt dict (`chat_history`, `user_query`, `prefix_placeholder`).
-2. **Correct (optional)** — if Sempai is connected and enabled, send the formatted
-   dynamic prompt to Sempai and receive the final corrected dynamic prompt back.
-3. **Assemble and dispatch** — insert the intended finished prefix unchanged exactly
-   once before the (corrected) dynamic prompt, establish the MCP connection, check
-   the complete request against the target model's hard input limits, dispatch to
-   the model, and return the answer to the calling Recipe step.
-
-Nothing outside these three stages belongs to Kohai. Workflow sequencing, task
-intent matching, evidence composition and proposal processing all belong elsewhere.
+This role-level order is a binding target, not a claim that one Tool already
+implements the complete serving contract or should hide the migration workflow.
+Recipes and pinned PythonCode own request composition, explicit model usages,
+response interpretation and business sequencing. Rust retains technical encoding,
+authority, submission fencing, accounting and effect/response custody. Existing
+interceptor orchestration is compatibility implementation to migrate through the
+existing owners, not a second large Rust workflow to create. Follow the
+[cross-guide ownership contract](recipe.md#ownership-across-the-four-guides).
 
 ## 2. Place in the turn execution model
 
-```
-Admitted input → Global Orchestrator (Monty)
-    │
-    ├─── MATCH → Recipe execution (Monty runs PythonCode steps in order)
-    │       │
-    │       ├─── Tier-0 Recipe (llm_call_required=false)
-    │       │         no host.kohai_complete call; Kohai not involved
-    │       │         PythonCode steps call other host.* tools only
-    │       │         → host.post_reply(...) → done
-    │       │
-    │       └─── Tier-1 Recipe (llm_call_required=true)
-    │                 … PythonCode step(s) … →
-    │                 PythonCode calls host.kohai_complete(prompt={...})
-    │                 ┌────────────────────────────────────────────────────┐
-    │                 │  Inside host.kohai_complete (= Kohai's three stages)│
-    │                 │  1. Format dynamic prompt for target pair            │
-    │                 │  2. Optional Sempai correction                       │
-    │                 │  3. Insert prefix + MCP connect + check + dispatch   │
-    │                 │  returns LLM answer to Recipe step                   │
-    │                 └────────────────────────────────────────────────────┘
-    │                 … further Recipe steps may use the answer …
-    │                 → host.post_reply(...) → done
-    │
-    └─── NO-MATCH → builtin Recipe host-non-match-llm-answer
-            PythonCode assembles prompt →
-            host.kohai_complete(prompt={...})
-            ┌────────────────────────────────────────────────────┐
-            │  Inside host.kohai_complete (= Kohai's three stages)│
-            │  1. Format dynamic prompt for target pair            │
-            │  2. Optional Sempai correction                       │
-            │  3. Insert prefix + MCP connect + check + dispatch   │
-            │  returns LLM answer                                  │
-            └────────────────────────────────────────────────────┘
-            → host.post_reply(...) → done
+```text
+Admitted input -> existing global Monty task
+  Match -> retained Recipe / variant / typed inputs
+    Tier 0: pinned deterministic exports, no model calls
+    Tier 1: explicit qualified model usage, for example host.kohai_complete
+            -> complete model-response JSON -> subsequent Recipe interpretation
+    -> qualified workflow completion / reply where required
+  Actual No-Match -> global_mode.py::_non_match
+    visible_capabilities -> build_prompt_bundle -> stream_model
+      assistant reply -> return content for the selected reply workflow
+      capability calls -> invoke_capability -> append_capability_result_ref
+                       -> next model exchange under Monty's sequencing
+  Error / begun Recipe failure -> classified failure, no Tier-2 replay
 ```
 
 The turn execution diagram in [AGENTS.md](AGENTS.md) and
-[simplified_v3.md](simplified_v3.md) governs overall routing. Kohai occupies only
-the final dispatch segment. Kohai does not choose the prefix, the target model, or
+[simplified_v3.md](simplified_v3.md) governs overall routing. Kohai describes the
+model-request preparation/dispatch boundary. Kohai does not choose the prefix,
+the target model, or
 the workflow tier. Those are determined by the retained Recipe/Orchestrator/role
-contract before Kohai is involved.
+contract before the affected call. The source paths were checked on 2026-11-15:
+
+| Source | Verified boundary |
+| --- | --- |
+| [global_mode.py](crates/brassclaw_engine/orchestrator/global_mode.py) | `_non_match` uses `host.build_prompt_bundle` and `host.stream_model`, then sequences actual capability results or returns reply content. It does not invoke the legacy `host-non-match-llm-answer` Recipe. |
+| [monty_model_capability.rs](crates/brassclaw_reborn/src/monty_model_capability.rs) | `TaskModelCapability`, `Arguments`, `Prompt` and `Message` define the retained `host.kohai_complete` native adapter. |
+| [model_completion_components.rs](crates/brassclaw_skills/src/model_completion_components.rs) | The packaged `complete_model_usage` export and its exact Skill/input/result contracts. Source definitions alone do not approve a new consumer. |
+
+### 2.1 Current retained model-usage interface
+
+The native argument object has exactly `prompt`. Its required `user_query` is a
+string and `chat_history` is a list of `{role, content}` text messages, with roles
+`system`, `user` or `assistant`. Optional `max_output_tokens` is a positive exact
+u32 request setting; explicit null, zero, booleans, fractions and overflow are
+invalid. Unknown keys are rejected. For example, this is an argument-shape example,
+not a published Recipe or a permission grant:
+
+```json
+{
+  "prompt": {
+    "user_query": "Say hello",
+    "chat_history": [],
+    "max_output_tokens": 128
+  }
+}
+```
+
+The host supplies the original selected model route, prefix/input binding,
+scope and invocation identity. `prefix_placeholder`, `prefix_reference` and
+caller-supplied model/provider selectors are not accepted native prompt fields.
+The three text roles cannot encode structured provider Tool-result replay;
+ordinary No-Match retains that protocol through its own task boundary.
+
+The result is the complete actual `LoopModelResponse` encoded as JSON text,
+including output, chunks, safe reasoning deltas, effective model profile and
+optional usage. It is not merely answer text or an `ok/answer` envelope. A
+consuming Recipe must parse the supported response profile and interpret it in
+separate qualified steps. Proposals remain data and do not execute Tools.
+
+`SingleSubmission` protects the original logical model invocation from duplicate
+submission; ordinary retained execution is stop-only with `max_attempts: 1`.
+It does not forbid a separately declared later model step or an ordinary No-Match
+model/Tool continuation with its own supported identity and custody. Neither a
+new step nor a new attempt may reset an uncertain original or replay its effects.
 
 ## 3. Prefix selection and pair design
 
@@ -112,7 +133,7 @@ for the binding specification:
 | Prefix profile / content rules | Role/domain knowledge, source/coverage, teaching examples, content ordering. Sharing a pair design does not require identical role content. |
 | Prefix generation | Finished immutable text, already formatted for one profile and pair, with pinned design/content/source revisions. Kohai inserts this artifact unchanged. |
 
-**Selection rule:** the retained Recipe, Orchestrator instruction, or role
+**Ordinary-call selection rule:** the retained Recipe, Orchestrator instruction, or role
 contract specifies the prefix. When none specifies one, the compatible
 `base-prompt` applies — including ordinarily in No-Match. A conflicting explicit
 selection must be reported, never resolved silently. An explicitly selected prefix
@@ -136,15 +157,36 @@ These four rules supersede every earlier "review before format" or "runtime pref
 render" interpretation. They define the target architecture, not completed serving
 migration.
 
+### 3.1 Qualified construction-selection successor
+
+The binding [visible Maker/Base/Prefixless construction contract](docs/reborn/model-token-limits.md#open-prefixless-successor--visible-makerbaseprefixless-construction-selection)
+scopes the ordinary prefix requirements for new qualified construction workflows.
+Maker → Base → Prefixless is an initial editable UI suggestion, not a runtime
+fallback chain. Each actual executing route captures its submitted eligible
+profile or explicit Prefixless choice before effects. Required construction
+children/reviews keep their own captured compatible context and parent lineage;
+they do not borrow the candidate's prefix or look up latest. Ordinary independent
+Sempai review keeps its separate reviewer contract.
+
+An approved selected artifact is inserted exactly once under its qualified
+design. Explicit Prefixless inserts no generated prefix but retains fixed
+instructions, original route/auth/model, technical encoding/protocol, full request
+guard and native response/effect custody. Missing support is readiness work, not
+a bypass. General Recipe Prefixless still needs its actual qualified reader/runtime
+profile; absence, an empty prefix or a new flag cannot enable it. This binding
+selection successor does not adopt the separate reference-handoff proposal in
+section 8 or establish completed runtime integration.
+
 ## 4. No-Match turn assembly
 
-In a No-Match turn the Orchestrator (Monty) assembles the Tier-2 prompt context
-— user question, available conversation history and applicable dynamic context —
-and passes it to Kohai. Kohai then formats and dispatches using the same four-rule
-sequence described in section 3. No-Match input uses the base-prompt prefix by
-default.
+In an ordinary No-Match turn, `_non_match` sequences capability discovery,
+host-owned prompt materialization, model dispatch and actual capability-result
+handoffs through the task ports named in section 2. The agreed preparation target
+uses the same ordinary-call formatting/review/insertion order as section 3;
+No-Match uses base-prompt by default. This is distinct from invoking the legacy
+named No-Match Recipe or accepting caller-supplied arbitrary source/prefix data.
 
-After the assembled prompt is dispatched and an answer is received, eligible
+After the original turn reaches its actual eligible completed No-Match boundary,
 completed-turn review may propose Recipe/intent changes through the Sempai
 completed-turn path. That proposal path is separate from the pre-call correction
 performed in this turn. No-Match does **not** mean the turn can be replayed
@@ -161,6 +203,19 @@ progress or on intermediate tool exchanges. Discovery refreshes at startup/resta
 and at qualified Skill/Recipe catalogue changes. Existing in-flight calls retain
 their advertised contract and normal chat task snapshot.
 
+The MCP server stays running independently of a request connection. Its listed
+tools derive only from available activated, approved **MCP-call Recipe/variant
+commands**, not raw Rust Tool or Skill rows. A listed completed command enters
+a new ordinary chat through the existing matcher/Recipe runner, returns its
+correlated terminal result and closes through the supported chat lifecycle.
+MCP exposes no direct Python/native execution path and creates no per-call
+components or Q1/Q2. See [skills.md](skills.md#mcp-and-acceptance).
+The request-local adapter and ordinary-chat bridge exist in
+[mcp_provider_gateway.rs](crates/brassclaw_reborn_composition/src/mcp_provider_gateway.rs)
+and [mcp_chat_bridge.rs](crates/brassclaw_reborn_composition/src/mcp_chat_bridge.rs).
+Their source existence does not qualify every provider's final-prefix/advertisement
+ordering or complete lifecycle acceptance.
+
 ## 6. Hard input limits
 
 Two per-model input ceilings are always-on hard limits, independent of
@@ -176,11 +231,23 @@ Sempai request and final target request — have separate model limits and are
 checked independently. Short placeholder references in the Sempai structured
 handoff must not be used as a size proxy for the final assembled target request.
 
-The complete assembled request (prefix + corrected dynamic prompt + history +
-tools + framing) is validated against the target model's hard input ceiling before
-dispatch. This check is performed at the shared pre-dispatch boundary,
-independently of budgeting mode, review mode, retries and tool continuations.
-An oversized request is rejected whole; never truncated silently.
+Measure the **actual encoded provider-bound request**, with each piece counted
+once. History/Tool context already contained in the dynamic prompt must not be
+added again. Check the prefix and dynamic slices against their respective caps,
+the derived total-input ceiling using checked arithmetic, and the physical/
+deployed context with the actual effective output allowance and protocol framing.
+The total is derived, not another editable settings copy. Preserve an explicit
+original `max_output_tokens` setting and the supported fallback when missing;
+output reservation is distinct from actual usage and discretionary token budgets.
+See [the limit meanings and output contract](docs/reborn/model-token-limits.md).
+
+The shared technical pre-dispatch owner checks the final transformed request,
+independently of budgeting mode, review mode and supported continuations. The
+pre-call Sempai request and the target request are separate guarded envelopes.
+Completed-turn review has its own selected workflow/request and never resumes
+the original target send. Oversized data is rejected whole, without silent
+truncation, fallback or another provider attempt. Source settings alone do not
+prove complete runtime enforcement of this target.
 
 ## 7. What Kohai does NOT do
 
@@ -190,113 +257,107 @@ An oversized request is rejected whole; never truncated silently.
 | Select the workflow tier (0, 1, 2) | Routing and Recipe assembly |
 | Compose evidence, transcript boundaries or correlated records | Sempai completed-turn analysis Recipe, PythonCode components |
 | Decide whether review is needed | Recipe/Orchestrator contract, operator configuration |
-| Reformat Sempai's returned dynamic prompt | Never — Sempai's return is inserted without further formatting |
-| Issue a second model call after Sempai correction | Never — only one final target call per turn dispatch |
+| Reformat Sempai's returned dynamic prompt | Current contract: insert the return without further formatting. V3.5 target design: validate the structured response and deterministically insert only the originally bound content; never editorially rewrite the corrected task text. Requires the qualified successor in section 8. |
+| Replay an original logical target invocation | Never — single submission/stop-only rules fence that invocation; separately declared later steps or exchanges retain their own supported identity/custody |
 | Choose a fallback prefix when the selected one is missing | Never — block the call; report the missing prefix |
 | Replay the turn after a routing/Recipe error | Never — only actual No-Match enters No-Match handling |
 | Run as a second agent loop | Never — the global Monty service owns the loop |
 
-## 8. Sempai pre-call correction interface (binding target, v3.5)
+## 8. Sempai pre-call correction: current contract and proposed successor
 
-The current implementation already passes the volatile message tail — which
-includes the existing conversation history — to Sempai as a JSON-encoded list
-of `(role, text)` pairs. Sempai returns `SempaiReviewOutcome`, which Kohai
-applies through `recompose()` to reconstruct the corrected message sequence.
+The current binding target is the
+[explicit handoff contract](docs/reborn/model-token-limits.md#explicit-handoff-between-the-two-model-requests):
+Kohai formats the dynamic target prompt once; optional Sempai returns its final
+dynamic value; Kohai inserts the finished target prefix unchanged once, checks
+the complete request and submits. Kohai may validate the return, but must not
+format, normalize or rebuild it. This guide does not supersede that contract.
 
-What is new in the v3.5 target (compared with the current implementation):
-unique protected references, explicitly named protected parts, and a structured
-return format that preserves Tool call IDs and result envelopes.
+The current compatibility interceptor in
+[model_interceptor.rs](crates/brassclaw_reborn/src/loop_driver_host/model_interceptor.rs)
+passes the volatile tail as JSON `(role, text)` pairs and applies
+`SempaiReviewOutcome` through `recompose`. Its protocol/system-context guards,
+leading-system-message copying and legacy proposal side effects are described
+in [sempai.md section 6.1](sempai.md#61-current-implementation). That source
+support is not proof of the complete final-dynamic-prompt serving target.
 
-See [sempai.md](sempai.md) for the full Sempai design including the current struct
-definition and the five governing rules for the v3.5 successor.
+### Proposed structured reference handoff — unqualified
 
-The v3.5 target evolves this interface toward a **structured prompt representation
-with protected references**, defined by the shared Kohai/Sempai handoff contract.
-The target contract is owned by [model-token-limits.md](docs/reborn/model-token-limits.md)
-and must be defined once and consumed by both Kohai and Sempai. The key rules are:
+A structured representation with protected references is the **desired v3.5
+target design — not yet implemented or qualified**. Central contract alignment,
+a strict versioned interface and connected consumer qualification remain open.
+The existing Prefix/handoff owner must define the successor to the current
+prohibition on rebuilding Sempai's return and align the affected plans.
+Until the qualified cutover, the current binding target above remains in force;
+these guides alone create no supported schema or runtime API. See
+[sempai.md section 6.2](sempai.md#62-proposed-structured-reference-handoff--unqualified).
 
-1. **Exactly bound references.** Each protected reference (e.g. `prefix_ref`)
-   names a specific already-selected, immutable artifact. Kohai must use the
-   originally bound artifact when assembling the final request; it must never
-   re-fetch "latest" or silently substitute another generation under the same name.
+The v3.5 target design requires these properties:
 
-2. **Sempai knows the referenced content.** The reference is only valid if Sempai
-   actually has sufficient knowledge of that artifact's content — either directly
-   in its qualified Sempai prefix, or via an explicitly transmitted summary with
-   the same contract. A name alone is not sufficient. For different target prefixes
-   the reference must match the knowledge Sempai actually receives.
+1. A reference binds an exact already-selected immutable artifact and its trusted
+   origin; it never means a latest lookup or a caller-selected foreign object.
+2. Sempai receives the matching qualified knowledge or explicit evidence/contract
+   needed to reason about each reference. A name alone proves no inspection.
+3. Original task-scoped history, relevant Tool calls/results and the current
+   original request remain explicit, protected, attributable context, not new
+   instructions or standing prefix knowledge. Editable task text is a separately
+   identified derivative linked to that original request; it does not alter it.
+4. The typed response names editable fields and rejects missing, changed, unknown
+   or foreign protected references and loss of required content.
+5. Kohai validates the structured response and deterministically inserts only
+   the originally bound content under an exact placement and byte/role-preservation
+   contract. This mechanical resolution is distinct from editorial reformulation:
+   Kohai never additionally rewrites the corrected task text or makes another
+   model call or unqualified host read. Central contract alignment and qualified
+   cutover are required before resolution replaces today's unchanged-return rule.
 
-3. **History and tool context are transmitted explicitly.** Kohai sends the
-   original conversation history relevant to this turn, including tool call results,
-   as explicit content. This context remains task-scoped; it must not be absorbed
-   into a standing Sempai prefix. History must be recognisable as context so that
-   historical statements are not misinterpreted as new instructions.
-
-4. **Editable parts are explicitly named.** Sempai may improve the formulation of
-   the current task text. Protected sources, original messages, the selected prefix,
-   and technical parameters remain unchanged. Kohai's recompose step must reject any
-   outcome that modifies protected references or removes required content.
-
-5. **Kohai assembles the final request deterministically.** After receiving Sempai's
-   structured outcome, Kohai: verifies that all required references are present and
-   no unknown references were added; substitutes the originally bound content for
-   each reference; assembles the complete request within the target model's limits.
-   This assembly step requires no further LLM call.
-
-**Update to the "use Sempai's return unchanged" rule:** The former rule that
-Kohai must use Sempai's return without modification is superseded in the v3.5
-structured handoff. The updated rule is: Kohai resolves protected references
-deterministically and assembles the final request; it must not apply any further
-content reformulation of its own during this assembly. The reference resolution
-itself is not a content reformulation — it substitutes the originally bound
-immutable artifact. Kohai's editorial involvement ends when it sends the
-structured handoff to Sempai; what follows is mechanical reference resolution.
-
-The current `SempaiReviewOutcome` `(role, text)` pairs are insufficient to
-represent Tool call IDs and result envelopes faithfully. The successor contract
-must preserve those structures. Until the successor contract is fully specified and
-qualified, existing tasks retain the current handoff contract without modification.
-
-The concrete handoff schema (illustrative only — not yet a supported BrassClaw
-schema; see [model-token-limits.md](docs/reborn/model-token-limits.md) for the
-binding definition when published):
+An illustrative input shape, **not a supported schema or complete protocol**, is:
 
 ```json
 {
   "target_context": {
-    "prefix_ref": "<exactly bound prefix generation identity>",
-    "history_ref": "<original conversation state for this turn>"
+    "prefix_ref": "<exact selected artifact identity>",
+    "history_ref": "<original task-scoped conversation identity>"
   },
-  "history": ["… original messages …"],
-  "editable_task": "… task text open for optimization …"
+  "history": ["<explicit original messages and Tool protocol>"],
+  "editable_task": "<derived task text open for correction>"
 }
 ```
 
-Kohai's final assembly resolves `prefix_ref` → the pinned immutable prefix
-artifact, and reconstructs the complete request. No further reformatting is
-applied after Sempai's return.
+This sketch supplies neither strict recursive input/result contracts nor a
+response schema, safe resolver, invocation binding or activation evidence.
+Reference resolution would require the original selected data, supported native
+reads where necessary and qualified pure transformations. Old stored formats
+and captured task selections keep their original meaning; no per-call Q1/Q2
+or direct execution API is introduced by the proposal.
 
 ## 9. Custody and evidence
 
-The model-answer custody owner is
-[`pg_monty_model_response.rs`](crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs).
-The related-model response owner stores Sempai's separate review call record.
-Both must be extended if the v3.5 structured handoff requires additional fields
-(original context, reference bindings, Sempai request, Sempai response, assembled
-target request). Database migrations are required when stored formats or their
-strict readers change. Old stored records must not be reinterpreted as the new
-format.
+For the retained selected Tool invocation, `PgRecipeModelResponses` in
+[`pg_monty_model_response.rs`](crates/brassclaw_reborn_composition/src/pg_monty_model_response.rs)
+owns actual model-answer custody. Its
+[related-model owner](crates/brassclaw_reborn_composition/src/pg_monty_related_model_response.rs)
+retains Sempai's distinct work/request/response identity under the original
+invocation. Those native records do not sequence or approve the review.
+
+To implement the v3.5 target handoff, inspect these existing records and actual
+callers for coverage of original context, exact reference bindings, reviewer
+request/response and the effective final target request. Extend only missing
+coverage through existing owners, with versioned formats/readers and migrations
+where their actual storage contract requires them. Never reinterpret old bytes.
+Retain uncertain responses/commits for original-ID reconciliation; missing
+acknowledgement, a disconnected provider or failed output validation permits no
+repeat model call, reset invocation or original-turn replay.
 
 ## 10. Implementation status and remaining work
 
 | Area | Status |
 | --- | --- |
-| Basic dynamic prompt formatting and dispatch | Source-supported |
+| Retained native model-usage input/result and ordinary No-Match driving | Source-supported through the distinct callers in section 2; not full serving qualification |
 | Prefix insertion (four-rule contract) | Binding target; serving migration open |
-| Sempai pre-call correction (current `(role, text)` contract) | Source-supported |
-| Structured reference-based Sempai handoff (v3.5) | Binding target; contract definition open (see [model-token-limits.md](docs/reborn/model-token-limits.md)) |
+| Sempai pre-call correction (current `(role, text)` contract) | Compatibility source-supported; exact guards and legacy side effects are described in sempai.md section 6.1 |
+| Structured reference-based Sempai handoff | Desired v3.5 target design; not yet implemented or qualified. Central contract alignment, strict interface, connected readers/writers and activation evidence remain open |
 | Hard input limit enforcement at pre-dispatch boundary | Binding target; complete wiring open |
-| MCP connect/advertise/disconnect lifecycle | Source-supported |
+| MCP request binding and ordinary-chat bridge | Source-supported in the named adapters; final-prefix ordering and complete caller acceptance remain with their owners |
 | Custody of Sempai call and final assembled request | Partial; v3.5 extensions open |
 
 The [sempai_v3.5.md](docs/plans/sempai_v3.5.md) and

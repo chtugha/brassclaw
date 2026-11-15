@@ -1,282 +1,303 @@
-# Combined Building v3 at Bob3 — einfacher Kern
+# Combined Building v3 at Bob3 — Build-Skripte angleichen
 
-Stand: 2026-11-12. Status: Plan, nicht implementiert. Dieser Auftrag ändert nur
-dieses Dokument; er startet keine Builds, Tests, Cloud-Worker oder Aktivierung.
+Stand: 2026-11-15. Die unten beschriebenen Apple-Anschlüsse sind implementiert.
+68 lokale Build-/Controllerprüfungen und sechs Source-Sync-Prüfungen bestehen.
+Run88 kompiliert neun aktuelle native Testprogramme warnungsfrei; drei tatsächliche
+Compiler-/PG-/Modell-/Monty-Fälle bestehen aus dem vorhandenen Programm, mit
+explizitem Ressourcenpfad und normalem Worker neben `deps/`. Neue Remote-Wege sind damit noch nicht image-/laufzeitqualifiziert:
+das bisherige Image enthält den geänderten Worker nicht. Kein Modal-Image wurde
+für diese Skriptänderung neu gebaut oder aktiviert; kein bezahlter Compilejob läuft.
+Linux-Testarbeit bleibt ohne konkreten passenden Prüfauftrag ausdrücklich offen.
+Häkchen bezeichnen implementierten Code, keine pauschale Plattformabnahme.
 
-## Ziel
+## Ziel und logisch begründbarer Nutzen
 
-Ein gemeinsamer Einstieg verwendet die vorhandenen Skripte, um lokal oder remote
-zu bauen. Remote erzeugte macOS-Programme werden automatisch lokal übernommen
-und können dort ausgeführt werden. Linux-Programme können remote gebaut und
-remote ausgeführt werden. Lokaler und Remote-Build dürfen parallel laufen;
-Aufträge mit demselben veränderlichen Cache bleiben seriell.
+Die vorhandenen Skripte sollen benötigte Produkt- und Testbuilds lokal oder
+remote mit passenden Einstellungen ausführen können. Ihr Ausbau beschränkt sich
+auf Aufrufkompatibilität, vorhandene Caches und die Übergabe benötigter Artefakte.
 
-Die Geschwindigkeit kommt aus Remote-Rechenleistung, warmen getrennten Caches
-und paralleler Arbeit. Ein universeller Cargo-Cache, ein allgemeiner Scheduler
-und die automatische Migration beliebiger Tests gehören nicht zum Kern.
+Drei Vereinfachungen sparen Arbeit, ohne eine neue Testorganisation einzuführen:
 
-### Erwarteter Nutzen und Grenzen
+1. Ein benötigtes Testziel einmal kompilieren und daraus mehrere benötigte Fälle
+   ausführen; nicht für jeden Fall erneut denselben Build vorbereiten.
+2. Bereits passende Programme, Begleitworker und gültige Ergebnisse weiterverwenden,
+   statt vorsorglich Produkt-, Check-, Dev-, Release- und Testbuilds zu stapeln.
+3. Unabhängige lokale und Remote-Arbeit mit getrennten Caches überlappen, statt
+   beide durch eine gemeinsame Build-Sperre zu serialisieren.
 
-| Ablauf | Wirkung dieses Kerns |
+Daraus folgt weniger vermeidbare Arbeit. Daraus folgt **nicht**, dass jeder
+Remote-Build schneller ist: Upload, Containerstart, Cross-Linking und Download
+kosten Zeit. Remote nur verwenden, wenn diese Zusatzzeit durch kürzere
+Kompilierung oder vermiedene lokale Wartezeit voraussichtlich ausgeglichen wird.
+Ein warmer lokaler Inkrementalbuild bleibt lokal, wenn Auslagern keinen Vorteil
+erwarten lässt. Keine neuen Benchmarks oder Speedup-Zertifikate verlangen.
+
+Die Angleichung beschleunigt die Organisation und gegebenenfalls Kompilierung
+von Produkt- und Testcode. Sie verkürzt keine fachlich notwendigen Wartezeiten
+innerhalb eines Tests. Ein erneuter Cargo-Aufruf kompiliert dank Cargo-Caching
+auch heute nicht zwangsläufig neu; eingespart werden nur tatsächlich redundante
+Aufrufe, Vorbereitungen und Artefaktkopien. Zusätzliche Hashprüfungen/Transfers
+nicht als kostenlose Beschleunigung behandeln.
+
+## Aktueller Code: wiederverwenden statt neu bauen
+
+| Aufgabe | Vorhandener Eigentümer / aktueller Anschluss |
 | --- | --- |
-| Produktprogramm bauen | Kann mit warmem Remote-Cache und geeigneten Ressourcen schneller sein; automatische Übernahme spart manuelle Schritte |
-| Produktbuild parallel zu lokalem Testbuild | Kann die gesamte Arbeitszeit verkürzen; beide Compiler-Caches bleiben unabhängig |
-| Unit-/Integrationstestprogramme kompilieren | Zunächst weiterhin nativ; keine direkte Remote-Beschleunigung durch diesen Kern |
-| Bestehenden passenden Test gegen das heruntergeladene Produkt ausführen | Automatisierbar, wenn der vorhandene Runner den exakten Programmpfad akzeptiert |
+| Native Cargo-Ausführung | `scripts/local_build.py`: globales Cargo-Parsing, Toolchain-Auswahl, Jobs, lokale Sperre und Disk-Prüfung bereits vorhanden |
+| Remote-Aufnahme und Abholung | `scripts/modal_build.py`: Jobbelege, Workeridentität, gemeinsames `collect_result` und atomarer Download bereits vorhanden |
+| Remote-Compile/Export | `scripts/modal_build_worker.py`: Produktbuild sowie eng begrenzter Apple-Composition-Libtest-Compile-only-Pfad vorhanden |
+| Buildparameter | `scripts/build_settings.py`, `scripts/build-environments.toml` |
+| Einseitiger Quellabgleich | `scripts/modal_source_sync.py`: geprüfter Snapshot, Delta und getrennte Remote-Sperre vorhanden |
+| Apple-Werkzeuge | `scripts/modal_apple_toolchain.py`: OSXCross-/SDK-/Rust-Image |
 
-Entscheidend ist die komplette Zeit aus Quellabgleich, Containerstart,
-Kompilierung, Paketierung, Download und gewählter Ausführung. Ein warmer lokaler
-Inkrementalbuild kann schneller als ein kalter Remote-Build sein. Neue Images
-haben zunächst eigene kalte Kompilierungscaches. Lokale und Remote-Arbeit
-überlappen bereits grundsätzlich; der gemeinsame Einstieg vereinfacht sie,
-erzeugt aber allein keinen zusätzlichen Compiler-Speedup. Parallelität kann
-lokal durch Quellhashing, Transfers und Plattenzugriffe auch bremsen.
+### Geprüfter Umsetzungsstand
 
-Der Kern verspricht daher keinen pauschalen Speedup für Produkt- und Testcode.
-Eine spätere gezielte Testbuild-Erweiterung muss ihren Zeitgewinn separat zeigen.
+**Implementiert** bezeichnet den verbundenen Quellstand mit den genannten
+lokalen Skript- und nativen Prüfungen. Transport-/Header-Fixtures in Skripttests
+sind keine echte Remote-Kompilierung. Häkchen bezeichnen fertigen Code;
+Image-/Remoteaktivierung und konkrete Plattformabnahme bleiben eigene Aussagen.
+Die erhaltenen älteren lokalen Imagebelege unten aktivieren den neuen Worker nicht.
 
-## Vorhandenes weiterverwenden
+| Teil | Status | Konkreter Befund / verbleibende Arbeit |
+| --- | --- | --- |
+| Nativer Cargo-Aufruf | Vorhanden | `local_build._cargo_subcommand`, `run_local`: Toolchain-/Optionsparsing, Jobs, kanonischer Targetpfad, Cleanup-Schutz, zwei Disk-Gates und Sperre |
+| Gemeinsamer lokal/remote-Einstieg | Implementiert | `local_build.main --host local|modal --platform apple|linux` delegiert ohne neue Queue; lokale Aufrufe bleiben Standard und ohne Cloudabfrage |
+| Hostbezogene Einstellungen | Vorhanden | `load_settings`/`modal_resources` trennen lokale Jobs von Modal-Ressourcen und Apple-/Linux-Overrides |
+| Source-Sync, Caches und parallele Hosts | Vorhanden | `capture`/`sync_source`, getrennte `cargo_lock`/`modal_lock`, `materialize`/`update_cache`, Image-spezifischer Remote-Targetcache |
+| Apple-CLI-Produktbuild | Implementiert; Imageabnahme offen | CLI Dev/Test/Release bleibt ein normales Programm; ein eigener normaler `monty_worker` wird über denselben vorhandenen Cache gebaut |
+| Apple-Composition-Testkompilierung | Angeschlossen; Imageabnahme offen | Exakter `--lib --no-run`-Collector plus normaler Worker und lokale exakte Testauswahl; kein beliebiger Harness |
+| Testfeatures des benötigten Aufrufs | Implementiert | `brassclaw_pg/test-support` wird am tatsächlichen nichtoptionalen Dependency-Manifest geprüft und getrennt von Composition-Features im Subject behalten |
+| Exakter Testbinary-Export | Vorhanden, begrenzter Testmodus | `collect_test_artifacts` prüft aktuellen Cargo-Erfolg, Package/Target/Features, `profile.test` und auch `fresh`; `snapshot_executable` kopiert genau ein verifiziertes Mach-O-Executable |
+| Abholung und Wiederaufnahme | Vorhanden | `collect_result`, `atomic_download`, `status`: Request-/Receiptprüfung, temporärer Hashdownload, Wiederverwendung passender lokaler Bytes, Nachholen ohne neuen Build |
+| Vollständiges Runtimepaket | Implementiert; echte Remoteabnahme offen | `deps/<Testbinary>`, normaler Worker daneben; aktuelle Cargo-Meldungen wählen PG-Ausgabe; Archive und System-Dylib-Abhängigkeiten werden geprüft, nicht benötigte PG-Laufzeitdaten bleiben eingebettet |
+| Automatische lokale Testausführung | Implementiert; echte Remoteabnahme offen | `run --native-test <exakter Name>` / `accept-native --test` nutzen direkt das gesammelte Programm und bestehenden Native-Lock; echte Liste, genau ein erfolgreicher/nicht ignorierter Fall je Name, keine Wiederholung |
+| Linux-Testkompilierung/-ausführung | Offen | `command_options` lehnt Linux-`cargo test` ab; Worker führt Cargo aus, aber keinen Testlauf danach |
+| Policy-Gate | Korrigiert | Kein technisches 60-Sekunden-Minimum mehr; explizite Modalwahl und Bildaktivierung bleiben nötig; freiwillige Laufzeitschätzung muss endlich/nichtnegativ sein |
+| Compilerwahl | Explizit | Apple bleibt auf den bestehenden Image-Compiler 1.98.1 gepinnt; Linux erhält `modal.linux.compiler = "1.98.1"`, unabhängig vom MSRV |
+| Schutz nativer lokaler Ausgaben | Vorhandene Trennung | Downloads landen im eigenen Jobverzeichnis, nicht im nativen Cargo-Ausgabepfad; kein `current`-Mechanismus vorhanden oder erforderlich |
+| Konfliktregel innerhalb eines Jobverzeichnisses | Implementiert | Identische Bytes werden wiederverwendet, fehlende Kopien nachgeholt; abweichende veröffentlichte Bytes/Symlinks bleiben als Konflikt erhalten. Private Downloadreste werden verworfen, nie über fremde Bytes veröffentlicht |
+| Regulärer Apple-Testbetrieb | Aktivierungsanschluss implementiert, derzeit nicht qualifiziert | Eigene `--test-mode`-Aktivierung benötigt aktuelle Worker-/Imageidentität, vollständiges Paket und echte erfolgreiche Native-Fälle; alte Produktaktivierung genügt nicht |
 
-| Aufgabe | Bestehender Eigentümer |
-| --- | --- |
-| Gemeinsamer Einstieg / lokale Ausführung | `scripts/local_build.py` erweitern |
-| Remote-Setup, Build, Status, Download | `scripts/modal_build.py` erweitern |
-| Einstellungen | `scripts/build_settings.py`, `scripts/build-environments.toml` |
-| Exakter Quellabgleich | `scripts/modal_source_sync.py` unverändert wiederverwenden, soweit passend |
-| Remote-Cargo und Artefaktexport | `scripts/modal_build_worker.py` gezielt erweitern |
-| Apple-Cross-Toolchain | `scripts/modal_apple_toolchain.py` |
+**Lokale Imagebelege:** Unter
+`/Users/ollama/brassclaw-target/modal-build/` referenziert `image-apple.json`
+das vorbereitete Rust-1.98.1-Image `im-Wxm74Dwhp6v20AWvy6T6aj`, enthält aber
+keine Identität/Modusdeklaration des jetzigen Testworkers. Der aktuelle
+Testcontroller lehnt dieses alte Receipt deshalb vor Aufnahme ab.
+`activation-apple.json` verweist weiterhin auf das andere, frühere Image
+`im-S1cpT9G1fsMPpwjISvBSlK`; es aktiviert weder das vorbereitete neue Image noch
+den Testmodus. Linux-Image-/Aktivierungsreceipts sind an diesem lokalen
+Records-Pfad nicht vorhanden. Das ist eine lesende lokale Bestandsaufnahme,
+keine Abfrage des aktuellen Modal-Kontostands.
 
-Es gelten die [Entwicklungspolicy](docs/development-policy.md), der
-[Build-Umgebungsvertrag](docs/build-environments.md) und der
-[Modal-Image-Vertrag](docs/modal-cross-build.md). Erweiterte Remote-Ausführung
-muss vor ihrer Einführung dort konsistent beschrieben werden. Bestehende
-Bild-/Jobbelege bleiben an ihren tatsächlichen Geltungsbereich gebunden.
+Der Testmodus `apple-composition-lib-test-build/1` akzeptiert bereits
+`cargo test --no-run`, das Apple-Target, Composition `--lib`, das Testprofil und
+JSON-Artefaktmeldungen. Der lokale Ausführungspfad und die separate Aktivierung sind angeschlossen.
+Normaler Testbetrieb bleibt ohne tatsächliche Image- und Native-Abnahme geschlossen. Er ist kein allgemeiner Linux-Testmodus.
 
-Die Nutzerfreigabe vom 2026-11-12 erlaubt auch Testbuilds, Tests und andere
-notwendige Modal-Arbeit ohne erneute Standortfrage, wenn die Verteilung insgesamt
-Zeit spart. Sie ersetzt die frühere 60-Sekunden- und Nur-lokale-Tests-Policy,
-implementiert aber keine fehlenden Controller-/Runner-Modi. Keine Schätzwerte
-erfinden, um die noch vorhandene technische Controller-Grenze zu umgehen.
-Produktabnahme bleibt beim bestehenden B3-12-Owner; dieser Entwicklungsplan
-ersetzt weder dessen Tests noch die drei Bob-Reparaturpläne.
+`--profile test` ist gültige Cargo-Syntax und im begrenzten Testmodus bereits
+vorgesehen. Dagegen bleibt der Apple-Produktmodus derzeit auf CLI Dev/Release
+beschränkt. Diese verschiedenen Grenzen nicht zu einer pauschalen Aussage
+„Tests unterstützt“ oder „Testprofil unmöglich“ zusammenziehen.
 
-## Die drei Betriebsarten
+[Entwicklungspolicy](docs/development-policy.md),
+[Build-Umgebungsvertrag](docs/build-environments.md) und
+[Modal-Vertrag](docs/modal-cross-build.md) bleiben maßgeblich. Die bestehende
+Nutzerfreigabe erlaubt zeitersparende Remote-Testarbeit ohne erneute Standortfrage,
+ersetzt aber weder fehlende technische Unterstützung noch Image-Aktivierung.
+Andere Entwicklungs-/Retention-/Installerpläne erhalten hier keinen zweiten Owner.
 
-| Auswahl | Build-Ort | Produkt-Target | Übernahme und Ausführung |
-| --- | --- | --- | --- |
-| Lokal/macOS | macOS/ARM64 | `aarch64-apple-darwin` | bestehender nativer Ablauf |
-| Remote/macOS | Linux/x86_64 mit OSXCross | `aarch64-apple-darwin` | automatischer Download; Ausführung lokal auf dem Mac |
-| Remote/Linux | Linux/x86_64 | `x86_64-unknown-linux-gnu` | Ausführung remote; Logs und Ergebnis lokal übernehmen |
+## 1. Bestehende Aufrufe und Einstellungen verbinden
 
-Ein lokaler Linux-Cross-Compiler, andere Architekturen und andere libc-Varianten
-sind keine Voraussetzung dieses Ausbaus. Eine inkompatible Kombination wird
-klar abgelehnt; es gibt keinen stillen Wechsel von Plattform oder Build-Ort.
+Code angeschlossen: gemeinsamer Einstieg, geltende Policy und explizite Linux-Compilerwahl.
+Die tatsächliche Remote-Abnahme bleibt an das neue Image gebunden.
 
-## 1. Einen dünnen gemeinsamen Einstieg ergänzen
+- [x] Vorhandene Basis: lokaler direkter Cargo-Modus einschließlich `+toolchain`,
+  unterstützter globaler Optionen, Package-Cleanup-Schutz und beider Disk-Gates.
+  Remote bleibt eine bewusst begrenzte Cargo-Grammatik; lokale Freiheiten nicht
+  ungeprüft auf den Remote-Worker übertragen.
+- [x] Einen dünnen gemeinsamen Einstieg nur für die Auswahl lokal/remote,
+  Produkt-/Testbuild und Target ergänzen. Er delegiert an bestehende Funktionen;
+  keine neue Scheduler-, Auftragsdatenbank- oder Prognoseschicht. Keine neue
+  `auto`-Heuristik als Voraussetzung: Ort nach vorhandenem Arbeitskontext und
+  vorhandenen Zeiten wählen; unbekannte Vorteile nicht erfinden.
+- [x] Package, konkretes Cargo-Ziel, Profil, Features und Target unverändert
+  passend weiterreichen. Keine Default-Features hinzuerfinden. Das alte
+  technische 60-Sekunden-Gate an die geltende Policy anpassen, nicht durch einen
+  fingierten Schätzwert umgehen. Ressourcen zunächst unverändert lassen.
+- [x] Die tatsächlich verwendete Compiler-Version pro Host prüfen/auswählen;
+  MSRV aus `Cargo.toml` ist nicht automatisch der gewünschte Compiler. Kein
+  Versionswechsel oder Image-Neubau pro Auftrag, kein unnötiges Cache-Warming.
 
-- [ ] In `scripts/local_build.py` einen neuen Unterbefehl `combined` vor dem
-  bisherigen Argumentparser erkennen. Bestehende lokale Aufrufe einschließlich
-  `--jobs`, `--config`, `--show-settings` und `-- cargo ...` bleiben kompatibel.
-- [ ] Im neuen Modus Build-Ort, Target, Package, Binärziel, Profil und Features
-  auswählen. Er delegiert an die vorhandene lokale oder Remote-Ausführung und
-  besitzt keinen zweiten Build-Loop. Beispielsyntax, erst zu implementieren:
+## 2. Produkt- und Testkompilierung kompatibel machen
 
-  ```text
-  python scripts/local_build.py combined --where local --target macos-arm64 --package brassclaw_reborn_cli --bin brassclaw-reborn
-  python scripts/local_build.py combined --where remote --target macos-arm64 --package brassclaw_reborn_cli --bin brassclaw-reborn
-  python scripts/local_build.py combined --where remote --target linux-x64 --package brassclaw_reborn_cli --bin brassclaw-reborn
-  ```
+Code angeschlossen: Produktprofile, normaler Worker, Dependency-Feature und verbundener
+Apple-Testablauf. Linux-Tests bleiben ohne konkreten Auftrag offen.
 
-- [ ] Eine optionale Ausführungswahl mit expliziter Programmauswahl und
-  Argumentliste vorsehen: macOS lokal, Linux remote. Ohne diese Wahl wird nur
-  gebaut und bereitgestellt. Keine Shellstrings und kein unbegrenzter Dienststart.
-- [ ] Den ersten Umfang auf die CLI `brassclaw-reborn` und ihren benötigten
-  `monty_worker`, mit den vorhandenen Dev-/Release-Profilen, begrenzen. Andere
-  Packages oder Profile erst freigeben, wenn deren konkreter Export-/Runtime-
-  Pfad geprüft ist. Die Eingabefelder bedeuten keine pauschale Unterstützung
-  beliebiger Cargo-Ziele; der heutige Apple-Controller ist CLI-only.
-- [ ] Die tatsächliche Package-/Target-/Featureauswahl prüfen und `--locked`
-  verwenden. Remote das exakte Target setzen; lokal den bestehenden nativen
-  Cargo-Aufruf und das vorhandene Artefaktlayout beibehalten.
-- [ ] Ungültige Optionen vor Compute ablehnen. Settings-/Planansicht bleiben
-  lokal ohne Modal-Import oder Cloudkontakt. Ressourcen und Standortentscheidung
-  aus bestehenden Einstellungen und realen Zeitbelegen übernehmen, nicht aus
-  erfundenen Schätzwerten. Der neue Einstieg umgeht keine Aktivierungsprüfung.
+- [x] CLI-Produktbuild mit benötigtem normalem `monty_worker` und den wirklich
+  verlangten Profilen anschließen. Das Produktprogramm im Profil `test` ist
+  weiterhin ein normales Programm, kein Libtest-Harness. Nur diese konkret
+  benötigte Produkt-Profil-Erweiterung ergänzen, nicht beliebige Cargo-Targets.
+- [x] Den vorhandenen Apple-Composition-Testexport fertig anschließen, statt
+  ihn erneut zu implementieren. Der benötigte Aufruf bestimmt Features und
+  Profil; der Validator darf erlaubte Cargo-Syntax nicht irrtümlich ablehnen.
+  Konkret: Der bisherige `test_subject()` akzeptiert nur benannte Composition-
+  Features; der bestehende Prüfauftrag nutzt auch `brassclaw_pg/test-support`.
+  Diese tatsächlich benötigte Dependency-Featureform gezielt unterstützen und
+  korrekt dem Package zuordnen, ohne einen neuen allgemeinen Feature-Resolver.
+- [x] Im begrenzten Apple-Testmodus: aufgenommene Auswahl und von Cargo gemeldete Artefakte abgleichen.
+  `fresh=true` ist zulässig; das gemeldete aktuelle Executable verwenden.
+  Unit-Test-Targetkind kann `lib` sein. Nicht im gesamten Cache nach irgendeinem
+  gleichnamigen/neuesten Programm suchen.
+- [ ] Linux-Testkompilierung/-ausführung nur für einen ohnehin benötigten,
+  kompatiblen Prüfauftrag ergänzen. Sie ist keine Vorbedingung für den
+  Apple-Testbuild und kein verpflichtender zusätzlicher Pilotbatch. Wenn der
+  Test auf Linux im Compile-Job läuft, nur Ergebnisse zurückholen.
+- [x] Einen Testharness pro benötigtem Eingabestand bauen und direkt mit den
+  benötigten Filtern verwenden. Produktprogramme aus demselben Build nur dann
+  mitverwenden, wenn Cargo sie tatsächlich erzeugt und Profil/Features passen.
+  Composition `--lib` erzeugt nicht automatisch die CLI. Unveränderten normalen
+  Worker nicht vorsorglich zusätzlich in jedem Profil bauen.
 
-## 2. Quellabgleich und getrennte Umgebungen erhalten
+## 3. Host und Target getrennt behandeln; Caches erhalten
 
-- [ ] Quellen nur lokal → remote synchronisieren: vorhandene Baseline-/Delta-
-  Übertragung mit Hashprüfung, Löschungen und festem aufgenommenem Snapshot.
-  Kein Remote-Quellmerge zurück in den lokalen Checkout.
-- [ ] SDKs, Compiler und native Bibliotheken über die bestehenden vorbereiteten
-  Images bereitstellen. Sie müssen vorhanden und eindeutig festgelegt sein,
-  aber nicht bei jedem Quellabgleich erneut übertragen werden.
-- [ ] Lokales `CARGO_TARGET_DIR=/Users/ollama/brassclaw-target` beibehalten.
-  Remote weiter `/build/cache/images/<image_id>/target` sowie den vorhandenen
-  Downloadcache `/build/cache/cargo` verwenden. Keine Synchronisierung der
-  `target/`-Verzeichnisse, Proc-Macro-Bibliotheken oder Cargo-Fingerprints.
-- [ ] Build-Skripte verwenden `HOST`/`TARGET` und die passenden Werkzeuge.
-  Den vorhandenen Apple-/PG-Cross-Pfad wiederverwenden. Nur konkrete fehlende
-  Linux-/Apple-Anschlüsse reparieren; keine pauschale Überarbeitung aller Helfer.
-- [ ] Vorhandene lokale und Remote-Locks weiterverwenden. Ein Build je Ort;
-  lokal und remote dürfen gleichzeitig laufen. Source-Sync und Imagewechsel
-  überholen keinen laufenden oder ungeklärten Remote-Job. Lokale Compilerinputs
-  während eines nativen Builds unverändert halten.
-- [ ] Im Remote-Job läuft der im Image eingebettete Worker. Nach Änderungen an
-  ihm ein passendes Image vorbereiten und dessen tatsächliche Version prüfen;
-  die hochgeladene neuere Source-Datei ersetzt ihn nicht automatisch.
+Stand: Source-Snapshot, getrennte Caches/Sperren und der Apple-/PG-Cross-Zweig
+sind vorhandene Basis. Kein Neubau dieser Infrastruktur erforderlich; bei neuen
+Aufrufarten nur deren Anschluss an die bestehenden Verträge ergänzen.
 
-## 3. Fertige Programme gezielt exportieren und herunterladen
+- [x] `HOST` bezeichnet die Ausführungsplattform der Build-Helfer, `TARGET` das
+  Produktziel. Build-Skripte wählen danach ihre vorhandenen Compiler-/SDK-Pfade;
+  `cfg!(target_os=...)` im Build-Skript nicht als Produkt-Target auslegen.
+  Den funktionierenden PostgreSQL-/Apple-Cross-Zweig wiederverwenden.
+- [x] Für remote macOS OSXCross/Apple-SDK, für remote Linux die Linux-Werkzeuge
+  verwenden. Keine Apple-Variablen in Linux-Aufträge übernehmen. Linux-Programme
+  und macOS-Programme ausschließlich in der passenden Umgebung ausführen.
+- [x] Native Helfer/Proc-Macros werden von Cargo je Compiler-Host gebaut.
+  Deren Quellcode nicht pauschal ändern und ihre Binärdateien nicht zwischen
+  Linux und macOS kopieren. Gleicher Rust-Stand macht diese Caches nicht identisch.
+- [x] Vorhandene Basis: kanonischen lokalen Targetpfad und bestehenden Image-spezifischen
+  Remote-Cache erhalten. Kein Target-Sync, kein neuer nativer Buildbaum, kein
+  allgemeiner Cache-Dienst. Unveränderte Remote-Source-Dateien behalten wie
+  bisher ihre Zeitstempel; keine unnötige Invalidierung durch Touching/Clean.
+- [x] Bestehende getrennte Sperren beibehalten: ein lokaler und ein Remote-Job
+  können parallel laufen, derselbe mutable Cache bleibt seriell. Quellabgleich
+  nur lokal → remote. Native Compilerinputs während des Builds nicht verändern.
+  Der Worker im Image muss dem verwendeten Controllerprotokoll entsprechen.
 
-- [ ] Im bestehenden Worker ausschließlich die angeforderten Produktprogramme
-  erfassen. Dafür die aktuellen Cargo-Artefaktmeldungen verwenden, einschließlich
-  gültiger warmer `fresh`-Ergebnisse. Keine Auswahl nach dem neuesten Cache-Glob.
-- [ ] Die dazu erforderliche strukturierte Cargo-Ausgabe gezielt im bestehenden
-  Commandvalidator zulassen. Cargo-Exitcode und erwartete ausführbare Artefakte
-  prüfen; ein fehlendes Programm darf kein erfolgreicher leerer Export sein.
-- [ ] Nur tatsächlich nötige Begleitprogramme und Laufzeitdateien mitnehmen.
-  Besonders `monty_worker` aus `brassclaw_monty_host` muss bei Monty-Nutzung für
-  dasselbe Target gebaut und neben das Produktprogramm gepackt werden:
-  `installed_worker()` sucht dort. Dessen Produktionsauflösung nicht lockern.
-- [ ] Die ausgewählten Dateien noch unter dem Compile-Lock in ein eigenes
-  Jobpaket kopieren, bevor spätere Builds den Cache ändern können. Bestehende
-  Jobbelege um Artefaktidentität, Dateipfad, Größe und SHA-256 ergänzen.
-  Für benötigtes PostgreSQL/pgvector die tatsächlichen ausgewählten Bytes prüfen;
-  ein vorhandener leerer Linux-Platzhalter genügt nicht für diese Fähigkeit.
-- [ ] Remote-macOS-Pakete automatisch nach
-  `$CARGO_TARGET_DIR/modal-build/jobs/<job-id>/` herunterladen. Temporär schreiben,
-  Dateipfade/Hashes prüfen und erst vollständig als bereit markieren. Dabei das
-  Paketlayout mit benachbartem `monty_worker` erhalten.
-- [ ] Remote-Linux-Programme im passenden Remote-Job ausführen; deren Binary muss
-  nicht zum Ausführen lokal kopiert werden. Logs, Exitstatus und Hashbelege
-  werden automatisch lokal übernommen. Ein zusätzlicher Paketdownload bleibt
-  eine ausdrückliche Archivierungsoption.
+## 4. Genau benötigte Artefakte übernehmen und verwenden
 
-### Rücksync: lokale Dateien und neuere Ergebnisse schützen
+Code angeschlossen: Runtimepaket, Runner und Konfliktunterscheidung.
+Eine erfolgreiche Skriptprüfung ersetzt keine echte neue Image-/Native-Abnahme.
 
-**Remote darf keine nativen Cargo-Ausgaben, lokalen Quellen oder fremden
-Jobdateien überschreiben.** Derselbe Dateiname allein begründet keine Identität.
+- [x] Vorhandenen Export/Collector für Tests weiterverwenden. Nur fehlende
+  Produkt-/Worker-Übergaben ergänzen. Benötigte Dateien vor Cachefreigabe in ein
+  eigenes Jobpaket kopieren; keine Hardlinks auf später überschreibbare Ausgaben.
+- [x] Das Paketlayout erhalten: Produktprogramme/`monty_worker` nebeneinander,
+  Testbinaries in `deps/`. Damit funktioniert die vorhandene Worker-Nachbarsuche
+  ohne neue Produktions-Overrides. Passende Bibliotheken und erforderliche
+  PG-/pgvector-Bestandteile mitberücksichtigen; keine leeren Platzhalter als
+  funktionsfähige Laufzeit ausgeben.
+- [x] macOS-Testpakete automatisch lokal bereitstellen und den vorhandenen
+  Execution-Runner auf den exakten Testbinary-Pfad richten. Nicht erneut lokal
+  `cargo test` starten, um das gerade gelieferte Programm wieder zu bauen.
+  Bestehende Backend-/Fixture-Locks und Testfilter beibehalten.
+- [x] Nur bei tatsächlich ausgewählten Tests nötige Laufzeitpfade anpassen:
+  `env!("CARGO_MANIFEST_DIR")` und `env!("CARGO_BIN_EXE_...")` enthalten ggf.
+  tote Remote-Pfade. Ein anderer Arbeitsordner repariert sie nicht. Bestehenden
+  Testhelper gezielt um einen expliziten Paket-/Ressourcenpfad ergänzen; keine
+  pauschale Suite-Migration oder neuen Testframeworks. Fehlt ein tragfähiger
+  Laufzeitanschluss, diesen Auftrag lokal belassen bzw. vor Remote-Start ablehnen.
+- [x] Rücktransfer ausschließlich in den vorhandenen eigenen Jobbereich unter
+  `$CARGO_TARGET_DIR/modal-build/jobs/<job-id>/`. Native Cargo-Ausgaben, lokale
+  Quellen und fremde Jobs niemals überschreiben. Identische Job-/Hashdaten
+  wiederverwenden; abweichende veröffentlichte Bytes als Konflikt behandeln.
+  Neue Versionen erhalten neue Pakete. Ein gemeinsamer `current`-Verweis ist
+  nicht erforderlich. Falls später ergänzt: nur nachgewiesenen Nachfolger
+  derselben Artefaktidentität atomar veröffentlichen, nie einen verspäteten
+  Remote-Stand über einen inzwischen neueren lokalen Stand setzen.
 
-Der einfache Standard vermeidet Binärdatei-Überschreibungen vollständig:
-Jeder Build erhält sein eigenes unveränderliches Jobpaket. Neue Versionen landen
-in einem neuen Paket. Auch lokal gebaute Programme bleiben an ihrem bisherigen
-Cargo-Pfad; ein Remote-Download ersetzt sie dort niemals.
+## 5. Keine zusätzliche Validierungsbürokratie
 
-- [ ] Wiederholter Download desselben Jobs: Sind Zielpfad und SHA-256 identisch,
-  nichts ändern. Sind vorhandene Bytes abweichend, einen Konflikt melden und
-  getrennt herunterladen; keine vorhandene Datei still überschreiben.
-- [ ] Unvollständige temporäre Downloads dürfen nur innerhalb des eigenen Jobs
-  aus demselben verifizierten Remote-Paket erneut erstellt werden. Sie sind
-  weder lokale Buildausgaben noch veröffentlichte Programmversionen.
-- [ ] Für einen bequemen gemeinsamen Aufruf optional nur einen kleinen
-  `current`-Verweis pro logischem Artefakt führen. Er zeigt auf ein vollständiges
-  Jobpaket; die Programme selbst werden nicht gegenseitig überschrieben.
-  Lokale Builds können dafür eine Kopie ihres Programmpakets veröffentlichen,
-  ohne ihre originalen Cargo-Ausgaben zu verändern.
-- [ ] Die logische Artefaktidentität umfasst Package, Binärziel, Produkt-Target,
-  Profil und Featureauswahl. Linux/macOS, Debug/Release oder andere Programme
-  haben eigene Identitäten und dürfen niemals dieselbe Ausgabe ersetzen.
-- [ ] Den gemeinsamen Verweis nur dann ersetzen, wenn eine **nachgewiesene neue
-  Version desselben Artefakts** vorliegt: neuer aufgenommener Eingabestand,
-  erfolgreicher passender Build, vollständiges geprüftes Paket und eindeutig
-  dokumentierter Bezug zur bisher veröffentlichten Version. Compiler-/SDK-
-  Wechsel als Build-Eingaben und Provenienz festhalten. Ein neuer Job mit
-  unveränderten Eingaben oder nur abweichenden Bytes beweist keinen Nachfolger.
-- [ ] Beim Start eines solchen Veröffentlichungsauftrags die erwartete aktuelle
-  Version notieren. Beim Abschluss unter einem kurzen Veröffentlichungs-Lock
-  vergleichen: Hat inzwischen ein lokaler oder anderer Remote-Build den Verweis
-  weitergesetzt, bleibt das neue Paket separat erhalten. Der ältere/später
-  fertig gewordene Auftrag darf den Verweis nicht zurücksetzen.
-- [ ] Zusätzlich vor Veröffentlichung prüfen, dass der aufgezeichnete Quellstand
-  dem aktuell vorgesehenen lokalen Eingabestand entspricht. Unterschiedliche
-  Snapshot-Hashes sind nicht automatisch zeitlich geordnet. Bei alten, parallelen
-  oder unklaren Ständen keinen automatischen Austausch vornehmen.
-- [ ] Dateizeit, Downloadzeit und Versionsnummer aus `Cargo.toml` allein sind
-  kein Nachweis. Unbekannte vorhandene Dateien ohne Herkunftsbeleg nicht ersetzen.
-  Den neuen Verweis erst nach allen Prüfungen atomar austauschen; frühere Pakete
-  bleiben für laufende Prozesse und vorhandene Nachweise erhalten.
+Jobreceipts, atomarer Collector und Status-Recovery bleiben erhalten.
+Neue Laufzeit-Anschlüsse sind im Code vorhanden, ihre tatsächliche Remote-Abnahme
+bleibt sichtbar getrennt von Collector- und Skriptprüfungen.
 
-Der `current`-Verweis ist Komfort, keine Voraussetzung für den ersten nutzbaren
-Ablauf. Ausführung über den expliziten Jobpfad funktioniert ohne ihn und ohne
-allgemeines Versionsverwaltungssystem für Builddateien.
+- [x] Vorhandene Request-/Source-/Completion-/Artefaktbelege weiterverwenden.
+  Keine neue Zertifizierung, vollständige Prüfmatrix, Pflichtbenchmarks,
+  zusätzliche Testserie oder separates Speedup-Abnahmeprojekt einführen.
+- [x] Bestehende Sicherheits-, Disk-, Hash-, Aktivierungs- und Ressourcenprüfungen
+  erhalten. Ein Test mit falschem Binary oder null verlangten ausgeführten
+  Fällen zählt nicht als erfolgreich; dafür kein neues Prüfverfahren erfinden.
+- [ ] Normale notwendige Arbeit genügt zur praktischen Bestätigung: den nächsten
+  tatsächlich benötigten Build über den geänderten Pfad ausführen und die
+  ohnehin verlangten Tests aus genau dessen Artefakten laufen lassen. Keine
+  zusätzliche große Neukompilierung ausschließlich für diesen Skriptumbau.
+  Die nächsten normalen Logs können die Standortentscheidung verbessern;
+  eine Vorher-/Nachher-Benchmarkserie ist kein Abschlusskriterium.
+- [x] Nur wenn tatsächlich geänderte Parsing-/Collectorlogik eine vorhandene
+  lokale Skriptregression betrifft, diese passende Prüfung wiederverwenden
+  oder gezielt ergänzen. Keine Rust-/Datenbanktests für bloße Argumentangleichung
+  hinzufügen. Neue Ausführungsmöglichkeiten trotzdem nicht allein aus
+  Quellinspektion als bereits funktionsfähig/qualifiziert behaupten.
+- [x] Vorhanden: Unterbrochene Übernahme mit `status`/`collect_result` fortsetzen,
+  ohne neuen Compilejob. Client-/Transportfehler und Remote-Ende werden getrennt
+  behandelt; `collection_pending` bewahrt den bekannten Remote-Abschluss.
+- [x] Für die angeschlossenen Ausführungswege keine automatische Testwiederholung
+  hinzufügen. Deadline einschließlich Vorbereitung und Shutdown-/Commitreserve
+  korrekt weiterverwenden: der Watchdog erhält nur das um
+  tatsächliche Vorbereitung und Abschlussreserve verminderte Restbudget, keine
+  neue volle Frist pro Buildphase.
 
-## 4. Gewählte Programme ausführen; Tests gezielt anschließen
+Für Start, Begleitung und Abschluss von Screen-Läufen gilt verbindlich die
+jeweils aktuelle globale Agent-Regel **„Screen-Builds und offene Chat-Turns“**.
+Die dort vorgesehenen Skripte umschließen bei Bedarf den bestehenden lokalen
+Buildaufruf oder Modal-Controller; Build-Locks und Ressourcenregeln bleiben
+wirksam. Keine zweite Screen-Überwachungslogik und keine zusätzlichen Tests
+für diese Einbindung einführen.
 
-- [ ] Vor Ausführung das tatsächliche Binaryformat, die Architektur und benötigte
-  Laufzeitbibliotheken prüfen. macOS-Programme nur auf dem Mac, Linux-Programme
-  in der passenden Linux-Umgebung starten.
-- [ ] Einen ausdrücklich gewählten endlichen Programmbefehl mit Timeout,
-  Arbeitsverzeichnis und notwendigen Runtime-Einstellungen ausführen. Ausgabe,
-  Exitstatus und Programmhash im vorhandenen Jobnachweis festhalten. Produkt-
-  Smokes wie `--version`/`--help` sind keine umfassende Testabdeckung.
-- [ ] Benötigt ein Programmlauf PostgreSQL oder weitere Dienste, deren echte
-  Runtime-Voraussetzungen vor Start prüfen. Insbesondere muss Linux-`initdb`
-  unter einem geeigneten Nicht-Root-Benutzer mit Schreib-/Shared-Memory-Rechten
-  laufen können. Bei fehlender Voraussetzung sichtbar abbrechen; kein stiller
-  Hostwechsel und keine Behauptung, erfolgreicher Cross-Build beweise Laufbarkeit.
-- [ ] Bestehende lokale Tests zunächst weiter über ihren vorhandenen nativen
-  Ablauf ausführen. Ein Remote-Produktbuild ersetzt weder Testkompilierung noch
-  deren Features/Profil. Keine zusätzliche lokale Neukompilierung auslösen,
-  wenn lediglich das übernommene Produktprogramm ausgeführt werden soll.
-- [ ] Einen konkreten Test nur dann automatisch anschließen, wenn er bereits
-  einen passenden vorhandenen Runner und belegte Voraussetzungen besitzt.
-  Dessen exakten Programm-/Artefaktpfad übergeben; keine zufällige lokale Binary
-  über PATH oder aktuelle Cargo-Dateien auswählen. Fehlende Dienste/Fixtures
-  sichtbar melden, statt eine nicht ausgeführte Prüfung als Erfolg zu zählen.
+## Reihenfolge und Abschluss
 
-## 5. Kleine notwendige Robustheit im bestehenden Ablauf
+1. Vorhandene Produkt-/Testaufrufe und Grenzen angleichen; native Kompatibilität
+   erhalten. Bereits vorhandene Testcollector-/Statuslogik nicht neu schreiben.
+2. Benötigten Apple-Testbuild mit sicherer lokaler Übernahme verbinden; danach
+   genau die fachlich ohnehin benötigten Fälle ausführen.
+3. Nur bei konkretem Arbeitsbedarf Linux-Tests remote ergänzen und unabhängige
+   Arbeit parallel legen. Kein zusätzlicher Testbatch nur zur Demonstration.
 
-- [ ] Bestehende Job-UUIDs, Request-/Source-/Completion-Belege, Hashprüfungen und
-  Locks behalten. Keine neue allgemeine Phasendatenbank oder Schedulerpipeline.
-- [ ] Compilerergebnis, Paketübernahme und optionale Ausführung im vorhandenen
-  Jobnachweis unterscheidbar festhalten. Ein Downloadfehler startet keinen neuen
-  Build; ein Test-/Programmlauf wird nach verlorenem Ergebnis nicht automatisch
-  wiederholt. Teilpakete werden niemals ausgeführt.
-- [ ] `status` und normalen Abschluss denselben geprüften Downloadpfad verwenden
-  lassen. Herkunft aus dem ursprünglichen Job übernehmen, nicht aus heutigen
-  Defaults. So lässt sich ein unterbrochener Download ohne Neubuild nachholen.
-- [ ] Remote-Terminalität weiterhin tatsächlich feststellen. Ein Verbindungsabbruch
-  ist kein Ende des Workers; ein belegter Remote-Abschluss wird durch einen
-  späteren lokalen Downloadfehler nicht wieder unbekannt. Erst nach beendetem
-  Remote-Build/-Programmlauf neue Source-/Cacheänderungen zulassen.
-- [ ] Die bestehende Deadline einschließlich Sourcevorbereitung und ggf.
-  Remote-Ausführung einhalten, genügend Zeit für Beendigung und Commit lassen.
-  Abbrüche an eigene Prozesse weiterreichen, Logs/Ergebnisse dauerhaft speichern
-  und bezahlte Worker nach der Aufgabe beenden. Bestehende Disk-Regeln beachten.
+Fertig ist die Skriptangleichung, wenn die benötigten Aufrufe dieselbe Auswahl
+korrekt an den passenden Host weiterreichen, dort vorhandene Caches nutzen und
+vorhandene Runner die richtigen Artefakte erhalten. Erwartbare Beschleunigung
+folgt aus vermiedener Doppelarbeit und günstigerer Verteilung; universell kürzere
+Laufzeiten sind ohne Hardware-/Cache-/Transferbedingungen logisch nicht beweisbar.
+Ein nicht vorteilhafter Remote-Auftrag bleibt lokal. Es gibt kein Geschwindigkeits-
+versprechen, das durch zusätzliche Builds erst erzwungen werden müsste.
 
-## Umsetzung und minimale Abnahme
+## Konkreter Anschluss und verbleibende Abnahme — 2026-11-15
 
-1. Gemeinsamen Einstieg mit unverändertem lokalen Ablauf verbinden; Einstellungen
-   und Ablehnung unpassender Kombinationen durch vorhandene Skripttests prüfen.
-2. Remote-macOS-Produktpaket samt nötigem Worker automatisch lokal übernehmen.
-   An einem ohnehin notwendigen qualifizierten Build Hashes, Paketlayout und
-   tatsächliche lokale Programmausführung nachweisen.
-3. Linux-Produktbuild und ausdrücklich gewählte Remote-Ausführung im vorhandenen
-   Worker ergänzen. Linux-Image, Runtime und Export separat passend prüfen;
-   alte Apple-CLI-Qualifikation gilt dafür nicht automatisch.
-4. Lokal/remote parallele Builds, wiederholten Download, Übertragungsabbruch und
-   Dateikonflikt prüfen. Optionalen `current`-Verweis zusätzlich gegen einen
-   inzwischen neueren lokalen Build und einen verspäteten alten Remote-Build
-   prüfen: Beide dürfen keine falsche Ersetzung verursachen.
-5. Nur die tatsächlich angenommenen Modi dokumentieren/aktivieren. Vorhandene
-   Logs und Evidenz wiederverwenden; keine teuren reinen Timing-Wiederholungen.
+- Gemeinsamer Einstieg: `python3 scripts/local_build.py --host modal --platform apple --confirmed-modal --qualification --native-test <exakter Libtestname> --test-timeout-secs <bestehende Falldeadline> -- cargo test --locked --no-run --lib -p brassclaw_reborn_composition --features skills-db,brassclaw_pg/test-support --target aarch64-apple-darwin`.
+  `--qualification` darf nur für den tatsächlich nächsten benötigten Image-Abnahmelauf verwendet werden; es aktiviert nichts. Ohne diese Option gilt die bestehende Aktivierung. Lokale Aufrufe ohne `--host modal` fragen weder nach Standort noch nach Modalzugang.
+- `accept-native <Job-ID> --test <exakter Name> --test-timeout-secs <Deadline>` nimmt ein bereits abgeholtes Testpaket an. `--test-env <lokales JSON>` liefert bestehende Fixturepfade, nicht Modell-/Produktkonfiguration. Der Runner verifiziert die Original-Quellen und setzt `BRASSCLAW_TEST_SOURCE_ROOT` für die betroffenen vorhandenen Testhelfer. Er startet kein Cargo und wiederholt nach Fehlern keine Fälle automatisch.
+- `activate --test-mode <Job-ID>` schaltet ausschließlich den unabhängig qualifizierten Testmodus dieser Worker-/Imageidentität frei. Produkt- und Testaktivierung bleiben getrennt. Eine neue Workerdatei im Source-Sync ersetzt keinen unveränderlichen Image-Worker.
+- Source-Vorbereitung, Produkt und notwendiger normaler Worker teilen sich eine monotone Gesamtdeadline mit der vorhandenen 120-Sekunden-Abschlussreserve. Ein abgelaufener Vorbereitungsanteil startet kein Cargo mehr.
+- Noch auszuführen ist die echte neue Image-/Remote-/Native-Verbindung beim nächsten ohnehin benötigten, vorteilhaften Apple-Auftrag. Bisherige Produktbelege werden nicht als neue Testabnahme verwendet. Keine zusätzliche große Kompilierung oder Linux-Testserie nur zur Demonstration starten.
 
-Abnahme: Die drei Betriebsarten funktionieren für die ausdrücklich ausgewählten
-Produktprogramme. Quellen und Cargo-Caches bleiben getrennt, Pakete kommen
-vollständig an, lokale Dateien bleiben geschützt und gewählte Programme laufen
-auf der passenden Plattform. Keine allgemeine Testunterstützung behaupten.
+### Aktuelle lokale Belege
 
-## Später: allgemeine Testmigration
-
-Erst für einen konkreten Bedarf erweitern. Der heutige Apple-Controller ist
-CLI-Dev-/Release-only; das ist durch diesen Plan noch nicht geändert.
-`cargo test --no-run`, zuverlässiger Testartefaktexport und Testausführung brauchen
-zusammenhängende Anpassungen in den bestehenden Validator-/Worker-/Runnerpfaden.
-
-Insbesondere enthalten CLI-Tests `env!("CARGO_BIN_EXE_brassclaw-reborn")` und
-Composition-Tests `env!("CARGO_MANIFEST_DIR")`. Andere benötigen Python-/Node-
-Dateien, Datenbanken oder den benachbarten Monty-Worker. Solche Tests müssen ihre
-konkreten Runtime-Pfade und Abhängigkeiten portabel auflösen, bevor man sie
-zwischen Hosts verschiebt. Ein anderer Arbeitsordner oder Binary-Download allein
-repariert diese Pfade nicht. Diese Arbeit ist **kein Blocker des einfachen
-Produktbuild-Kerns** und wird nicht vorsorglich für die gesamte Suite umgesetzt.
+- Run87: `cargo clippy --all-targets -- -D warnings` unter Rust 1.100 für die
+  tatsächlichen Production-/Testfeatures endet mit 0 und ohne Warnungen. Der
+  breite Source-Guard schlägt wegen paralleler Dokumentationsbearbeitung fehl;
+  dieser Beleg bleibt erhalten. Die separate Review beansprucht nur unveränderte
+  Rust-/Lintlogik. Geänderte eingebettete Texte sind erst von Run88 erfasst.
+- Run88: Rust 1.98.1, neun vorhandene Testprogramme im bisherigen gemeinsamen
+  Featuregraph, keine Warnungen, vollständige native Unwind-Sektionen. Der
+  unveränderte normale Worker wird nur nach Source-/Compiler-/Umgebungs-/Hash-
+  Nachweis wiederverwendet. Keine zweite Kompilierung für die drei Laufzeitfälle.
+- Echter Sandbox-Start mit privatem `SCREENDIR` und Desktop-IPC funktioniert.
+  Die PG-Initialisierung benötigt nachgewiesenermaßen den dort gesperrten
+  `shmget`-Aufruf; nur dieser native DB-Test braucht eine passende Ausführung.
+- Der vorbestehende HF-Fixture lädt jetzt seine echte `AutoConfig`; die bisherige
+  Oracle-Umgebung hatte nur noch Python-Verknüpfungen. Eine isolierte Umgebung
+  unter `target/test-tools/oracle-20261115` auf der SSDE nutzt die bereits
+  vorhandenen `requirements-oracle.txt`. Originale Modell-/Templatebytes und die
+  Warnungsprüfung bleiben erhalten. Der pip-Cache ist dort ebenfalls tatsächlich
+  beschreibbar, ohne globale Installationen zu ändern.
+- Details und Fehlerbelege: [Abnahme und Branchbereinigung](docs/validation/2026-11-15-combined-build-and-branch-cleanup.md).

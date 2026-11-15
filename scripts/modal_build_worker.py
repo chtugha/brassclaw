@@ -63,9 +63,10 @@ def command_options(command, target=None):
     if command[1] in {"check", "clippy"}:
         switches |= {"--tests", "--all-targets", "--benches"}
         values.update({"--test": "--test", "--bench": "--bench"})
+    if command[1] in {"build", "test"}:
+        values["--message-format"] = "--message-format"
     if command[1] == "test":
         switches |= {"--no-run"}
-        values["--message-format"] = "--message-format"
     options = {}
     args = iter(command[2:])
     for arg in args:
@@ -98,6 +99,7 @@ def command_options(command, target=None):
                 or any(key in options for key in {"--release", "--bins", "--bin"})
                 or options.get("--profile", ["test"]) != ["test"]):
             raise ValueError("Test preparation supports only Apple composition --lib with the test profile")
+    if command[1] in {"build", "test"}:
         formats = options.get("--message-format", [])
         if len(formats) > 1 or any(value not in {"json", "json,json-diagnostic-short",
                 "json,json-diagnostic-rendered-ansi", "json-render-diagnostics"} for value in formats):
@@ -107,7 +109,7 @@ def command_options(command, target=None):
 
 def validate_command(command, target=None):
     command_options(command, target)
-    if command[1] != "test":
+    if command[1] not in {"build", "test"}:
         return list(command)
     # Normalize before admission; retain the original separately. The worker
     # revalidates that this is the command actually passed to Popen.
@@ -128,10 +130,110 @@ def command_mode(command, target):
     if target == APPLE_TARGET:
         if (command[1] != "build" or options.get("--package") != ["brassclaw_reborn_cli"]
                 or options.get("--bin") != ["brassclaw-reborn"]
-                or any(key in options for key in {"--profile", "--lib", "--bins"})):
-            raise ValueError("The qualified Apple path builds -p brassclaw_reborn_cli --bin brassclaw-reborn using dev or --release")
+                or any(key in options for key in {"--lib", "--bins"})
+                or options.get("--profile", ["dev"]) not in [["dev"], ["test"], ["release"]]
+                or ("--release" in options and "--profile" in options)):
+            raise ValueError("Apple product builds require the CLI binary and one dev/test/release profile")
         return APPLE_BUILD_MODE
     return "linux-compile/1"
+
+
+def worker_command(target):
+    # A normal executable, never a libtest binary or a worker in every profile.
+    return ["cargo", "build", "--locked", "-p", "brassclaw_monty_host", "--bin", "monty_worker",
+            "--target", target, "--message-format=json"]
+
+
+def package_ids(manifest):
+    package = tomllib.loads(manifest.read_text(encoding="utf-8"))["package"]
+    return {manifest.parent.as_uri().replace("file:", "path+file:", 1) + "#" + suffix
+            for suffix in (package["version"], package["name"] + "@" + package["version"])}
+
+
+def collect_worker_artifact(messages, finished, cache, job):
+    if finished != [{"reason": "build-finished", "success": True}]:
+        raise ValueError("Companion worker build did not finish successfully")
+    expected = cache / "target" / APPLE_TARGET / "debug/monty_worker"
+    manifest = cache / "repository/crates/brassclaw_monty_host/Cargo.toml"
+    identities = package_ids(manifest)
+    selected = [message for message in messages if message.get("executable") == str(expected)
+                and message.get("manifest_path") == str(manifest) and message.get("package_id") in identities
+                and message.get("target", {}).get("name") == "monty_worker"
+                and message.get("target", {}).get("kind") == ["bin"]
+                and message.get("profile", {}).get("test") is False
+                and type(message.get("fresh")) is bool
+                and str(expected) in message.get("filenames", [])]
+    if len(selected) != 1:
+        raise ValueError("Expected one exact normal companion worker from Cargo")
+    artifact = snapshot_executable(expected, cache / "target", job / "artifacts")
+    artifact.update(role="monty_worker", cargo=selected[0])
+    return {"monty_worker": artifact}
+
+
+def collect_product_artifact(messages, finished, cache, job, command):
+    if finished != [{"reason": "build-finished", "success": True}]:
+        raise ValueError("Product Cargo invocation did not finish successfully")
+    options = command_options(command, APPLE_TARGET)
+    profile = "release" if "--release" in options or options.get("--profile") == ["release"] else "debug"
+    expected = cache / "target" / APPLE_TARGET / profile / "brassclaw-reborn"
+    manifest = cache / "repository/crates/brassclaw_reborn_cli/Cargo.toml"
+    identities = package_ids(manifest)
+    selected = [message for message in messages if message.get("executable") == str(expected)
+                and message.get("manifest_path") == str(manifest) and message.get("package_id") in identities
+                and message.get("target", {}).get("name") == "brassclaw-reborn"
+                and message.get("target", {}).get("kind") == ["bin"]
+                and message.get("profile", {}).get("test") is False
+                and type(message.get("fresh")) is bool
+                and str(expected) in message.get("filenames", [])]
+    if len(selected) != 1:
+        raise ValueError("Expected one exact CLI product executable from Cargo")
+    (job / "artifacts").mkdir(mode=0o700, exist_ok=True)
+    artifact = snapshot_executable(expected, cache / "target", job / "artifacts")
+    artifact.update(role="product", cargo=selected[0])
+    return {"brassclaw-reborn": artifact}
+
+
+def collect_pgvector(messages, cache, job):
+    manifest = str(cache / "repository/crates/brassclaw_embedded_postgres/Cargo.toml")
+    packages = {message["package_id"] for message in messages
+                if message.get("manifest_path") == manifest and message.get("package_id")}
+    directories = {message["out_dir"] for message in messages
+                   if message.get("reason") == "build-script-executed"
+                   and message.get("package_id") in packages and message.get("out_dir")
+                   and Path(message["out_dir"]).is_relative_to(cache / "target" / APPLE_TARGET)}
+    if len(directories) != 1:
+        raise ValueError("Missing/ambiguous current Cargo PostgreSQL build output")
+    source = Path(directories.pop()) / "pgvector.tar.gz"
+    source.relative_to(cache / "target" / APPLE_TARGET)
+    if source != source.resolve(strict=True) or not source.is_file():
+        raise ValueError("PostgreSQL artifact must be a canonical regular file")
+    with tarfile.open(source) as archive:
+        names = archive.getnames()
+        libraries = [member for member in archive if member.name in {"lib/vector.so", "lib/vector.dylib"}]
+        if (len(libraries) != 1 or not libraries[0].isfile()
+                or "share/extension/vector.control" not in names or "share/extension/vector--0.8.0.sql" not in names):
+            raise ValueError("Incomplete pgvector archive")
+        if archive.extractfile(libraries[0]).read(8) != struct.pack("<II", 0xfeedfacf, 0x0100000c):
+            raise ValueError("pgvector is not Mach-O arm64")
+    destination = job / "artifacts/pgvector.tar.gz"
+    with source.open("rb") as original, destination.open("xb") as output:
+        shutil.copyfileobj(original, output)
+    if digest_file(destination) != digest_file(source):
+        raise ValueError("PostgreSQL artifact changed while copying")
+    destination.chmod(0o400)
+    return {destination.name: {"sha256": digest_file(destination), "size": destination.stat().st_size,
+                               "role": "embedded-pgvector", "embedded": True}}
+
+
+def verify_apple_dependencies(binary):
+    # These binaries embed PostgreSQL archives and Rust dependencies. Do not
+    # advertise an executable with unresolved build-container dylib paths.
+    output = subprocess.check_output(["llvm-objdump", "--macho", "--dylibs-used", str(binary)], text=True)
+    for line in output.splitlines()[1:]:
+        name = line.strip().split(" (", 1)[0]
+        if name and not name.startswith(("/usr/lib/", "/System/Library/")):
+            raise ValueError(f"Unpackaged Apple dynamic dependency: {name}")
+    return output
 
 
 def worker_identity():
@@ -159,10 +261,25 @@ def test_subject(repository, command):
     options = command_options(command, APPLE_TARGET)
     features = manifest.get("features", {})
     selected = set(features) if "--all-features" in options else set()
+    dependency_features = set()
     if "--no-default-features" not in options and "default" in features:
         selected.add("default")
     for group in options.get("--features", []):
         for feature in re.split(r"[,\s]+", group):
+            if not feature:
+                continue
+            feature = feature.removeprefix(TEST_PACKAGE + "/")
+            if feature == "brassclaw_pg/test-support":
+                dependency = manifest.get("dependencies", {}).get("brassclaw_pg")
+                if not isinstance(dependency, dict) or dependency.get("optional", False):
+                    raise ValueError("test-support requires the existing nonoptional brassclaw_pg dependency")
+                dependency_manifest = (manifest_path.parent / dependency["path"] / "Cargo.toml").resolve(strict=True)
+                dependency_manifest.relative_to(repository)
+                pg = tomllib.loads(dependency_manifest.read_text(encoding="utf-8"))
+                if pg["package"]["name"] != "brassclaw_pg" or "test-support" not in pg.get("features", {}):
+                    raise ValueError("Unqualified brassclaw_pg/test-support dependency")
+                dependency_features.add(feature)
+                continue
             if feature not in features:
                 raise ValueError("Only named composition features are supported for test preparation")
             selected.add(feature)
@@ -179,9 +296,9 @@ def test_subject(repository, command):
             "contract": {"package": package["name"], "version": package["version"], "target_name": name,
                          "target_kind": ["lib"], "profile": "test", "features": sorted(selected),
                          "manifest_path": manifest_path.relative_to(repository).as_posix(),
-                         "manifest_sha256": digest_file(manifest_path)},
-            "package_ids": [manifest_path.parent.as_uri().replace("file:", "path+file:", 1) + "#" + suffix
-                            for suffix in [package["version"], package["name"] + "@" + package["version"]]]}
+                         "manifest_sha256": digest_file(manifest_path),
+                         "dependency_features": sorted(dependency_features)},
+            "package_ids": sorted(package_ids(manifest_path))}
 
 
 def snapshot_executable(binary, target_root, artifact_dir):
@@ -394,16 +511,19 @@ def update_cache(staging, destination, manifest):
     verify_tree(destination, manifest["files"])
 
 
-def run_build(storage, request, commit):
+def run_build(storage, request, commit, *, started_monotonic=None):
     command = request["command"]
     target = request.get("target_triple")
     normalized = validate_command(request.get("original_command", command), target)
     if command != normalized:
         raise ValueError("Admitted command differs from normalized original")
     mode = command_mode(command, target)
-    if mode == APPLE_TEST_MODE and (request.get("mode") != mode or request.get("worker_identity") != worker_identity()):
+    if (mode == APPLE_TEST_MODE or request.get("runtime_package") == 1) and (
+            request.get("mode") != mode or request.get("worker_identity") != worker_identity()):
         raise ValueError("Test mode requires the exact prepared immutable worker")
     started = time.time()
+    started_monotonic = time.monotonic() if started_monotonic is None else started_monotonic
+    deadline = started_monotonic + request["timeout_secs"]
     job_id = str(uuid.UUID(request["job_id"]))
     if not re.fullmatch("[a-zA-Z0-9_-]+", request["image_id"]):
         raise ValueError("Invalid image cache identity")
@@ -439,76 +559,90 @@ def run_build(storage, request, commit):
         subject = test_subject(cache / "repository", command) if mode == APPLE_TEST_MODE else None
         if subject is not None and subject["contract"] != request.get("test_subject"):
             raise ValueError("Materialized test subject differs from admission")
-        messages, finished = [], []
-        with (job / "cargo.log").open("w") as log:
-            child = subprocess.Popen(request["command"], cwd=cache / "repository",
-                                     env=environment, stdout=subprocess.PIPE,
-                                     stderr=subprocess.STDOUT, text=True, start_new_session=True)
-            def stop_cargo():
-                if child.poll() is None:
-                    try:
-                        os.killpg(child.pid, signal.SIGTERM)
-                        child.wait(timeout=request["shutdown_grace_secs"])
-                    except subprocess.TimeoutExpired:
-                        os.killpg(child.pid, signal.SIGKILL)
-                    except ProcessLookupError:
-                        pass
-            watchdog = threading.Timer(max(1, request["timeout_secs"] - 120), stop_cargo)
-            watchdog.start()
-            for line in child.stdout:
-                log.write(line)
-                log.flush()
-                print(line, end="", flush=True)
-                if mode == APPLE_TEST_MODE and line.startswith("{"):
-                    try:
-                        message = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue  # Non-Cargo build-script/proc-macro output remains in log.
-                    if isinstance(message, dict) and message.get("reason") == "compiler-artifact":
-                        messages.append(message)
-                    elif isinstance(message, dict) and message.get("reason") == "build-finished":
-                        finished.append(message)
-            code = child.wait()
+        def execute(selected_command):
+            nonlocal child, watchdog
+            remaining = deadline - time.monotonic() - 120
+            if remaining <= 0:
+                raise TimeoutError("Source preparation exhausted the build deadline before Cargo; no compilation started")
+            messages, finished = [], []
+            with (job / "cargo.log").open("a") as log:
+                log.write("Command: " + json.dumps(selected_command) + "\n")
+                child = subprocess.Popen(selected_command, cwd=cache / "repository",
+                                         env=environment, stdout=subprocess.PIPE,
+                                         stderr=subprocess.STDOUT, text=True, start_new_session=True)
+                executed_child = child
+                def stop_cargo():
+                    if executed_child.poll() is None:
+                        try:
+                            os.killpg(executed_child.pid, signal.SIGTERM)
+                            executed_child.wait(timeout=request["shutdown_grace_secs"])
+                        except subprocess.TimeoutExpired:
+                            os.killpg(executed_child.pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                watchdog = threading.Timer(remaining, stop_cargo)
+                watchdog.start()
+                try:
+                    for line in child.stdout:
+                        log.write(line)
+                        log.flush()
+                        print(line, end="", flush=True)
+                        if line.startswith("{"):
+                            try:
+                                message = json.loads(line)
+                            except json.JSONDecodeError:
+                                continue  # Preserve build-script/proc-macro output in the log.
+                            if isinstance(message, dict):
+                                if message.get("reason") == "build-finished":
+                                    finished.append(message)
+                                else:
+                                    messages.append(message)
+                    return child.wait(), messages, finished
+                finally:
+                    watchdog.cancel()
+                    watchdog.join()
+        packaged = request.get("runtime_package") == 1 and target == APPLE_TARGET
+        code, messages, finished = execute(command)
         result = {"job_id": job_id, "manifest_sha256": request["manifest_sha256"],
                   "image_id": request["image_id"], "command": request["command"],
                   "returncode": code, "target": str(cache / "target"),
-                  "started_at": started, "duration_secs": time.time() - started,
+                  "started_at": started, "duration_secs": time.monotonic() - started_monotonic,
                   "toolchain": load_record("/opt/brassclaw/toolchain.json") if Path("/opt/brassclaw/toolchain.json").exists() else None}
         if mode == APPLE_TEST_MODE:
             result.update(original_command=request["original_command"], mode=mode,
                           worker_identity=worker_identity(), test_subject=subject["contract"])
+        elif packaged:
+            result.update(original_command=request["original_command"], mode=mode, worker_identity=worker_identity())
         artifacts = {}
-        command = request["command"]
-        apple_target = request.get("target_triple") == "aarch64-apple-darwin"
-        if code == 0 and apple_target and command[1] == "build":
-            # Product binary collector: only for explicit 'build' on Apple target.
-            profile = "release" if "--release" in command else "debug"
-            binary = cache / "target" / request["target_triple"] / profile / "brassclaw-reborn"
-            if binary.exists():
-                shape = subprocess.check_output(["file", str(binary)], text=True)
-                if "Mach-O 64-bit arm64 executable" not in shape:
-                    raise ValueError("Result is not an Apple Silicon executable")
-                artifact_dir = job / "artifacts"
-                artifact_dir.mkdir()
-                shutil.copy2(binary, artifact_dir / binary.name)
-                artifacts[binary.name] = {"sha256": digest_file(binary), "size": binary.stat().st_size, "file": shape.strip()}
-                for label, arguments in {"headers": ["--macho", "--private-headers"], "libraries": ["--macho", "--dylibs-used"]}.items():
-                    (job / f"{label}.txt").write_text(subprocess.check_output(["llvm-objdump", *arguments, str(binary)], text=True))
-            pg_archives = list((cache / "target" / request["target_triple"] / profile / "build").glob("brassclaw_embedded_postgres-*/out/pgvector.tar.gz"))
-            if not pg_archives or any(p.stat().st_size < 1024 for p in pg_archives):
-                raise ValueError("Required pgvector artifact absent or empty")
-            for pg in pg_archives:
-                with tarfile.open(pg) as archive:
-                    names = archive.getnames()
-                    libraries = [m for m in archive if m.name in {"lib/vector.so", "lib/vector.dylib"}]
-                    if len(libraries) != 1 or "share/extension/vector.control" not in names or "share/extension/vector--0.8.0.sql" not in names:
-                        raise ValueError("Incomplete pgvector archive")
-                    header = archive.extractfile(libraries[0]).read(8)
-                    if header != struct.pack("<II", 0xfeedfacf, 0x0100000c):
-                        raise ValueError("pgvector is not Mach-O arm64")
-                artifacts[str(pg.relative_to(cache / "target"))] = {"sha256": digest_file(pg), "size": pg.stat().st_size}
-        elif code == 0 and mode == APPLE_TEST_MODE:
-            artifacts = collect_test_artifacts(messages, finished, subject, cache, job, request)
+        if code == 0 and target == APPLE_TARGET:
+            if mode == APPLE_TEST_MODE:
+                artifacts = collect_test_artifacts(messages, finished, subject, cache, job, request)
+                if packaged:
+                    # Preserve the normal profile/deps relationship for installed_worker().
+                    name, artifact = next(iter(artifacts.items()))
+                    (job / "artifacts/deps").mkdir(mode=0o700)
+                    (job / "artifacts" / name).rename(job / "artifacts/deps" / name)
+                    artifact["role"] = "test"
+                    artifacts = {"deps/" + name: artifact}
+            elif mode == APPLE_BUILD_MODE:
+                artifacts = collect_product_artifact(messages, finished, cache, job, command)
+            if packaged:
+                artifacts.update(collect_pgvector(messages, cache, job))
+                companion_command = worker_command(target)
+                worker_code, worker_messages, worker_finished = execute(companion_command)
+                result["companion_command"] = companion_command
+                result["returncode"] = worker_code
+                if worker_code == 0:
+                    artifacts.update(collect_worker_artifact(worker_messages, worker_finished, cache, job))
+                    dependencies = {}
+                    for name, artifact in artifacts.items():
+                        if artifact.get("role") in {"product", "test", "monty_worker"}:
+                            dependencies[name] = verify_apple_dependencies(job / "artifacts" / name)
+                    result["runtime_package"] = {"version": 1, "dependencies": dependencies,
+                                                 "postgresql": "archives embedded by brassclaw_embedded_postgres"}
+                else:
+                    artifacts = {}  # A partial package is never locally runnable.
+        result["duration_secs"] = time.monotonic() - started_monotonic
         result["artifacts"] = artifacts
         temporary_result = job / "completed.json.tmp"
         temporary_result.write_bytes(encoded(result))

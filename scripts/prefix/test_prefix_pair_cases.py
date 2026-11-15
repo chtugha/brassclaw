@@ -45,9 +45,10 @@ class PairCasePreparationTests(unittest.TestCase):
 
 
 def native_fixture():
-    from transformers import AutoTokenizer
+    from transformers import AutoConfig, AutoTokenizer
     root = Path(os.environ['BRASSCLAW_TEST_MODEL_ARTIFACT_ROOT'])
-    tokenizer = AutoTokenizer.from_pretrained(root, local_files_only=True, trust_remote_code=False)
+    config = AutoConfig.from_pretrained(root, local_files_only=True, trust_remote_code=False)
+    tokenizer = AutoTokenizer.from_pretrained(root, config=config, local_files_only=True, trust_remote_code=False)
     original = (root / 'chat_template.jinja').read_text()
     assert tokenizer.chat_template == original, 'original template must remain unchanged'
     sample = 'Reference ü'

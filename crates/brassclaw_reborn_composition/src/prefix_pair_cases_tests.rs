@@ -120,10 +120,7 @@ async fn native_pair_cases_use_actual_store_original_template_worker_and_monty()
     .unwrap();
     let fixture = std::process::Command::new("python3")
         .arg("-B")
-        .arg(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../scripts/prefix/test_prefix_pair_cases.py"),
-        )
+        .arg(crate::test_manifest_dir().join("../../scripts/prefix/test_prefix_pair_cases.py"))
         .arg("--native-fixture")
         .output()
         .unwrap();

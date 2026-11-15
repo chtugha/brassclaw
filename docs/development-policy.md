@@ -122,27 +122,45 @@ affected evidence; unchanged execution logic does not require a blanket remigrat
 
 ## Shared source and central build ownership (2026-10-30)
 
-**Temporary operator override — 2026-11-15:** the log-silence requirement
-(the five-minute trigger for additional session/process/log investigation) is
-paused until the operator explicitly releases it. Status/notification checks
-remain a roughly 60-second target when safely possible; do not interrupt a
-running process or blocking tool operation merely to meet that interval. Wait
-until the next safe opportunity and then inspect the status. The prohibition on
-ending a turn with an owned Screen session remains active. This does not pause
-implementation or validation.
+**Current global Screen contract — operator instruction, 2026-11-15:** use the
+provided `screen-startscript.sh` / `screen-build-helper.sh` for builds/checks
+expected to exceed 60 seconds. On this host they live at `/Volumes/SSDE/brassclaw/`;
+`screen_chat_notify.py` handles direct Desktop IPC without Node or queue fallback.
+Verify the current chat ID before launch, give the session a unique name and keep
+its returned state directory and actual Screen socket directory. Startup success
+is not build success; after ambiguous startup inspect existing sessions/processes
+before retrying. Native target/locks/resource/sandbox rules still apply.
 
-**Global Screen rule — explicit operator instruction, 2026-11-15:** do not
-end a turn while a Screen session assigned to that chat exists. Continue
-independent work and inspect the local status/notification files roughly every
-60 seconds when available without interrupting running processes/tool operations;
-otherwise wait and check at the next safe opportunity. If more than five minutes
-have passed since launch or the last
-successfully queued alive without a build message, inspect the session, actual
-build process and logs. On completion, evaluate the result and confirm that the
-owned session closed. If independent work is exhausted, wait only until the next
-bounded inspection. Do not stop, claim success or interfere with another chat's
-terminal merely because a session is detached. Existing source freezes and
-per-environment serial Cargo custody still apply.
+Keep the normal heartbeat at 180 seconds. While an owned Screen session exists,
+do not end the turn. Continue independent work; check `status.json` and available
+`notifications.jsonl` roughly every 60 seconds when safely possible, using
+`build.log`/`screen.log` for progress. Never interrupt, pause or restart a running
+process or blocking tool operation just to meet that interval; wait until the
+next safe opportunity. An accepted IPC receipt is not proof the chat received it;
+only an actual incoming message proves receipt. Local checks remain necessary.
+
+The five-minute log-silence investigation rule is **active again** under the
+operator's latest clarification. Measure from launch or the last locally
+`accepted: true` alive, not failed sends. Investigate known delivery errors or
+contradictory/stalled status at the next regular check. At completion evaluate
+command exit/signal/error and final notification acceptance separately, then
+confirm the session ended in the recorded socket directory. `state: completed`
+alone precedes the final send and does not prove session closure. Leave foreign
+sessions/processes intact. These monitoring rules do not pause implementation.
+
+**Global temporary-PostgreSQL test authorization — 2026-11-15:** after an
+actual unchanged sandbox syscall denial, the operator has already authorized the
+necessary reviewed initialization/start/query/test-data/stop/cleanup commands
+for an exclusively owned dedicated temporary cluster. Reuse applicable denial
+evidence and request the technical permission through the normal mechanism;
+do not add another substantive user question. Changed scripts still need actual
+effect review. Keep independent cases sandboxed and reuse passing evidence.
+Shared execution needs a concrete common state/fixture reason. This authorizes
+no productive/foreign/existing development database, system or sandbox setting,
+arbitrary unrelated command, access-check bypass or forced termination. Confirm
+orderly server/process exit before removing its own disposable resources; retain
+required evidence and investigate/report shutdown failures instead of forcing a
+stop under this rule alone. The current global instructions own the full scope.
 
 **Latest operator instruction — 2026-11-14, single leading chat:** the package
 orchestrator is stopped. The leading chat now reviews, corrects, validates and

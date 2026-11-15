@@ -1,3 +1,32 @@
+## 2026-11-15 — combined build source connected and independent backlog reconciled
+
+Root implements the updated combined-build plan through the existing local and
+Modal owners: explicit delegation, host compiler selection, exact product/test
+runtime packages with the normal Monty worker, original-deadline accounting,
+protected collection and direct native exact-case execution. The current source
+has 68 passing offline build/controller regressions, six source-sync checks,
+warning-free scoped Rust 1.100 lint and a warning-free Rust 1.98.1 nine-program
+native build. Three actual compiler/PG/model/Monty cases pass from the unchanged
+program in `deps/` beside its normal companion. An old stripped/global Oracle
+environment is repaired on SSDE and the existing requirement pin is preserved.
+See [actual evidence and preserved failures](validation/2026-11-15-combined-build-and-branch-cleanup.md).
+
+No new Modal image/job is bought or activated for this script change. Actual
+new-worker image/remote/native qualification remains required for the next
+needed beneficial Apple job; optional Linux test execution has no current job.
+This is source support, not a new platform/deployment/complete-Bob claim.
+The user-commissioned Kohai/Sempai documentation contribution distinguishes
+current native callers from the desired unqualified structured successor.
+The final Changelog wording correction is after the native build and does not
+claim an exact final release/package image.
+
+All earlier independent prepared code remains accepted in Main. The unchanged
+79-tip review still identifies the actual missing N/Q/R/T owners; new guide text
+adds no implementation of those prerequisites. Twenty-four already-merged local
+branch names are closed with exact archive refs, preserving worktrees and
+unmerged private tips. B1 -> B2 -> B3 resumes only after publishing this connected
+source checkpoint; package orchestration remains stopped.
+
 ## 2026-11-15 — prepared originals/custody accepted
 
 Root alone reviews and corrects the independent R04 selection-policy carrier,

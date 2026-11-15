@@ -230,7 +230,7 @@ pub(super) async fn assert_durable_measurement(
             "probes":serde_json::from_str::<Value>(arguments["probes_json"].as_str().unwrap()).unwrap()});
         let mut oracle = oracle_python()
             .arg(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                crate::test_manifest_dir()
                     .join("../brassclaw_model_encoding/tests/huggingface_oracle.py"),
             )
             .env("BRASSCLAW_ENCODING_MODEL_ORIGINALS", &originals)

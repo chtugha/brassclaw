@@ -39,10 +39,14 @@ pub(crate) async fn tool_policy_browser_acceptance(router: axum::Router) {
         std::process::Command::new("node")
             .arg(script)
             .arg(format!("http://{address}"))
-            .arg(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/../brassclaw_webui_v2_static/static"
-            ))
+            .arg(
+                std::env::var_os("BRASSCLAW_TEST_SOURCE_ROOT")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| {
+                        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+                    })
+                    .join("crates/brassclaw_webui_v2_static/static"),
+            )
             .output()
     })
     .await

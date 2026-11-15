@@ -6,11 +6,11 @@ The compiler host is Linux/amd64; the artifact target is
 Use only the `brassclaw` Modal environment and `brassclaw-build` Volume.
 
 The image is a prerequisite, not proof of a working BrassClaw build or activation.
-Normal Apple offloading supports CLI dev/release product compilation only.
-The [qualification-only composition library test preparation](build-environments.md#qualification-only-apple-library-test-preparation)
-is source support with normal test activation closed. It requires a newly
-prepared exact worker/image and real future native test/fixture qualification;
-old product-build evidence cannot qualify that mode.
+The current source connects CLI dev/test/release product compilation and a
+bounded [Composition library test package](build-environments.md#qualification-only-apple-library-test-preparation)
+with a local runner and separate test activation. These successors require a
+newly prepared exact worker/image and real remote/native qualification; old
+product-build evidence cannot qualify them.
 The user's 2026-11-12 permission also covers time-saving Modal test builds,
 tests and other development work, but those modes require their real connected
 controller/worker/runner support before use; see the
@@ -82,8 +82,10 @@ and terminal receipt collection. It neither takes the native Cargo lock nor
 cancels a remote build when local Cargo runs. One local build and one remote
 build may run concurrently with independent settings and caches; a second remote
 build/sync remains blocked. Unresolved remote jobs require terminal-state
-reconciliation before remote cache/source changes. The current Apple controller supports the standalone CLI product build shown
-below (dev or `--release`), not arbitrary check/profile commands.
+reconciliation before remote cache/source changes. The historical qualified command below uses a standalone CLI product. Current
+source also supports its explicit dev/test/release profiles and the bounded
+Composition libtest package, not arbitrary Apple targets/check/profile commands;
+these added paths need their exact new worker/image qualification.
 The worker verifies base/overlay coverage and
 all resulting source bytes before updating the persistent image-specific source
 and target caches. Host build scripts/proc macros use Linux compilers; only the
@@ -235,3 +237,38 @@ operator activation. The subsequent
 [current-source build](validation/2026-11-03-b3-modal-cli-build.md) records that
 explicit activation and successful use. Read `activation-status` for actual
 current state; documentation does not activate the image.
+
+## Connected runtime package successor — 2026-11-15
+
+The current source extends the bounded Apple path to CLI dev/test/release and
+Composition `--lib --no-run`. The controller admits the normalized actual Cargo
+command, including JSON artifact output and the original argv separately. Named
+Composition features, their selected-package spelling and the actual nonoptional
+`brassclaw_pg/test-support` dependency are supported without a general resolver.
+
+A successful job package retains the exact current executable, a normal
+`monty_worker` and the verified embedded pgvector archive. Test layout is
+`deps/<harness>` with the companion in its parent; the existing installed-worker
+lookup is reused. Current Cargo build-script messages select target PG output;
+host build-script outputs are not target artifacts. Non-system dylib references
+fail until actually packaged. Downloads remain in the original job directory,
+reuse matching bytes, recover missing copies and preserve conflicting published
+files/symlinks. They never replace the native Cargo target.
+
+The complete deadline starts at function entry, including source preparation,
+product/test compilation and the normal worker phase; the existing 120-second
+shutdown/receipt reserve remains. Source preparation cannot create a fresh full
+Cargo timeout. Local native cases use the collected program directly with
+`run --native-test <exact-name> --test-timeout-secs <existing-deadline>` or
+`accept-native <job> --test <exact-name> --test-timeout-secs <deadline>`.
+No automatic test replay or local Cargo rebuild is introduced.
+
+This source is **not** the worker contained in the historical image receipts
+above. Exact current worker/image preparation and native acceptance are required
+before normal use. `activate --test-mode <job>` has its own qualification record;
+product activation cannot activate tests. Historical records stay readable,
+without being reinterpreted as acceptance of this successor. No new image, paid
+project build or activation was performed for the source-only script integration.
+The next genuinely needed beneficial Apple job supplies that practical evidence.
+Linux test execution remains outside the connected mode until a compatible real
+job requires it; it is not a prerequisite for Apple or a mandatory pilot.

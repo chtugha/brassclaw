@@ -301,7 +301,7 @@ pub(super) async fn assert_registered_encoding(
         "tokenizer_config_json":std::fs::read_to_string(originals.join("tokenizer_config.json")).unwrap(),"chat_template":template},"probes":probes});
     let mut oracle = oracle_python()
         .arg(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            crate::test_manifest_dir()
                 .join("../brassclaw_model_encoding/tests/huggingface_oracle.py"),
         )
         .env("BRASSCLAW_ENCODING_MODEL_ORIGINALS", &originals)

@@ -171,11 +171,11 @@ controller host writing the same Volume under this contract.
 Each result retains its own exact command, source manifest, image, resources and
 artifact identities. Native tests use their existing database/runtime locks;
 supported remote execution needs equivalent fixture custody and compatible
-artifacts. Normal Apple offloading still supports CLI dev/release builds
-only; the qualification-only test preparation described below does not activate
-a test mode; the [combined-build plan](../combined-building_v3_at_bob3.md) describes
-future extensions. User permission alone does not establish test transport
-qualification.
+artifacts. The current source connects CLI dev/test/release and the bounded
+Composition libtest runtime package described below. The historical image does
+not contain the new worker; source support and user permission alone do not
+establish remote transport/native qualification or activate it. See the
+[combined-build plan](../combined-building_v3_at_bob3.md).
 Different snapshots establish
 different claims; remote compilation cannot certify a newer native test result.
 Screen can keep either launcher running detached; it does not replace these
@@ -183,8 +183,9 @@ locks, source custody or evidence capture.
 
 See [Modal image qualification](modal-cross-build.md) and
 [development cost/validation policy](development-policy.md). The existing
-qualified image can execute this controller's resource settings without a new
-image build; no embedded compiler-worker implementation changed here. Local
+qualified image could execute the then-current resource-setting change without a
+new image build. That historical statement does not qualify the later runtime-
+package worker successor, whose exact-image preparation remains required. Local
 regression checks exercise settings, actual cross-process locks and SDK transport
 handoff. The subsequent necessary
 [integrated-main build](validation/2026-11-03-bob-main-integration.md) passed
@@ -198,13 +199,14 @@ verification-only paid build was run.
 Source support now prepares one bounded command shape through the existing
 controller/worker: `cargo test --locked --no-run --lib -p
 brassclaw_reborn_composition --target aarch64-apple-darwin`. This is compile and
-artifact transport preparation only. No new compiler image was built or
-qualified for this mode by the source change. Ordinary test offloading remains
-**DEACTIVATED**, including with an existing product-build activation. The
-existing `--qualification` route still needs a separately authorized, necessary
-qualification job and a newly prepared exact worker/image. CLI `accept-native`
-and `activate` reject test receipts; a native test/fixture qualification and its
-activation path remain open.
+artifact transport with a connected local exact-case runner and separate test
+activation. No new compiler image was built or qualified by this source change.
+Ordinary test offloading remains **DEACTIVATED** until that actual qualification;
+an old product activation cannot enable it. The existing `--qualification` route
+still needs a necessary authorized job and newly prepared exact worker/image.
+`accept-native` selects its test runner for complete test packages; `activate
+--test-mode` consumes their actual native acceptance. Product acceptance remains
+separate and cannot accept a test receipt.
 
 The controller accepts split and `=` forms for its declared value options.
 It supports the default test profile and explicit `--profile test` /
@@ -213,11 +215,13 @@ this bounded preparation rejects them before admission. It also rejects
 `--doc`, bin/integration/bench/example/all-target selection, test-name filters,
 `--` forwarding and custom library harnesses. Named composition features,
 `--all-features` and `--no-default-features` use the captured manifest's explicit
-local feature closure; unresolved/implicit feature forms are rejected. An
+local feature closure. The selected package's qualified feature spelling and the
+actual nonoptional `brassclaw_pg/test-support` dependency are supported; other
+unresolved/implicit forms are rejected. An
 unexpected Cargo feature selection fails collection rather than exporting a
 possibly incompatible program. This is not qualification of every feature set.
 
-For this mode only, omitted message format and the supported JSON forms `json`,
+For product builds and this test mode, omitted message format and the supported JSON forms `json`,
 `json,json-diagnostic-short`, `json,json-diagnostic-rendered-ansi` and
 `json-render-diagnostics` normalize to exactly `--message-format=json` **before**
 admission. Repeated, human or unknown formats are rejected. Requests and results
@@ -239,15 +243,16 @@ the executing worker checks its own bytes. Legacy product image/activation
 records remain valid only for their original product scope.
 
 `run` and `status` use one artifact collector, original job UUID, Volume and
-environment. Downloads stage privately, check size/SHA-256 and rename atomically.
+environment. Downloads stage privately, check size/SHA-256 and publish atomically.
 After a returned remote result, a download failure leaves `collection_pending`
 with `remote_state=completed`. The existing unresolved-job gate conservatively
 blocks new remote synchronization until collection finishes. `status <UUID>`
 reconciles the original durable completion even if the spawn response/FunctionCall
 handle was lost. A missing or transport-failed Volume receipt leaves the job
 unconfirmed. Canonical regular local artifact files are reused only after size
-and SHA-256 verification; corrupt, missing or symlink copies are fetched again
-from the original job. Repeated status calls therefore do not retransmit a valid
+and SHA-256 verification. Missing copies are fetched again from the original
+job; corrupt or symlink published copies remain explicit conflicts rather than
+being overwritten. Failed private staging never publishes bytes. Repeated status calls therefore do not retransmit a valid
 large binary. No Cargo or job replay occurs, including after SDK result-handle
 expiry. If an ACK was lost while local state is still running/unresolved,
 OutputExpiredError from the known FunctionCall also triggers this same original
@@ -265,3 +270,44 @@ Local state becomes
 That state means verified byte collection; it does not certify native test
 execution, fixtures, shared services, companion workers, compile-time paths or
 product acceptance. Darwin test binaries are never executed on Linux.
+
+## Connected build entry and runtime packages — 2026-11-15
+
+`local_build.py` defaults to local execution. Explicit `--host modal --platform
+apple|linux` delegates to the existing Modal controller, with the same Cargo
+arguments and independent locks. `--show-settings` remains offline. The old
+60-second technical admission threshold is removed under the current operator
+policy; `--confirmed-modal` and applicable activation are still required. An
+optional runtime estimate is finite and nonnegative. Linux's exact compiler is
+selected by `modal.linux.compiler`, independently of the workspace MSRV.
+
+Apple CLI builds support dev/test/release profiles and export the actual current
+Cargo product artifact. The bounded Composition libtest path adds the normal
+`monty_worker` executable, keeping `deps/<harness>` adjacent to that companion.
+Both build phases use the remaining original deadline. PostgreSQL archives are
+embedded by the existing crate; current Cargo build-script messages select the
+verified pgvector archive. No empty archive, unresolved external dylib or guessed
+cache neighbor qualifies a runtime package. Native Cargo caches are never replaced.
+
+`run --native-test <exact-name> --test-timeout-secs <existing-case-deadline>` runs
+the collected Apple harness locally after releasing remote custody. Alternatively,
+`accept-native <job> --test <exact-name> --test-timeout-secs <deadline>` uses an
+already collected package. Repeat the test option for required cases. The runner
+uses the existing native lock, verifies source/artifact identity, lists real
+cases, rejects zero/ignored results and retains each execution log without
+automatic replay. `--test-env <local-json>` supplies existing fixture environment
+values without writing them to acceptance output. `BRASSCLAW_TEST_SOURCE_ROOT`
+selects verified local runtime resources; compile-time includes stay embedded.
+Product CLI acceptance and test acceptance remain distinct.
+
+The new worker needs a matching actual image and native acceptance before normal
+use. `activate --test-mode <job>` has its own image-/worker-bound record; old
+product receipts cannot activate tests. No image was prepared or activated merely
+by these source edits. The next actually needed beneficial Apple build supplies
+that practical acceptance; Linux test execution remains unconnected until a real
+compatible job needs it. See the current combined-building plan.
+
+Identical collected bytes are reused and missing copies can be fetched again.
+A differing existing published artifact or symlink is a conflict, never an
+implicit repair/overwrite. Failed private downloads remove only their own staging
+file. The original receipt and remote job remain available for inspection.

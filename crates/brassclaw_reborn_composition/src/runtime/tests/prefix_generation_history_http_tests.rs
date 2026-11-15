@@ -29,7 +29,7 @@ async fn run(
         router,
         stop.clone().cancelled_owned(),
     ));
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+    let manifest = crate::test_manifest_dir();
     let output = tokio::process::Command::new(node)
         .arg(manifest.join("../../tests/browser/prefix-generation-history.mjs"))
         .arg(format!("http://{address}"))

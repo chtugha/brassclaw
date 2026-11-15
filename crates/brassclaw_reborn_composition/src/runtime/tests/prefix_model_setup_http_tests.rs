@@ -121,15 +121,11 @@ pub(super) async fn exercise(app: &Router, specification: &Value) {
             router,
             server_stop.cancelled_owned(),
         ));
-        let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../tests/browser/model-setup-draft.mjs");
+        let script = crate::test_manifest_dir().join("../../tests/browser/model-setup-draft.mjs");
         let output = tokio::process::Command::new(node)
             .arg(script)
             .arg(format!("http://{address}"))
-            .arg(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("../brassclaw_webui_v2_static/static"),
-            )
+            .arg(crate::test_manifest_dir().join("../brassclaw_webui_v2_static/static"))
             .arg(specification.to_string())
             .output()
             .await

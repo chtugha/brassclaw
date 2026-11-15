@@ -11,6 +11,7 @@ import tomllib
 DEFAULT_CONFIG = Path(__file__).with_name("build-environments.toml")
 RESOURCE_KEYS = {"cpu", "cpu_limit", "memory_mib", "memory_limit_mib", "jobs",
                  "timeout_secs", "shutdown_grace_secs", "nonpreemptible"}
+MODAL_KEYS = RESOURCE_KEYS | {"compiler"}
 
 
 def load_settings(host, platform=None, config=None):
@@ -31,18 +32,19 @@ def load_settings(host, platform=None, config=None):
     if host != "modal" or platform not in {"apple", "linux"}:
         raise ValueError("Unknown build host/target")
     common = record.get("modal", {})
-    if not isinstance(common, dict) or set(common) - RESOURCE_KEYS - {"apple", "linux"}:
+    if not isinstance(common, dict) or set(common) - MODAL_KEYS - {"apple", "linux"}:
         raise ValueError("Unknown Modal build setting")
     for target in ("apple", "linux"):
         specific = common.get(target, {})
-        if not isinstance(specific, dict) or set(specific) - RESOURCE_KEYS:
+        if not isinstance(specific, dict) or set(specific) - MODAL_KEYS:
             raise ValueError(f"Unknown Modal {target} build setting")
-    return {**{key: value for key, value in common.items() if key in RESOURCE_KEYS},
+    return {**{key: value for key, value in common.items() if key in MODAL_KEYS},
             **common.get(platform, {})}
 
 
 def modal_resources(args):
-    settings = load_settings("modal", args.platform, args.config)
+    settings = {key: value for key, value in load_settings("modal", args.platform, args.config).items()
+                if key in RESOURCE_KEYS}
     for key in RESOURCE_KEYS:
         value = getattr(args, key, None)
         if value is not None:

@@ -65,12 +65,26 @@ class WorkerTests(SourceFixture):
         self.assertFalse((cache / "stale.rs").exists())
 
     def test_invocation_stream_is_logged_and_only_exact_admitted_executable_is_snapshotted(self):
+        self.exercise_invocation()
+
+    def test_complete_package_runs_one_normal_worker_build_and_exports_original_deps_layout(self):
+        self.exercise_invocation(packaged=True)
+
+    def test_failed_companion_cannot_publish_a_runnable_partial_package(self):
+        self.exercise_invocation(packaged=True, companion_code=1)
+
+    def exercise_invocation(self, packaged=False, companion_code=0):
         # Synthetic Popen/stdout/header IO boundary, not a Rust build or native
         # executable qualification. Source archives/materialization remain real.
         package = self.root / "crates" / worker.TEST_PACKAGE
         (package / "src").mkdir(parents=True)
         (package / "Cargo.toml").write_text('[package]\nname="brassclaw_reborn_composition"\nversion="0.1.0"\n')
         (package / "src/lib.rs").write_text("// fixture only\n")
+        if packaged:
+            for name in ("brassclaw_monty_host", "brassclaw_embedded_postgres"):
+                dependency = self.root / "crates" / name
+                dependency.mkdir()
+                (dependency / "Cargo.toml").write_text('[package]\nname="' + name + '"\nversion="0.1.0"\n')
         storage, manifest, checksum = self.records()
         storage = storage.resolve()
         original = [*test_command(), "--message-format", "json-render-diagnostics"]
@@ -81,13 +95,17 @@ class WorkerTests(SourceFixture):
                    "manifest_sha256": checksum, "target_triple": worker.APPLE_TARGET,
                    "jobs": 1, "timeout_secs": 300, "shutdown_grace_secs": 1,
                    "test_subject": worker.test_subject(self.root, command)["contract"]}
-        logged = []
+        if packaged:
+            request["runtime_package"] = 1
+        logged, invocations = [], []
         def popen(actual, **kwargs):
-            self.assertEqual(actual, command)
+            invocations.append(actual)
+            companion = len(invocations) == 2
+            self.assertEqual(actual, worker.worker_command(worker.APPLE_TARGET) if companion else command)
             cache = storage / "cache/images/im-fixture"
             self.assertEqual(kwargs["env"]["CARGO_TARGET_DIR"], str(cache / "target"))
-            binary = cache / "target" / worker.APPLE_TARGET / "debug/deps/composition-123"
-            binary.parent.mkdir(parents=True)
+            binary = cache / "target" / worker.APPLE_TARGET / ("debug/monty_worker" if companion else "debug/deps/composition-123")
+            binary.parent.mkdir(parents=True, exist_ok=True)
             binary.write_bytes(struct.pack("<IIIIIIII", 0xfeedfacf, 0x0100000c, 0, 2, 0, 0, 0, 0))
             binary.chmod(0o755)
             subject = worker.test_subject(cache / "repository", command)
@@ -96,26 +114,74 @@ class WorkerTests(SourceFixture):
                         "target": {"name": worker.TEST_PACKAGE, "kind": ["lib"], "crate_types": ["lib"],
                                    "src_path": subject["src_path"], "test": True},
                         "profile": {"test": True}, "filenames": [str(binary)], "executable": str(binary)}
-            logged.extend(["non-JSON build output\n", json.dumps(artifact) + "\n",
-                           '{"reason":"build-finished","success":true}\n'])
-            return SimpleNamespace(stdout=iter(logged), wait=lambda **kw: 0, poll=lambda: 0)
+            extra = []
+            if companion:
+                manifest = cache / "repository/crates/brassclaw_monty_host/Cargo.toml"
+                artifact.update(package_id=sorted(worker.package_ids(manifest))[0], manifest_path=str(manifest),
+                                target={"name": "monty_worker", "kind": ["bin"]}, profile={"test": False})
+            elif packaged:
+                manifest = cache / "repository/crates/brassclaw_embedded_postgres/Cargo.toml"
+                identity = sorted(worker.package_ids(manifest))[0]
+                out = cache / "target" / worker.APPLE_TARGET / "debug/build/brassclaw_embedded_postgres-fixture/out"
+                out.mkdir(parents=True)
+                with worker.tarfile.open(out / "pgvector.tar.gz", "w:gz") as archive:
+                    for name, data in (("lib/vector.dylib", struct.pack("<II", 0xfeedfacf, 0x0100000c)),
+                                       ("share/extension/vector.control", b"fixture"),
+                                       ("share/extension/vector--0.8.0.sql", b"fixture")):
+                        member = worker.tarfile.TarInfo(name)
+                        member.size = len(data)
+                        archive.addfile(member, worker.io.BytesIO(data))
+                extra = [{"reason": "compiler-artifact", "package_id": identity, "manifest_path": str(manifest), "profile": {"test": False}},
+                         {"reason": "build-script-executed", "package_id": identity, "out_dir": str(out)},
+                         {"reason": "build-script-executed", "package_id": identity,
+                          "out_dir": str(cache / "target/debug/build/brassclaw_embedded_postgres-host/out")}]
+            code = companion_code if companion else 0
+            lines = ["non-JSON build output\n", json.dumps(artifact) + "\n", *[json.dumps(item) + "\n" for item in extra],
+                     json.dumps({"reason": "build-finished", "success": code == 0}) + "\n"]
+            logged.extend(lines)
+            return SimpleNamespace(stdout=iter(lines), wait=lambda **kw: code, poll=lambda: code)
         commits = []
         with patch.object(worker.subprocess, "Popen", side_effect=popen) as execute, \
                 patch.object(worker, "update_cache", side_effect=lambda src, dest, manifest: shutil.copytree(src, dest)), \
-                patch.object(worker.os, "sync"):
+                patch.object(worker.os, "sync"), \
+                patch.object(worker.subprocess, "check_output", return_value="fixture:\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0)\n"):
             result = worker.run_build(storage, request, lambda: commits.append(True))
-        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(execute.call_count, 2 if packaged else 1)
         self.assertEqual(result["command"], command)
         self.assertEqual(result["original_command"], original)
         self.assertEqual(result["worker_identity"], request["worker_identity"])
         self.assertEqual(result["test_subject"], request["test_subject"])
-        self.assertEqual(set(result["artifacts"]), {"composition-123"})
+        expected = {"deps/composition-123", "monty_worker", "pgvector.tar.gz"} if packaged else {"composition-123"}
+        self.assertEqual(result["returncode"], companion_code)
+        self.assertEqual(set(result["artifacts"]), set() if companion_code else expected)
         job = storage / "cache/jobs" / request["job_id"]
-        self.assertEqual((job / "cargo.log").read_text(), "".join(logged))
+        text = (job / "cargo.log").read_text()
+        self.assertTrue(all(line in text for line in logged))
+        self.assertEqual(text.count("Command: "), len(invocations))
         # Re-reading the same completed ID returns its original; never Popen again.
         with patch.object(worker.subprocess, "Popen") as execute:
             self.assertEqual(worker.run_build(storage, request, lambda: None), result)
             execute.assert_not_called()
+
+    def test_source_preparation_consumes_the_same_deadline_before_any_cargo_start(self):
+        self.exercise_preparation_deadline()
+
+    def test_function_preflight_before_worker_consumes_the_original_deadline(self):
+        self.exercise_preparation_deadline(outer=True)
+
+    def exercise_preparation_deadline(self, outer=False):
+        storage, _, checksum = self.records()
+        request = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe", "command": ["cargo", "build", "--locked",
+                   "-p", "brassclaw_reborn_cli", "--bin", "brassclaw-reborn", "--target", worker.APPLE_TARGET],
+                   "image_id": "im-fixture", "manifest_sha256": checksum, "target_triple": worker.APPLE_TARGET,
+                   "jobs": 1, "timeout_secs": 300, "shutdown_grace_secs": 1}
+        request["command"] = worker.validate_command(request["command"], worker.APPLE_TARGET)
+        with patch.object(worker.time, "monotonic", side_effect=[181] if outer else [0, 181]), \
+                patch.object(worker, "update_cache", side_effect=lambda src, dest, manifest: shutil.copytree(src, dest)), \
+                patch.object(worker.os, "sync"), patch.object(worker.subprocess, "Popen") as cargo:
+            with self.assertRaisesRegex(TimeoutError, "Source preparation exhausted"):
+                worker.run_build(storage, request, lambda: None, **({"started_monotonic": 0} if outer else {}))
+            cargo.assert_not_called()
 
     def test_target_and_host_override_arguments_are_rejected(self):
         worker.validate_command(["cargo", "build", "--locked", "--target=aarch64-apple-darwin"], "aarch64-apple-darwin")
@@ -265,6 +331,43 @@ class ArtifactBoundaryTests(unittest.TestCase):
         self.manifest.write_text(self.manifest.read_text().replace('harness=false', 'harness=true'))
         with self.assertRaisesRegex(ValueError, "named composition features"):
             worker.test_subject(self.repository, [*self.command, "--features=unknown"])
+
+    def test_requested_pg_dependency_feature_is_retained_separately_from_package_features(self):
+        dependency = self.repository / "crates/brassclaw_pg"
+        dependency.mkdir()
+        (dependency / "Cargo.toml").write_text('[package]\nname="brassclaw_pg"\nversion="0.1.0"\n[features]\ntest-support=[]\n')
+        self.manifest.write_text(self.manifest.read_text() + '[dependencies]\nbrassclaw_pg={path="../brassclaw_pg"}\n')
+        selected = worker.test_subject(self.repository, [*self.command, "--features=brassclaw_reborn_composition/skills-db,brassclaw_pg/test-support"])
+        self.assertEqual(selected["contract"]["dependency_features"], ["brassclaw_pg/test-support"])
+        self.assertEqual(selected["features"], ["default", "postgres", "skills-db"])
+        with self.assertRaises(ValueError):
+            worker.test_subject(self.repository, [*self.command, "--features=brassclaw_pg/unknown"])
+
+    def test_product_test_profile_is_not_a_harness_and_worker_is_one_normal_dev_binary(self):
+        product = ["cargo", "build", "--locked", "-p", "brassclaw_reborn_cli", "--bin", "brassclaw-reborn",
+                   "--target", worker.APPLE_TARGET, "--profile", "test"]
+        self.assertEqual(worker.command_mode(product, worker.APPLE_TARGET), worker.APPLE_BUILD_MODE)
+        self.assertEqual(worker.worker_command(worker.APPLE_TARGET), ["cargo", "build", "--locked", "-p",
+                         "brassclaw_monty_host", "--bin", "monty_worker", "--target", worker.APPLE_TARGET,
+                         "--message-format=json"])
+        package = self.repository / "crates/brassclaw_reborn_cli"
+        package.mkdir()
+        manifest = package / "Cargo.toml"
+        manifest.write_text('[package]\nname="brassclaw_reborn_cli"\nversion="0.1.0"\n')
+        binary = self.binary.parent.parent / "brassclaw-reborn"
+        shutil.copy2(self.binary, binary)
+        message = {**self.message, "executable": str(binary), "filenames": [str(binary)],
+                   "manifest_path": str(manifest), "package_id": sorted(worker.package_ids(manifest))[0],
+                   "profile": {"test": False}, "target": {"name": "brassclaw-reborn", "kind": ["bin"]}}
+        job = self.base / "product-job"
+        job.mkdir()
+        artifacts = worker.collect_product_artifact([message], self.finished, self.cache, job, product)
+        self.assertEqual(artifacts["brassclaw-reborn"]["role"], "product")
+        for change in ({"profile": {"test": True}}, {"package_id": "registry+other#0.1.0"},
+                       {"executable": str(binary.parent / "stale")}, {"fresh": None}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                worker.collect_product_artifact([{**message, **change}], self.finished, self.cache, job, product)
+
 
 
 

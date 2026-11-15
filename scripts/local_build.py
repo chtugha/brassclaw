@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run direct local Cargo with its own lock and optional host-specific job limit."""
+"""Run Cargo locally by default or delegate an explicit Modal build to its owner."""
 
 import argparse
 import json
@@ -137,11 +137,47 @@ def run_local(command, jobs, *, show_settings=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--host", choices=["local", "modal"], default="local")
+    parser.add_argument("--platform", choices=["apple", "linux"])
+    parser.add_argument("--qualification", action="store_true")
+    parser.add_argument("--confirmed-modal", action="store_true")
+    parser.add_argument("--estimated-local-secs", type=float)
+    parser.add_argument("--native-test", dest="tests", action="append")
+    parser.add_argument("--test-timeout-secs", type=float)
+    parser.add_argument("--test-env", type=Path)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--jobs", type=int)
     parser.add_argument("--show-settings", action="store_true")
     parser.add_argument("cargo", nargs=argparse.REMAINDER)
     args = parser.parse_args()
+    if args.host == "modal":
+        if args.platform is None:
+            parser.error("Remote builds require --platform apple|linux")
+        from modal_build import main as modal_main
+        forwarded = ["--platform", args.platform]
+        if args.config is not None:
+            forwarded += ["--config", str(args.config)]
+        forwarded += ["settings" if args.show_settings else "run"]
+        if not args.show_settings:
+            for name in ("qualification", "confirmed_modal"):
+                if getattr(args, name):
+                    forwarded.append("--" + name.replace("_", "-"))
+            for name in ("estimated_local_secs", "jobs", "test_timeout_secs", "test_env"):
+                if getattr(args, name) is not None:
+                    forwarded += ["--" + name.replace("_", "-"), str(getattr(args, name))]
+            for name in args.tests or []:
+                forwarded += ["--native-test", name]
+            command = args.cargo[1:] if args.cargo[:1] == ["--"] else args.cargo
+            forwarded += ["--", *command]
+        return modal_main(forwarded)
+    if (args.qualification or args.confirmed_modal or args.estimated_local_secs is not None
+            or args.tests or args.test_env is not None or args.test_timeout_secs is not None):
+        parser.error("Modal options require --host modal")
+    if args.platform is not None:
+        import sys
+        native = "apple" if sys.platform == "darwin" else "linux" if sys.platform.startswith("linux") else None
+        if args.platform != native:
+            parser.error("Local launcher does not configure cross toolchains; choose the native platform or Modal")
     settings = load_settings("local", config=args.config)
     jobs = args.jobs if args.jobs is not None else settings["jobs"]
     raise SystemExit(run_local(args.cargo, jobs, show_settings=args.show_settings))

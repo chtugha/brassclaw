@@ -22,6 +22,16 @@ records the backlog. [R05 is accepted](validation/2026-11-14-prepared-r05-accept
 with three actual native cases. Independent R04/T/Q fragments and Root’s connected historical Pure read repair now pass strict Run85/native compilation and all 73 scoped cases. The existing store deadline and integrity checks remain effective. The exact receipt preserves source-guard failures and limits code acceptance to its actual embedded inputs. Root integrates accepted source as `0b2aaaf56` and normally consolidates fifteen already accepted histories through `9033c6f14`, preserving the complete tree. After checkpoint publication, continue B1 -> B2 -> B3 alone; no package orchestration is resumed.
 
 
+**Current follow-up — 2026-11-15:** the combined-build source is connected and
+passes its scoped local/native checks; see the [current acceptance](validation/2026-11-15-combined-build-and-branch-cleanup.md).
+Root integrates its source plus the independently user-commissioned Kohai/Sempai
+documentation contribution. Twenty-four already-merged local branch aliases are
+safely archived/closed. Whole N/Q/R/T still have the recorded missing prerequisites;
+old partial code is not restored over later Main repairs. Next work is B1 first,
+after Main publication. No two-package implementation system is resumed.
+
+**Historical roles below (not current assignment):**
+
 - Supervisor: `/Volumes/SSDE/brassclaw` on `main`; package definition, architecture
   review, native tests/final acceptance, integration and release. No new source
   implementation. Defects return to their package chat. Existing source written

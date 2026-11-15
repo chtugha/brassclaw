@@ -20,6 +20,25 @@
 
 use std::sync::Arc;
 
+/// Native test tooling may run a cross-built harness outside its compiler's
+/// checkout. Runtime resources use the verified local snapshot; compile-time
+/// include_str!/include_bytes! inputs keep their original embedded bytes.
+#[cfg(all(test, feature = "postgres", feature = "skills-db"))]
+fn test_manifest_dir() -> std::path::PathBuf {
+    if let Some(root) = std::env::var_os("BRASSCLAW_TEST_SOURCE_ROOT") {
+        let root = std::path::PathBuf::from(root);
+        assert!(root.is_absolute(), "test source root must be absolute");
+        let manifest = root.join("crates/brassclaw_reborn_composition");
+        assert!(
+            manifest.join("Cargo.toml").is_file(),
+            "test source manifest missing"
+        );
+        manifest
+    } else {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    }
+}
+
 mod auth;
 mod auth_dcr_custody;
 mod auth_dcr_retirement;

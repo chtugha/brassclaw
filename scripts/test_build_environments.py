@@ -100,11 +100,24 @@ class SettingsTests(unittest.TestCase):
                 with self.subTest(text=text), self.assertRaises(ValueError):
                     build_settings.load_settings("local", config=config)
 
-    def test_nonfinite_or_short_estimates_reject_before_sdk_import(self):
-        for estimate in (float("nan"), float("inf"), 59):
+    def test_nonfinite_or_negative_estimates_reject_before_sdk_import(self):
+        for estimate in (float("nan"), float("inf"), -1):
             with self.subTest(estimate=estimate), patch.dict(sys.modules, {"modal": None}):
                 with self.assertRaisesRegex(ValueError, "explicit Modal choice"):
                     modal_build.run(arguments(estimated_local_secs=estimate))
+
+    def test_short_or_unknown_estimates_are_not_a_policy_block(self):
+        # The next boundary is image readiness, not a fabricated 60-second estimate.
+        for estimate in (None, 0, 12, 59):
+            with self.subTest(estimate=estimate), patch.object(modal_build, "records_root", return_value=Path("/nonexistent-build-records")), \
+                    patch.object(modal_build, "assert_remote_settled"), patch.dict(sys.modules, {"modal": None}):
+                with self.assertRaises(FileNotFoundError):
+                    modal_build.run(arguments(estimated_local_secs=estimate))
+
+    def test_linux_compiler_selection_is_independent_of_msrv(self):
+        with patch.object(modal_build, "rust_version", side_effect=AssertionError("MSRV is not compiler selection")):
+            self.assertEqual(modal_build.compiler_version("linux"), "1.98.1")
+
 
 
 class LockTests(unittest.TestCase):
@@ -302,6 +315,12 @@ class LocalRunnerTests(unittest.TestCase):
 
 
 class ControllerTests(SourceFixture):
+    def setUp(self):
+        super().setUp()
+        disk = patch.object(modal_build.shutil, "disk_usage", return_value=SimpleNamespace(total=100 * 1024**3, used=10 * 1024**3, free=90 * 1024**3))
+        disk.start()
+        self.addCleanup(disk.stop)
+
     def test_status_uses_original_volume_despite_changed_current_options(self):
         directory = self.base / "records/jobs/736e8ba8-ad53-4d53-9011-c1c9b67083fe"
         directory.mkdir(parents=True)
@@ -364,7 +383,7 @@ class ControllerTests(SourceFixture):
         (records / "image-apple.json").write_text(json.dumps({"rust_version": modal_build.compiler_version("apple"),
                                                                "environment": "brassclaw", "image_id": "im-test",
                                                                "worker_identity": modal_build.worker_identity(),
-                                                               "supported_modes": [modal_build.APPLE_TEST_MODE]}))
+                                                               "supported_modes": [modal_build.APPLE_BUILD_MODE, modal_build.APPLE_TEST_MODE]}))
         resources, submitted = {}, {}
         spawns, gets = [], []
         remote_files = {sync.MANIFEST_PATH: manifest_bytes, sync.BASE_MANIFEST_PATH: manifest_bytes}
@@ -382,17 +401,27 @@ class ControllerTests(SourceFixture):
                                       ("job_id", "command", "manifest_sha256", "image_id")},
                                   "returncode": 0, "artifacts": {}}
                         prefix = f'/cache/jobs/{original["job_id"]}'
+                        result.update({key: original[key] for key in ("mode", "original_command", "worker_identity")})
+                        body = b"transport fixture only; no native executable"
+                        artifact = {"sha256": hashlib.sha256(body).hexdigest(), "size": len(body)}
                         if test_mode:
-                            result.update({key: original[key] for key in
-                                           ("mode", "original_command", "worker_identity", "test_subject")})
-                            body = b"transport fixture only; no native executable"
-                            result["artifacts"] = {"composition-fixture": {
-                                "sha256": hashlib.sha256(body).hexdigest(), "size": len(body),
-                                "mode": original["mode"], "image_id": original["image_id"],
-                                "manifest_sha256": original["manifest_sha256"], "target_triple": original["target_triple"],
-                                "features": original["test_subject"]["features"], "profile": {"test": True},
-                                "target": {"name": "brassclaw_reborn_composition", "kind": ["lib"]}}}
-                            remote_files[prefix + "/artifacts/composition-fixture"] = body
+                            result["test_subject"] = original["test_subject"]
+                            artifact.update(mode=original["mode"], image_id=original["image_id"],
+                                            manifest_sha256=original["manifest_sha256"], target_triple=original["target_triple"],
+                                            features=original["test_subject"]["features"], profile={"test": True}, role="test",
+                                            target={"name": "brassclaw_reborn_composition", "kind": ["lib"]})
+                            name = "deps/composition-fixture"
+                        else:
+                            artifact["role"] = "product"
+                            name = "brassclaw-reborn"
+                        result["artifacts"] = {name: artifact,
+                            "monty_worker": {**artifact, "role": "monty_worker"},
+                            "pgvector.tar.gz": {**artifact, "role": "embedded-pgvector"}}
+                        result["runtime_package"] = {"version": 1}
+                        from modal_build_worker import worker_command
+                        result["companion_command"] = worker_command(original["target_triple"])
+                        for filename in result["artifacts"]:
+                            remote_files[prefix + "/artifacts/" + filename] = body
                         remote_files[prefix + "/completed.json"] = encoded(result)
                         remote_files[prefix + "/image-provenance.json"] = b"{}"
                         remote_files[prefix + "/cargo.log"] = b"SDK fixture; no Cargo executed\n"
@@ -487,6 +516,9 @@ class CollectionBoundaryTests(unittest.TestCase):
     """Real temp-file custody with synthetic transport; no compiler/target execution."""
 
     def setUp(self):
+        disk = patch.object(modal_build.shutil, "disk_usage", return_value=SimpleNamespace(total=100 * 1024**3, used=10 * 1024**3, free=90 * 1024**3))
+        disk.start()
+        self.addCleanup(disk.stop)
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.directory = Path(temporary.name).resolve()
@@ -642,7 +674,7 @@ class CollectionBoundaryTests(unittest.TestCase):
             self.assertFalse((directory / "terminal.json").exists())
             self.assertFalse((directory / "brassclaw-reborn").exists())
 
-    def test_repeated_status_reuses_verified_local_bytes_and_repairs_corrupt_or_missing_copy(self):
+    def test_repeated_status_reuses_verified_bytes_preserves_conflict_and_recovers_missing_copy(self):
         directory, state, reads, selected, invoke = self.status_fixture()
         invoke()
         binary = directory / "brassclaw-reborn"
@@ -656,33 +688,38 @@ class CollectionBoundaryTests(unittest.TestCase):
         # Same-size corruption must trigger a hash check, not just size reuse.
         binary.chmod(0o600)
         binary.write_bytes(b"x" * len(self.body))
+        with self.assertRaisesRegex(FileExistsError, "Artifact conflict"):
+            invoke()
+        self.assertEqual(reads.count(artifact_path), 1)
+        self.assertEqual(binary.read_bytes(), b"x" * len(self.body))
+        binary.unlink()  # Explicit operator/test repair, never automatic overwrite.
         invoke()
         self.assertEqual(reads.count(artifact_path), 2)
         self.assertEqual(binary.read_bytes(), self.body)
-        binary.unlink()
-        invoke()
-        self.assertEqual(reads.count(artifact_path), 3)
-        self.assertEqual(binary.read_bytes(), self.body)
 
-    def test_symlink_local_artifact_is_replaced_without_following_its_target(self):
+    def test_symlink_conflict_is_preserved_without_following_its_target(self):
         directory, state, reads, selected, invoke = self.status_fixture()
         outside = self.directory / "outside-original-bytes"
         outside.write_bytes(self.body)
         binary = directory / "brassclaw-reborn"
         binary.symlink_to(outside)
-        invoke()
-        self.assertFalse(binary.is_symlink())
-        self.assertEqual(binary.read_bytes(), self.body)
+        with self.assertRaisesRegex(FileExistsError, "Artifact conflict"):
+            invoke()
+        self.assertTrue(binary.is_symlink())
         self.assertEqual(outside.read_bytes(), self.body)
-        self.assertEqual(sum(path.endswith("/artifacts/brassclaw-reborn") for path in reads), 1)
+        self.assertEqual(sum(path.endswith("/artifacts/brassclaw-reborn") for path in reads), 0)
 
     def test_verified_atomic_copy_preserves_old_bytes_on_transfer_or_hash_failure(self):
         destination = self.directory / "brassclaw-reborn"
         destination.write_bytes(b"old verified copy")
         self.files["brassclaw-reborn"] = b"corrupt transfer"
-        with self.assertRaisesRegex(ValueError, "checksum/size"):
+        with self.assertRaisesRegex(FileExistsError, "Artifact conflict"):
             modal_build.collect_result(self.volume, self.directory, self.original, self.result)
         self.assertEqual(destination.read_bytes(), b"old verified copy")
+        destination.unlink()
+        with self.assertRaisesRegex(ValueError, "checksum/size"):
+            modal_build.collect_result(self.volume, self.directory, self.original, self.result)
+        self.assertFalse(destination.exists())
         self.assertEqual(list(self.directory.glob(".download-*")), [])
         self.files["brassclaw-reborn"] = self.body
         modal_build.collect_result(self.volume, self.directory, self.original, self.result)
@@ -728,8 +765,10 @@ class CollectionBoundaryTests(unittest.TestCase):
         (self.directory / "image-apple.json").write_bytes(encoded(image))
         (self.directory / "activation-apple.json").write_bytes(encoded(record))
         with patch.object(modal_build, "records_root", return_value=self.directory):
-            self.assertEqual(modal_build.require_activation("apple", modal_build.APPLE_BUILD_MODE), record)
-            with self.assertRaisesRegex(ValueError, "test mode is DEACTIVATED"):
+            with self.assertRaisesRegex(ValueError, "DEACTIVATED"):
+                modal_build.require_activation("apple", modal_build.APPLE_BUILD_MODE)
+            self.assertEqual(json.loads((self.directory / "activation-apple.json").read_bytes()), record)
+            with self.assertRaisesRegex(ValueError, "DEACTIVATED"):
                 modal_build.require_activation("apple", modal_build.APPLE_TEST_MODE)
 
     def test_old_image_and_unsupported_modes_reject_before_sdk_import_or_sync(self):
@@ -746,6 +785,58 @@ class CollectionBoundaryTests(unittest.TestCase):
                     modal_build.run(arguments(cargo=[*test_command(), *flags]))
             upload.assert_not_called()
 
+
+
+class DownloadDiskBoundaryTests(unittest.TestCase):
+    def test_low_space_rejects_before_download_or_publication(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = Path(temporary).resolve() / "artifact"
+            volume = SimpleNamespace(read_file=lambda _: self.fail("No transfer is allowed below the existing disk floor"))
+            with patch.object(modal_build.shutil, "disk_usage", return_value=SimpleNamespace(total=100 * 1024**3, used=90 * 1024**3, free=10 * 1024**3)):
+                with self.assertRaisesRegex(RuntimeError, "Insufficient artifact volume"):
+                    modal_build.atomic_download(volume, "/artifact", destination, {"size": 1, "sha256": "a" * 64})
+            self.assertEqual(list(destination.parent.iterdir()), [])
+
+
+class NativeSelectionTests(unittest.TestCase):
+    def test_missing_duplicate_and_invalid_timeout_cannot_qualify(self):
+        for tests, timeout in (([], 10), (["case", "case"], 10), (["case"], None), (["case"], float("inf"))):
+            with self.subTest(tests=tests), self.assertRaises(ValueError):
+                modal_build.validate_native_selection(SimpleNamespace(tests=tests, test_timeout_secs=timeout))
+
+    def test_zero_or_ignored_cases_leave_no_native_approval(self):
+        # Synthetic subprocess boundary only; not a cross-build/native receipt.
+        for summary in ("0 passed; 0 failed; 0 ignored;", "0 passed; 0 failed; 1 ignored;"):
+            with self.subTest(summary=summary), tempfile.TemporaryDirectory() as temporary:
+                directory = Path(temporary).resolve()
+                (directory / "deps").mkdir()
+                body = b"boundary fixture only"
+                artifacts = {}
+                for name, role in (("deps/harness", "test"), ("monty_worker", "monty_worker")):
+                    (directory / name).write_bytes(body)
+                    artifacts[name] = {"sha256": hashlib.sha256(body).hexdigest(), "size": len(body), "role": role}
+                (directory / "source.json").write_text('{}')
+                receipt = {"returncode": 0, "runtime_package": {"version": 1}, "artifacts": artifacts}
+                def execute(command, **kwargs):
+                    if "--list" in command:
+                        return SimpleNamespace(stdout="case: test\n", returncode=0)
+                    kwargs["stdout"].write("test result: ok. " + summary + "\n")
+                    return SimpleNamespace(wait=lambda **kwargs: 0, poll=lambda: 0)
+                with patch.object(modal_build, "verify_source"), patch.object(sync, "cargo_lock", return_value=nullcontext()), \
+                        patch.object(modal_build.subprocess, "run", side_effect=execute), \
+                        patch.object(modal_build.subprocess, "Popen", side_effect=execute):
+                    with self.assertRaisesRegex(ValueError, "failed/was ignored"):
+                        modal_build.accept_native_tests(SimpleNamespace(tests=["case"], test_timeout_secs=10), directory, receipt)
+                self.assertFalse((directory / "native-tests-accepted.json").exists())
+
+    def test_common_entry_delegates_exact_cargo_arguments_without_local_lock_or_cloud_probe(self):
+        command = ["cargo", "test", "--locked", "-p", "brassclaw_reborn_composition", "--lib", "--no-run",
+                   "--features", "skills-db,brassclaw_pg/test-support", "--target", "aarch64-apple-darwin"]
+        with patch.object(sys, "argv", ["local_build.py", "--host", "modal", "--platform", "apple", "--confirmed-modal", "--", *command]), \
+                patch.object(modal_build, "main") as remote, patch.object(local_build, "cargo_lock") as native:
+            local_build.main()
+        self.assertEqual(remote.call_args.args[0], ["--platform", "apple", "run", "--confirmed-modal", "--", *command])
+        native.assert_not_called()
 
 
 if __name__ == "__main__":

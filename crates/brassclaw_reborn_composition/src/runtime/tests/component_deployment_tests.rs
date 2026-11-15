@@ -480,7 +480,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     proof_tx.commit().await.unwrap();
     drop(proof_client);
 
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let large = oracle_python().arg("-c")
         .arg("import json,sys; from test_prefix_build_worker import large_source_request; import prefix_build_worker; sys.stdout.buffer.write(prefix_build_worker.build(json.dumps(large_source_request()).encode()))")
         .env("PYTHONPATH",checkout.join("scripts/prefix"))
@@ -727,7 +727,7 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
     assert_eq!(sempai["profile_revision"], "2");
     // Exercise the actual source compiler and its package exporter. No invented
     // successful manifests, provider results or cache qualification receipts.
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let inventory_path = root.path().join("prefix-inventory.json");
     let source_records = ["skills.md","recipe.md","tools.md","toolskills.md","CLAUDE.md","AGENTS.md","simplified_v3.md"].into_iter().map(|path|json!({"path":path,"kind":"document","disposition":"included","reason":"complete current source"})).collect::<Vec<_>>();
     let inventory = json!({"format":"brassclaw-prefix-source-inventory/1","release":"native-storage-acceptance", "sources":source_records});

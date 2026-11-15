@@ -375,7 +375,7 @@ async fn prefix_installation_registers_profiles_before_ui_and_preserves_override
 #[test]
 fn prefix_worker_package_requires_retained_build_adapter_bytes() {
     use base64::{Engine, engine::general_purpose::STANDARD};
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let output = std::process::Command::new("python3")
         .arg("-c")
         .arg("import json,sys; from test_prefix_build_worker import request; import prefix_build_worker; sys.stdout.buffer.write(prefix_build_worker.build(json.dumps(request()).encode()))")
@@ -668,7 +668,7 @@ async fn prefix_compiler_stages_preserve_originals_in_monty() {
             );
         }
     }
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let definitions = format!("{UNIT_SOURCE}\n{REFERENCE_RENDER_SOURCE}\n{COMPILER_SOURCE}\n");
     for profile in ["base-prompt", "prefix-maker", "sempai"] {
         for view in [
@@ -1022,7 +1022,7 @@ fn prefix_test_resign(package: &mut Value) {
 
 #[test]
 fn prefix_source_archive_links_reject_resigned_inconsistent_metadata() {
-    let checkout = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let checkout = crate::test_manifest_dir().join("../..");
     let output=std::process::Command::new("python3").args(["-c","import json,sys; from test_prefix_build_worker import request; import prefix_build_worker; sys.stdout.buffer.write(prefix_build_worker.build(json.dumps(request()).encode()))"]).env("PYTHONPATH",checkout.join("scripts/prefix")).env("HF_HUB_OFFLINE","1").output().unwrap();
     assert!(
         output.status.success(),

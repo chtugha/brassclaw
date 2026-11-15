@@ -2,7 +2,7 @@
 """Prepare a reusable compiler image; run explicitly approved ephemeral builds.
 
 setup creates/publishes the toolchain image, without compiling the project.
-run requires an explicit Local/Modal decision and resource/time settings.
+run requires an explicit Modal choice; activation and host resource policy apply.
 """
 
 from __future__ import annotations
@@ -17,13 +17,15 @@ import subprocess
 import stat
 import tempfile
 import re
+import shutil
+import signal
 import sys
 import tomllib
 import uuid
 
 from modal_build_worker import (encoded, validate_command, command_mode, worker_identity,
-                                test_subject, APPLE_TEST_MODE, APPLE_BUILD_MODE)
-from build_settings import modal_resources
+                                test_subject, worker_command, APPLE_TEST_MODE, APPLE_BUILD_MODE)
+from build_settings import modal_resources, load_settings
 from modal_source_sync import ROOT, MANIFEST_PATH, modal_lock, assert_remote_settled, sync_source, verify_source
 
 
@@ -46,21 +48,26 @@ def rust_version():
     return version + ".0" if version.count(".") == 1 else version
 
 
-def image_name(platform="linux"):
-    return "brassclaw-rust:" + compiler_version(platform) + ("-apple-arm64" if platform == "apple" else "")
+def image_name(platform="linux", config=None):
+    return "brassclaw-rust:" + compiler_version(platform, config) + ("-apple-arm64" if platform == "apple" else "")
 
 
-def compiler_version(platform):
+def compiler_version(platform, config=None):
     if platform == "apple":
         from modal_apple_toolchain import RUST
+        if load_settings("modal", platform, config).get("compiler", RUST) != RUST:
+            raise ValueError("Apple compiler selection must match the pinned OSXCross image compiler")
         return RUST
-    return rust_version()
+    version = load_settings("modal", platform, config).get("compiler")
+    if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+        raise ValueError("Select an exact Linux compiler in build-environments.toml; the MSRV is not a compiler selection")
+    return version
 
 
 def setup(args):
     import modal
 
-    version = compiler_version(args.platform)
+    version = compiler_version(args.platform, args.config)
     identity = worker_identity()
     image = (
         modal.Image.from_registry(f"rust:{version}-slim-bookworm", add_python="3.13")
@@ -80,12 +87,12 @@ def setup(args):
     app = modal.App("brassclaw-build-setup", include_source=False)
     with modal.enable_output(), app.run(environment_name=args.environment):
         image.build(app)
-        image.publish(image_name(args.platform), environment_name=args.environment)
+        image.publish(image_name(args.platform, args.config), environment_name=args.environment)
         if worker_identity() != identity:
             raise ValueError("Worker inputs changed during image preparation")
         result = {"worker_identity": identity,
                   "supported_modes": [APPLE_BUILD_MODE, APPLE_TEST_MODE] if args.platform == "apple" else ["linux-compile/1"],
-                  "environment": args.environment, "image": image_name(args.platform),
+                  "environment": args.environment, "image": image_name(args.platform, args.config),
                   "image_id": image.object_id, "rust_version": version,
                   "app_id": app.app_id, "toolchain": config, "platform": args.platform, "scope": "compiler image prepared; no project build/tests"}
         write_record(records_root() / f"image-{args.platform}.json", result)
@@ -95,6 +102,14 @@ def setup(args):
 def run(args):
     for key, value in modal_resources(args).items():
         setattr(args, key, value)
+    if (not args.confirmed_modal or (args.estimated_local_secs is not None
+            and (not math.isfinite(args.estimated_local_secs) or args.estimated_local_secs < 0))):
+        raise ValueError("An explicit Modal choice and a finite nonnegative runtime estimate, when supplied, are required")
+    if getattr(args, "tests", None):
+        if args.platform != "apple" or sys.platform != "darwin":
+            raise ValueError("Automatic native test execution requires the Apple target and a macOS controller")
+        validate_native_selection(args)
+        native_environment(args)  # Reject bad fixture inputs before any paid work.
     command = args.cargo
     if command and command[0] == "--":
         command = command[1:]
@@ -102,22 +117,22 @@ def run(args):
     original_command = list(command)
     command = validate_command(original_command, target)
     mode = command_mode(command, target)
+    if getattr(args, "tests", None) and mode != APPLE_TEST_MODE:
+        raise ValueError("--native-test requires an Apple composition test build")
     test_contract = test_subject(ROOT, command)["contract"] if mode == APPLE_TEST_MODE else None
     # This worker is imported from /opt/brassclaw in the immutable image. Syncing
     # repository source cannot upgrade it. Old product image receipts retain
     # their product scope; they cannot authorize this new test protocol.
-    if mode == APPLE_TEST_MODE:
+    assert_remote_settled()
+    if args.platform == "apple":
         prepared = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
         if (prepared.get("worker_identity") != worker_identity()
                 or mode not in prepared.get("supported_modes", [])
                 or prepared.get("rust_version") != compiler_version(args.platform)
                 or prepared.get("environment") != args.environment):
-            raise ValueError("Test mode requires preparation of this exact worker/image; old product images are inapplicable")
+            raise ValueError("Runtime packages require preparation of this exact worker/image; old product images are inapplicable")
     if not args.qualification:
         require_activation(args.platform, mode)
-    if (not args.confirmed_modal or not math.isfinite(args.estimated_local_secs)
-            or args.estimated_local_secs < 60):
-        raise ValueError("An explicit Modal choice and expected local runtime >=60s are required")
     import modal
 
     # One remote critical section includes sync, submission and terminal receipt.
@@ -131,7 +146,7 @@ def run(args):
         manifest = json.loads(manifest_bytes)
         verify_source(ROOT, manifest)
         prepared = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
-        if prepared["rust_version"] != compiler_version(args.platform):
+        if prepared["rust_version"] != compiler_version(args.platform, args.config):
             raise ValueError("Prepared image Rust version differs from the selected compiler")
         if prepared["environment"] != args.environment:
             raise ValueError("Prepared image environment differs")
@@ -153,6 +168,11 @@ def run(args):
                    "allow_parallel_hosts": True, "lock_scope": "modal",
                    "target_triple": target, "volume": args.volume, "environment": args.environment,
                    "estimated_local_secs": args.estimated_local_secs}
+        if args.platform == "apple":
+            if prepared.get("worker_identity") != worker_identity() or mode not in prepared.get("supported_modes", []):
+                raise ValueError("Runtime package worker changed before admission")
+            request.update(runtime_package=1, worker_identity=worker_identity(), mode=mode,
+                           original_command=original_command)
         if mode == APPLE_TEST_MODE:
             if (prepared.get("worker_identity") != worker_identity()
                     or mode not in prepared.get("supported_modes", [])):
@@ -181,6 +201,8 @@ def run(args):
                       buffer_containers=0, retries=0, single_use_containers=True,
                       nonpreemptible=args.nonpreemptible, restrict_modal_access=True)
         def compile_source(original):
+            import time
+            function_started = time.monotonic()
             import sys
 
             sys.path.insert(0, "/opt/brassclaw")
@@ -200,7 +222,7 @@ def run(args):
                     raise RuntimeError(f"Insufficient build space on {filesystem}")
 
             try:
-                return run_build("/build", original, volume.commit)
+                return run_build("/build", original, volume.commit, started_monotonic=function_started)
             finally:
                 volume.commit()
 
@@ -229,12 +251,15 @@ def run(args):
                 state.update(state="completed", returncode=result["returncode"], collection="verified")
                 write_record(directory / "state.json", state)
                 print(json.dumps(result, indent=2))
-                return result["returncode"]
         except BaseException:
             if state["state"] not in {"not_started", "collection_pending", "completed"}:
                 state["state"] = "unresolved"
                 write_record(directory / "state.json", state)
             raise
+    # Release the remote cache lock/app before using independent native custody.
+    if result["returncode"] == 0 and getattr(args, "tests", None):
+        accept_native_tests(args, directory, result)
+    return result["returncode"]
 
 
 def local_artifact_matches(path, artifact):
@@ -267,12 +292,22 @@ def atomic_download(volume, remote_path, destination, artifact=None):
         raise ValueError("Collection directory must be canonical without symlinks")
     if artifact is not None and local_artifact_matches(destination, artifact):
         return
+    if artifact is not None and (destination.exists() or destination.is_symlink()):
+        raise FileExistsError("Artifact conflict: preserve the existing published job bytes; inspect before repair")
+    if artifact is not None:
+        if type(artifact.get("size")) is not int or artifact["size"] <= 0:
+            raise ValueError("Artifact requires a positive exact byte length")
+        usage = shutil.disk_usage(destination.parent)
+        if usage.free - artifact["size"] < 15 * 1024**3 or usage.used + artifact["size"] > usage.total * 0.90:
+            raise RuntimeError("Insufficient artifact volume space; preserve evidence before collecting")
     descriptor, temporary = tempfile.mkstemp(prefix=".download-", dir=destination.parent)
     temporary = Path(temporary)
     try:
         digest, size = hashlib.sha256(), 0
         with os.fdopen(descriptor, "wb") as output:
             for chunk in volume.read_file(remote_path):
+                if artifact is not None and size + len(chunk) > artifact["size"]:
+                    raise ValueError("Downloaded artifact checksum/size differs")
                 output.write(chunk)
                 digest.update(chunk)
                 size += len(chunk)
@@ -282,7 +317,11 @@ def atomic_download(volume, remote_path, destination, artifact=None):
             if digest.hexdigest() != artifact["sha256"] or size != artifact["size"]:
                 raise ValueError("Downloaded artifact checksum/size differs")
             temporary.chmod(0o500)
-        temporary.replace(destination)
+        if artifact is None:
+            temporary.replace(destination)
+        else:
+            # Exclusive publication, including a competing publisher after preflight.
+            os.link(temporary, destination, follow_symlinks=False)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -298,6 +337,9 @@ def collect_result(volume, directory, original, result):
         if any(result.get(key) != original[key] for key in ("mode", "original_command", "worker_identity", "test_subject")):
             raise ValueError("Remote test mode/worker/subject differs from original")
         artifacts = result.get("artifacts", {})
+        tests = {name: value for name, value in artifacts.items() if name.startswith("deps/")}
+        if original.get("runtime_package") == 1:
+            artifacts = tests
         if result["returncode"] == 0 and len(artifacts) != 1:
             raise ValueError("Successful test build requires one exact artifact")
         for name, artifact in artifacts.items():
@@ -308,16 +350,34 @@ def collect_result(volume, directory, original, result):
                     or artifact.get("target", {}).get("kind") != ["lib"]
                     or artifact.get("profile", {}).get("test") is not True
                     or artifact.get("target_triple") != "aarch64-apple-darwin"
-                    or "/" in name or "\\" in name):
+                    or "/" in name.removeprefix("deps/") or "\\" in name):
                 raise ValueError("Test artifact does not belong to original job")
+    packaged = original.get("runtime_package") == 1
+    if packaged and result["returncode"] == 0:
+        package = result.get("runtime_package", {})
+        roles = [artifact.get("role") for artifact in result["artifacts"].values()]
+        if (package.get("version") != 1 or roles.count("monty_worker") != 1
+                or roles.count("embedded-pgvector") != 1
+                or roles.count("test" if original["mode"] == APPLE_TEST_MODE else "product") != 1
+                or len(roles) != 3 or result.get("companion_command") != worker_command(original["target_triple"])):
+            raise ValueError("Incomplete/mismatched runtime package")
+        if ({name for name, artifact in result["artifacts"].items() if artifact["role"] == "monty_worker"} != {"monty_worker"}
+                or {name for name, artifact in result["artifacts"].items() if artifact["role"] == "embedded-pgvector"} != {"pgvector.tar.gz"}
+                or (original["mode"] == APPLE_BUILD_MODE and "brassclaw-reborn" not in result["artifacts"])):
+            raise ValueError("Runtime package layout differs from the installed worker contract")
+        if (result.get("worker_identity") != original.get("worker_identity")
+                or result.get("mode") != original.get("mode")):
+            raise ValueError("Runtime package worker/mode differs from original")
     write_record(directory / "completed.json", result)  # remote completion, not local readiness
     for name, artifact in result.get("artifacts", {}).items():
         # Legacy product pgvector entries retain their original relative-cache
         # metadata semantics. Product executable and test snapshots live here.
-        if "/" in name:
+        if "/" in name and not packaged:
             continue
-        if re.fullmatch(r"[A-Za-z0-9_-]+", name) is None:
+        if (re.fullmatch(r"(?:deps/)?[A-Za-z0-9_.-]+", name) is None
+                or name.split("/")[-1] in {".", ".."}):
             raise ValueError("Unsafe artifact name")
+        (directory / name).parent.mkdir(mode=0o700, exist_ok=True)
         atomic_download(volume, prefix + "/artifacts/" + name, directory / name, artifact)
     for name in ("image-provenance.json", "cargo.log"):
         atomic_download(volume, prefix + "/" + name, directory / name)
@@ -385,20 +445,111 @@ def status(args):
 
 
 def require_activation(platform, mode=None):
-    if mode == APPLE_TEST_MODE:
-        # No native test execution/fixture qualification or activation writer is
-        # delivered by this preparation package. --qualification may compile
-        # only after exact new-image preparation; normal test offload stays shut.
-        raise ValueError("Apple test mode is DEACTIVATED: native test qualification/activation remains open")
-    path = records_root() / f"activation-{platform}.json"
+    suffix = "-test" if mode == APPLE_TEST_MODE else ""
+    path = records_root() / f"activation-{platform}{suffix}.json"
     if not path.exists():
         raise ValueError("Modal is DEACTIVATED; only an explicitly authorized --qualification run is allowed")
     record = json.loads(path.read_bytes())
     image = json.loads((records_root() / f"image-{platform}.json").read_bytes())
+    if platform == "apple" and (image.get("worker_identity") != worker_identity()
+            or (mode or APPLE_BUILD_MODE) not in image.get("supported_modes", [])):
+        raise ValueError("Modal is DEACTIVATED for this worker protocol; preserve the historical image/activation receipts")
     if (not record.get("active") or record.get("image_id") != image["image_id"]
-            or (platform == "apple" and record.get("mode", APPLE_BUILD_MODE) != APPLE_BUILD_MODE)):
+            or (platform == "apple" and record.get("mode", APPLE_BUILD_MODE) != (mode or APPLE_BUILD_MODE))
+            or (mode == APPLE_TEST_MODE and (record.get("worker_identity") != worker_identity()
+                                           or image.get("worker_identity") != worker_identity()))):
         raise ValueError("Modal is DEACTIVATED or the qualified image has changed")
     return record
+
+
+def validate_native_selection(args):
+    tests = getattr(args, "tests", None)
+    timeout = getattr(args, "test_timeout_secs", None)
+    if (not tests or len(set(tests)) != len(tests) or any(not isinstance(name, str) or not name for name in tests)
+            or timeout is None or not math.isfinite(timeout) or timeout <= 0):
+        raise ValueError("Native test acceptance needs exact test names and an explicit finite positive timeout")
+    return tests, timeout
+
+
+def native_environment(args):
+    environment = os.environ.copy()
+    if getattr(args, "test_env", None) is not None:
+        supplied = json.loads(args.test_env.read_bytes())
+        if not isinstance(supplied, dict) or any(not isinstance(key, str) or not key or "=" in key or "\0" in key
+                or not isinstance(value, str) or "\0" in value for key, value in supplied.items()):
+            raise ValueError("Fixture environment must be a string mapping")
+        environment.update(supplied)
+    environment["BRASSCLAW_TEST_SOURCE_ROOT"] = str(ROOT.resolve(strict=True))
+    return environment
+
+
+def accept_native_tests(args, directory, receipt):
+    """Run the collected harness directly under existing native custody; no Cargo."""
+    from modal_source_sync import cargo_lock
+    tests, timeout = validate_native_selection(args)
+    if receipt.get("returncode") != 0 or receipt.get("runtime_package", {}).get("version") != 1:
+        raise ValueError("Native tests require a complete successful runtime package")
+    artifacts = receipt["artifacts"]
+    names = [name for name, artifact in artifacts.items() if artifact.get("role") == "test"]
+    if len(names) != 1 or not names[0].startswith("deps/") or "monty_worker" not in artifacts:
+        raise ValueError("Native test package has no unique harness/normal worker pair")
+    for name, artifact in artifacts.items():
+        if not local_artifact_matches(directory / name, artifact):
+            raise ValueError("Native package artifact changed before execution")
+    source = json.loads((directory / "source.json").read_bytes())
+    verify_source(ROOT, source)
+    environment = native_environment(args)
+    binary = directory / names[0]
+    checks = []
+    with cargo_lock():
+        listing = subprocess.run([str(binary), "--list", "--format", "terse"], cwd=ROOT,
+                                 env=environment, capture_output=True, text=True, timeout=timeout, check=True)
+        available = {line.removesuffix(": test") for line in listing.stdout.splitlines() if line.endswith(": test")}
+        if not set(tests) <= available:
+            raise ValueError("Requested exact tests do not exist in the collected harness; no tests executed")
+        for index, name in enumerate(tests):
+            command = [str(binary), "--exact", name, "--nocapture", "--test-threads=1"]
+            log_path = directory / f"native-test-{index}.log"
+            # Do not replay effects by overwriting an earlier execution's evidence.
+            with log_path.open("x") as log:
+                process = subprocess.Popen(command, cwd=ROOT, env=environment, stdout=log,
+                                           stderr=subprocess.STDOUT, text=True, start_new_session=True)
+                try:
+                    code = process.wait(timeout=timeout)
+                finally:
+                    if process.poll() is None:
+                        try:
+                            os.killpg(process.pid, signal.SIGTERM)
+                        except ProcessLookupError:
+                            pass  # It exited between poll and the signal.
+                        grace = getattr(args, "shutdown_grace_secs", None) or load_settings(
+                            "modal", "apple", getattr(args, "config", None))["shutdown_grace_secs"]
+                        try:
+                            process.wait(timeout=grace)
+                        except subprocess.TimeoutExpired:
+                            try:
+                                os.killpg(process.pid, signal.SIGKILL)
+                            except ProcessLookupError:
+                                pass
+                            process.wait()
+            summary = None
+            with log_path.open() as log:
+                for line in log:
+                    match = re.search(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored;", line)
+                    if match:
+                        summary = match.groups()
+            if code != 0 or summary != ("1", "0", "0"):
+                raise ValueError(f"Native test failed/was ignored: {name}; inspect {log_path}")
+            checks.append({"name": name, "returncode": code, "log": log_path.name})
+    verify_source(ROOT, source)
+    for name, artifact in artifacts.items():
+        if not local_artifact_matches(directory / name, artifact):
+            raise ValueError("Native artifact changed during execution")
+    accepted = {"image_id": receipt["image_id"], "worker_identity": receipt["worker_identity"],
+                "artifacts": artifacts, "tests": checks,
+                "scope": "Only the exact listed native cases and their retained runtime package"}
+    write_record(directory / "native-tests-accepted.json", accepted)
+    print(json.dumps(accepted, indent=2))
 
 
 def accept_native(args):
@@ -406,10 +557,15 @@ def accept_native(args):
         raise ValueError("Native Apple acceptance must run on macOS")
     directory = records_root() / "jobs" / str(uuid.UUID(args.job_id))
     receipt = json.loads((directory / "completed.json").read_bytes())
-    if (receipt.get("mode") == APPLE_TEST_MODE
-            or command_mode(receipt["command"], "aarch64-apple-darwin") != APPLE_BUILD_MODE):
-        raise ValueError("Test builds require their own native test execution acceptance; CLI acceptance cannot qualify them")
+    if receipt.get("mode") == APPLE_TEST_MODE:
+        return accept_native_tests(args, directory, receipt)
+    if command_mode(receipt["command"], "aarch64-apple-darwin") != APPLE_BUILD_MODE:
+        raise ValueError("Native Apple acceptance requires an Apple product or test package")
     binary = directory / "brassclaw-reborn"
+    if receipt.get("runtime_package"):
+        for name, artifact in receipt["artifacts"].items():
+            if not local_artifact_matches(directory / name, artifact):
+                raise ValueError("Native runtime package is incomplete or changed")
     expected = receipt["artifacts"][binary.name]["sha256"]
     with binary.open("rb") as stream:
         actual = hashlib.file_digest(stream, "sha256").hexdigest()
@@ -430,32 +586,55 @@ def accept_native(args):
 
 
 def activation(args):
-    path = records_root() / f"activation-{args.platform}.json"
+    selected_mode = APPLE_TEST_MODE if getattr(args, "test_mode", False) else None
+    path = records_root() / f"activation-{args.platform}{'-test' if selected_mode else ''}.json"
     if args.action == "deactivate":
         write_record(path, {"active": False})
     elif args.action == "activate":
         receipt = json.loads((records_root() / "jobs" / str(uuid.UUID(args.job_id)) / "completed.json").read_bytes())
         image = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
-        if (receipt.get("mode") == APPLE_TEST_MODE or (args.platform == "apple"
+        if selected_mode:
+            if args.platform != "apple":
+                raise ValueError("Only the connected Apple composition test mode can be activated")
+            accepted = json.loads((records_root() / "jobs" / args.job_id / "native-tests-accepted.json").read_bytes())
+            if (receipt.get("mode") != selected_mode or receipt.get("returncode") != 0
+                    or receipt.get("image_id") != image["image_id"]
+                    or image.get("worker_identity") != worker_identity()
+                    or accepted.get("worker_identity") != worker_identity()
+                    or accepted.get("image_id") != image["image_id"]
+                    or accepted.get("artifacts") != receipt.get("artifacts")
+                    or not accepted.get("tests") or any(test.get("returncode") != 0 for test in accepted["tests"])):
+                raise ValueError("Test activation requires actual successful exact-package native tests for this worker/image")
+            for name, artifact in receipt["artifacts"].items():
+                if not local_artifact_matches(records_root() / "jobs" / args.job_id / name, artifact):
+                    raise ValueError("Qualified native test package is missing or changed")
+            write_record(path, {"active": True, "image_id": image["image_id"], "job_id": args.job_id,
+                                "mode": selected_mode, "worker_identity": worker_identity()})
+        elif (receipt.get("mode") == APPLE_TEST_MODE or (args.platform == "apple"
                 and command_mode(receipt["command"], "aarch64-apple-darwin") != APPLE_BUILD_MODE)):
             raise ValueError("Test mode cannot use product-build activation")
-        if receipt["returncode"] != 0 or receipt["image_id"] != image["image_id"] or not receipt.get("artifacts"):
+        elif receipt["returncode"] != 0 or receipt["image_id"] != image["image_id"] or not receipt.get("artifacts"):
             raise ValueError("Activation requires a successful qualified build of this exact image")
-        native = records_root() / "jobs" / args.job_id / "native-accepted.json"
-        accepted = json.loads(native.read_bytes())
-        if set(accepted.get("checks", {})) != {"file", "dependencies", "version", "help"}:
-            raise ValueError("Native acceptance is incomplete")
-        if accepted["artifact_sha256"] != receipt["artifacts"]["brassclaw-reborn"]["sha256"]:
-            raise ValueError("Native acceptance differs from the cross-built artifact")
-        write_record(path, {"active": True, "image_id": image["image_id"], "job_id": args.job_id,
-                            "mode": APPLE_BUILD_MODE if args.platform == "apple" else "linux-compile/1"})
+        if not selected_mode:
+            if args.platform == "apple" and (image.get("worker_identity") != worker_identity()
+                    or receipt.get("worker_identity") != worker_identity()
+                    or receipt.get("runtime_package", {}).get("version") != 1):
+                raise ValueError("Product activation requires this exact worker's complete runtime package")
+            native = records_root() / "jobs" / args.job_id / "native-accepted.json"
+            accepted = json.loads(native.read_bytes())
+            if set(accepted.get("checks", {})) != {"file", "dependencies", "version", "help"}:
+                raise ValueError("Native acceptance is incomplete")
+            if accepted["artifact_sha256"] != receipt["artifacts"]["brassclaw-reborn"]["sha256"]:
+                raise ValueError("Native acceptance differs from the cross-built artifact")
+            write_record(path, {"active": True, "image_id": image["image_id"], "job_id": args.job_id,
+                                "mode": APPLE_BUILD_MODE if args.platform == "apple" else "linux-compile/1"})
     try:
-        print(json.dumps({"status": "ACTIVE", **require_activation(args.platform)}, indent=2))
+        print(json.dumps({"status": "ACTIVE", **require_activation(args.platform, selected_mode)}, indent=2))
     except (ValueError, FileNotFoundError) as error:
         print(json.dumps({"status": "DEACTIVATED", "reason": str(error)}, indent=2))
 
 
-def main():
+def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--environment", default="brassclaw")
     parser.add_argument("--volume", default="brassclaw-build")
@@ -469,7 +648,11 @@ def main():
     execute.add_argument("--allow-parallel-hosts", action="store_true", help="Compatibility option; isolated local/Modal overlap is now supported by separate locks")
     execute.add_argument("--qualification", action="store_true", help="Explicitly authorized qualification; does not activate Modal")
     execute.add_argument("--confirmed-modal", action="store_true")
-    execute.add_argument("--estimated-local-secs", type=float, required=True)
+    execute.add_argument("--estimated-local-secs", type=float,
+                         help="Optional observed/expected local seconds; no minimum runtime gate")
+    execute.add_argument("--native-test", dest="tests", action="append", help="Run this exact collected Apple libtest case locally after build; repeat as needed")
+    execute.add_argument("--test-timeout-secs", type=float)
+    execute.add_argument("--test-env", type=Path)
     execute.add_argument("--cpu", type=float, help="Reserved cores; also sets limit unless --cpu-limit is given")
     execute.add_argument("--cpu-limit", type=float, help="Maximum cores, at least --cpu")
     execute.add_argument("--memory-mib", type=int, help="Reserved RAM; also sets limit unless --memory-limit-mib is given")
@@ -484,9 +667,14 @@ def main():
     commands.add_parser("settings", help="Show resolved target settings without cloud access or compilation")
     for action in ["activation-status", "activate", "deactivate", "accept-native"]:
         control = commands.add_parser(action)
+        control.add_argument("--test-mode", action="store_true", help="Use the independent Apple test activation")
         if action in {"activate", "accept-native"}:
             control.add_argument("job_id")
-    args = parser.parse_args()
+        if action == "accept-native":
+            control.add_argument("--test", dest="tests", action="append", help="Exact libtest name; repeat for required cases")
+            control.add_argument("--test-timeout-secs", type=float)
+            control.add_argument("--test-env", type=Path, help="Local fixture environment JSON; values are never copied into acceptance logs")
+    args = parser.parse_args(argv)
     if args.environment != "brassclaw":
         parser.error("This builder is restricted to the brassclaw environment")
     if args.action == "setup":
@@ -498,7 +686,7 @@ def main():
     elif args.action == "run":
         raise SystemExit(run(args))
     elif args.action == "settings":
-        print(json.dumps(modal_resources(args), indent=2))
+        print(json.dumps({**modal_resources(args), "compiler": compiler_version(args.platform, args.config)}, indent=2))
     elif args.action == "accept-native":
         accept_native(args)
     elif args.action == "status":
