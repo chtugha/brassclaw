@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Development policy**: Clarify MCP exposure of existing approved Skill usages
+  through qualified execution Recipes, current single-chat ownership, complete
+  source-input evidence and authored/shipped/workflow review boundaries. Align
+  build-mode descriptions with the implemented controllers while retaining
+  separate image qualification, Screen and PostgreSQL safety requirements.
+
 - **Independent shipped Pure qualification**: Qualify the exact Prefix-generation
   revision formatter through the existing installation owner, with a separately
   checked private receipt instrument and immutable original parser policies.
