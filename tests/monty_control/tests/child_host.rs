@@ -266,7 +266,7 @@ fn busy_python_yields_and_cannot_catch_a_supervisor_cancellation() {
     let VmBoundary::ControlYield(key) = vm
         .start_step(
             artifact(
-                "try:\n    while True:\n        pass\nexcept BaseException:\n    result = 'caught'",
+                "try:\n    while True:\n        pass\nexcept BaseException:\n    print('caught')\n    result = 'caught'",
                 &[],
                 limits,
             ),
@@ -278,8 +278,15 @@ fn busy_python_yields_and_cannot_catch_a_supervisor_cancellation() {
     };
     vm.cancellation().request();
     let error = vm.resume_control(key).unwrap_err();
-    assert_eq!(error.failure, VmFailure::Python);
+    // Supervisor cancellation is terminal control, not a catchable Python
+    // domain failure. Preserve its diagnostic without exposing a result.
+    assert_eq!(error.failure, VmFailure::ResourceLimit);
     assert!(error.exception.unwrap().to_string().contains("Cancelled"));
+    assert!(error.stdout.is_empty());
+    assert_eq!(
+        vm.resume_control(key).unwrap_err().failure,
+        VmFailure::Terminal
+    );
 }
 
 #[test]

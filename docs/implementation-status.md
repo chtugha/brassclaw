@@ -1,3 +1,14 @@
+## 2026-11-15 — Child control CI regression
+
+The actual Contained jobs pass both association-review cases on macOS and Linux.
+Their next failure is a stale test expectation: supervisor cancellation is a
+terminal resource/control failure, distinct from a Python domain exception.
+The corrected test retains that diagnostic, proves the handler emits nothing
+and rejects further resumption. All eleven native Child-VM cases pass on Rust1.96
+without warnings/ignored cases; see the [receipt](validation/2026-11-15-child-control-ci.md).
+Production behavior is unchanged; full CI and the separately commissioned
+startup-transfer implementation are not qualified by this narrow acceptance.
+
 ## 2026-11-15 — Native original reuse and CI repair
 
 Live settings changes no longer select new private Pure Case qualification work

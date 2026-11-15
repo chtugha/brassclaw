@@ -9,6 +9,14 @@ queue, component approval or evidence of completed Bob plans.
 
 ## Responsibilities
 
+**Child control CI repair — 2026-11-15:** both platform jobs now pass the two
+association cases, then expose an outdated Python-vs-supervisor cancellation
+expectation. The corrected stronger test and all eleven standalone Child-VM
+cases pass natively on Rust1.96, with zero warnings/ignored cases; see the
+[receipt](validation/2026-11-15-child-control-ci.md). Production classification
+is unchanged. No second Cargo runs concurrently; the slot is returned after
+actual Screen exit. Startup transfer and complete CI remain separate work.
+
 **Native original reuse — 2026-11-15:** strict130/native131, three new integrity
 cases and the unchanged full global-runtime restart regression pass. Standalone
 Clippy132 and direct current-PG immutable-record trigger acceptance also pass;
