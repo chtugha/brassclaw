@@ -1,3 +1,20 @@
+## 2026-11-15 — Retired fabricated bootstrap producer
+
+Production startup no longer invents L013 placeholder revisions and unperformed
+successful checks. Actual seed content and pending requests remain. Existing Pure
+decision boundaries reject known historical placeholder identities and borrowed
+Q1/behavior references; originals stay immutable audit data. The independent
+native installation owners retain their existing qualification requirements.
+Run120 strict lint, Run121 native compilation and fourteen scoped cases pass,
+including fresh/repeated boot and actual global-Monty History qualification/reuse.
+See the [exact acceptance](validation/2026-11-15-retired-l013-bootstrap.md).
+Remaining library qualification, authored writers and B1/B2/B3 remain open.
+
+The preceding Main checkpoint's actual GitHub jobs expose additional incomplete
+control-harness wiring, test visibility/coverage, Screen fixture ordering and
+PostgreSQL ABI configuration. Their repairs are prepared separately and are not
+qualified by this native receipt. Root continues those repairs, then B1 first.
+
 ## 2026-11-15 — History root, dependency and build compatibility acceptance
 
 The actual retained History formatter now has independent shipped own-function

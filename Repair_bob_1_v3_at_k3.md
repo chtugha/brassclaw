@@ -292,6 +292,25 @@ environment; an example string or parser pass is not behavioral evidence.
 
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
+**Scoped retirement accepted, 2026-11-15:** the production L013 placeholder
+producer and startup call are removed. Actual legacy seed bodies and their
+pending requests remain; independent closed installation owners still qualify
+their exact actual originals before readiness. Existing Pure writer, resolver,
+root lookup and submission-link boundaries reject known retired L013 identities;
+the writer/resolver also reject borrowing their Q1/behavior references under a
+new approval ID. Immutable historical records remain available as audit data.
+The generic association reader already rejects `system_seed`; closed shipped
+usage readers require their own exact native original and do not consume these
+L013 records. Actual PostgreSQL regression covers fresh/repeated seeding,
+historical rejection/preservation and unchanged real package content. Run120
+strict lint, Run121 native compilation, six source cases and eight actual PG
+cases pass, including normal global-Monty History qualification/reuse; see the
+[exact acceptance](docs/validation/2026-11-15-retired-l013-bootstrap.md).
+This retires a false producer, not qualification
+of the remaining library. Continue items 1–12 below using actual canonical
+drafts/registration and native observations, including explicit readiness for
+each required workflow. No old placeholder approval may satisfy that gate.
+
 **Scoped independent shipped root accepted, 2026-11-15:** the actual retained
 Prefix-generation revision formatter is independently qualified by the existing
 installation owner, following a separately qualified private integer receipt

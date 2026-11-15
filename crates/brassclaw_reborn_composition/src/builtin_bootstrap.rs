@@ -30,8 +30,9 @@
 //! approval or human Q2 on the installed instance. Retention here supplies no
 //! qualification. Structural checking functions receive actual own-export
 //! qualification later in the contained installation owner before readiness;
-//! that does not qualify complete candidate-class Q1. L013–L101's historical
-//! placeholder qualification remains separate repair work, not evidence to reuse.
+//! that does not qualify complete candidate-class Q1. The historical L013–L101
+//! placeholder qualifier has been removed. Its immutable records are audit data,
+//! not evidence to reuse; qualifying the actual remaining library is B1-05 work.
 //! Every insert is idempotent (ON-CONFLICT / get-then-insert) and
 //! `append_child_component_ids` deduplicates, so the whole seeder is safe to
 //! call on every composition boot.
@@ -16730,7 +16731,7 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
 
     // 12b-pre. Dedicated leaf skills for QA glob/grep PC pairings — provide
     //     the skill-association/1 links required for skill-association-approval/1
-    //     at boot-time qualification in bootstrap_l013_approval.
+    //     when their actual packaged usages receive native qualification (B1-05).
     let skill_glob_test_files_rust = stores
         .upsert_skill(
             leaf_skill(
@@ -16955,7 +16956,7 @@ async fn seed_workflow_skills(stores: &BootstrapStores) -> Result<(), SeedBuilti
 
     // 13b-pre. Dedicated leaf skills for security-grep PC pairings — these provide
     //     the skill-association/1 links required for skill-association-approval/1
-    //     at boot-time qualification in bootstrap_l013_approval.
+    //     when their actual packaged usages receive native qualification (B1-05).
     let skill_grep_hardcoded_secrets = stores
         .upsert_skill(
             leaf_skill(

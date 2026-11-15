@@ -1164,8 +1164,6 @@ mod bootstrap_generation_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
-mod bootstrap_l013_approval;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_measurement_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_pair_approval;

@@ -16,6 +16,255 @@ fn limits() -> ContractLimits {
     }
 }
 
+#[test]
+fn retired_l013_identities_cannot_be_reused_as_approval_or_evidence() {
+    let root = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+    // Independent UUIDv5 golden values from the retired producer's 21-name
+    // manifest, plus both evidence roles for pc-path-join. No mutable row name,
+    // current export, or production classifier is used to construct this oracle.
+    for id in [
+        "4e1f4052-59e9-5da0-aea7-61bb5d916b7a",
+        "f410f11e-8f64-56f4-9ddd-9a6e02c0c2f7",
+        "5378c409-3983-50c3-8190-fd72a15d2686",
+        "d9380563-f2c9-592b-bd85-72d6db754908",
+        "337f819b-fe4f-5bc3-afd5-bcd56ddd608d",
+        "a46e065c-1681-5e57-a3bf-204166b71ca4",
+        "740ae9c6-8914-5619-9008-4ba3a35a37de",
+        "22c8b354-6bda-5943-9f0f-296ac2151e3f",
+        "7f212102-86a3-5ce3-924a-01668e336ab0",
+        "2c83c7b6-e73d-5ec6-8c78-82d88739c714",
+        "5938f131-86a1-5186-8057-d5467aeb43f5",
+        "4b068b92-45a8-5552-bdc2-c5f2398a89b9",
+        "4c0a038c-1df5-5012-8a2e-6d2c8e782261",
+        "a6b20277-1f33-5751-a435-0eb269e98753",
+        "932d54f7-c889-54f9-8bef-9924cf5c412b",
+        "77bb3fbb-3d7b-5b08-a89d-21e6e873ed33",
+        "d38690f1-7501-503a-a008-869dc45169e9",
+        "c0317bde-3677-5d98-8e51-5621fae44d47",
+        "6c458938-5bbe-53d4-8fae-89d9cbcaadc6",
+        "6752fd34-489d-57fc-aecb-ed2c0cdb8dd1",
+        "c859fd9e-cb1e-51c7-82b4-2ef0a3ff9a6b",
+        "10e1a4c1-eabc-5769-adc2-fc7a86732158",
+        "e02326b3-b177-5bf6-8cd1-6a1976ad3c4a",
+    ] {
+        let id = Uuid::parse_str(id).unwrap();
+        assert!(require_nonretired_pure_references(root, [id]).is_err());
+        // An ID from a different root is not classified by a mutable name.
+        require_nonretired_pure_references(Uuid::new_v4(), [id]).unwrap();
+    }
+    require_nonretired_pure_references(root, [Uuid::new_v4()]).unwrap();
+}
+
+#[tokio::test]
+async fn retired_l013_history_survives_boot_without_becoming_a_decision() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let booted = crate::booted_db::run_migrations_and_return_booted_db(rig.pool.clone())
+        .await
+        .unwrap();
+    let tenant = "retired-l013-native";
+    crate::component_boot::initialize_runtime_components(&booted, tenant)
+        .await
+        .unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let before = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM reborn_component_review_evidence),
+        (SELECT count(*) FROM reborn_pure_component_approvals),
+        (SELECT count(*) FROM reborn_skill_association_approvals)",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            before.get::<_, i64>(0),
+            before.get::<_, i64>(1),
+            before.get::<_, i64>(2)
+        ),
+        (0, 0, 0)
+    );
+    let packaged = client
+        .query(
+            "SELECT p.id,p.name,p.content,q.state,q.q1_component_bytes,q.q2_actor,
+        (SELECT count(*) FROM reborn_component_revisions r WHERE r.component_id=p.id)
+        FROM reborn_python_code p JOIN reborn_validation_queue q ON q.component_id=p.id
+        WHERE p.tenant_id=$1 AND p.name=ANY($2::text[]) ORDER BY p.name",
+            &[&tenant, &vec!["pc-path-join", "pc-exec-read-file"]],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        packaged.len(),
+        2,
+        "actual pure and Tool-using seed requests must remain visible"
+    );
+    let originals: Vec<_> = packaged
+        .iter()
+        .map(|row| {
+            assert_eq!(row.get::<_, i16>(3), 1);
+            assert!(row.get::<_, Option<String>>(4).is_none());
+            assert!(row.get::<_, Option<String>>(5).is_none());
+            assert_eq!(
+                row.get::<_, i64>(6),
+                0,
+                "no placeholder revision may be manufactured"
+            );
+            (
+                row.get::<_, Uuid>(0),
+                row.get::<_, String>(1),
+                row.get::<_, String>(2),
+            )
+        })
+        .collect();
+    drop(client);
+
+    // Deliberate historical corruption fixture: structurally valid immutable
+    // storage is not a native qualification. This never supplies a test oracle
+    // or a successful product review. Use a submitted subject to exercise the
+    // actual link writer's positive boundary as well as the legacy resolver.
+    let submission_id = Uuid::new_v4();
+    let candidate = ComponentRevisionDraft::from_json(&json!({
+        "format":"component-revision/1","uuid":Uuid::new_v4(),"class_code":22,
+        "document":{"content":"def path_join(inputs):\n    return {}\n",
+            "preload":{"format":"python-preload/2","exports":{},"private_functions":{},"constants":[],"imports":[],"dependencies":[]},
+            "input_contract":{},"result_contract":{"type":"object","allow_extra_fields":false,"fields":{},"checks":[]}},
+        "dependencies":[],"association":null}).to_string()).unwrap();
+    let subject = PgReviewSubmissionStore::new(rig.pool.clone())
+        .submit(
+            &ReviewSubmissionDraft::new(
+                submission_id,
+                "retired-l013-audit-fixture",
+                candidate,
+                None,
+                vec![],
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let root = &subject.candidate;
+    let identity = Uuid::new_v5(
+        &RETIRED_L013_NAMESPACE,
+        format!("pure:pc-path-join:{}", root.uuid).as_bytes(),
+    );
+    let approval = Uuid::new_v5(&identity, b"approval");
+    let q1 = Uuid::new_v5(&identity, b"q1");
+    let behavior = Uuid::new_v5(&identity, b"behavior");
+    let entry = json!({"uuid":root.uuid,"class_code":22,"version":root.version,"checksum":hex::encode(root.checksum)});
+    let bytes = json!({"format":"pure-component-approval/1","approval_id":approval,"root":entry,"components":[entry],"validation_mode":"system_seed","q1_ref":q1,"q2_ref":null,"behavioral_refs":[behavior]}).to_string();
+    let declaration = PureComponentApprovalDeclaration::from_json(&bytes, limits()).unwrap();
+    assert!(
+        matches!(record_pure_component_approval(&rig.pool,&declaration).await,Err(PureApprovalError::Invalid(reason)) if reason.contains("retired L013"))
+    );
+    let client = rig.pool.get().await.unwrap();
+    let mut historical_evidence = Vec::new();
+    for (id, kind) in [(q1, "q1"), (behavior, "behavior")] {
+        let evidence = json!({"format":"component-review-evidence/1","evidence_id":id,"kind":kind,
+            "validation_mode":"system_seed","association_checksum":format!("{:x}",Sha256::digest(root.uuid.to_string().as_bytes())),
+            "components":[entry],"succeeded":true,"reviewed_evidence":[],"report":{"checks":["no-host-calls","effect-free-load"]}}).to_string();
+        client
+            .execute(
+                "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum)
+            VALUES($1,$2,encode(sha256(convert_to($2::text,'UTF8')),'hex'))",
+                &[&id, &evidence],
+            )
+            .await
+            .unwrap();
+        historical_evidence.push((id, evidence));
+    }
+    let version = i64::try_from(root.version).unwrap();
+    let checksum = hex::encode(root.checksum);
+    client.execute("INSERT INTO reborn_pure_component_approvals
+        (approval_id,root_id,root_version,root_checksum,validation_mode,q1_ref,q2_ref,approval_bytes,checksum)
+        VALUES($1,$2,$3,$4,'system_seed',$5,NULL,$6,encode(sha256(convert_to($6::text,'UTF8')),'hex'))",
+        &[&approval,&root.uuid,&version,&checksum,&q1,&bytes]).await.unwrap();
+    client
+        .execute(
+            "INSERT INTO reborn_pure_component_approval_closure
+        (approval_id,component_id,component_version,component_checksum) VALUES($1,$2,$3,$4)",
+            &[&approval, &root.uuid, &version, &checksum],
+        )
+        .await
+        .unwrap();
+    drop(client);
+
+    assert!(
+        matches!(resolve_existing_pure_component_approval(&rig.pool,&bytes).await,Err(PureApprovalError::Invalid(reason)) if reason.contains("retired L013"))
+    );
+    assert!(
+        matches!(read_pure_component_approval_root(&rig.pool,approval).await,Err(PureApprovalError::Invalid(reason)) if reason.contains("retired L013"))
+    );
+    assert!(
+        matches!(record_pure_evidence_submission_link(&rig.pool,Uuid::new_v4(),submission_id,approval,root.uuid,root.version).await,Err(PureApprovalError::Invalid(reason)) if reason.contains("retired L013"))
+    );
+    for old_stage in [q1, behavior] {
+        let mut borrowed: serde_json::Value = serde_json::from_str(&bytes).unwrap();
+        borrowed["approval_id"] = json!(Uuid::new_v4());
+        borrowed["q1_ref"] = json!(if old_stage == q1 { q1 } else { Uuid::new_v4() });
+        borrowed["behavioral_refs"] = json!([if old_stage == behavior {
+            behavior
+        } else {
+            Uuid::new_v4()
+        }]);
+        let borrowed =
+            PureComponentApprovalDeclaration::from_json(&borrowed.to_string(), limits()).unwrap();
+        assert!(
+            matches!(record_pure_component_approval(&rig.pool,&borrowed).await,Err(PureApprovalError::Invalid(reason)) if reason.contains("retired L013"))
+        );
+    }
+
+    crate::component_boot::initialize_runtime_components(&booted, tenant)
+        .await
+        .unwrap();
+    let client = rig.pool.get().await.unwrap();
+    let stored = client.query_one("SELECT approval_bytes,checksum FROM reborn_pure_component_approvals WHERE approval_id=$1",&[&approval]).await.unwrap();
+    assert_eq!(stored.get::<_, String>(0), bytes);
+    assert_eq!(
+        stored.get::<_, String>(1),
+        format!("{:x}", Sha256::digest(bytes.as_bytes()))
+    );
+    for (id, original) in historical_evidence {
+        let row=client.query_one("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1",&[&id]).await.unwrap();
+        assert_eq!(row.get::<_, String>(0), original);
+        assert_eq!(
+            row.get::<_, String>(1),
+            format!("{:x}", Sha256::digest(original.as_bytes()))
+        );
+    }
+    for (id, name, original) in originals {
+        let row = client
+            .query_one(
+                "SELECT name,content FROM reborn_python_code WHERE id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(row.get::<_, String>(0), name);
+        assert_eq!(row.get::<_, String>(1), original);
+    }
+    let counts = client
+        .query_one(
+            "SELECT
+        (SELECT count(*) FROM reborn_component_review_evidence),
+        (SELECT count(*) FROM reborn_pure_component_approvals),
+        (SELECT count(*) FROM reborn_skill_association_approvals),
+        (SELECT count(*) FROM reborn_pure_evidence_submission_links)",
+            &[],
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        (
+            counts.get::<_, i64>(0),
+            counts.get::<_, i64>(1),
+            counts.get::<_, i64>(2),
+            counts.get::<_, i64>(3)
+        ),
+        (2, 1, 0, 0)
+    );
+}
+
 fn fake_checksum() -> String {
     "a".repeat(64)
 }

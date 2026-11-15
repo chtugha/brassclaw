@@ -19,15 +19,11 @@ pub(crate) async fn initialize_runtime_components(
             reason: format!("builtin component seeding failed: {e}"),
         })?;
 
-    // Step 3b — qualify L013–L101 PythonCode/Skill pairs and pure-logic components.
-    // Idempotent: pairs already approved are skipped; mismatched checksums abort boot.
-    #[cfg(all(feature = "postgres", feature = "skills-db"))]
-    crate::bootstrap_l013_approval::qualify_all(booted_db.pool().clone(), host_tenant_id)
-        .await
-        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-            reason: format!("L013-L101 qualification failed: {e}"),
-        })?;
-
+    // Seeding retains actual package content and pending review requests. It
+    // grants no qualification. In particular, do not recreate the retired L013
+    // placeholder revisions or its unperformed successful checks on restart.
+    // Qualified installation owners verify their own exact native originals
+    // later, before the affected catalogue can become ready.
     // Structural checking code is only retained here. Its actual own-export
     // qualification needs the installation kernel, retained worker and original
     // executor/root, and runs in InstalledMontyCatalogue::boot before readiness.

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Seed approval integrity**: Retire the startup qualifier that invented
+  placeholder implementations and successful checks without execution. Keep
+  actual seed content and pending requests, preserve historical originals, and
+  reject its known Pure approval/evidence identities at positive decision
+  boundaries. Actual remaining library qualification is still required.
 - **Dependency security**: Update TLS verification, trust roots, Tokio, constant-time
   helpers and the executor; remove unused libSQL network clients from the local
   migration importer. Replace archived YAML/archive dependencies and the old RSA

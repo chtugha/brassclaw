@@ -9,6 +9,14 @@ queue, component approval or evidence of completed Bob plans.
 
 ## Responsibilities
 
+**Current B1 acceptance — 2026-11-15:** the startup L013 placeholder approval
+producer is removed. Known historical Pure identities cannot create, resolve or
+link a positive decision, and old Q1/behavior cannot be borrowed. Original rows,
+real package content and pending requests remain. Run120/121 and fourteen scoped
+source/native cases pass; see the [receipt](validation/2026-11-15-retired-l013-bootstrap.md).
+This does not qualify the rest of the library or close B1. Root next integrates
+the privately prepared actual Main-CI repairs, then continues B1 -> B2 -> B3 alone.
+
 **Current mode — 2026-11-14:** package orchestration is stopped by explicit user
 instruction. Root handles all review, correction, validation and integration
 alone. No further handoff of fixes/new package chats. First reconcile and accept

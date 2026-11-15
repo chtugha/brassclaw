@@ -118,6 +118,74 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
     PureApprovalError::Database(error)
 }
 
+// Historical compatibility identities, not a qualification allowlist. The
+// retired L013 producer derived these IDs from mutable row names/UUIDs and
+// persisted unperformed checks for placeholder bodies. Preserve the immutable
+// originals for inspection, but never accept them as a positive decision or
+// borrow their evidence for a new declaration. No current row-name lookup is
+// involved. New qualification must use the actual native owner's exact source,
+// artifacts and execution; merely passing this rejection is not qualification.
+const RETIRED_L013_NAMESPACE: Uuid = Uuid::from_u128(0x6c01_3101_9e2f_4a88_b003_1f9a_2c7b_4d5e);
+const RETIRED_L013_PURE_NAMES: &[&str] = &[
+    "pc-exec-grep-invert",
+    "pc-filter-entries-by-type",
+    "pc-compute-tail-window",
+    "pc-filter-text-lines",
+    "pc-filter-records",
+    "pc-http-status-check",
+    "pc-web-search-extract",
+    "pc-web-search-query-build",
+    "pc-memory-extract-section",
+    "pc-memory-format-entry",
+    "pc-exec-memory-append",
+    "pc-path-join",
+    "pc-path-basename",
+    "pc-path-dirname",
+    "pc-hash-changed",
+    "pc-format-component-header",
+    "pc-plan-status-update",
+    "pc-exec-http-save",
+    "pc-json-extract-field",
+    "pc-url-encode",
+    "proposed-plan-target",
+];
+
+fn require_nonretired_pure_references(
+    root: Uuid,
+    references: impl IntoIterator<Item = Uuid>,
+) -> Result<(), PureApprovalError> {
+    // At most three historical identities per name, independent of caller
+    // input size. Membership covers the old approval and both evidence stages,
+    // including a newly chosen approval ID borrowing a retired Q1/behavior.
+    let retired: BTreeSet<_> = RETIRED_L013_PURE_NAMES
+        .iter()
+        .flat_map(|name| {
+            let identity = Uuid::new_v5(
+                &RETIRED_L013_NAMESPACE,
+                format!("pure:{name}:{root}").as_bytes(),
+            );
+            ["q1", "behavior", "approval"].map(|stage| Uuid::new_v5(&identity, stage.as_bytes()))
+        })
+        .collect();
+    if references.into_iter().any(|id| retired.contains(&id)) {
+        return Err(invalid(
+            "retired L013 placeholder records are audit data, not qualified pure approval",
+        ));
+    }
+    Ok(())
+}
+
+fn require_nonretired_pure_declaration(
+    declaration: &PureComponentApprovalDeclaration,
+) -> Result<(), PureApprovalError> {
+    require_nonretired_pure_references(
+        declaration.root().uuid,
+        [declaration.approval_id(), declaration.q1_reference()]
+            .into_iter()
+            .chain(declaration.behavioral_references().iter().copied()),
+    )
+}
+
 /// Which evidence format was detected for a given record.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EvidenceFormat {
@@ -173,6 +241,7 @@ async fn record_approval(
     declaration: &PureComponentApprovalDeclaration,
     policy: Option<&crate::bootstrap_validator_approval::OriginalShippedR1Policy>,
 ) -> Result<Uuid, PureApprovalError> {
+    require_nonretired_pure_declaration(declaration)?;
     let limits = policy.map_or(REVISION_LIMITS, |p| p.limits());
     let bytes = declaration.exact_bytes();
     let checksum = format!("{:x}", Sha256::digest(bytes.as_bytes()));
@@ -198,8 +267,10 @@ async fn record_approval(
     // The authored path is closed here until the qualified producers are connected
     // and their evidence binding is verifiable end-to-end.
     //
-    // system_seed approvals are unaffected: their bootstrap producers are
-    // qualified via the controlled seed/integrity path.
+    // Only the closed installation owners may supply system_seed decisions
+    // after native original verification. Shape/checksum checks here do not
+    // establish that qualification. Known retired placeholder identities are
+    // refused above, including when their old evidence is borrowed.
     if mode == ValidationMode::Authored {
         return Err(invalid(
             "authored pure-component approvals are not yet accepted: \
@@ -558,9 +629,9 @@ async fn record_approval(
 }
 
 /// Read an existing approved pure-component root UUID by approval ID.
-/// Returns `None` if not found. Does not re-verify evidence; that happens at
-/// `record_pure_component_approval` time. The caller is responsible for
-/// matching the exact approval ID against the expected declaration.
+/// Returns `None` if not found and refuses known retired placeholder identities.
+/// This metadata lookup does not re-verify native originals or grant execution.
+/// The caller still needs the owning qualified reader for its exact subject.
 pub async fn read_pure_component_approval_root(
     pool: &PgPool,
     approval_id: Uuid,
@@ -573,7 +644,12 @@ pub async fn read_pure_component_approval_root(
         )
         .await
         .map_err(db)?;
-    Ok(row.map(|r| r.get(0)))
+    row.map(|r| {
+        let root = r.get(0);
+        require_nonretired_pure_references(root, [approval_id])?;
+        Ok(root)
+    })
+    .transpose()
 }
 
 /// Resolve an exact already recorded declaration. This compatibility operation
@@ -595,6 +671,7 @@ pub async fn resolve_existing_pure_component_approval(
             }
         },
     )?;
+    require_nonretired_pure_declaration(&declaration)?;
     let client = pool.get().await.map_err(PureApprovalError::Connection)?;
     let row = client.query_opt(
         "SELECT approval_bytes,checksum,root_id FROM reborn_pure_component_approvals WHERE approval_id=$1",
@@ -978,6 +1055,7 @@ pub async fn record_pure_evidence_submission_link(
             "approval root differs from the submission candidate",
         ));
     }
+    require_nonretired_pure_references(component_id, [approval_id])?;
 
     // Insert idempotently.
     tx.execute(
