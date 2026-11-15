@@ -132,3 +132,15 @@ Unchanged Rust/native behavior and fixture evidence remain scoped to their actua
 inputs, not a final exact-byte release package. Recompilation/qualification for
 actual release or serving uptake remains required in the existing owner; no
 large Rust build is repeated solely for this final prose correction.
+
+## Main source checkpoint and final alias
+
+Reviewed source and documentation are committed on Main as
+`a3e209776f3c6c36f9b40ba297c88cbafd967d80`. After that commit, the unused own
+build-task alias is also safely archived/closed: `codex/build-plan-completion-20261115` at
+`ba015377597e132bde023d4a2e5a17a35a485a10`, preserved by `refs/archive/accepted/20261115/build-plan-completion-20261115`. This brings the cleanup
+total to **25 local branch names**. All registered worktrees and incomplete
+private tips remain intact. Read-only process inspection confirms no PostgreSQL
+process remains; the native fixture's supervised `pg_ctl stop -m fast -w` succeeds
+before its own temporary directory is removed. No forced stop or system setting
+change is used.

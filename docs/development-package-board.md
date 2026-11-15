@@ -25,8 +25,8 @@ with three actual native cases. Independent R04/T/Q fragments and Root’s conne
 **Current follow-up — 2026-11-15:** the combined-build source is connected and
 passes its scoped local/native checks; see the [current acceptance](validation/2026-11-15-combined-build-and-branch-cleanup.md).
 Root integrates its source plus the independently user-commissioned Kohai/Sempai
-documentation contribution. Twenty-four already-merged local branch aliases are
-safely archived/closed. Whole N/Q/R/T still have the recorded missing prerequisites;
+documentation contribution. Twenty-four already-merged local branch aliases plus the completed own build
+alias (25 total) are safely archived/closed. Whole N/Q/R/T still have the recorded missing prerequisites;
 old partial code is not restored over later Main repairs. Next work is B1 first,
 after Main publication. No two-package implementation system is resumed.
 

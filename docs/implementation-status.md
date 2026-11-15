@@ -23,7 +23,7 @@ claim an exact final release/package image.
 All earlier independent prepared code remains accepted in Main. The unchanged
 79-tip review still identifies the actual missing N/Q/R/T owners; new guide text
 adds no implementation of those prerequisites. Twenty-four already-merged local
-branch names are closed with exact archive refs, preserving worktrees and
+branch names and the completed own build-task alias (25 total) are closed with exact archive refs, preserving worktrees and
 unmerged private tips. B1 -> B2 -> B3 resumes only after publishing this connected
 source checkpoint; package orchestration remains stopped.
 
