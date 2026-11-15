@@ -237,6 +237,7 @@ impl BootstrapStores {
         row: NewPgTool,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_tools", &row);
         let map = |e: crate::pg_tool_store::PgToolStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
@@ -260,6 +261,7 @@ impl BootstrapStores {
         mut row: NewPgToolSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_tool_skills", &row);
         // Ensure every system-seeded ToolSkill carries a content checksum so
         // run_content_integrity_check can verify reborn_tool_skills rows.
         if row.source == "system" && row.content_checksum.is_none() {
@@ -290,6 +292,7 @@ impl BootstrapStores {
         row: NewPgSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_skills", &row);
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
@@ -317,6 +320,7 @@ impl BootstrapStores {
         row: NewPgPythonCode,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_python_code", &row);
         let map = |e: crate::pg_python_code_store::PgPythonCodeStoreError| {
             SeedBuiltinBootstrapError::Db {
                 reason: e.to_string(),
@@ -346,6 +350,7 @@ impl BootstrapStores {
         row: NewPgRecipe,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_recipes", &row);
         let map = |e: crate::pg_recipe_store::PgRecipeStoreError| SeedBuiltinBootstrapError::Db {
             reason: e.to_string(),
         };
@@ -373,6 +378,7 @@ impl BootstrapStores {
         row: NewPgExtensionCatalogue,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect("reborn_extension_catalogues", &row);
         let map = |e: crate::pg_extension_catalogue_store::PgExtensionCatalogueStoreError| {
             SeedBuiltinBootstrapError::Db {
                 reason: e.to_string(),
@@ -417,7 +423,26 @@ impl BootstrapStores {
                 child_ids,
             )
             .await
-            .map_err(map)
+            .map_err(map)?;
+        let client = self
+            .pool
+            .get()
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
+        let row = client
+            .query_one(
+                "SELECT name FROM reborn_extension_catalogues WHERE id=$1",
+                &[&cat_id],
+            )
+            .await
+            .map_err(|e| SeedBuiltinBootstrapError::Db {
+                reason: e.to_string(),
+            })?;
+        let name: String = row.get(0);
+        crate::seed_review_cleanup::children(&self.tenant, &name, child_ids);
+        Ok(())
     }
 
     /// Like [`Self::upsert_skill`] but `row.content_checksum` must be pre-filled
@@ -474,6 +499,14 @@ impl BootstrapStores {
         allowed_tools: &[&str],
         intent_examples: &Value,
     ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+        crate::seed_review_cleanup::expect(
+            "reborn_actions",
+            &json!({
+                "tenant_id":self.tenant,"user_id":SEED_USER,"agent_id":SEED_AGENT,"project_id":SEED_PROJECT,
+                "name":name,"description":description,"steps":steps,"allowed_tools":allowed_tools,
+                "intent_examples":intent_examples,"source":"system","consumer_tags":["02:orchestrator"]
+            }),
+        );
         let client = self
             .pool
             .get()
@@ -752,6 +785,7 @@ async fn seed_primitive_registration(
     row: NewPgTool,
     preferred: Uuid,
 ) -> Result<Uuid, SeedBuiltinBootstrapError> {
+    crate::seed_review_cleanup::expect("reborn_tools", &row);
     let store = PgToolStore::new(pool.clone());
     let name = row.name.clone();
     let capability = row.capability_id.clone();

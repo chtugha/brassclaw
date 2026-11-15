@@ -153,7 +153,7 @@ pub(crate) struct PgExtensionCatalogue {
 /// `class_code` (23), `prompt_uid` (sequence default), `validation_status`
 /// (`'pending'`), `content_hash` (NULL), and the similarity/replaces/audit
 /// columns (NULL/0) are set by DDL defaults — the caller does not supply them.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct NewPgExtensionCatalogue {
     pub(crate) tenant_id: String,
     pub(crate) user_id: String,

@@ -42,8 +42,8 @@ Tier 2; validator failures never use that route. Keep one global Monty service.
    terminally settled verdict boundary. B2-02 designs carriage with those owners,
    and B3-06/B3-08 design durable work and settlement against the same contract.
 2. Complete B1-05/B1-06 and B2-03/B2-04 as connected producer/reader packages.
-   Installation qualification uses its existing noncircular native/contained
-   boundary, never a normal task whose own unqualified graph is its prerequisite.
+   Development/release package qualification uses its existing noncircular
+   native/contained boundary before provisioning, never a normal task whose own unqualified graph is its prerequisite.
    Verify each prerequisite before a dependent qualification can consume it.
 3. Connect B1-07/B1-08 with B3-06/B3-07/B3-08: qualified original request ->
    actual Monty observations -> terminal native settlement -> exact verdict and
@@ -300,8 +300,10 @@ not execute these qualification workflows. Historical results stay unchanged.
 
 **Scoped retirement accepted, 2026-11-15:** the production L013 placeholder
 producer and startup call are removed. Actual legacy seed bodies and their
-pending requests remain; independent closed installation owners still qualify
-their exact actual originals before readiness. Existing Pure writer, resolver,
+historical requests were retained by that retirement. The shared startup now
+archives only untouched requests for exact canonical seeds before removing them
+from active work; authored changes and review evidence remain. Development/release
+owners qualify actual originals before provisioning; installation inherits validation. Existing Pure writer, resolver,
 root lookup and submission-link boundaries reject known retired L013 identities;
 the writer/resolver also reject borrowing their Q1/behavior references under a
 new approval ID. Immutable historical records remain available as audit data.
@@ -318,8 +320,8 @@ drafts/registration and native observations, including explicit readiness for
 each required workflow. No old placeholder approval may satisfy that gate.
 
 **Scoped independent shipped root accepted, 2026-11-15:** the actual retained
-Prefix-generation revision formatter is independently qualified by the existing
-installation owner, following a separately qualified private integer receipt
+Prefix-generation revision formatter is independently qualified during explicit development qualification by the existing
+package owner, following a separately qualified private integer receipt
 instrument. Product and qualifier share the same canonical draft constructor;
 the exact root revision/export receives its own S approval with null Q2 and a
 one-root closure. New Capture1-only `shipped-pure-r1-* /1` domains retain the
@@ -418,19 +420,21 @@ steps below and reuse these owners; do not recreate their custody infrastructure
    Do not infer identity by a matching name in mutable legacy rows.
 2. Resolve Tool UUID, capability, host callable, adapter, artifact and ABI through
    actual registration. Do not derive them by stripping/prefixing strings.
-3. Declare the noncircular qualification DAG: trusted installation/runtime base
+3. Before provisioning, declare the noncircular development/release qualification
+   DAG: trusted packaged runtime base
    verifies native Tool; independently qualified native fixtures verify its
    ToolSkill binding; then verify Skill/code use; finally consuming workflows.
    Independently reused prerequisites are checked for exact applicability.
 4. Use the existing controlled bootstrap/contained validation facilities and
    retained worker image. Native/utility checking is not another global
-   orchestrator. Establish any private installation admission before public
-   producers start; do not require an unqualified dependent Skill to approve
-   its own Tool or validator. Spell out boot ordering and failure cleanup.
+   orchestrator. Establish private development/release test admission before qualification
+   cases run; do not require an unqualified dependent Skill to approve
+   its own Tool or validator. Spell out qualification ordering and test-fixture cleanup.
    Separate the trusted packaged installation base from the subject being
    qualified; retain its actual application/worker/native artifacts. Before
-   public admission, qualify prerequisites in dependency order with existing
-   closed installation facilities. No permissive temporary root, self-approved
+   provisioning, qualify prerequisites in dependency order with existing
+   contained development/release facilities. Installation checks transferred
+   identity/integrity and loading before public admission, without running fixtures. No permissive temporary root, self-approved
    candidate, second production service or new unqualified dispatcher may break
    a qualification cycle.
 5. Run actual declared exports with meaningful fixtures. Use isolated temporary
@@ -740,7 +744,7 @@ receipt; do not write another checker or count a helper-only pass as acceptance.
 | M4-08: deterministic preload | Dependency-first loading with the existing deterministic tie rule is repeatable; missing helpers, cycles, symbol conflicts, undeclared imports and effectful initializers fail before invocation | B1-03/B2-06/B2-10 |
 | M4-09: authentic evidence/human/provenance | Fake human flags, copied old receipts, self-issued successful records, borrowed evidence and false seed labels cannot approve or activate a subject; model/component-management ports cannot write Q2 | B1-06/B1-10/B3-09 |
 | M4-10: authored installed product flow | Actual operator submission of both Recipe and pure code follows pinned validator -> complete evidence -> exact human view/decision -> immutable approval -> coherent publication -> next matched ordinary task | B1-06/B1-10/B2-05/B3-09 |
-| M4-11: shipped product flow | Actual reviewed package uses noncircular integrity/Q1/behavior, exact S records with null Q2 and coherent publication; no installed human or external-maintainer approval | B1-05/B2-04/B2-10 |
+| M4-11: shipped product flow | Actual package passes noncircular integrity/Q1/behavior before provisioning; installation inherits exact S records with null Q2 and publishes coherently; no installed human or external-maintainer approval | B1-05/B2-04/B2-10 |
 | M4-12: no accidental protected-root coverage | Generic routes reject class 10 and historical class 50; no dummy Scaffold validator or UUID reclassification is introduced | B1-04/B1-10 |
 
 Keep per-case source/graph/artifact/setting identities and actual test counts.
@@ -799,7 +803,7 @@ binding refinements of the existing steps, not another implementation workstream
 | --- | --- |
 | Exact review-context/closure wording could force new A combination review for compatible dependencies | B1-06 and B1-APP separate original evidence from new task selection; B1-09 has A-positive and S-exact negative cases |
 | Receipt verification could wait for its own terminal completion and publish Q1 before settlement | B1-04/B1-08 now separate authenticated observations from the later terminally settled verdict; interruption acceptance covers each boundary |
-| Cross-plan ordering could publish before all readers or rely on an unqualified validator to bootstrap itself | Shared dependency stages gate complete cutover and use the existing noncircular installation boundary |
+| Cross-plan ordering could publish before all readers or rely on an unqualified validator to bootstrap itself | Shared dependency stages gate complete cutover and use the existing noncircular development/release boundary and installation transfer |
 | A logical functional review could be mistaken for approval of all prerequisite roots | B1-06 explicitly requires actual own Tool/ToolSkill/other-root writers and preserves coordinated physical root identities |
 | Fixture/limit language did not fully exclude synthetic success or ad hoc operational caps | Mandatory quality rule and B1-05 require actual isolated native execution, effective policy, correct tier and existing configurable limits |
 

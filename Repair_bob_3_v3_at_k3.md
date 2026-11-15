@@ -1,5 +1,17 @@
 # Repair Bob 3 — Codex and scheduling integration at K3
 
+> **Installation contract — 2026-11-15:** package qualification runs during
+> development/release before provisioning. Installation, restart and upgrade
+> inherit validation of exact canonical shipped definitions and check technical
+> integrity/loading; they do not run component Q1/behavior fixtures or create
+> seed review requests. “Installation owner” names the existing software owner
+> responsible for retention/transfer, not an additional human approver. Older
+> dated implementation observations and receipt names below describe historical
+> test runs; they are not instructions to repeat qualification on an instance.
+> Untouched obsolete requests are archived before removal from active work;
+> authored edits, review findings and immutable historical evidence are retained.
+
+
 Date: 2026-11-03. Status: **implementation plan; no login, refresh or recovery is accepted here**.
 Reviewed committed baseline: `958cbb9c86d50644c59fcd40ced9c5a7cafc9cdc`.
 

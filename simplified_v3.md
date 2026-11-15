@@ -2067,8 +2067,9 @@ support does not require completing an obsolete general A reapproval engine.
    owners; no universal GC, whole-Recipe replay or older-version fallback assumed.
 3. Connect all affected prepare/approval/publication/task/private/child/restore/
    MCP/Prefix readers before publishing new A profiles. Preserve original S exact
-   checks and old valid authored profiles. S prerequisite proofs and package
-   integrity remain with the installation owner, not normal authored Q1.
+   checks and old valid authored profiles. S prerequisite proofs originate in development/release before provisioning;
+   the installation owner transfers them and checks package integrity without
+   rerunning qualification or entering normal authored Q1.
 4. Consume Composition's class50 migration; remove no class10/root protection.
    Real missing runtime/child support stays here, without new VM, scheduler or
    Rust workflow engine. Existing qualified native admission/capture/custody and

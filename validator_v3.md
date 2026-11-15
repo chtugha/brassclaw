@@ -275,8 +275,8 @@ components and relevant combinations through the real admission/IBS/composition/
 Monty/host path, retain trustworthy evidence, and permit coherent activation only
 after the applicable provenance gates. Installed authored changes require human
 Q2; bundled installation/upgrade components use controlled development review,
-integrity/Q1 and behavioral qualification without additional installed-instance
-human Q2. A validator verdict is not activation,
+integrity/Q1 and behavioral qualification before provisioning. Installation
+inherits that validation without running those checks or adding human Q2. A validator verdict is not activation,
 combination approval, Tool permission, semantic proof or whole-workflow completion.
 
 No ordinary runtime cutover is authorized by completing a helper or writing a
@@ -303,7 +303,7 @@ class-1/2/3 route. Their coordinated review is an explicit dependency below.
 | Association/schema parsers and evidence readers exist | `association_contract.rs`, `value_contract.rs`, `association_review_store.rs`, V102 | Reuse structured formats; connect actual trusted producers and activation. Parsing declarations is not approval. |
 | New structural/behavior producers exist separately | `pg_retained_q1.rs`, `retained_source.rs`, retained executor | Reuse observations and persistence; do not claim these execute the eight Recipes or establish human/semantic approval. |
 | Working-tree human association review additions exist | `pg_association_review.rs`, `association_review_store.rs`, product facade and WebUI association-review panel | Reuse exact displayed-view checksums and transactional Q2/association writes after verifying their real ingress and tests. Their declared scope is one Tool usage; `catalogue_activated` remains false. They do not establish eight-class review or production activation. |
-| Legacy seed review requests now stay pending and persistence errors fail boot | `builtin_bootstrap.rs::record_seed_review`, `zencoder_bootstrap.rs`, `ValidationQueueStore::retain_pending_request`, `boot_integrity.rs` (2026-10-08) | Fabricated Q1/builtin graduation was removed. Controlled immutable bootstrap producers/readers now qualify named packaged closures. Extend that owner for remaining validator seeds; pending legacy requests and historical validated labels establish no v3 approval. |
+| Legacy seed requests were retained after fabricated graduation was removed (historical 2026-10-08 baseline) | Shared `component_boot.rs`, canonical seed constructors, `seed_review_cleanup.rs`, V216 | Current startup archives untouched pending requests only for exact canonical shipped definitions, then removes those requests from active work. Proposed edits, changed definitions, original review bindings/submissions and review findings stay active; immutable history is preserved. No installed qualification replaces the obsolete request. |
 
 The principal integration files are:
 
@@ -361,7 +361,7 @@ Installation/upgrade of that package
 
 The second path applies to shipped validators and the global root as well as other
 first-party components. An installed edit cannot select that path through a source
-label. Bootstrap qualification belongs to the installation owner, not to a validator
+label. Pre-provisioning package qualification belongs to the development/release owner, not to a validator
 approving itself or a request for external maintainer approval.
 
 Q1 and behavioral evidence may have separate records. Authored Q2 must cover the
@@ -1048,7 +1048,7 @@ The two plans do not require duplicate runs of the same unchanged shared contrac
 | Coherent publication | Concurrent edits/activation and prefix/cache failures leave a consistent old/new generation with no partial routing. |
 | Lifecycle/migration | Fresh/repeated boot, overrides, pending review upgrade, supervisor recovery and backup/restore preserve required identities/artifacts. |
 | Authored production end to end | Actual installed submission -> pinned validator exports -> evidence -> human Q2 -> publication -> next matched task works through existing production factories. |
-| Bundled production end to end | Exact reviewed installation/upgrade package -> noncircular integrity/Q1/behavior qualification -> system_seed records with null Q2 -> coherent publication -> next task. No external/instance human approval is added; installed edits cannot impersonate this provenance. |
+| Bundled production end to end | Exact package -> noncircular development/release integrity/Q1/behavior before provisioning -> installation/upgrade transfers system_seed validation with null Q2 -> coherent publication -> next task. No external/instance human approval is added; installed edits cannot impersonate this provenance. |
 
 ## 6. Evidence and stopping rules
 
@@ -1061,7 +1061,7 @@ The two plans do not require duplicate runs of the same unchanged shared contrac
   and relevant linting; expand only for shared-consumer or unresolved acceptance needs.
 - Native storage/evidence integration is required for transactional claims.
   Actual runtime admission and dispatch plus authenticated human actions for
-  installed authoring, or controlled installation-owner qualification for shipped
+  installed authoring, or controlled pre-provisioning development/release qualification for shipped
   packages, are required for production approval/activation claims. Do not
   fabricate successful fixtures as evidence.
 - Stop a slice after its coherent change and required checks pass. Do not rerun
@@ -1674,7 +1674,8 @@ support does not require completing an obsolete general A reapproval engine.
    revalidating that component. S workflow evidence stays with bootstrap.
 6. Step11 successor qualifies S prerequisites in dependency order, keeping exact
    `/1` usage formats and existing qualification chains. Add only missing scoped
-   prerequisite proofs through the installation/review owner. No fake Skill,
+   prerequisite proofs through the existing development/release owner before
+   provisioning; installation retains their transferred identity. No fake Skill,
    normal authored queue, self-qualifying validator or installed human Q2.
 7. Remove future class50-specific validation/protection/new acceptance; retain
    historical decoding and valid old pins. Class10/root protection remains.

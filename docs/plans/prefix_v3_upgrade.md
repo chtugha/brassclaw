@@ -1,5 +1,17 @@
 # Prefix v3 upgrade: compiler, source catalogue and WebUI
 
+> **Installation contract — 2026-11-15:** package qualification runs during
+> development/release before provisioning. Installation, restart and upgrade
+> inherit validation of exact canonical shipped definitions and check technical
+> integrity/loading; they do not run component Q1/behavior fixtures or create
+> seed review requests. “Installation owner” names the existing software owner
+> responsible for retention/transfer, not an additional human approver. Older
+> dated implementation observations and receipt names below describe historical
+> test runs; they are not instructions to repeat qualification on an instance.
+> Untouched obsolete requests are archived before removal from active work;
+> authored edits, review findings and immutable historical evidence are retained.
+
+
 > **Current status — 2026-10-27:** use [the combined implementation and ownership
 > index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
@@ -221,7 +233,7 @@ consumer. See
 | Offline compilers | Base and Prefix-Maker entry points exist, shared evidence/rendering helpers and deterministic source packages exist; domain/Sempai standalone citation, configuration and teaching helpers are retained. | Shared-engine capability/validation parity for Defensive, HA and tomedo; no blanket qualification of all standalone modes. |
 | Source/catalogue capture | Owner-selected coherent export, exact component revisions/metadata and installation-retained core/declared-release documents; explicit private prefix workflow sources are included by supported export. [Acknowledged export capacity](../validation/2026-10-25-prefix-export-capacity.md) now uses the existing `execution_limits.max_catalogue_bytes` owner, counts complete serialized JSON without a second full buffer and rejects whole oversized exports; actual runtime/PG boundary and strict checks pass. | Prove complete installed library/private dependency coverage and eligible registered domain-source inclusion, with no row caps or omitted required records. Legacy sweep still has `LIMIT 1000` and summary preference. |
 | Generation storage | V142 immutable originals/artifacts/maps and quarantined imports, generation list/detail/download and legacy archive support; existing generation-retention primitive. | Accepted target artifacts, lineage/invalidation, publication eligibility and consumer selections. Retention/import is not activation. |
-| Recipe compiler / bootstrap | Reusable typed Python stages, shared segmentation/renderers, JSON digest usages and Retain; installation-owned exact graph/integrity/behavior qualification. | Qualify successor graphs/options in the same owner; no expansion of the closed compiler approval exception to arbitrary pure code. |
+| Recipe compiler / bootstrap | Reusable typed Python stages, shared segmentation/renderers, JSON digest usages and Retain; development/release exact graph/integrity/behavior qualification before provisioning, inherited at installation. | Qualify successor graphs/options in the same owner; no expansion of the closed compiler approval exception to arbitrary pure code. |
 | Durable source-only jobs | V167/V171 metadata uses existing turn admission/global Monty/native custody; base/Prefix-Maker and v5 Sempai source-only capture/build/reconnect are locally accepted. | Ordinary one-click target-aware Generate, remaining profile adapters, parent/composite jobs and complete cancellation/recovery acceptance. No second queue/executor. |
 | Stable presentation | Versioned literal/deduplicated/trailing/progressive/context-aware v1–v5 layouts, complete origins/maps and original bytes retained; v5 source-only native acceptance. | Accepted per-model budget-dependent teaching/selection designs and actual serving/quality qualification. Source-only layout options are not accepted model designs. |
 | Model diagnostics | [Exact retained formatting sources](../validation/2026-10-26-prefix-format-sources.md) now expose complete standalone/named templates, tokenizer/special-token maps and declared memory fields through the same inspector/read owner (eight fresh Rust cases including actual native PG, six UI cases); this remains source-only evidence, without effective-template/default selection. V145 model/specification/proposal storage, V157 immutable local artifacts, bounded config inspector/API/UI and real retained encoding worker; full token/HF comparisons, exact template identities and durable measurements. [Versioned physical-span attribution](../validation/2026-10-26-prefix-token-partition.md) now has native/HF/bootstrap/journal evidence; supplied byte spans remain semantically unqualified. [Leading-chat rendering](../validation/2026-10-26-prefix-leading-chat.md) now verifies expected leading bytes in the complete render and binds ordered context identity, with real injection/HF/native/bootstrap/journal evidence. [Grouped quantization declarations](../validation/2026-10-26-prefix-grouped-quantization.md) also have nine-case/native-PG scoped acceptance in this inspector. | Verified deployed identity/geometry, semantic prefix/dynamic partition, accepted designs/bindings and runtime compatibility. Config declarations are not deployed facts. |
@@ -722,7 +734,7 @@ are ready. Do not block model-free source builds on optional provider-assisted w
    preserves the original snapshot/comparison for selected and capacity-blocked
    outcomes and rejects weakened current or unused bands before candidate encoding.
    This closes the scoped private execution prerequisite, not ordinary admission.
-   Installation-owned workflow qualification and target-aware draft/Generate
+   Pre-provisioning development/release workflow qualification and target-aware draft/Generate
    admission remain pending: authenticate and pin canonical target policy,
    proposal/artifact/source eligibility and the complete native observations;
    retain the actual eligible candidate through the existing generation owner.
@@ -862,7 +874,8 @@ are ready. Do not block model-free source builds on optional provider-assisted w
     neither spare tokens, cache hits nor benchmark memorization establish expertise.
 19. **Finish installation/upgrade acceptance (B/C/D; §6/§12).** Package the complete
     source/compiler/validator/dependency manifests and supported model defaults;
-    use existing installation qualification and idempotent seed owners. Preserve
+    use existing pre-provisioning package qualification and idempotent installation
+    validation-transfer owners. Preserve
     operator edits, accepted custom designs, old task/native artifacts and verified
     imports. Register actual supported compiler/validator artifacts, not developer
     paths or filename-only metadata. Any initial background source build uses the
@@ -3728,8 +3741,9 @@ Actual contained-Monty rendering checks and native model/storage acceptance pass
 in those frozen receipts. Eight focused WebUI checks cover model selection/capture,
 Sources open/selection/save and generation-import retry/limits. Do not infer a
 production generation workflow from utility evaluation or storage acceptance.
-The closed installation bootstrap owner still needs to qualify actual
-storage/tokenizer usages and the complete Recipe graph independently.
+The development/release package owner must qualify actual storage/tokenizer
+usages and the complete Recipe graph independently before provisioning;
+installation transfers the resulting validation without running these cases.
 
 Implementation direction remains Recipe-first: retain snapshot read, pure rendering,
 tokenization, immutable publication and optional model evaluation as distinct reusable

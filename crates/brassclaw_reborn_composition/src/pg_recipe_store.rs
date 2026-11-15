@@ -182,7 +182,7 @@ impl PgRecipe {
 }
 
 /// Minimal data required to insert a new recipe row.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct NewPgRecipe {
     pub(crate) tenant_id: String,
     pub(crate) user_id: String,

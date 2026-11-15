@@ -1,5 +1,17 @@
 # monty.composition
 
+> **Installation contract — 2026-11-15:** package qualification runs during
+> development/release before provisioning. Installation, restart and upgrade
+> inherit validation of exact canonical shipped definitions and check technical
+> integrity/loading; they do not run component Q1/behavior fixtures or create
+> seed review requests. “Installation owner” names the existing software owner
+> responsible for retention/transfer, not an additional human approver. Older
+> dated implementation observations and receipt names below describe historical
+> test runs; they are not instructions to repeat qualification on an instance.
+> Untouched obsolete requests are archived before removal from active work;
+> authored edits, review findings and immutable historical evidence are retained.
+
+
 > **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](../implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
@@ -59,7 +71,8 @@ writer, Human Q2 route or compiler exception.
    Declare each finite recursive child-input profile and all actual terminal
    outcomes, including optional nullable sanitized failure. Qualify the complete
    parent binding/export/result handoff on the ordinary global path and implement
-   installation-owned bootstrap before public activation. Migrate spawn/research/
+   development/release qualification before provisioning and inherited validation
+   at installation before public activation. Migrate spawn/research/
    coding/exploration/query consumers with explicit goal/context/workflow/result
    steps, always Tier 1. Retire legacy flavor/task authorization-only callers
    together; neither `authorized:true` nor a draft review proves child completion.
@@ -192,7 +205,8 @@ actual family/parent/MCP-consumer cases not already covered. Record the named
 owner and missing extension in the existing status/implementation record before
 concurrent source edits, not a new coordination service. Unsupported successors
 stay draft; a corrupt active workflow remains an explicit error, never a silent
-omission, downgrade or Tier-2 replay. Installation qualification is noncircular;
+omission, downgrade or Tier-2 replay. Development/release package qualification before provisioning is noncircular;
+installation inherits its evidence without repeating Q1/behavior fixtures;
 ordinary invocation of an approved usage creates no component or new Q1/Q2.
 
 ## Reply/history migration review gate
@@ -551,7 +565,7 @@ Enforce compute time, memory and structural limits through the shared service's 
 3. **Consume retained assembly and shared qualification support.** Existing retained selection, typed bindings, dependency/export loading and associations are the implementation baseline. Remaining runtime/lifecycle gaps are implemented by simplified Phase 0a/3a; general pure approval and review by validator Steps 3/8–10; dynamic occurrences by V35-13/14. This plan consumes and tests those results in its component families, without a second loader, store or review executor. Keep actual inspector restrictions and reject unsupported graphs before activation.
 4. **Convert and qualify in manageable families.** Start with zero-host lexical/encoding/formatting helpers and the canonical interval usage. Then convert read-only filesystem/time/JSON/HTTP retrieval and domain shaping. Follow with effectful memory/file/trigger/API writes, shell usages. The validator plan implements authoring-validator workflows; this plan supplies reusable components to that owner. Each family includes its Skill prose corrections and exact combination evidence; a parse-only batch is not complete. Prefix/bootstrap lifecycle wrappers excluded in section 3 remain with their existing owners.
 5. **Validate through real Monty and host bindings.** Compile exact successor bytes, execute representative valid/invalid inputs in the pinned interpreter, and then exercise retained assembly and actual registered adapters in a controlled environment. Verify input isolation, outputs, policy, effects, cancellation, waits and retained selection, including failures before dispatch. Reuse unchanged evidence only under the development policy's identity conditions.
-6. **Ship immutable packaged successors and coherent catalogue generations.** Qualify installation-owned seeds with package/artifact integrity, structural/Q1 and behavioral evidence, using noncircular bootstrap ownership. Preserve operator overrides and old selections. Installed authoring uses its separate human-Q2 path. Catalogue activation occurs only after the full selected dependency/association combination and production runner support pass their gates; do not activate incompatible rows and silently omit them during matching.
+6. **Ship immutable packaged successors and coherent catalogue generations.** Qualify shipped seeds during development/release before provisioning, with package/artifact integrity, structural/Q1 and behavioral evidence using noncircular ownership. Installation and upgrade transfer that validation without rerunning fixtures or submitting review requests. Preserve operator overrides and old selections. Installed authoring uses its separate human-Q2 path. Catalogue activation occurs only after the full selected dependency/association combination and production runner support pass their gates; do not activate incompatible rows and silently omit them during matching.
 7. **Retire legacy execution admission after acceptance.** Redirect relevant Recipe callers to canonical UUIDs using the actual persisted schema. Prevent placeholder-composed or prose-derived programs from entering execution, including older composer/MCP surfaces. Remove old defaults only after selection and resume tests show that new tasks use approved successors while old tasks retain their artifacts. Retiring new admission is distinct from deleting historical rows or implementations.
 
 ## 7. Required acceptance evidence
@@ -1891,8 +1905,10 @@ source inspection, an integrity comparison and command-observation artifacts
 cannot substitute for that missing producer/reader. Do not fabricate Q1,
 behavioral receipts or a null-Q2 approval from a system label.
 
-Next implement noncircular installation-owned qualification and its trusted
-approval reader, contained behavioral cases and coherent candidate activation.
+The subsequent historical sections record the development of noncircular
+qualification and its reader. Under the current contract, contained behavioral
+cases run during development/release before provisioning; installation inherits
+validation and performs identity/loading checks before coherent activation.
 Only then collect the normal-chat command observations and publish a nonempty
 qualified discovery generation. Bundled reviewed upgrades require no additional
 external maintainer or installed-instance human Q2. Keep authored post-install
@@ -1918,7 +1934,9 @@ rebuilt, independently captured binaries rather than that failed attempt.
 ## 31. Trusted public-reply bootstrap approval and behavior (2026-10-09)
 
 This advances section 30's pending bootstrap gate for the exact packaged
-`publish_literal_reply` successor. Installation startup owns qualification;
+`publish_literal_reply` successor. The following describes the historical
+2026-10-09 qualification implementation, retained as development evidence.
+Current ordinary startup transfers provisioning validation;
 authoring/MCP inputs cannot call it or supply successful evidence. It accepts
 only the shipped stable Recipe/Skill/code/binding identities and exact package
 definitions. Recompute real typed IBS/binding/source inspection under a private
@@ -1927,8 +1945,8 @@ artifact and reply adapter identity. Bind Q1 and approval to the complete exact
 usage dependency combination, Recipe selection, worker/application checksums,
 producer revision, validator-root checksum and fixed acceptance cases.
 
-Before global-orchestrator startup or ingress, run the pinned candidate with
-observations enabled in constrained validation workers. Reuse the production
+During explicit development/release qualification before provisioning, run the
+pinned candidate with observations enabled in constrained validation workers. Reuse the production
 kernel reply registration, current global policy, durable admission/invocation
 journal and actual PostgreSQL transcript publication. Each case has a separate
 private validation chat/run/task. The restricted host exposes the real transcript

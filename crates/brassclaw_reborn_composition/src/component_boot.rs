@@ -8,26 +8,33 @@ pub(crate) async fn initialize_runtime_components(
     booted_db: &BootedDb,
     host_tenant_id: &str,
 ) -> Result<(), RebornBuildError> {
-    crate::seed_builtin_host::seed_builtin_host_components(booted_db, host_tenant_id)
-        .await
-        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-            reason: format!("builtin host component seeding failed: {e}"),
-        })?;
-    crate::builtin_bootstrap::seed_builtin_components(booted_db, host_tenant_id)
-        .await
-        .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
-            reason: format!("builtin component seeding failed: {e}"),
-        })?;
+    crate::seed_review_cleanup::scope(async {
+        crate::seed_builtin_host::seed_builtin_host_components(booted_db, host_tenant_id)
+            .await
+            .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                reason: format!("builtin host component seeding failed: {e}"),
+            })?;
+        crate::builtin_bootstrap::seed_builtin_components(booted_db, host_tenant_id)
+            .await
+            .map_err(|e| crate::error::RebornBuildError::InvalidConfig {
+                reason: format!("builtin component seeding failed: {e}"),
+            })?;
 
-    // Seeding retains actual package content and pending review requests. It
-    // grants no qualification. In particular, do not recreate the retired L013
-    // placeholder revisions or its unperformed successful checks on restart.
-    // Qualified installation owners verify their own exact native originals
-    // later, before the affected catalogue can become ready.
-    // Structural checking code is only retained here. Its actual own-export
-    // qualification needs the installation kernel, retained worker and original
-    // executor/root, and runs in InstalledMontyCatalogue::boot before readiness.
+        let retired = crate::seed_review_cleanup::retire(booted_db.pool())
+            .await
+            .map_err(|reason| RebornBuildError::InvalidConfig {
+                reason: format!("legacy seed review cleanup failed: {reason}"),
+            })?;
+        if retired > 0 {
+            tracing::info!(retired, "archived obsolete shipped seed review requests");
+        }
+        Ok::<_, RebornBuildError>(())
+    })
+    .await?;
 
+    // Shipped definitions inherit provisioning validation. Queue recovery below
+    // remains for authored changes; no qualification runs during installation.
+    // Retired L013 placeholders and fabricated historical checks stay retired.
     let recovered = crate::boot_integrity::run_boot_integrity_check(booted_db)
         .await
         .map_err(|e| crate::error::RebornBuildError::InvalidConfig {

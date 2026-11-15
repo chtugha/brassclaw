@@ -292,8 +292,9 @@ remains explicit. Unknown outcomes cannot become “safe to retry” by abstract
   after capture, the ordinary retained task owns execution. Never secretly select
   an old Recipe or treat a routing failure as successful MCP execution.
 - [ ] Qualify shipped successor components through reviewed `system_seed`
-  bootstrap with integrity, Q1 and behavioral evidence, without extra installed-
-  instance human Q2. Installed authored changes retain their Q1/behavior/human-Q2
+  development/release bootstrap before provisioning with integrity, Q1 and
+  behavioral evidence; installation inherits validation without repeating these
+  checks or adding instance human Q2. Installed authored changes retain their Q1/behavior/human-Q2
   requirements. Preserve overrides and old artifacts required by retained work.
 - [ ] Use existing revision-checked settings persistence and actor acknowledgement
   to publish effective limits coherently. Keep desired/effective revisions visible.

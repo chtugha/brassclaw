@@ -261,6 +261,8 @@ pub mod seed_builtin_host;
 pub(crate) mod sempai_proposal_sink;
 #[cfg(feature = "postgres")]
 pub(crate) mod system_seed;
+#[cfg(feature = "postgres")]
+pub(crate) mod seed_review_cleanup;
 #[cfg(all(feature = "root-llm-provider", feature = "skills-db"))]
 mod task_memory_embeddings;
 #[cfg(feature = "skills-db")]

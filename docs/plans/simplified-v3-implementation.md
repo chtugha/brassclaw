@@ -1,5 +1,17 @@
 # Simplified v3 implementation record
 
+> **Installation contract — 2026-11-15:** package qualification runs during
+> development/release before provisioning. Installation, restart and upgrade
+> inherit validation of exact canonical shipped definitions and check technical
+> integrity/loading; they do not run component Q1/behavior fixtures or create
+> seed review requests. “Installation owner” names the existing software owner
+> responsible for retention/transfer, not an additional human approver. Older
+> dated implementation observations and receipt names below describe historical
+> test runs; they are not instructions to repeat qualification on an instance.
+> Untouched obsolete requests are archived before removal from active work;
+> authored edits, review findings and immutable historical evidence are retained.
+
+
 **2026-10-28 contract clarification:** Skill completeness, contained usage review,
 deployment through actual consuming Recipe graphs and optional MCP publication
 are separate. No dedicated per-Skill Recipe is required. Reuse existing retained
@@ -8859,7 +8871,7 @@ changed current writer/repair/test/caller inputs match the tested snapshot.
 Remaining: Recipe/PythonCode/ExtensionCatalogue legacy inserts still derive
 status from source and lack the same explicit insert-state input. They need the
 coordinated authoring/bootstrap/projection cutover, not a label-based approval
-exception. Complete installation qualification across all component classes,
+exception. Complete development/release package qualification before provisioning across all component classes, then transfer validation at installation;
 immutable workflow approval, native Tool/retained-alias identity enrollment and
 ordinary factory global-authority attachment remain implementation work. No
 external maintainer Q2 gate is requested for shipped first-party components.
@@ -8928,7 +8940,7 @@ This is not Windows runtime acceptance. The existing Ubuntu/macOS/Windows native
 CI gate now also runs native-image tests, including the Windows-only real copied
 executable rename/replacement and write-fencing cases. Their actual Windows
 results are required before claiming this identity contract works there. Linux
-execution and complete installation/retained Tool qualification remain open.
+execution and complete pre-provisioning package/retained Tool qualification remain open. Installation inherits the completed package validation.
 
 
 ### Instance Tool-policy browser editor (2026-10-15; r3 accepted)
@@ -11079,7 +11091,7 @@ bridge or expose root-only controls to arbitrary children. Three basic message
 roles do not by themselves implement provider Tool-result/replay metadata.
 Then complete real R09 admission, inherited immutable definitions with fresh
 child-bound execution ports, explicit Monty wait/result handling and durable
-cleanup. Installation seed qualification applies; no external maintainer Q2 is
+cleanup. Pre-provisioning development/release qualification and installation validation transfer apply; no external maintainer Q2 is
 needed for first-party shipped implementation. Full v3/platform/release gates
 remain open. The prefix owner has been notified of the current captured-prefix
 lookup's fallback to the active generation; a selected task must never use it.
@@ -11299,8 +11311,9 @@ paths remain literal data instead of being normalized to omitted arguments.
 This does not raise the existing whole-transport depth support gate or remove
 an authored usage's explicit finite data contract.
 
-Installation qualification itself uses JSON before the live settings owner
-exists. The installation owner prepares one private bootstrap snapshot from
+Installation preparation and integrity/loading checks use JSON before the live
+settings owner exists; they do not execute component qualification. The
+installation owner prepares one private bootstrap snapshot from
 exactly the selected startup settings revision, then transitions once to the
 acknowledged read-only live view before ingress. Unbound access, a second
 bootstrap/binding, revision rollback or conflicting same-revision limits fail.

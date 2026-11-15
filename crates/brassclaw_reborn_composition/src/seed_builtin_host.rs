@@ -115,6 +115,7 @@ impl HostStores {
     /// Insert-or-recover a Tool id (class 0). `insert` is ON-CONFLICT, so
     /// `None` is resolved via [`PgToolStore::get_id_by_name`].
     async fn upsert_tool(&self, row: NewPgTool, name: &str) -> Result<Uuid, SeedBuiltinHostError> {
+        crate::seed_review_cleanup::expect("reborn_tools", &row);
         let map = |e: crate::pg_tool_store::PgToolStoreError| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         };
@@ -138,6 +139,7 @@ impl HostStores {
         row: NewPgToolSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinHostError> {
+        crate::seed_review_cleanup::expect("reborn_tool_skills", &row);
         let map = |e: crate::pg_tool_skill_store::PgToolSkillStoreError| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         };
@@ -161,6 +163,7 @@ impl HostStores {
         row: NewPgSkill,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinHostError> {
+        crate::seed_review_cleanup::expect("reborn_skills", &row);
         let map = |e: crate::pg_skill_store::PgSkillStoreError| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         };
@@ -185,6 +188,7 @@ impl HostStores {
         row: NewPgPythonCode,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinHostError> {
+        crate::seed_review_cleanup::expect("reborn_python_code", &row);
         let map =
             |e: crate::pg_python_code_store::PgPythonCodeStoreError| SeedBuiltinHostError::Db {
                 reason: e.to_string(),
@@ -212,6 +216,7 @@ impl HostStores {
         row: NewPgRecipe,
         name: &str,
     ) -> Result<Uuid, SeedBuiltinHostError> {
+        crate::seed_review_cleanup::expect("reborn_recipes", &row);
         let map = |e: crate::pg_recipe_store::PgRecipeStoreError| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         };
@@ -250,6 +255,30 @@ pub async fn seed_builtin_host_components(
 ) -> Result<(), SeedBuiltinHostError> {
     let stores = HostStores::new(Arc::clone(booted_db.pool()), tenant_id);
 
+    let catalogue_row = NewPgExtensionCatalogue {
+        tenant_id: tenant_id.to_string(),
+        user_id: SEED_USER.to_string(),
+        agent_id: SEED_AGENT.to_string(),
+        project_id: SEED_PROJECT.to_string(),
+        name: BUILTIN_HOST_CATALOGUE_NAME.to_string(),
+        description: "Built-in host.* capability stack (Step 27).".into(),
+        version: "1.0".into(),
+        overview_doc: "Container for the built-in host.* Tools, ToolSkills, \
+                               PythonCode formatters, leaf Skills, and Recipes that \
+                               back the Orchestrator↔Executioner surface."
+            .into(),
+        task_groups: json!([]),
+        child_component_ids: Vec::new(),
+        intent_index: None,
+        prior_knowledge_content: None,
+        override_prompt_creation: false,
+        consumer_tags: vec!["02:orchestrator".into()],
+        intent_examples: None,
+        source: "system".into(),
+        dependency_registry: None,
+    };
+    crate::seed_review_cleanup::expect("reborn_extension_catalogues", &catalogue_row);
+
     // get-or-insert the class-23 `builtin-host` catalogue row → cat_id.
     let cat_id = match stores
         .catalogue
@@ -265,37 +294,13 @@ pub async fn seed_builtin_host_components(
             reason: e.to_string(),
         })? {
         Some(existing) => existing.id,
-        None => {
-            let row = NewPgExtensionCatalogue {
-                tenant_id: tenant_id.to_string(),
-                user_id: SEED_USER.to_string(),
-                agent_id: SEED_AGENT.to_string(),
-                project_id: SEED_PROJECT.to_string(),
-                name: BUILTIN_HOST_CATALOGUE_NAME.to_string(),
-                description: "Built-in host.* capability stack (Step 27).".into(),
-                version: "1.0".into(),
-                overview_doc: "Container for the built-in host.* Tools, ToolSkills, \
-                               PythonCode formatters, leaf Skills, and Recipes that \
-                               back the Orchestrator↔Executioner surface."
-                    .into(),
-                task_groups: json!([]),
-                child_component_ids: Vec::new(),
-                intent_index: None,
-                prior_knowledge_content: None,
-                override_prompt_creation: false,
-                consumer_tags: vec!["02:orchestrator".into()],
-                intent_examples: None,
-                source: "system".into(),
-                dependency_registry: None,
-            };
-            stores
-                .catalogue
-                .insert_installation_projection(row)
-                .await
-                .map_err(|e| SeedBuiltinHostError::Db {
-                    reason: e.to_string(),
-                })?
-        }
+        None => stores
+            .catalogue
+            .insert_installation_projection(catalogue_row)
+            .await
+            .map_err(|e| SeedBuiltinHostError::Db {
+                reason: e.to_string(),
+            })?,
     };
 
     // Slice 2 — Step 27.1 host.resolve_intent (5 components).
@@ -366,6 +371,8 @@ pub async fn seed_builtin_host_components(
         .map_err(|e| SeedBuiltinHostError::Db {
             reason: e.to_string(),
         })?;
+
+    crate::seed_review_cleanup::children(tenant_id, BUILTIN_HOST_CATALOGUE_NAME, &child_ids);
 
     tracing::debug!(
         catalogue_id = %cat_id,

@@ -76,7 +76,7 @@ fn map_pg(e: tokio_postgres::Error) -> PgSkillStoreError {
 /// `validation_errors` (`'{}'`), the lineage/audit columns (NULL/0) and
 /// timestamps are set by DDL defaults — the caller does not supply them.
 /// Builtins set `source = "system"` + `validation_status = "validated"`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct NewPgSkill {
     pub(crate) tenant_id: String,
     pub(crate) user_id: String,

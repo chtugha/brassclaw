@@ -151,7 +151,7 @@ these are requirements for the **new contract**, not fields accepted by old APIs
 2. Associate each executable occurrence with the applicable verified approval
    profile and immutable ID/checksum. Distinguish independent pure own approval,
    authored functional approval, exact shipped usage and supported legacy exact
-   usage. A supported existing canonical installation qualification keeps its
+   usage. A supported existing canonical package qualification, transferred at installation, keeps its
    exact narrow scope; it is not the general pure exception.
 3. The task graph binds exact root UUID/class/version/checksum, selected public
    export/signature/interface, current selected dependency closure and native
@@ -376,13 +376,14 @@ approvals fail; the same result holds during actual retained verification.
 
 - [ ] **B2-04 — Consume real S qualification without weakening authored checks.**
 
-1. B1-05 supplies exact packaged subject and observed qualification, not merely
+1. B1-05 supplies the exact packaged subject and development/release qualification
+   transferred from provisioning, not merely
    rows in `reborn_skill_association_approvals`. Validate that ownership before
    exposing any new L001–L101 usage or structural-validator graph.
 2. Keep legacy authored exact association verification unchanged for its actual
    supported profile, including Q1/behavior/Q2. Do not change its mode check to
    accept arbitrary caller-selected `system_seed`.
-3. Extend the existing bootstrap/canonical qualification selection path to use
+3. Extend the existing bootstrap/canonical validation-transfer selection path to use
    B1's verified S receipt and complete selected closure. Remove special-case
    fallthrough that treats every non-Reply/Generation/Compiler/Encoding usage as
    authored. Do not grow a second hardcoded list of UUIDs considered trusted.
