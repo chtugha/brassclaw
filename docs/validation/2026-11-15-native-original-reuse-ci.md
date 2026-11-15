@@ -58,8 +58,11 @@ or compute was used. The separately requested old Modal package startup failed
 at the shared observation deadline; see the [exact observation](2026-11-15-modal-canonical-native.md#additional-native-startup-observation--2026-11-15).
 
 Run131 covers its captured source and embedded documents. The subsequent delta
-contains CI workflow changes, the standalone SQL-test repair and an additional
-Changelog entry. The Changelog is embedded by the Prefix release-document owner;
+contains CI workflow changes, the standalone SQL-test repair, an additional
+Changelog entry and a redundant direct `cfg(test)` on the new test helper. The
+helper already lives in a test-gated module; the local attribute makes that
+boundary visible to the file-local No-Panics checker without changing its body
+or production compilation. The Changelog is embedded by the Prefix release-document owner;
 this receipt does not claim that Run131 contains the later release-note bytes or
 qualifies a new Prefix/release package. Reporting/plan updates are development
 records. No full GitHub CI success, deployment, complete shipped-library

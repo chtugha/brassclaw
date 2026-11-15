@@ -3,6 +3,7 @@ use super::*;
 use crate::installed_monty_catalogue::{PreparationCapture, PreparationOrigin};
 use brassclaw_product_workflow::{MontyVmSettings, default_monty_vm_settings};
 
+#[cfg(test)]
 fn manifest(settings: &MontyVmSettings) -> Value {
     let executor =
         crate::global_monty_startup::ControlledExecutorConfiguration::new(settings).unwrap();
