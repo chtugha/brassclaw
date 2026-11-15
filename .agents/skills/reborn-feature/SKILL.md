@@ -348,8 +348,11 @@ Construction context handoff below.
   existing model-request, global delivery, response and native evidence/accounting
   custody mechanisms. Reconciliation repairs original persistence/accounting
   without resubmitting model work, replaying Tools or synthesizing completion.
-- **MCP:** derive immutable listing/commands from qualified approved execution
-  Recipes, not raw Skills. Calls send the listed completed command once through
+- **MCP:** derive immutable listing/commands only from available, active and
+  approved MCP-call Recipes/variants explicitly exposing selected usages of
+  existing active approved Skills, using the existing optional `mcp_call`
+  declaration. Absence means no listing; reference/test workflows and private
+  usages are not automatically exposed. Calls send the listed completed command once through
   a new ordinary chat and forward its correlated result before non-destructive
   close. Recover lost send/delivery/close at the original chat without replay.
   The server remains instance-owned and alive. Kohai connects/advertises after

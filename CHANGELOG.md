@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   source-input evidence and authored/shipped/workflow review boundaries. Align
   build-mode descriptions with the implemented controllers while retaining
   separate image qualification, Screen and PostgreSQL safety requirements.
+  Synchronize both Reborn development-skill copies with the explicit MCP
+  declaration and exposure contract.
 
 - **Independent shipped Pure qualification**: Qualify the exact Prefix-generation
   revision formatter through the existing installation owner, with a separately
