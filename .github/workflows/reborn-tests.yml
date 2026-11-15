@@ -415,7 +415,8 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: boundary-tests
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
 
       - name: Run architecture boundary tests
         run: cargo test -p brassclaw_architecture --all-targets -- --nocapture
@@ -525,7 +526,8 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-${{ matrix.package }}
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
 
       - name: Prepare the independent model-encoding oracle
         if: matrix.package == 'brassclaw_monty_host' || matrix.package == 'brassclaw_reborn_composition'
@@ -561,6 +563,13 @@ jobs:
       - name: Run crate tests
         run: |
           feature_flags="$(scripts/ci/package-feature-flags.sh "${{ matrix.package }}")"
+
+          # CLI smoke cases each own an entire PostgreSQL/Monty instance.
+          # Serialize those cases on the shared runner instead of saturating
+          # its CPUs and invalidating the application's real I/O deadlines.
+          if [ "${{ matrix.package }}" = brassclaw_reborn_cli ]; then
+            export RUST_TEST_THREADS=1
+          fi
 
           # shellcheck disable=SC2086 # feature_flags intentionally expands to zero or more Cargo args.
           timeout --signal=INT --kill-after=30s 28m \
@@ -612,7 +621,8 @@ jobs:
         uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-root-${{ matrix.partition }}
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
 
       - name: Run Reborn root tests
         run: scripts/ci/run-reborn-root-partition.sh
@@ -644,7 +654,8 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-heavy-integration
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
       - name: Run thread scheduling integration tests
         run: |
           timeout --signal=INT --kill-after=30s 15m \
@@ -670,7 +681,8 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-windows-${{ matrix.name }}
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
       - name: Check compilation
         run: cargo check --all --benches --tests --examples ${{ matrix.flags }}
 
@@ -694,7 +706,8 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           key: reborn-tests-bench
-          save-if: ${{ inputs.full_validation && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+          save-if: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && inputs.full_validation) }}
+          cache-on-failure: true
       - name: Compile benchmarks
         run: cargo bench --all-features --no-run
 

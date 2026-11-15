@@ -350,6 +350,15 @@ PG/Monty regression cases pass; see the
 Reuse this existing lifecycle implementation. It does not qualify another
 shipped subject, complete general recovery, open authored approval or close B1-05.
 
+**Native original reuse accepted — 2026-11-15:** live settings edits retain the
+private Pure Case qualification's original executor/preparation instead of
+repeating completed work under a new reservation. Strict130/native131, three
+integrity cases and the unchanged complete global-runtime restart regression
+pass; see the [exact receipt](docs/validation/2026-11-15-native-original-reuse-ci.md).
+This repairs original custody, not general qualification or authored approval.
+Shared startup observation deadlines and separately commissioned provisioning
+validation transfer remain outside this acceptance; B1-05 remains open.
+
 **Latest bounded source/runtime checkpoint — 2026-11-09:** Run-24 on `b9620a1f5`
 compiles the joint graph without warnings and preserves all 1,388 tests. The
 actual strict receipt-reader regression and both real operator HTTP/PG

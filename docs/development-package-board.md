@@ -9,6 +9,14 @@ queue, component approval or evidence of completed Bob plans.
 
 ## Responsibilities
 
+**Native original reuse — 2026-11-15:** strict130/native131, three new integrity
+cases and the unchanged full global-runtime restart regression pass. Standalone
+Clippy132 and direct current-PG immutable-record trigger acceptance also pass;
+see the [scope](validation/2026-11-15-native-original-reuse-ci.md). CI cache writes
+and CLI serialization are repaired without increasing deadlines. Root keeps the
+separately commissioned installation-transfer work outside this accepted
+checkpoint; shared startup I/O and remaining B1/B2/B3 work are not closed.
+
 **CI caller acceptance — 2026-11-15:** actual retained-execution/Q1 owners,
 OAuth helper visibility, Screen fixture ordering, real file-presence coverage and
 Linux runtime ABI configuration pass scoped strict/native checks. Runs124–127,

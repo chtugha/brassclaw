@@ -1,3 +1,16 @@
+## 2026-11-15 — Native original reuse and CI repair
+
+Live settings changes no longer select new private Pure Case qualification work
+for the same immutable package. Canonical original executor/preparation readback
+and the unchanged actual global-runtime restart case pass. Strict Run130,
+native131, three integrity cases, the complete runtime case and standalone
+Clippy132 pass; see the [scoped receipt](validation/2026-11-15-native-original-reuse-ci.md).
+CI uses serial full-instance CLI cases, trusted Main dependency-cache writes and
+an actual immutable-record trigger regression. Full CI and the shared startup
+observation-deadline repair remain open. Separately commissioned installation
+validation-transfer changes in the shared checkout are not covered by this
+receipt. No Bob-plan completion or general authored approval is claimed.
+
 ## 2026-11-15 — CI callers use actual native owners
 
 Five retained-execution cases and canonical Q1 fixtures now run against the actual

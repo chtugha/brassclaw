@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **CI cache and storage checks**: Preserve normal trusted Main compilation caches,
+  including partial dependency progress after a failed job. Keep pull requests
+  read-only. Exercise immutable-record TRUNCATE triggers past the foreign-key
+  precheck and verify that rejected mutations preserve persisted originals.
+- **Native qualification reuse**: Keep the private Pure Case harness's original
+  executor and preparation when live settings change, using a distinct immutable
+  reservation domain instead of rerunning its completed native cases. Reject
+  changed packages, corrupt captures and mixed configuration revisions. Serialize
+  CI's full-instance CLI cases without changing application I/O deadlines.
 - **CI ownership and fixtures**: Run retained admission/Q1 tests against the
   actual Composition owners instead of compiling their private source into a
   separate crate. Add real file-presence coverage, bind invalid IPC-frame tests

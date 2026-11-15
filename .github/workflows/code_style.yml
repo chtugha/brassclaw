@@ -159,7 +159,8 @@ jobs:
       - uses: Swatinem/rust-cache@49a0bdc70d2e1b713ca9e2869b211fcce03d3c1c # v2
         with:
           shared-key: clippy
-          save-if: ${{ matrix.name == 'all-features' && github.event_name == 'workflow_dispatch' }}
+          save-if: ${{ matrix.name == 'all-features' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+          cache-on-failure: true
       - name: Check lints
         run: cargo clippy --all --benches --tests --examples ${{ matrix.flags }} -- -D warnings
 
@@ -193,6 +194,9 @@ jobs:
     needs: changes
     if: needs.changes.outputs.has_reborn_cli == 'true'
     runs-on: ubuntu-24.04
+    env:
+      # Every native CLI case owns a complete PostgreSQL/Monty instance.
+      RUST_TEST_THREADS: '1'
     steps:
       - name: Checkout repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0

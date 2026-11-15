@@ -69,3 +69,41 @@ same base with a real Mach-O link probe. Its receipt deliberately has empty
 supported modes. It has no project/native qualification or activation. Apple
 Composition test-mode qualification remains a separate gate for a genuinely
 needed future test build; current product evidence cannot authorize it.
+
+## Additional native startup observation — 2026-11-15
+
+The user requested one real startup of this existing package, with no new build
+or benchmark. The package's CLI/PG lifecycle files match its retained source
+manifest. Read-only byte comparison also locates the exact pinned PG archive
+inside the CLI (SHA256 `0ec91e77eff381e43e3963f012aff3acb9de12ad3739a625e57cce9671b28b0f`,
+9,143,339 bytes at offset 97,144,663), and the supplied pgvector archive at offset
+106,288,002. This establishes those archive identities, not equality of the whole
+CLI to a separately compiled local executable.
+
+The existing CLI has an immediate-stop fallback on some failed owned-PG startup
+paths. The user did not authorize that exception. Root therefore initializes only
+its own dedicated temporary cluster from these exact files, then invokes the
+unmodified product through its supported Embedded-PG reuse path. The test owner
+keeps PG custody and performs orderly shutdown after the CLI/native children end.
+This cannot certify the fresh exclusively product-owned server lifecycle.
+
+The attempt **fails** after 416.474 s: the CLI exits 1 at
+`pure_workflow_prerequisites`, with the acknowledged 2,000 ms original-observation
+I/O deadline (revision 1, identity `7046fff9-af26-5c11-8c55-562983143330`).
+Actual initdb/start/createdb and schema migrations through V215 succeed. The
+product runtime banner/global service/REPL and planned vector query are not
+reached. PG then stops through `fast -w` with exit 0, its PID file is absent,
+owned processes are gone and all three package hashes remain unchanged. The
+Screen final notification is accepted and actually received; its socket ends.
+
+The exact failure, commands, source/artifact identities and cleanup logs are in
+`target/validation/modal-product-reuse-start-20261115/`. The older package still
+contains the L013 producer subsequently retired on Main; this attempt establishes
+no current library approval or current-Main runtime acceptance. The shared
+verification/I/O boundary needs repair; no cross-linker defect is established.
+
+The existing `apple-cli-build/1` build-mode activation remains scoped to its
+accepted file/dependency/version/help checks. This observation introduces no new
+build gate. Reuse valid unchanged evidence and check actual changes or unresolved
+risks; do not buy or repeat complete functional suites for each cross build.
+No new Cargo, Modal compute, image or benchmark ran for this observation.

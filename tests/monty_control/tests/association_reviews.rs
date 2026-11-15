@@ -208,16 +208,32 @@ async fn exact_review_records_and_old_revisions_survive_replacement() {
         Err(AssociationReviewStoreError::Combination)
     ));
     tx.commit().await.unwrap();
+    // Read actual storage, not just the already retained in-memory view.
+    let originals_query = "SELECT jsonb_build_object(
+        'evidence',(SELECT jsonb_agg(to_jsonb(e) ORDER BY evidence_id) FROM reborn_component_review_evidence e),
+        'approvals',(SELECT jsonb_agg(to_jsonb(a) ORDER BY approval_id) FROM reborn_skill_association_approvals a))";
+    let originals: serde_json::Value = client.query_one(originals_query, &[]).await.unwrap().get(0);
+    // CASCADE lets PostgreSQL reach the BEFORE TRUNCATE trigger instead of
+    // failing first on referencing tables. The trigger must abort all effects.
     for sql in [
         "UPDATE reborn_component_review_evidence SET evidence_bytes=evidence_bytes",
         "DELETE FROM reborn_component_review_evidence",
-        "TRUNCATE reborn_component_review_evidence",
+        "TRUNCATE reborn_component_review_evidence CASCADE",
         "UPDATE reborn_skill_association_approvals SET approval_bytes=approval_bytes",
         "DELETE FROM reborn_skill_association_approvals",
-        "TRUNCATE reborn_skill_association_approvals",
+        "TRUNCATE reborn_skill_association_approvals CASCADE",
     ] {
         let error = client.execute(sql, &[]).await.unwrap_err();
         assert_eq!(error.code().unwrap().code(), "23514");
+        assert_eq!(
+            error.as_db_error().unwrap().message(),
+            "component review records are immutable"
+        );
+        let after: serde_json::Value = client.query_one(originals_query, &[]).await.unwrap().get(0);
+        assert_eq!(
+            after, originals,
+            "failed mutation changed immutable storage: {sql}"
+        );
     }
     // Retained sensitive evidence has not become a grant or an active component.
     assert_eq!(retained.evidence().len(), 3);

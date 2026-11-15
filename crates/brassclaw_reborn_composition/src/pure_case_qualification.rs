@@ -31,6 +31,10 @@ use crate::{
 #[path = "pure_case_seed_fixture.rs"]
 mod seed;
 
+#[cfg(test)]
+#[path = "pure_case_qualification_tests.rs"]
+mod tests;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum HostingState {
     Unknown,
@@ -1120,8 +1124,78 @@ pub(crate) async fn qualify(
         }
     }
 }
+// A live policy edit is not a new implementation or permission to repeat a
+// completed native fixture. The /2 reservation identifies the immutable package;
+// its complete manifest still retains the original executor/preparation bytes.
+// Existing /1 records keep their original domain and are never rewritten.
+fn reservation_identity(manifest: &Value) -> Result<Value, RebornBuildError> {
+    let mut identity = manifest.clone();
+    let fields = identity
+        .as_object_mut()
+        .ok_or_else(|| invalid("original Pure manifest must be an object"))?;
+    for field in ["executor_bytes", "executor_checksum", "preparation_bytes"] {
+        if !fields.remove(field).is_some_and(|value| value.is_string()) {
+            return Err(invalid("original Pure configuration field missing"));
+        }
+    }
+    Ok(identity)
+}
+
+fn original_configuration(
+    current: &Value,
+    original: &Value,
+) -> Result<
+    (
+        Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+        crate::installed_monty_catalogue::PreparationCapture,
+    ),
+    RebornBuildError,
+> {
+    if reservation_identity(current)? != reservation_identity(original)? {
+        return Err(invalid("original Pure immutable manifest differs"));
+    }
+    let executor_bytes = original["executor_bytes"]
+        .as_str()
+        .ok_or_else(|| invalid("original Pure executor missing"))?;
+    let executor = crate::global_monty_startup::ControlledExecutorConfiguration::restore_original(
+        executor_bytes,
+    )?;
+    if original["executor_checksum"] != executor.checksum() {
+        return Err(invalid("original Pure executor checksum differs"));
+    }
+    let preparation_bytes = original["preparation_bytes"]
+        .as_str()
+        .ok_or_else(|| invalid("original Pure preparation missing"))?;
+    let preparation = crate::installed_monty_catalogue::PreparationCapture::restore_original(
+        preparation_bytes,
+        &evidence::checksum(preparation_bytes),
+    )
+    .map_err(invalid)?;
+    let executor_record = brassclaw_skills::value_contract::strict_json(
+        executor_bytes,
+        brassclaw_skills::component_revision::REVISION_LIMITS,
+    )
+    .map_err(invalid)?;
+    let settings: brassclaw_product_workflow::MontyVmSettings = serde_json::from_value(
+        brassclaw_skills::value_contract::strict_json(
+            executor_record["settings_bytes"]
+                .as_str()
+                .ok_or_else(|| invalid("original Pure executor settings missing"))?,
+            brassclaw_skills::component_revision::REVISION_LIMITS,
+        )
+        .map_err(invalid)?,
+    )
+    .map_err(invalid)?;
+    if preparation.revision() != settings.revision
+        || preparation.policy() != settings.execution_limits
+    {
+        return Err(invalid("original Pure executor/preparation disagree"));
+    }
+    Ok((executor, preparation))
+}
+
 async fn qualify_inner(
-    base: SessionInput,
+    mut base: SessionInput,
     kernel: Arc<dyn MontyKernelSnapshot>,
     tenant: &str,
     identity: brassclaw_host_runtime::NativeImplementationRef,
@@ -1147,29 +1221,15 @@ async fn qualify_inner(
         graph.definitions.snapshot(base.pool.clone(), draft.uuid()),
     )
     .await?;
-    progress.note("inspect_seed_fixture");
-    let instrument = Arc::new(
-        brassclaw_engine::executor::retained_source::InspectedPureSelection::inspect(
-            instrument_snapshot,
-            draft.uuid(),
-            &base.worker.path(),
-            base.preparation.limits(),
-        )
-        .await
-        .map_err(|error| {
-            if !matches!(
-                &error,
-                brassclaw_engine::executor::retained_source::RetainedSourceError::Invalid { .. }
-            ) {
-                let _ = progress.checkpoint("fixture_inspection", HostingState::InFlight);
-            }
-            invalid(error)
-        })?,
-    );
-    let manifest = json!({"format":"original-pure-seed-manifest/1",
+    let instrument_reference = instrument_snapshot
+        .revisions()
+        .get(&draft.uuid())
+        .ok_or_else(|| invalid("original Pure instrument revision missing"))?
+        .reference();
+    let mut manifest = json!({"format":"original-pure-seed-manifest/1",
         "program":graph.program.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
         "qualification_program":graph.qualification.inputs().instruction().retained_selection().map_err(invalid)?.exact_bytes(),
-        "instrument":instrument.inspected().map_err(invalid)?.component(),"worker_checksum":hex::encode(base.worker.checksum()),
+        "instrument":instrument_reference,"worker_checksum":hex::encode(base.worker.checksum()),
         "root":base.root.reference(),"root_checksum":hex::encode(base.root.source_checksum()),
         "executor_bytes":base.executor.exact_bytes(),"executor_checksum":base.executor.checksum(),
         "preparation_bytes":base.preparation.bytes(),"application_checksum":base.application_checksum,
@@ -1178,10 +1238,11 @@ async fn qualify_inner(
         "native_handler_checksum":evidence::checksum(include_str!("../../brassclaw_host_runtime/src/first_party_tools/pure_case.rs")),
         "carrier_checksum":evidence::checksum(include_str!("../../brassclaw_engine/src/executor/retained_pure_invocation.rs")),
         "specs":specs().iter().map(|s|json!({"stage":s.name,"export":s.export,"expected":s.expected,"raw":s.raw})).collect::<Vec<_>>()});
-    let manifest_checksum = evidence::checksum(&manifest.to_string());
+    let identity = reservation_identity(&manifest)?;
+    let identity_checksum = evidence::checksum(&identity.to_string());
     let slot = Uuid::new_v5(
         &pure_case_components::usage_ids().recipe,
-        format!("original-pure-seed-reservation/1:{manifest_checksum}").as_bytes(),
+        format!("original-pure-seed-reservation/2:{identity_checksum}").as_bytes(),
     );
     let components = graph
         .program
@@ -1227,7 +1288,7 @@ async fn qualify_inner(
                 false,
                 &association,
                 &components,
-                json!({"format":"original-pure-seed-reservation/1","manifest":manifest,"operation_id":Uuid::new_v4()}),
+                json!({"format":"original-pure-seed-reservation/2","manifest":manifest,"operation_id":Uuid::new_v4()}),
             );
             progress.note("retain_seed_reservation");
             let _write = io::retain_record(&base.pool, base.storage.as_ref(), slot, &offered).await;
@@ -1243,8 +1304,9 @@ async fn qualify_inner(
     let operation: Uuid =
         serde_json::from_value(report["operation_id"].clone()).map_err(invalid)?;
     if operation.is_nil()
-        || report["format"] != "original-pure-seed-reservation/1"
-        || report["manifest"] != manifest
+        || report["format"] != "original-pure-seed-reservation/2"
+        || report.as_object().is_none_or(|fields| fields.len() != 3)
+        || reservation_identity(&report["manifest"])? != identity
         || bytes
             != evidence::system_record(
                 slot,
@@ -1257,6 +1319,32 @@ async fn qualify_inner(
     {
         return Err(invalid("original Pure seed reservation differs"));
     }
+    let (executor, preparation) = original_configuration(&manifest, &report["manifest"])?;
+    base.executor = executor;
+    base.preparation = preparation;
+    manifest = report["manifest"].clone();
+    let manifest_checksum = evidence::checksum(&manifest.to_string());
+    // Inspect with the retained original profile, not a later smaller live
+    // value contract. Every actual dispatch still uses the current kernel.
+    progress.note("inspect_seed_fixture");
+    let instrument = Arc::new(
+        brassclaw_engine::executor::retained_source::InspectedPureSelection::inspect(
+            instrument_snapshot,
+            draft.uuid(),
+            &base.worker.path(),
+            base.preparation.limits(),
+        )
+        .await
+        .map_err(|error| {
+            if !matches!(
+                &error,
+                brassclaw_engine::executor::retained_source::RetainedSourceError::Invalid { .. }
+            ) {
+                let _ = progress.checkpoint("fixture_inspection", HostingState::InFlight);
+            }
+            invalid(error)
+        })?,
+    );
     let context = Context {
         progress,
         base,
