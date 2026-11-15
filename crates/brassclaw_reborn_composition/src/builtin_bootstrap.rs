@@ -981,6 +981,9 @@ pub(crate) fn validator_check_drafts() -> Vec<
 
 pub(crate) const PURE_FIXTURE_ENCODER_SEED: &str =
     include_str!("bootstrap_pure_fixture_encoder.py");
+/// Private typed installation instrument. It is fixture context, never own
+/// functional approval of a product dependency or a public command.
+pub(crate) const SHIPPED_PURE_TYPED_RECEIPT_SOURCE: &str = "def encode_shipped_result(inputs):\n    import json\n    step = inputs['step_id']\n    if not step or ':' not in step:\n        raise ValueError('literal producer step required')\n    return json.dumps({'format': 'validator-step-results/1', 'results': {step: inputs['value']}})\n";
 pub(crate) const PURE_READER_WITNESS_SEED: &str = include_str!("bootstrap_pure_reader_witness.py");
 
 /// Installation-owned draft retention only. No class route, confidence,

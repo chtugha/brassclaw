@@ -42,13 +42,6 @@ pub fn generation_usage_drafts(
     let string =
         json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]});
     let integer = json!({"type":"integer","required":true,"checks":[{"kind":"min","value":1},{"kind":"max","value":9007199254740991i64}]});
-    let mut integer_value = integer.clone();
-    integer_value
-        .as_object_mut()
-        .ok_or(RevisionError::Invalid(
-            "generation revision result schema must be an object",
-        ))?
-        .remove("required");
     let summary = json!({"type":"object","allow_extra_fields":false,"fields":{
         "profile":string,"generation":string,"profile_revision":integer,"kind":string,"qualification":string,"created_at":string}});
     let result = if retain {
@@ -123,9 +116,14 @@ pub fn generation_usage_drafts(
         inputs.clone()
     };
     if let Some(prepare) = ids.formatter {
-        let body = "def prepare_generation_revision(inputs):\n    text = inputs['revision']\n    if not text or len(text) > 16 or text[0] == '0' or any(character < '0' or character > '9' for character in text):\n        raise ValueError('canonical positive decimal revision required')\n    value = int(text)\n    if value > 9007199254740991:\n        raise ValueError('revision exceeds portable integer range')\n    return value\n";
-        drafts.push((prepare,22,json!({"content":body,"input_contract":{"revision":string},"result_contract":integer_value,
-            "preload":{"format":"python-preload/2","exports":{"prepare_generation_revision":{"symbol":"prepare_generation_revision","parameters":["inputs"],"mapping":true}},"private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"prepare_generation_revision"}}),vec![],Value::Null));
+        let formatter = generation_revision_draft(prepare)?;
+        drafts.push((
+            prepare,
+            22,
+            formatter.document().clone(),
+            vec![],
+            Value::Null,
+        ));
         dependencies.push(prepare);
         steps.push(json!({"stepnumber":1,"knowledge":"orchestrator","goal":"Validate the canonical revision data","content":"","type":"component","include":[prepare]}));
         layouts.insert(
@@ -173,6 +171,19 @@ pub fn generation_usage_drafts(
         "step_descriptions":[{"desc_idx":0,"label":"Reusable immutable storage usage","yaml_source":"","steps":steps}],
         "input_layouts":{"selected":{"format":"recipe-input-layout/1","task_inputs":task_inputs,"steps":layouts}},"invocations":{"selected":invocations}}),dependencies,Value::Null));
     drafts.into_iter().map(|(id,class,document,dependencies,association)|ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":class,"document":document,"dependencies":dependencies,"association":association}).to_string())).collect()
+}
+
+/// Canonical independent revision formatter used by the actual generation
+/// workflow and controlled installation qualification. No approval is implied.
+pub fn generation_revision_draft(id: uuid::Uuid) -> Result<ComponentRevisionDraft, RevisionError> {
+    let body = "def prepare_generation_revision(inputs):\n    text = inputs['revision']\n    if not text or len(text) > 16 or text[0] == '0' or any(character < '0' or character > '9' for character in text):\n        raise ValueError('canonical positive decimal revision required')\n    value = int(text)\n    if value > 9007199254740991:\n        raise ValueError('revision exceeds portable integer range')\n    return value\n";
+    let string =
+        json!({"type":"string","required":true,"checks":[{"kind":"min_length","value":1}]});
+    let integer_value = json!({"type":"integer","checks":[{"kind":"min","value":1},{"kind":"max","value":9007199254740991i64}]});
+    ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":id,"class_code":22,
+        "document":{"content":body,"input_contract":{"revision":string},"result_contract":integer_value,
+            "preload":{"format":"python-preload/2","exports":{"prepare_generation_revision":{"symbol":"prepare_generation_revision","parameters":["inputs"],"mapping":true}},"private_functions":{},"constants":[],"imports":[],"dependencies":[],"default_export":"prepare_generation_revision"}},
+        "dependencies":[],"association":null}).to_string())
 }
 
 /// Metadata for the actual registered primitive. Optional operation-specific

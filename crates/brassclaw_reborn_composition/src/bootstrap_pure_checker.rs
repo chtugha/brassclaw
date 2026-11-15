@@ -32,6 +32,8 @@ enum Scope {
     Function,
     Support,
     Instrument,
+    ShippedFunction,
+    ShippedInstrument,
 }
 impl Scope {
     fn name(self) -> &'static str {
@@ -39,13 +41,24 @@ impl Scope {
             Self::Function => "installation-own-checker-function",
             Self::Support => "installation-private-reader-support",
             Self::Instrument => "installation-pure-fixture-instrument",
+            Self::ShippedFunction => "installation-shipped-pure-r1-function",
+            Self::ShippedInstrument => "installation-shipped-pure-r1-instrument",
         }
     }
     fn format(self, stage: &str) -> String {
+        if matches!(self, Self::ShippedFunction | Self::ShippedInstrument) {
+            let kind = if matches!(self, Self::ShippedFunction) {
+                "function"
+            } else {
+                "instrument"
+            };
+            return format!("shipped-pure-r1-{kind}-{stage}/1");
+        }
         let kind = match self {
             Self::Function => "function",
             Self::Support => "support",
             Self::Instrument => "fixture",
+            Self::ShippedFunction | Self::ShippedInstrument => unreachable!("handled above"),
         };
         format!("pure-checker-{kind}-{stage}/1")
     }
@@ -61,6 +74,38 @@ pub(super) struct Profile {
     native_inputs: Vec<(RecordRef, String)>,
 }
 impl Profile {
+    pub(super) fn shipped(
+        subject: Uuid,
+        drafts: BTreeMap<Uuid, ComponentRevisionDraft>,
+        expected: BTreeMap<String, BTreeMap<String, Value>>,
+        instrument: bool,
+    ) -> Self {
+        Self {
+            scope: if instrument {
+                Scope::ShippedInstrument
+            } else {
+                Scope::ShippedFunction
+            },
+            subject,
+            drafts,
+            expected,
+            prerequisites: Vec::new(),
+            native_inputs: Vec::new(),
+        }
+    }
+    pub(super) fn is_shipped(&self) -> bool {
+        matches!(
+            self.scope,
+            Scope::ShippedFunction | Scope::ShippedInstrument
+        )
+    }
+    pub(super) fn record_domain(&self) -> &'static str {
+        if self.is_shipped() {
+            "shipped-pure-r1"
+        } else {
+            "pure-checker"
+        }
+    }
     pub(super) async fn verify_native_inputs(
         &self,
         tx: &Transaction<'_>,
@@ -112,7 +157,11 @@ impl Profile {
             .find(|r| r.uuid == self.subject)
             .ok_or_else(|| invalid("pure qualification subject missing"))
     }
-    pub(super) fn claim_bytes(&self, claim: &Claim) -> Result<String, RebornBuildError> {
+    pub(super) fn claim_bytes(
+        &self,
+        claim: &Claim,
+        limits: Option<ContractLimits>,
+    ) -> Result<String, RebornBuildError> {
         let subject = &self.drafts[&self.subject];
         let document = subject.document();
         let interface = json!({"preload":document["preload"],
@@ -125,7 +174,8 @@ impl Profile {
             json!({"checksum":evidence::checksum(&bytes),"bytes":bytes})
         };
         let base = json!({"execution_context":claim,
-            "instruments":claim.components.iter().filter(|r| r.uuid == encoder_id() || r.uuid == witness_id()).collect::<Vec<_>>(),
+            "instruments":claim.components.iter().filter(|r| r.uuid == encoder_id() || r.uuid == witness_id()
+                || (self.is_shipped() && r.uuid == super::shipped::integer_instrument_id())).collect::<Vec<_>>(),
             "suites":pin(json!({"variants":claim.suites,"expected_returns":self.expected})),
             "original_native_fixture_inputs":self.native_inputs.iter().map(|(r,_)|r).collect::<Vec<_>>(),
             "factory_checksum":evidence::checksum(include_str!("bootstrap_pure_checker.rs")),
@@ -134,6 +184,13 @@ impl Profile {
         let mut value = json!({"format":self.scope.format("claim"),"scope":self.scope.name(),"base":base,
             "subject_closure":self.components(claim)?,"private_signatures":pin(document["preload"]["private_functions"].clone()),
             "prerequisites":self.prerequisites});
+        if self.is_shipped() {
+            value["shipped_factory_checksum"] =
+                json!(evidence::checksum(include_str!("bootstrap_shipped_r1.rs")));
+            value["record_owner_checksum"] = json!(evidence::checksum(include_str!(
+                "bootstrap_shipped_r1_policy.rs"
+            )));
+        }
         if matches!(self.scope, Scope::Support) {
             let witness = &self.drafts[&claim.root.uuid];
             let doc = witness.document();
@@ -148,8 +205,10 @@ impl Profile {
             value["interface_checksum"] = json!(evidence::checksum(&interface.to_string()));
             value["exports"] = pin(document["preload"]["exports"].clone());
         }
-        brassclaw_skills::value_contract::validate_data_bounds(&value, REVISION_LIMITS)
-            .map_err(invalid)?;
+        if let Some(limits) = limits {
+            brassclaw_skills::value_contract::validate_data_bounds(&value, limits)
+                .map_err(invalid)?;
+        }
         Ok(value.to_string())
     }
     pub(super) fn verify_source(
@@ -357,7 +416,7 @@ impl Profile {
     }
 
     pub(super) fn approves_function(&self) -> bool {
-        matches!(self.scope, Scope::Function)
+        matches!(self.scope, Scope::Function | Scope::ShippedFunction)
     }
 }
 

@@ -30,6 +30,17 @@ alias (25 total) are safely archived/closed. Whole N/Q/R/T still have the record
 old partial code is not restored over later Main repairs. Next work is B1 first,
 after Main publication. No two-package implementation system is resumed.
 
+**B1 source/runtime checkpoint — 2026-11-15:** the first actual independent
+shipped generation-revision formatter and private integer receipt prerequisite
+are accepted through the existing installation owner; see the
+[scoped native receipt](validation/2026-11-15-b1-independent-shipped-r1.md).
+Strict lint, native compilation and twenty scoped cases pass. Actual boot,
+original reuse, completion/approval ACK loss and unknown-intent restart are
+covered. Authored approval remains closed; general publication is still open
+implementation work. Continue the remaining B1 subject/workflow/behavior/Q2 gates before
+B2 -> B3; do not treat this narrow S root as complete B1 or restore blocked private
+branches. Root continues alone, without renewed package delegation.
+
 **Historical roles below (not current assignment):**
 
 - Supervisor: `/Volumes/SSDE/brassclaw` on `main`; package definition, architecture

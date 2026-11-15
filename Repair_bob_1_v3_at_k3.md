@@ -292,6 +292,24 @@ environment; an example string or parser pass is not behavioral evidence.
 
 - [ ] **B1-05 — Replace placeholder and self-asserted seed qualification.**
 
+**Scoped independent shipped root accepted, 2026-11-15:** the actual retained
+Prefix-generation revision formatter is independently qualified by the existing
+installation owner, following a separately qualified private integer receipt
+instrument. Product and qualifier share the same canonical draft constructor;
+the exact root revision/export receives its own S approval with null Q2 and a
+one-root closure. New Capture1-only `shipped-pure-r1-* /1` domains retain the
+actual preparation and inner selection policies without relabeling private
+Capture2 or legacy checker records. Actual normal boot, immutable reuse, lost
+completion/approval ACKs, unknown-intent restart, historical checker originals
+and guarded writer cases pass; see the [twenty-case scoped acceptance](docs/validation/2026-11-15-b1-independent-shipped-r1.md).
+This closes this first shipped business-function slice only. B1-05 remains open
+for other actual shipped subjects and complete workflow/prerequisite qualification;
+B1-06 still owns general/authored producers, authenticated Q2 and the connected
+storage successor (including the existing V102/V200 physical limits). B2 consumes
+qualified evidence through its own connected publication/selection cutover. Do
+not import blocked private N/Q/R/T code or claim their prerequisites from this
+narrow first-root receipt.
+
 **Latest bounded source/runtime checkpoint — 2026-11-09:** Run-24 on `b9620a1f5`
 compiles the joint graph without warnings and preserves all 1,388 tests. The
 actual strict receipt-reader regression and both real operator HTTP/PG

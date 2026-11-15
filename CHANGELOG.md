@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Independent shipped Pure qualification**: Qualify the exact Prefix-generation
+  revision formatter through the existing installation owner, with a separately
+  checked private receipt instrument and immutable original parser policies.
+  Reuse completed native evidence after lost acknowledgements without replay;
+  an uncertain first intent cannot start work. Preserve legacy checker records
+  and the closed authored-approval gate. General Pure publication remains open.
+
 - **Build integration**: Connect explicit local/Modal dispatch, independent Linux
   compiler selection, dependency test features, and Apple product/test runtime
   packages with the normal Monty worker. Collect exact current Cargo outputs,

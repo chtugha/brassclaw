@@ -1,3 +1,27 @@
+## 2026-11-15 — first independent shipped business function qualified
+
+The existing installation owner now independently qualifies the actual retained
+Prefix-generation revision formatter and its private integer receipt prerequisite.
+The product and qualifier share canonical bytes. Normal boot checks the exact
+consumer revision and original native evidence before readiness; the root's own
+S approval has null Q2 and exactly one closure member. The instrument receives
+no public own-function approval. Completed originals are reused without execution;
+real completion/approval COMMIT-ACK loss resolves originals, while an unconfirmed
+first intent and a repeated startup cannot execute or approve the business root.
+
+Distinct Capture1-only R1 record/context domains retain actual original parser
+policies and guard metadata/header/full-body transfer. Original native and source
+checks remain mandatory; authored approval stays closed. Strict Rust 1.100 lint,
+the native Rust 1.98.1 nine-program build and twenty scoped cases pass (fourteen
+current cases plus six applicable unchanged short checks). See the
+[exact receipt and limitations](validation/2026-11-15-b1-independent-shipped-r1.md).
+Final reporting prose follows the tested image; no exact release/package claim.
+
+This is not complete B1 or general Pure publication. Other shipped roots, complete
+functional/class Q1, trusted authored behavior/Q2, V102/V200 storage successors
+and the connected B2/B3 cutovers remain open. Continue B1 -> B2 -> B3 with Root
+alone; prepared dependency-blocked histories stay preserved.
+
 ## 2026-11-15 — combined build source connected and independent backlog reconciled
 
 Root implements the updated combined-build plan through the existing local and
@@ -961,7 +985,7 @@ The older Step-6 closure below covers its six execution cases only.
 
 ## 2026-11-03 — session-7: T5b fix + all run_q1_validation_retained tests passing (Step 6 fully closed)
 
-**Fix:** [`q1_orchestrator.rs`](crates/brassclaw_reborn_composition/src/q1_orchestrator.rs) —
+**Fix:** [`q1_orchestrator.rs`](../crates/brassclaw_reborn_composition/src/q1_orchestrator.rs) —
 `LoopExit::Completed(ResultOnly)` branch now queries `reborn_validator_q1_runs.succeeded`
 for the given `submission_id` before routing `gate1_pass_reviewed` vs `gate1_fail_reviewed`.
 Previously the branch unconditionally called `gate1_pass_reviewed`, making T5b

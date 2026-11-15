@@ -968,6 +968,20 @@ impl InstalledMontyCatalogue {
             initial_preparation.limits(),
         )
         .await?;
+        let generation_revision =
+            crate::bootstrap_validator_approval::qualify_shipped_generation_revision(
+                crate::bootstrap_validator_approval::SessionInput {
+                    pool: pool.clone(),
+                    worker: worker_image.clone(),
+                    root: root_definition.clone(),
+                    executor: startup_executor.clone(),
+                    preparation: initial_preparation.clone(),
+                    storage: resource_store_settings.clone(),
+                    application_checksum: hex::encode(image.checksum()),
+                },
+                &generation_candidates[1],
+            )
+            .await?;
         let (case_harness, case_unready) = Box::pin(crate::pure_case_qualification::qualify(
             crate::bootstrap_validator_approval::SessionInput {
                 pool: pool.clone(),
@@ -1070,6 +1084,13 @@ impl InstalledMontyCatalogue {
             "boot_pure_workflow",
             generation,
             pure_workflow.verify_in_transaction(&tx, &pure_checkers),
+        )
+        .await?;
+        crate::bootstrap_evidence::io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_shipped_generation_revision",
+            generation,
+            generation_revision.verify(&tx, &generation_candidates[1]),
         )
         .await?;
         if let Some(harness) = &case_harness {

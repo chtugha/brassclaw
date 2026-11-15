@@ -524,7 +524,10 @@ pub(super) fn normalize_suite(desc: usize, suite: &Suite) -> Result<Suite, Rebor
             .split_once(':')
             .ok_or_else(|| invalid("fixture step identity invalid"))?;
         step.id = format!("{desc}:{number}");
-        if step.component == super::pure::encoder_id() && !step.results.is_empty() {
+        if (step.component == super::pure::encoder_id()
+            || step.component == super::shipped::integer_instrument_id())
+            && !step.results.is_empty()
+        {
             let original = step.constants["step_id"]
                 .as_str()
                 .ok_or_else(|| invalid("pure encoder original step absent"))?;

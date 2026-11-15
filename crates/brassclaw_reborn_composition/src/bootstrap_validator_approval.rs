@@ -52,7 +52,13 @@ mod tests;
 use fixtures::Suite;
 #[path = "bootstrap_pure_checker.rs"]
 mod pure;
+#[path = "bootstrap_shipped_r1_policy.rs"]
+mod shipped_policy;
+pub(crate) use shipped_policy::OriginalPolicy as OriginalShippedR1Policy;
+#[path = "bootstrap_shipped_r1.rs"]
+mod shipped;
 pub(crate) use pure::{CheckedPureCheckerClosure, pure_source_cases, qualify as qualify_pure};
+pub(crate) use shipped::qualify as qualify_shipped_generation_revision;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,6 +99,8 @@ struct Claim {
     components: Vec<Reference>,
     recipe: Reference,
     selection_bytes: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    selection_parser_limits: BTreeMap<String, SelectionParserLimits>,
     suites: Vec<Suite>,
     support: Option<RecordRef>,
     worker_checksum: String,
@@ -107,6 +115,13 @@ struct Claim {
     executor_checksum: String,
     quiescence_checksum: String,
     io_checksum: String,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SelectionParserLimits {
+    max_depth: usize,
+    max_nodes: usize,
+    max_bytes: usize,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -230,11 +245,17 @@ struct Context {
     operation: Operation,
     operation_bytes: String,
     programs: BTreeMap<String, Arc<RetainedToolProgram>>,
+    record_policy: Option<shipped_policy::OriginalPolicy>,
 }
 impl Context {
+    fn record_limits(&self) -> ContractLimits {
+        self.record_policy
+            .as_ref()
+            .map_or(REVISION_LIMITS, |p| p.limits())
+    }
     fn claim_bytes(&self) -> Result<String, RebornBuildError> {
         match &self.profile {
-            Some(profile) => profile.claim_bytes(&self.claim),
+            Some(profile) => profile.claim_bytes(&self.claim, Some(self.record_limits())),
             None => serde_json::to_string(&self.claim).map_err(invalid),
         }
     }
@@ -251,11 +272,10 @@ impl Context {
         }
     }
     fn format(&self, stage: &str) -> String {
-        let prefix = if self.profile.is_some() {
-            "pure-checker"
-        } else {
-            "structural-checker"
-        };
+        let prefix = self
+            .profile
+            .as_ref()
+            .map_or("structural-checker", |p| p.record_domain());
         format!("{prefix}-{stage}/1")
     }
     fn id(&self, stage: &str) -> Uuid {
@@ -271,14 +291,41 @@ impl Context {
         success: bool,
         report: &T,
     ) -> Result<String, RebornBuildError> {
+        self.encode_components(id, kind, success, &self.envelope_components, report)
+    }
+    fn encode_components<T: Serialize>(
+        &self,
+        id: Uuid,
+        kind: &str,
+        success: bool,
+        components: &[Value],
+        report: &T,
+    ) -> Result<String, RebornBuildError> {
+        let report = serde_json::to_value(report).map_err(invalid)?;
+        if let Some(policy) = &self.record_policy {
+            return policy.encode(id, kind, success, &self.claim_checksum, components, report);
+        }
         Ok(evidence::system_record(
             id,
             kind,
             success,
             &self.claim_checksum,
-            &self.envelope_components,
-            serde_json::to_value(report).map_err(invalid)?,
+            components,
+            report,
         ))
+    }
+    async fn read_bytes(
+        &self,
+        tx: &Transaction<'_>,
+        id: Uuid,
+    ) -> Result<Option<String>, RebornBuildError> {
+        match &self.record_policy {
+            Some(policy) => policy.read(tx, id).await,
+            None => evidence::read_evidence(tx, id).await,
+        }
+    }
+    fn decode<T: serde::de::DeserializeOwned>(&self, bytes: &str) -> Result<T, RebornBuildError> {
+        decode_report(bytes, self.record_policy.as_ref())
     }
     async fn read<T: serde::de::DeserializeOwned + Serialize>(
         &self,
@@ -287,13 +334,10 @@ impl Context {
         kind: &str,
         success: bool,
     ) -> Result<Option<(String, T)>, RebornBuildError> {
-        let Some(bytes) = evidence::read_evidence(tx, id).await? else {
+        let Some(bytes) = self.read_bytes(tx, id).await? else {
             return Ok(None);
         };
-        let envelope: Envelope =
-            serde_json::from_value(strict_json(&bytes, REVISION_LIMITS).map_err(invalid)?)
-                .map_err(invalid)?;
-        let report: T = serde_json::from_value(envelope.report).map_err(invalid)?;
+        let report: T = self.decode(&bytes)?;
         if self.encode(id, kind, success, &report)? != bytes {
             return Err(invalid("checker original envelope differs"));
         }
@@ -301,8 +345,26 @@ impl Context {
     }
     async fn retain<T: Serialize>(&self, id: Uuid, report: &T) -> Result<String, RebornBuildError> {
         let bytes = self.encode(id, "behavior", false, report)?;
-        io::retain_record(&self.pool, self.storage.as_ref(), id, &bytes).await?;
+        self.retain_bytes(id, &bytes, false).await?;
         Ok(bytes)
+    }
+    async fn retain_bytes(
+        &self,
+        id: Uuid,
+        bytes: &str,
+        intent: bool,
+    ) -> Result<(), RebornBuildError> {
+        match &self.record_policy {
+            Some(policy) => {
+                policy
+                    .retain(&self.pool, self.storage.as_ref(), id, bytes, intent)
+                    .await
+            }
+            None if intent => {
+                io::retain_new_intent(&self.pool, self.storage.as_ref(), id, bytes).await
+            }
+            None => io::retain_record(&self.pool, self.storage.as_ref(), id, bytes).await,
+        }
     }
     fn executor(
         &self,
@@ -552,14 +614,11 @@ impl Context {
         if let Some(profile) = &self.profile {
             profile.verify_native_inputs(tx).await?;
         }
-        let reservation_bytes = evidence::read_evidence(tx, self.reservation.id)
+        let reservation_bytes = self
+            .read_bytes(tx, self.reservation.id)
             .await?
             .ok_or_else(|| invalid("checker original reservation missing"))?;
-        let envelope: Envelope = serde_json::from_value(
-            strict_json(&reservation_bytes, REVISION_LIMITS).map_err(invalid)?,
-        )
-        .map_err(invalid)?;
-        let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
+        let reservation: Reservation = self.decode(&reservation_bytes)?;
         let claim_bytes = self.claim_bytes()?;
         let claim_checksum = evidence::checksum(&claim_bytes);
         if claim_checksum != self.claim_checksum
@@ -569,20 +628,20 @@ impl Context {
         }
         if reservation.format != self.format("reservation")
             || reference(self.reservation.id, &reservation_bytes) != self.reservation
-            || reservation.claim != strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?
+            || reservation.claim
+                != strict_json(&claim_bytes, self.record_limits()).map_err(invalid)?
             || reservation.execution_request_id.is_nil()
             || Uuid::new_v5(
                 &self.reservation.id,
                 reservation.execution_request_id.as_bytes(),
             ) != self.operation_id
-            || evidence::system_record(
+            || self.encode_components(
                 self.reservation.id,
                 "behavior",
                 false,
-                &claim_checksum,
                 &[serde_json::to_value(&self.claim.root).map_err(invalid)?],
-                serde_json::to_value(&reservation).map_err(invalid)?,
-            ) != reservation_bytes
+                &reservation,
+            )? != reservation_bytes
         {
             return Err(invalid("checker qualification reservation changed"));
         }
@@ -596,8 +655,74 @@ impl Context {
         {
             return Err(invalid("checker original intent differs"));
         }
+        self.validate_original_policy()?;
+        self.verify_original_graph(tx).await?;
+        if let Some(trace) = trace {
+            trace.note("verify_encoder_source_original", None);
+        }
+        let (source, exports) = self.verify_source(tx).await?;
+        let mut completed = Vec::new();
+        for suite in &self.claim.suites {
+            if let Some(trace) = trace {
+                trace.note("verify_encoder_completed_original", Some(&suite.variant));
+            }
+            completed.push(self.verify_completed(tx, suite, &source).await?);
+        }
+        let qualified = Qualified {
+            format: self.format("qualified-own-function"),
+            scope: if self.record_policy.is_some() {
+                "installation-shipped-pure-r1-only"
+            } else {
+                "installation-own-checker-only"
+            }
+            .into(),
+            operation: self.op(),
+            source,
+            completed,
+            root: self.claim.root.clone(),
+            exports,
+        };
+        Ok(qualified)
+    }
+    fn validate_original_policy(&self) -> Result<(), RebornBuildError> {
         self.executor()?;
         self.preparation()?;
+        if let Some(policy) = &self.record_policy {
+            if self.operation.preparation_bytes != policy.original().bytes()
+                || self.operation.preparation_checksum != policy.original().checksum()
+                || self.claim.selection_parser_limits.len() != self.claim.suites.len()
+            {
+                return Err(invalid(
+                    "shipped R1 original preparation/selection coverage differs",
+                ));
+            }
+            for suite in &self.claim.suites {
+                let selected = self
+                    .program(&suite.variant)?
+                    .inputs()
+                    .instruction()
+                    .retained_selection()
+                    .map_err(invalid)?;
+                let actual = selected.data_limits();
+                let original = self
+                    .claim
+                    .selection_parser_limits
+                    .get(&suite.variant)
+                    .ok_or_else(|| invalid("shipped R1 original selection policy missing"))?;
+                if selected.exact_bytes() != self.claim.selection_bytes[&suite.variant]
+                    || original.max_depth != actual.max_depth
+                    || original.max_nodes != actual.max_nodes
+                    || original.max_bytes != actual.max_bytes
+                {
+                    return Err(invalid(
+                        "shipped R1 original inner selection policy differs",
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+    async fn verify_original_graph(&self, tx: &Transaction<'_>) -> Result<(), RebornBuildError> {
         let graph = self
             .program(&self.claim.suites[0].variant)?
             .inputs()
@@ -612,34 +737,17 @@ impl Context {
             tx,
             &[self.claim.recipe.uuid],
             &refs,
-            brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            match &self.record_policy {
+                Some(policy) => policy.graph()?,
+                None => brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            },
         )
         .await
         .map_err(invalid)?;
         PgComponentRevisionStore::read_revision_in_transaction(tx, self.root.reference())
             .await
             .map_err(invalid)?;
-        if let Some(trace) = trace {
-            trace.note("verify_encoder_source_original", None);
-        }
-        let (source, exports) = self.verify_source(tx).await?;
-        let mut completed = Vec::new();
-        for suite in &self.claim.suites {
-            if let Some(trace) = trace {
-                trace.note("verify_encoder_completed_original", Some(&suite.variant));
-            }
-            completed.push(self.verify_completed(tx, suite, &source).await?);
-        }
-        let qualified = Qualified {
-            format: self.format("qualified-own-function"),
-            scope: "installation-own-checker-only".into(),
-            operation: self.op(),
-            source,
-            completed,
-            root: self.claim.root.clone(),
-            exports,
-        };
-        Ok(qualified)
+        Ok(())
     }
     fn qualification_value(&self, qualified: &Qualified) -> Result<Value, RebornBuildError> {
         match &self.profile {
@@ -690,8 +798,12 @@ impl Context {
             }
         }
         let bytes = self.approval_bytes()?;
-        let row=tx.query_opt("SELECT approval_bytes,checksum,root_id,root_version,root_checksum,validation_mode,q1_ref,q2_ref FROM reborn_pure_component_approvals WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?.ok_or_else(||invalid("checker original approval missing"))?;
-        if row.get::<_, String>(0) != bytes
+        if bytes.len() > self.record_limits().max_bytes {
+            return Err(invalid("original approval exceeds its parser policy"));
+        }
+        let expected_length = i32::try_from(bytes.len()).map_err(invalid)?;
+        let row=tx.query_opt("SELECT CASE WHEN octet_length(approval_bytes)=$2 THEN approval_bytes END,checksum,root_id,root_version,root_checksum,validation_mode,q1_ref,q2_ref FROM reborn_pure_component_approvals WHERE approval_id=$1",&[&self.id("approval"),&expected_length]).await.map_err(invalid)?.ok_or_else(||invalid("checker original approval missing"))?;
+        if row.get::<_, Option<String>>(0).as_deref() != Some(bytes.as_str())
             || row.get::<_, String>(1) != evidence::checksum(&bytes)
             || row.get::<_, Uuid>(2) != self.claim.root.uuid
             || row.get::<_, i64>(3) != i64::try_from(self.claim.root.version).map_err(invalid)?
@@ -701,6 +813,20 @@ impl Context {
             || row.get::<_, Option<Uuid>>(7).is_some()
         {
             return Err(invalid("checker approval original differs"));
+        }
+        if let Some(policy) = &self.record_policy {
+            let count=tx.query_one("SELECT count(*) FROM reborn_pure_component_approval_closure WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?.get::<_,i64>(0);
+            let expected = self
+                .profile
+                .as_ref()
+                .ok_or_else(|| invalid("shipped original scope missing"))?
+                .components(&self.claim)?
+                .len();
+            if usize::try_from(count).ok() != Some(expected)
+                || expected > policy.graph()?.max_revisions()
+            {
+                return Err(invalid("shipped original approval closure count differs"));
+            }
         }
         let rows=tx.query("SELECT component_id,component_version,component_checksum FROM reborn_pure_component_approval_closure WHERE approval_id=$1",&[&self.id("approval")]).await.map_err(invalid)?;
         if let Some(profile) = &self.profile {
@@ -853,6 +979,82 @@ pub(crate) struct SessionInput {
     pub(crate) application_checksum: String,
 }
 
+fn decode_report<T: serde::de::DeserializeOwned>(
+    bytes: &str,
+    policy: Option<&shipped_policy::OriginalPolicy>,
+) -> Result<T, RebornBuildError> {
+    let limits = policy.map_or(REVISION_LIMITS, |p| p.limits());
+    let envelope: Envelope =
+        serde_json::from_value(strict_json(bytes, limits).map_err(invalid)?).map_err(invalid)?;
+    let mut report = envelope.report;
+    if let Some(policy) = policy {
+        policy.remove_frame(&mut report)?;
+    }
+    serde_json::from_value(report).map_err(invalid)
+}
+async fn read_reservation(
+    base: &SessionInput,
+    id: Uuid,
+    subject: &str,
+    components: &[Value],
+    shipped: bool,
+) -> Result<Option<(String, Option<shipped_policy::OriginalPolicy>)>, RebornBuildError> {
+    if !shipped {
+        return Ok(io::read_record(&base.pool, base.storage.as_ref(), id)
+            .await?
+            .map(|bytes| (bytes, None)));
+    }
+    io::bounded_for(
+        base.storage.as_ref(),
+        "shipped_r1_original_header",
+        id,
+        async {
+            let mut client = io::acquire(&base.pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            let record = shipped_policy::bootstrap(&tx, id, subject, components).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(record.map(|(bytes, policy)| (bytes, Some(policy))))
+        },
+    )
+    .await
+}
+async fn read_original_record(
+    base: &SessionInput,
+    id: Uuid,
+    policy: Option<&shipped_policy::OriginalPolicy>,
+) -> Result<Option<String>, RebornBuildError> {
+    let Some(policy) = policy else {
+        return io::read_record(&base.pool, base.storage.as_ref(), id).await;
+    };
+    io::bounded_for(
+        base.storage.as_ref(),
+        "shipped_r1_original_record",
+        id,
+        async {
+            let mut client = io::acquire(&base.pool).await?;
+            let tx = client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)?;
+            let bytes = policy.read(&tx, id).await?;
+            tx.commit().await.map_err(invalid)?;
+            client.recycle_after_commit();
+            Ok(bytes)
+        },
+    )
+    .await
+}
+
 async fn qualify_specs(
     base: SessionInput,
     specs: Vec<Spec>,
@@ -865,6 +1067,7 @@ async fn qualify_specs_traced(
     specs: Vec<Spec>,
     trace: Option<&pure::case_encoder::QualificationTrace>,
 ) -> Result<Vec<Arc<Context>>, RebornBuildError> {
+    let original_base = base.clone();
     let note = |phase| {
         if let Some(trace) = trace {
             trace.note(phase, None);
@@ -958,6 +1161,7 @@ async fn qualify_specs_traced(
         );
         let mut programs = BTreeMap::new();
         let mut selections = BTreeMap::new();
+        let mut selection_parser_limits = BTreeMap::new();
         let mut normalized = Vec::new();
         note("prepare_fixture_programs");
         for (desc, suite) in suites.into_iter().enumerate() {
@@ -980,28 +1184,40 @@ async fn qualify_specs_traced(
             if !program.bindings().is_empty() {
                 return Err(invalid("pure checker fixture acquired a Tool binding"));
             }
-            selections.insert(
-                suite.variant.clone(),
-                program
-                    .inputs()
-                    .instruction()
-                    .retained_selection()
-                    .map_err(invalid)?
-                    .exact_bytes()
-                    .to_owned(),
-            );
+            let selection = program
+                .inputs()
+                .instruction()
+                .retained_selection()
+                .map_err(invalid)?;
+            if profile.as_ref().is_some_and(|p| p.is_shipped()) {
+                let s = selection.data_limits();
+                selection_parser_limits.insert(
+                    suite.variant.clone(),
+                    SelectionParserLimits {
+                        max_depth: s.max_depth,
+                        max_nodes: s.max_nodes,
+                        max_bytes: s.max_bytes,
+                    },
+                );
+            }
+            selections.insert(suite.variant.clone(), selection.exact_bytes().to_owned());
             programs.insert(suite.variant.clone(), program);
             normalized.push(suite);
         }
         note("construct_fixture_claim");
+        let shipped = profile.as_ref().is_some_and(|p| p.is_shipped());
         let claim = Claim {
-            format: if profile.is_some() {
+            format: if shipped {
+                "shipped-pure-r1-execution-context/1"
+            } else if profile.is_some() {
                 "pure-checker-execution-context/1"
             } else {
                 "structural-checker-claim/1"
             }
             .into(),
-            scope: if profile.is_some() {
+            scope: if shipped {
+                "installation-shipped-pure-r1-fixture"
+            } else if profile.is_some() {
                 "installation-closed-pure-fixture"
             } else {
                 "installation-own-checker-only"
@@ -1011,6 +1227,7 @@ async fn qualify_specs_traced(
             components: refs.iter().copied().map(Into::into).collect(),
             recipe: snapshot.revisions()[&recipe.uuid()].reference().into(),
             selection_bytes: selections,
+            selection_parser_limits,
             suites: normalized,
             support: support.clone(),
             worker_checksum: hex::encode(worker.checksum()),
@@ -1031,7 +1248,17 @@ async fn qualify_specs_traced(
             io_checksum: evidence::checksum(include_str!("bootstrap_evidence_io.rs")),
         };
         let claim_bytes = match &profile {
-            Some(profile) => profile.claim_bytes(&claim)?,
+            // A closed packaged locator is computed from immutable definitions,
+            // not today's settings. The original record policy is restored
+            // before parsing the full original or admitting execution below.
+            Some(profile) => profile.claim_bytes(
+                &claim,
+                if profile.is_shipped() {
+                    None
+                } else {
+                    Some(REVISION_LIMITS)
+                },
+            )?,
             None => serde_json::to_string(&claim).map_err(invalid)?,
         };
         let claim_checksum = evidence::checksum(&claim_bytes);
@@ -1043,60 +1270,115 @@ async fn qualify_specs_traced(
                 .collect::<Result<Vec<_>, _>>()?,
             None => vec![serde_json::to_value(&claim.root).map_err(invalid)?],
         };
-        let domain = if profile.is_some() {
-            "pure-checker"
-        } else {
-            "structural-checker"
-        };
+        let domain = profile
+            .as_ref()
+            .map_or("structural-checker", |p| p.record_domain());
         let claim_id = Uuid::new_v5(
             &candidate.uuid(),
             format!("{domain}-reservation/1:{}", claim_checksum).as_bytes(),
         );
-        let offered = Reservation {
-            format: format!("{domain}-reservation/1"),
-            claim: strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?,
-            execution_request_id: Uuid::new_v4(),
-        };
         let components = [serde_json::to_value(&claim.root).map_err(invalid)?];
-        let offered_bytes = evidence::system_record(
+        note("read_fixture_reservation");
+        let (reservation_bytes, record_policy) = match read_reservation(
+            &original_base,
             claim_id,
-            "behavior",
-            false,
             &claim_checksum,
             &components,
-            serde_json::to_value(&offered).map_err(invalid)?,
-        );
-        note("read_fixture_reservation");
-        let reservation_bytes = match io::read_record(&pool, storage.as_ref(), claim_id).await? {
-            Some(bytes) => bytes,
+            shipped,
+        )
+        .await?
+        {
+            Some(original) => original,
             None => {
+                let policy = if shipped {
+                    Some(shipped_policy::OriginalPolicy::new(preparation.original())?)
+                } else {
+                    None
+                };
+                let offered = Reservation {
+                    format: format!("{domain}-reservation/1"),
+                    claim: strict_json(
+                        &claim_bytes,
+                        policy.as_ref().map_or(REVISION_LIMITS, |p| p.limits()),
+                    )
+                    .map_err(invalid)?,
+                    execution_request_id: Uuid::new_v4(),
+                };
+                let report = serde_json::to_value(&offered).map_err(invalid)?;
+                let offered_bytes = match &policy {
+                    Some(policy) => policy.encode(
+                        claim_id,
+                        "behavior",
+                        false,
+                        &claim_checksum,
+                        &components,
+                        report,
+                    )?,
+                    None => evidence::system_record(
+                        claim_id,
+                        "behavior",
+                        false,
+                        &claim_checksum,
+                        &components,
+                        report,
+                    ),
+                };
                 note("retain_fixture_reservation");
                 // A losing first-claim proposal reads the winner's complete
                 // canonical original. Its offered request ID is never admitted.
-                let _write =
-                    io::retain_record(&pool, storage.as_ref(), claim_id, &offered_bytes).await;
-                io::read_record(&pool, storage.as_ref(), claim_id)
-                    .await?
-                    .ok_or_else(|| invalid("checker reservation unresolved; no admission"))?
+                let _write = match &policy {
+                    Some(policy) => {
+                        policy
+                            .retain(&pool, storage.as_ref(), claim_id, &offered_bytes, false)
+                            .await
+                    }
+                    None => {
+                        io::retain_record(&pool, storage.as_ref(), claim_id, &offered_bytes).await
+                    }
+                };
+                read_reservation(
+                    &original_base,
+                    claim_id,
+                    &claim_checksum,
+                    &components,
+                    shipped,
+                )
+                .await?
+                .ok_or_else(|| invalid("checker reservation unresolved; no admission"))?
             }
         };
         note("verify_fixture_reservation");
-        let envelope: Envelope = serde_json::from_value(
-            strict_json(&reservation_bytes, REVISION_LIMITS).map_err(invalid)?,
-        )
-        .map_err(invalid)?;
-        let reservation: Reservation = serde_json::from_value(envelope.report).map_err(invalid)?;
-        if reservation.format != format!("{domain}-reservation/1")
-            || reservation.execution_request_id.is_nil()
-            || reservation.claim != strict_json(&claim_bytes, REVISION_LIMITS).map_err(invalid)?
-            || evidence::system_record(
+        let reservation: Reservation = decode_report(&reservation_bytes, record_policy.as_ref())?;
+        let report = serde_json::to_value(&reservation).map_err(invalid)?;
+        let canonical_reservation = match &record_policy {
+            Some(policy) => policy.encode(
                 claim_id,
                 "behavior",
                 false,
                 &claim_checksum,
                 &components,
-                serde_json::to_value(&reservation).map_err(invalid)?,
-            ) != reservation_bytes
+                report,
+            )?,
+            None => evidence::system_record(
+                claim_id,
+                "behavior",
+                false,
+                &claim_checksum,
+                &components,
+                report,
+            ),
+        };
+        if reservation.format != format!("{domain}-reservation/1")
+            || reservation.execution_request_id.is_nil()
+            || reservation.claim
+                != strict_json(
+                    &claim_bytes,
+                    record_policy
+                        .as_ref()
+                        .map_or(REVISION_LIMITS, |p| p.limits()),
+                )
+                .map_err(invalid)?
+            || canonical_reservation != reservation_bytes
         {
             return Err(invalid(
                 "checker reservation does not identify canonical package",
@@ -1105,22 +1387,24 @@ async fn qualify_specs_traced(
         let reservation_ref = reference(claim_id, &reservation_bytes);
         let operation_id = Uuid::new_v5(&claim_id, reservation.execution_request_id.as_bytes());
         note("read_fixture_operation");
-        let existing = io::read_record(&pool, storage.as_ref(), operation_id).await?;
+        let existing =
+            read_original_record(&original_base, operation_id, record_policy.as_ref()).await?;
         let offered_operation = Operation {
             format: format!("{domain}-operation/1"),
             reservation: reservation_ref.clone(),
             executor_bytes: executor.exact_bytes().into(),
             executor_checksum: executor.checksum(),
-            preparation_bytes: preparation.bytes().into(),
-            preparation_checksum: preparation.checksum().into(),
+            preparation_bytes: record_policy
+                .as_ref()
+                .map_or(preparation.bytes(), |p| p.original().bytes())
+                .into(),
+            preparation_checksum: record_policy
+                .as_ref()
+                .map_or(preparation.checksum(), |p| p.original().checksum())
+                .into(),
         };
         let operation = match &existing {
-            Some(bytes) => {
-                let envelope: Envelope =
-                    serde_json::from_value(strict_json(bytes, REVISION_LIMITS).map_err(invalid)?)
-                        .map_err(invalid)?;
-                serde_json::from_value(envelope.report).map_err(invalid)?
-            }
+            Some(bytes) => decode_report(bytes, record_policy.as_ref())?,
             None => offered_operation,
         };
         drop(claim_bytes);
@@ -1138,6 +1422,7 @@ async fn qualify_specs_traced(
             operation,
             operation_bytes: String::new(),
             programs,
+            record_policy,
         };
         context.operation_bytes =
             context.encode(operation_id, "behavior", false, &context.operation)?;
@@ -1148,6 +1433,29 @@ async fn qualify_specs_traced(
             return Err(invalid("checker original operation bytes differ"));
         }
         let context = Arc::new(context);
+        if context.record_policy.is_some() {
+            context.validate_original_policy()?;
+            io::bounded_for(
+                storage.as_ref(),
+                "shipped_r1_graph_admission",
+                context.claim.root.uuid,
+                async {
+                    let mut client = io::acquire(&pool).await?;
+                    let tx = client
+                        .build_transaction()
+                        .isolation_level(IsolationLevel::RepeatableRead)
+                        .read_only(true)
+                        .start()
+                        .await
+                        .map_err(invalid)?;
+                    context.verify_original_graph(&tx).await?;
+                    tx.commit().await.map_err(invalid)?;
+                    client.recycle_after_commit();
+                    Ok(())
+                },
+            )
+            .await?;
+        }
         if existing.is_some() {
             note("verify_published_original");
             let original = io::bounded_for(storage.as_ref(), "checker_published_original", context.claim.root.uuid, async {
@@ -1170,13 +1478,9 @@ async fn qualify_specs_traced(
             #[cfg(test)]
             tests::before_new_intent(&context).await;
             note("retain_fixture_operation_intent");
-            io::retain_new_intent(
-                &pool,
-                storage.as_ref(),
-                operation_id,
-                &context.operation_bytes,
-            )
-            .await?;
+            context
+                .retain_bytes(operation_id, &context.operation_bytes, true)
+                .await?;
             context.execute(trace).await?;
         }
         // Existing complete native originals can finish publication without VM
@@ -1209,13 +1513,9 @@ async fn qualify_specs_traced(
             ("q1", context.id("q1")),
             ("behavior", context.id("behavior")),
         ] {
-            io::retain_record(
-                &pool,
-                storage.as_ref(),
-                id,
-                &context.encode(id, kind, true, &qualified)?,
-            )
-            .await?;
+            context
+                .retain_bytes(id, &context.encode(id, kind, true, &qualified)?, false)
+                .await?;
         }
         if context
             .profile
@@ -1238,19 +1538,35 @@ async fn qualify_specs_traced(
             continue;
         }
         let approval = context.approval_bytes()?;
-        let declaration = PureComponentApprovalDeclaration::from_json(&approval, REVISION_LIMITS)
-            .map_err(invalid)?;
+        let declaration =
+            PureComponentApprovalDeclaration::from_json(&approval, context.record_limits())
+                .map_err(invalid)?;
         let write = io::bounded_for(
             storage.as_ref(),
             "checker_approval_write",
             context.claim.root.uuid,
             async {
-                crate::pg_pure_component_approval::record_pure_component_approval(
-                    &pool,
-                    &declaration,
-                )
-                .await
-                .map_err(invalid)
+                match &context.record_policy {
+                    Some(policy) => {
+                        crate::pg_pure_component_approval::record_original_shipped_approval(
+                            &pool,
+                            &declaration,
+                            policy,
+                        )
+                        .await
+                        .map_err(|error| {
+                            RebornBuildError::OriginalShippedPure {
+                                source: Box::new(error),
+                            }
+                        })
+                    }
+                    None => crate::pg_pure_component_approval::record_pure_component_approval(
+                        &pool,
+                        &declaration,
+                    )
+                    .await
+                    .map_err(invalid),
+                }
             },
         )
         .await;

@@ -255,6 +255,7 @@ pub(crate) fn projection_driver_error(error: &brassclaw_turns::run_profile::Agen
 pub(crate) fn projection_build_error(error: &crate::RebornBuildError) {
     use crate::RebornBuildError::*;
     let kind = match error {
+        OriginalShippedPure { .. } => "OriginalShippedPure",
         OriginalPureEncoderQualification { .. } => "OriginalPureEncoderQualification",
         OriginalPureCaseQualification { .. } => "OriginalPureCaseQualification",
         InvalidConfig { .. } => "InvalidConfig",

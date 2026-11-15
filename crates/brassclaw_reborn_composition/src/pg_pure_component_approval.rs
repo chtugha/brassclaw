@@ -108,6 +108,8 @@ pub enum PureApprovalError {
     Connection(#[source] deadpool_postgres::PoolError),
     #[error("pure component approval selected revision read failed")]
     Revisions(#[from] RevisionStoreError),
+    #[error("pure component original evidence read remains unresolved")]
+    OriginalEvidence(#[source] Box<crate::RebornBuildError>),
 }
 fn invalid(reason: &'static str) -> PureApprovalError {
     PureApprovalError::Invalid(reason)
@@ -152,6 +154,26 @@ pub(crate) async fn record_pure_component_approval(
     pool: &PgPool,
     declaration: &PureComponentApprovalDeclaration,
 ) -> Result<Uuid, PureApprovalError> {
+    record_approval(pool, declaration, None).await
+}
+
+/// Mechanical persistence for the closed installation owner only. This parser
+/// policy grants no qualification: the owning caller must first verify the
+/// actual source, all observations, original native close and whole custody
+/// graph. Authored production remains closed in the common writer below.
+pub(crate) async fn record_original_shipped_approval(
+    pool: &PgPool,
+    declaration: &PureComponentApprovalDeclaration,
+    policy: &crate::bootstrap_validator_approval::OriginalShippedR1Policy,
+) -> Result<Uuid, PureApprovalError> {
+    record_approval(pool, declaration, Some(policy)).await
+}
+async fn record_approval(
+    pool: &PgPool,
+    declaration: &PureComponentApprovalDeclaration,
+    policy: Option<&crate::bootstrap_validator_approval::OriginalShippedR1Policy>,
+) -> Result<Uuid, PureApprovalError> {
+    let limits = policy.map_or(REVISION_LIMITS, |p| p.limits());
     let bytes = declaration.exact_bytes();
     let checksum = format!("{:x}", Sha256::digest(bytes.as_bytes()));
     let root = declaration.root();
@@ -209,14 +231,45 @@ pub(crate) async fn record_pure_component_approval(
         .map_err(db)?;
 
     let ids: Vec<_> = evidence_kinds.keys().copied().collect();
-    let evidence_rows = tx
-        .query(
+    // Retain borrowed legacy row views; the original-policy reader owns its
+    // guarded strings. Do not clone whole legacy evidence just to unify loops.
+    let legacy_rows = if policy.is_none() {
+        tx.query(
             "SELECT evidence_id,evidence_bytes,checksum FROM reborn_component_review_evidence
-         WHERE evidence_id=ANY($1::uuid[])",
+             WHERE evidence_id=ANY($1::uuid[])",
             &[&ids],
         )
         .await
-        .map_err(db)?;
+        .map_err(db)?
+    } else {
+        Vec::new()
+    };
+    let mut original_records = Vec::new();
+    if let Some(policy) = policy {
+        for id in &ids {
+            if let Some(bytes) = policy
+                .read(&tx, *id)
+                .await
+                .map_err(|error| PureApprovalError::OriginalEvidence(Box::new(error)))?
+            {
+                original_records.push((*id, bytes));
+            }
+        }
+    }
+    let mut evidence_rows = Vec::with_capacity(ids.len());
+    for row in &legacy_rows {
+        let id: Uuid = row.get(0);
+        let bytes: &str = row.get(1);
+        if format!("{:x}", Sha256::digest(bytes.as_bytes())) != row.get::<_, &str>(2) {
+            return Err(invalid("referenced evidence checksum differs"));
+        }
+        evidence_rows.push((id, bytes));
+    }
+    evidence_rows.extend(
+        original_records
+            .iter()
+            .map(|(id, bytes)| (*id, bytes.as_str())),
+    );
     if evidence_rows.len() != evidence_kinds.len() {
         return Err(invalid("referenced evidence record is missing"));
     }
@@ -241,13 +294,9 @@ pub(crate) async fn record_pure_component_approval(
     }
     let mut q1_authored_fields: Option<Q1SubjectFields> = None;
 
-    for row in &evidence_rows {
-        let id: Uuid = row.get(0);
-        let evidence_bytes: &str = row.get(1);
-        if format!("{:x}", Sha256::digest(evidence_bytes.as_bytes())) != row.get::<_, &str>(2) {
-            return Err(invalid("referenced evidence checksum differs"));
-        }
-        let value = strict_json(evidence_bytes, REVISION_LIMITS)
+    for (id, evidence_bytes) in &evidence_rows {
+        let id = *id;
+        let value = strict_json(evidence_bytes, limits)
             .map_err(|_| invalid("evidence bytes violate the strict data contract"))?;
         let expected_kind = evidence_kinds
             .get(&id)
@@ -394,7 +443,12 @@ pub(crate) async fn record_pure_component_approval(
         &tx,
         &[root.uuid],
         &selected,
-        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        match policy {
+            Some(policy) => policy
+                .graph()
+                .map_err(|error| PureApprovalError::OriginalEvidence(Box::new(error)))?,
+            None => brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+        },
     )
     .await?;
     declaration
@@ -409,7 +463,7 @@ pub(crate) async fn record_pure_component_approval(
         .collect();
 
     // 3. Verify the lengths satisfy the contract limits.
-    if bytes.len() > REVISION_LIMITS.max_bytes {
+    if bytes.len() > limits.max_bytes {
         return Err(invalid("approval bytes exceed technical capacity"));
     }
 

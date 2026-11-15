@@ -35,10 +35,16 @@ Reusable code and immutable constants may be shared; mutable arrays, defaults,
 closures, inputs and results remain isolated per task/attempt/invocation. Running
 and resumed tasks keep their selected exports when new revisions activate.
 A Skill needs no dedicated Recipe or matching command to exist or be complete.
-Many Recipes may reuse the same approved usage. MCP exposure requires a separately
-qualified MCP-call Recipe/variant; reference/test workflows do not imply ownership.
-MCP tools/list derives from available approved mcp-call-skill-recipes, not raw
-Skill rows. Keep the server always running; Kohai connects/advertises to the
+Many Recipes may reuse the same approved usage. MCP exposes only explicitly
+selected usages of already existing, active and approved Skills. Create or reuse
+a qualified MCP-call Recipe or compatible existing variant only for such an
+existing Skill usage; it exposes that usage, not a new Skill or capability.
+Publication requires that Recipe/variant to be available, activated and approved
+with its command and typed input/result contract. Reference/test workflows do
+not imply MCP publication. MCP tools/list derives from these qualified
+mcp-call-skill-recipes, not raw Skill rows, raw Rust Tools or arbitrary task
+workflows. Internal/private Skills are not automatically exposed.
+Keep the server always running; Kohai connects/advertises to the
 provider after final prefix addition just before sending a prompt, then
 disconnects that request on the complete answer. Refresh discovery at
 startup/restart and qualified Skill/Recipe catalogue changes. Existing calls
@@ -47,8 +53,12 @@ MCP tools/list gives its exact sentence, variable positions/types, escaping and
 valid examples; the model sends the completed command for intent matching.
 MCP accepts the completed listed command, opens a new ordinary chat, sends it
 as a user message, forwards the correlated chat result and closes the chat.
-It accepts no Python and has no direct Monty/IBS/Rust Tool execution connection;
-the existing chat ingress, matcher and Recipe runner remain unchanged. No component or
+It accepts no executable Python payload. A source-text string is permitted only
+as a declared typed data argument of such a published Skill usage, under its exact
+qualified command grammar. This data rule neither establishes an available
+source-inspection Skill/Recipe nor introduces universal escaping. MCP has no direct
+Monty/IBS/Rust Tool execution connection; the existing chat ingress, matcher and
+Recipe runner remain unchanged. No component or
 per-call Q1/Q2 is created; only eligible usages are exposed. See [the complete interface contract](../skills.md#preloadable-function-interface-binding-v3-target).
 Selected retained loader/store/runner support is implemented; this contract
 does not certify every workflow or the complete migration. See
@@ -183,7 +193,15 @@ The two-package-chat instructions below are historical where they conflict with
 this latest direction; they do not prevent the leading chat implementing fixes.
 
 
-**Two package chats and one supervisor — latest user instruction, 2026-11-03:**
+### Historical package-chat procedure — superseded where conflicting
+
+The following 2026-11-03 procedure records the former assignment and custody
+rules. It does not authorize new package chats, delegation of corrections or a
+return to a review-only leading chat under the current 2026-11-14 instruction.
+Preserve its existing handoff records, private work and evidence; current build,
+integration and source-freeze rules continue below this historical subsection.
+
+**Former instruction — 2026-11-03, two package chats and one supervisor:**
 the leading chat assigns bounded implementation packages, reviews their complete
 connected changes, performs local validation/final acceptance and integrates
 accepted results into `main`. It writes no new implementation code. Review
@@ -221,6 +239,8 @@ receipts apply only to their actual source/feature/artifact inputs. This replace
 the earlier single-agent rule and narrow Codex/Auth exception. It changes only
 development coordination, not BrassClaw's product/subagent architecture.
 
+### Current shared-source and validation ownership
+
 The leading repository-root checkout and Git index are the integration tree.
 Compile its source directly with one canonical local Cargo target; on this host it is
 `/Users/ollama/brassclaw-target`. Native Cargo executions are serial under
@@ -239,8 +259,8 @@ former global-Cargo serialization rule and one-off parallel-host flag requiremen
 It does not change source custody. The current Modal policy below owns paid-work
 authorization and supported remote-test execution.
 
-The supervisor owns local Cargo, tests and build-artifact cleanup. Package chats
-use the existing Modal controller for authorized remote compilation.
+The leading chat owns local Cargo, tests, build-artifact cleanup and authorized
+remote submissions through the existing Modal controller.
 The former [development build queue](development-build-queue.md) is a historical
 record, not an active submission or scheduling mechanism. Preserve earlier
 receipts and unresolved work; queue retirement does not mark that work complete.
@@ -252,9 +272,10 @@ requirements remain independent of development review.
 
 Record intended behavior, actual source changes, affected packages/features,
 required checks and applicable prior evidence in the existing work/validation
-record. Review the connected changes and return defects to their package owner
-before rerunning failures. Package handoffs identify exact commits, reused owners,
-changed contracts, actual receipts, unexecuted tests and known limitations.
+record. The leading chat reviews and corrects the connected changes before
+rerunning failures. Existing package handoffs remain evidence and identify exact
+commits, reused owners, changed contracts, actual receipts, unexecuted tests and
+known limitations; they do not require renewed delegation.
 
 Collect coherent, reviewed changes before starting the next compilation.
 Compile shared affected artifacts once, then reuse them for the necessary selected
@@ -262,18 +283,18 @@ cases. Do not start a new compile for each small patch or repeat passing checks
 whose inputs remain applicable. Keep independent failures attributable; a bundle
 does not turn unrelated changes into one acceptance claim.
 
-Run long local validation batches in detached Screen sessions; the supervisor
-continues review and coordination while package chats implement in their own
-worktrees. Check progress after useful work intervals, on failure or on
-completion; do not spend the foreground turn polling an unchanged build. Capture
-only the actual compiler, embedded-content and runtime inputs required by the
-batch, allowing unrelated source work to continue. Changes to those captured inputs
+Run long local validation batches through the Screen scripts under the current
+global Screen contract above. The leading chat continues independent review and
+other authorized work while preserving the batch's frozen inputs. Check progress
+at the required safe intervals and on failure or completion; do not busy-poll an
+unchanged build. Capture only the actual compiler, embedded-content and runtime
+inputs required by the batch, allowing unrelated source work to continue. Changes to those captured inputs
 remain private patches until that batch ends. Screen detaches the process; it does
 not make competing Cargo executions within one environment or edits to its
 captured inputs safe. The isolated Modal environment may compile concurrently.
 
 While a native batch runs, its complete captured dependency/input set is frozen. The
-supervisor may inspect source and review independent packages. Integration changes
+leading chat may inspect source and review independent packages. Integration changes
 to captured inputs wait until the batch is terminal or remain unapplied patches.
 Do not build another local tree/target or overwrite newer source with archived
 bytes. Reconcile actual processes, locks and retained inputs before taking over
@@ -330,11 +351,16 @@ state. If there is no credible estimate, keep the work local and use its normal
 required run to inform future estimates; do not launch duplicate timing probes.
 Decide before launch; elapsed local runtime is not a reason to duplicate the
 same command remotely. Source byte size is not a reliable timing threshold.
-The existing controller still technically requires `--confirmed-modal` and an
-estimate of at least 60 seconds. Until its owning implementation changes that
-gate, do not invent an estimate or bypass the validator to submit a shorter job.
-The future shared entry point is planned in
-[combined-building_v3_at_bob3.md](../combined-building_v3_at_bob3.md).
+The existing controller requires an explicit Modal choice (`--confirmed-modal`),
+but no technical 60-second eligibility minimum. An optional
+`--estimated-local-secs` must be finite and nonnegative; this input validation
+does not replace the turnaround assessment above. Never invent an estimate or
+bypass a validator. The existing shared entry point,
+[`scripts/local_build.py`](../scripts/local_build.py), selects `--host local|modal`;
+the default local path needs no Modal import, source sync or cloud probe.
+See [the build integration plan](../combined-building_v3_at_bob3.md) for its
+implementation and qualification boundaries. The separate global Screen rule
+still applies to builds/checks expected to exceed 60 seconds.
 
 **No speculative spending — user instruction, 2026-11-03:** do not provision
 workers, build/publish compiler images or run paid sizing/benchmark jobs merely
@@ -379,15 +405,25 @@ Recheck the captured source identity before submission. A disconnected unresolve
 job blocks remote sync/new submissions even after its OS lock is released.
 
 **Remote test support must be real.** The user authorization includes tests and
-their compilation, but today's Apple controller exports only CLI dev/release
-product builds; its worker command validator does not accept `cargo test`.
-Extend the existing controller/worker/runner owners before using those modes.
+their compilation. The current controller/worker source supports Apple CLI
+product builds and a separate restricted test-build mode: `cargo test --locked
+--no-run --lib -p brassclaw_reborn_composition --target aarch64-apple-darwin`,
+using the test profile and the validator's supported options. The existing
+`run --native-test` / `accept-native --test` paths execute selected collected
+Apple test programs locally; they do not run those programs on the remote Linux
+compiler host. Source support is not worker/image qualification or activation:
+the exact worker/image must support the requested mode, and normal test-mode
+use needs its independently qualified activation. An old product-only image or
+activation cannot authorize the test mode. Explicitly commissioned qualification
+retains its separate authorization under the prerequisite above. Linux test
+compilation/execution and other test targets/harnesses remain unsupported by this
+command path; extend and qualify the existing owners before using them.
 An arm64 Mach-O executable runs on the compatible Mac, not the Linux compiler
 host. A Linux test needs its actual libraries, fixtures, services and runtime
 paths on Linux. Preserve compile-time paths, companion workers, exact feature/
 profile selection and native resource locks. Mocked transport tests establish
-controller behavior only. Final acceptance remains with the supervisor; package
-chats execute only their assigned checks, even where remote execution is allowed.
+controller behavior only. The leading chat retains final acceptance and integration
+responsibility; remote execution does not authorize delegation or broader claims.
 
 Clippy, short checks, scripts and tests follow the same demonstrated turnaround
 rule. Formatting or metadata normally remain local because transfer has no
@@ -402,7 +438,7 @@ toolchain/dependency caches, and release paid workers after their necessary work
 No GPU is needed for ordinary Rust compilation. Required checks are never omitted
 or weakened to meet the time/cost policy.
 
-The sole agent controls Modal submissions directly under the independent remote
+The leading chat controls Modal submissions directly under the independent remote
 lock until remote Cargo is confirmed terminal. Native Cargo may run concurrently
 under its native lock with different settings and a separate target cache.
 A disconnected client is not proof that the remote job stopped; reconcile its
@@ -436,12 +472,30 @@ or lint does not establish macOS/Windows acceptance or local test completion.
 Do not copy operator/provider credentials into the source snapshot. This policy
 does not authorize provisioning or compiling as part of a documentation edit.
 
-**Evidence retention format (2026-11-02):** each validation run writes
-`source.json` (per-file SHA-256 manifest of all git-tracked files plus HEAD
-commit hash), `applied.json` (before/after SHA-256 for changed files),
-`original-runner.py`, per-step log files, `completed.json`, and the compiled
-test binaries. `accepted.json` is written by a separate post-run acceptance
-step. The runner must not copy the full working tree, `crates/`, `docs/`,
+**Evidence retention format (2026-11-02; applicability clarified):** compiled
+validation batches retain `source.json` (source manifest plus HEAD commit hash),
+applicable `applied.json` records with before/after identities for changed inputs,
+the actual runner, per-step logs,
+`completed.json` and the compiled test binaries used by the claim. Existing
+`original-runner.py` records retain their meaning; do not invent a Python runner
+for a check executed through another supported path. `accepted.json` is written
+by a separate post-run acceptance step, not inferred from command completion.
+
+The source manifest must cover the actual selected source inputs, including
+relevant non-ignored pending files, not just tracked files and HEAD. Retain
+per-file SHA-256 hashes and applicable file kinds, symlink targets and executable
+modes. Represent added and removed inputs through the applicable existing
+manifest/change records. Reuse or reference controller-owned manifests and
+receipts instead of duplicating them or introducing a new evidence format.
+Record relevant external fixture, configuration, toolchain and artifact identities
+through their existing evidence owners; do not copy secrets or collect arbitrary
+ignored files into a source manifest. Historical receipts retain their original
+scope and formats; reassess applicability rather than rewriting their bytes.
+
+Script checks retain their actual execution evidence, not nonexistent compiled
+test binaries. Ordinary documentation-only checks keep the lightweight exception
+in "Reuse evidence and stop" below. The runner must not copy the full working
+tree, `crates/`, `docs/`,
 root plan files, or changed-file copies (`owned-source/`) into
 `target/validation/`. Binary SHA-256 hashes in `accepted.json` are the
 immutable artifact identity; the binary is retained for re-execution
@@ -541,10 +595,10 @@ Apply every row relevant to the change. One check may satisfy several rows;
 overlapping requirements do not require duplicate executions. The table defines
 development evidence and does not replace component review or release gates.
 
-| Change | Required local evidence |
+| Change | Required validation evidence |
 | --- | --- |
 | Ordinary documentation or development policy | Inspect the diff, check relevant links and consistency, and run `git diff --check`. No Cargo execution solely for prose. |
-| Component data, prompts or PythonCode | Check the affected schemas, references, routing, associations and behavior through the relevant execution path. Stored drafts and development tests do not establish activation. Before activation, require complete own A function/workflow Q1/behavior/human Q2 or verified S integrity/behavior and applicable exact usage evidence; existing exact authored profiles keep their actual supported scope until cutover. |
+| Component data, prompts or PythonCode | Check affected schemas, references, routing, associations and behavior through the relevant execution path. Stored drafts and development tests do not establish activation. Before activation, changed authored components require own A function Q1/behavior/human Q2, with Skill/code reviewed as one functional subject. Verified S uses controlled noncircular development review, integrity/Q1/behavior, independently qualified prerequisites and applicable exact usage evidence, outside the normal authored Q1 queue and without additional installed or external-maintainer human Q2. New/changed Recipes validate supported workflows/variants using approved constituents without reapproving unchanged components. Existing exact authored profiles retain their supported scope until connected successor cutover. |
 | Seeder source or embedded runtime content | Validate the affected seed/integrity and execution contracts. These changes can require recompilation even without a new Rust function. |
 | Rust behavior | A focused regression or existing behavioral test through the relevant caller, plus affected-package linting with the relevant feature configuration. |
 | Database semantics, migrations, security or runtime lifecycle | Focused real integration/production-path acceptance, including relevant failure cases. Source reasoning alone cannot certify these claims. |

@@ -120,13 +120,17 @@ async fn read(
 
 /// The owner commits this exact Q1 intent before any behavioral effect. False
 /// means another/incomplete producer already retained the identity: no replay.
+pub(super) const INTENT_INSERT: &str = "INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING";
 pub(super) async fn retain_intent(
     tx: &Transaction<'_>,
     id: Uuid,
     bytes: &str,
 ) -> Result<bool, RebornBuildError> {
-    Ok(tx.execute("INSERT INTO reborn_component_review_evidence(evidence_id,evidence_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(evidence_id) DO NOTHING",
-        &[&id,&bytes,&checksum(bytes)]).await.map_err(invalid)? == 1)
+    Ok(tx
+        .execute(INTENT_INSERT, &[&id, &bytes, &checksum(bytes)])
+        .await
+        .map_err(invalid)?
+        == 1)
 }
 
 /// Called within the owner's one transaction after real observed behavior.
