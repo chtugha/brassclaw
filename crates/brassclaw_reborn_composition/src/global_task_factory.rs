@@ -7,7 +7,7 @@
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -314,6 +314,16 @@ pub(crate) struct PrivateSettlementPause {
 }
 
 impl OwnedGlobalTaskFactory {
+    /// Registration is a back-reference: the catalogue's child runtime already
+    /// retains the turn store. The runtime/driver own this factory through
+    /// claim settlement and shutdown; retaining the registration must not keep
+    /// that whole graph alive. Each call upgrades for its synchronous retention.
+    pub(crate) fn private_claim_participant(
+        self: &Arc<Self>,
+    ) -> Arc<dyn brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant> {
+        Arc::new(PrivateClaimParticipant(Arc::downgrade(self)))
+    }
+
     /// Hold the real settlement after its actual terminal COMMIT and before
     /// Factory cleanup/return. This does not fabricate a receipt or an ACK.
     #[cfg(test)]
@@ -1421,6 +1431,29 @@ fn failed(reason: &str) -> AgentLoopDriverError {
     }
 }
 
+struct PrivateClaimParticipant(Weak<OwnedGlobalTaskFactory>);
+
+impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant for PrivateClaimParticipant {
+    fn retain_reservation(
+        &self,
+        claimed: &brassclaw_turns::private_work::ClaimedPrivateWork,
+    ) -> Result<
+        Arc<dyn brassclaw_turns::pg_turn_state_store::PgPrivateClaimReservation>,
+        brassclaw_turns::TurnError,
+    > {
+        let owner = self
+            .0
+            .upgrade()
+            .ok_or_else(|| brassclaw_turns::TurnError::Unavailable {
+                reason: "private reservation owner has been released".into(),
+            })?;
+        brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant::retain_reservation(
+            owner.as_ref(),
+            claimed,
+        )
+    }
+}
+
 impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant for OwnedGlobalTaskFactory {
     fn retain_reservation(
         &self,
@@ -1433,6 +1466,11 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateClaimParticipant for OwnedGl
             reason: "private reservation requires original native custody".into(),
         };
         let mut tasks = self.tasks().map_err(|_| invalid())?;
+        // Share close_private_intents' linearization point: after closure no
+        // registration may publish another reservation or reacquire custody.
+        if self.intent_closed.load(Ordering::Acquire) {
+            return Err(invalid());
+        }
         if let Some((_, existing)) = tasks
             .iter()
             .find(|(attempt, _)| attempt.run_id == claimed.attempt().run_id)

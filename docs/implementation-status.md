@@ -1,3 +1,26 @@
+## 2026-11-15 — Monty lifetime and Main CI repair
+
+The runtime owns its global driver through worker exit and all supported shutdown
+stages. Validator bridges and private-claim registrations use non-owning
+back-references, eliminating both actual catalogue/driver and
+catalogue/child-store/factory cycles. Calls retain their original owner for the
+operation; released owners or closed private admission return unavailability.
+No new VM, workflow loop, replay or approval route is introduced.
+
+Strict Run110 and native compilation Run111 pass without warnings. All four
+selected native cases pass: complete graph release and expired-call refusal,
+original/late-waiter delivery, interrupted-worker unresolved delivery, and
+acknowledged/pre-start/closed-admission I/O custody. See the
+[exact native scope](validation/2026-11-15-global-monty-lifetime.md).
+General recovery, complete Q1/approval and the full Bob plans remain open.
+
+The existing Main CI workflows now accept push events with endpoint-aware scope,
+required No-Panics and strict rollups. Declared runtime/replay owners reach the
+existing Reborn gates. Both full workflows pass actionlint; the integrated
+classifier and No-Panics checks pass locally. These are local checks, not a
+GitHub run result; see the [CI repair scope](validation/2026-11-15-main-ci-scope.md).
+Both development-skill mirrors receive the reviewed v3.5 shared-API guidance.
+
 ## 2026-11-15 — first independent shipped business function qualified
 
 The existing installation owner now independently qualifies the actual retained

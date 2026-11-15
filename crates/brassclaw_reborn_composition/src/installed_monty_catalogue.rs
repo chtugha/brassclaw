@@ -227,7 +227,6 @@ impl InstalledMontyCatalogue {
     /// Wire the live `ValidatorTaskDriver` and pool for the retained Q1 path.
     /// Called once from `runtime.rs` immediately after `GlobalMontyDriver::new`.
     /// A second call returns `Err` (OnceLock contract — must not replace).
-    #[allow(dead_code)] // called from #[cfg(not(test))] runtime.rs block
     pub(crate) fn bind_validator_service(
         &self,
         driver: std::sync::Arc<crate::validator_task_driver::ValidatorTaskDriver>,
@@ -2489,8 +2488,9 @@ impl RetainedToolPort for SelectedTools {
     }
 }
 
-/// Injected after `GlobalMontyDriver` is constructed; carries the live driver
-/// and pool for the retained Q1 validator path.
+/// Injected after `GlobalMontyDriver` is constructed; carries a non-owning driver
+/// attachment and pool for the retained Q1 validator path. The runtime owns the
+/// driver lifetime; an expired attachment reports unavailability.
 /// Set exactly once via `bind_validator_service`; never replaced.
 pub(crate) struct ValidatorServiceBridge {
     pub(crate) driver: std::sync::Arc<crate::validator_task_driver::ValidatorTaskDriver>,

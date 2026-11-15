@@ -436,6 +436,15 @@ original-state reconciliation, with no duplicate native validation effects.
 
 - [ ] **B3-08 — Share drive logic and preserve admission provenance.**
 
+**Lifecycle repair accepted, 2026-11-15:** one runtime-owned global driver
+survives turn-worker exit through the supported shutdown stages. Validator and
+private-claim back-references are non-owning; each operation retains its actual
+owner, and closed admission refuses reservations under its existing lock.
+Four native regressions and warning-free strict/native compilation pass; see
+[the exact acceptance](docs/validation/2026-11-15-global-monty-lifetime.md).
+This removes two actual ownership cycles, without another lifecycle service,
+VM or replay route. General durable recovery and the full B3-08 exit remain open.
+
 **Implemented boundary, validation scope:** ordinary/admitted work shares
 `GlobalMontyDriver::drive_host` (17 selected native cases passed in the first
 repair batch). Completed internal work now returns an opaque proof only after

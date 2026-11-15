@@ -41,6 +41,18 @@ implementation work. Continue the remaining B1 subject/workflow/behavior/Q2 gate
 B2 -> B3; do not treat this narrow S root as complete B1 or restore blocked private
 branches. Root continues alone, without renewed package delegation.
 
+**Lifecycle follow-up accepted — 2026-11-15:** Root repairs two actual strong
+ownership cycles while retaining the driver independently of the turn worker.
+Private claim registration becomes non-owning without changing the public
+Turn-State contract; closure and reservation share their existing lock boundary.
+Run110 strict lint, Run111 compilation and four actual native cases pass, with
+original failed Run109 preserved. See the
+[scoped receipt](validation/2026-11-15-global-monty-lifetime.md).
+The reviewed Main CI repair and unembedded development-skill addition are
+integrated in the same publication batch; live GitHub results remain separate.
+Root continues B1 -> B2 -> B3 alone. A private next History-formatter
+qualification patch is uncompiled and unaccepted; it is not part of this batch.
+
 **Historical roles below (not current assignment):**
 
 - Supervisor: `/Volumes/SSDE/brassclaw` on `main`; package definition, architecture

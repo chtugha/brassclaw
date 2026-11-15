@@ -33,6 +33,8 @@ on:
         required: false
         type: boolean
         default: true
+  push:
+    branches: [main]
   pull_request:
     branches:
       - main
@@ -46,7 +48,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: reborn-tests-${{ github.event_name }}-${{ github.head_ref || github.ref }}
+  group: reborn-tests-${{ contains(toJSON(inputs), '"full_validation"') && 'explicit' || 'event' }}-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -303,7 +305,8 @@ jobs:
       has_engine_replay_risk: ${{ steps.non_diff.outputs.has_engine_replay_risk || steps.diff.outputs.has_engine_replay_risk }}
     steps:
       - id: non_diff
-        if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+        # workflow_call retains its caller event; declared inputs keep that path full.
+        if: github.event_name != 'pull_request' && github.event_name != 'merge_group' && !(github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(toJSON(inputs), '"full_validation"'))
         run: |
           {
             echo "docs_only=false"
@@ -318,17 +321,34 @@ jobs:
             fi
           } >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(toJSON(inputs), '"full_validation"'))
         with:
           fetch-depth: 0
           persist-credentials: false
       - id: diff
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(toJSON(inputs), '"full_validation"'))
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_DELETED: ${{ github.event.deleted }}
+          BASE_SHA: ${{ github.event_name == 'push' && github.event.before || (github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha) }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
-          CHANGED_FILES="$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA")"
+          # Push compares the actual endpoints; PR/merge queue keep merge-base semantics.
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$PUSH_DELETED" == "true" || ! "$BASE_SHA" =~ ^[0-9a-fA-F]{40}$ || ! "$HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "Invalid push comparison endpoints" >&2
+              exit 1
+            fi
+            git cat-file -e "$HEAD_SHA^{commit}"
+            if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+              BASE_SHA="$(git hash-object -t tree --stdin < /dev/null)"
+            else
+              git cat-file -e "$BASE_SHA^{commit}"
+            fi
+            CHANGED_FILES="$(git -c core.quotepath=false diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" --)"
+          else
+            CHANGED_FILES="$(git -c core.quotepath=false diff --no-renames --name-only "$BASE_SHA"..."$HEAD_SHA" --)"
+          fi
 
           echo "Changed files:"
           if [ -n "$CHANGED_FILES" ]; then
@@ -347,7 +367,7 @@ jobs:
           # crates, migrations, or shared build config. Modernized from the
           # v1 src/ path filters that the legacy "Tests (Legacy)" workflow used
           # (src/agent, src/channels/wasm, src/db, etc. — all removed in Phase 6).
-          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_postgres|monty_host|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|vendor/monty-control/|tests/monty_control/|migrations/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/reborn-tests\.yml$)'; then
+          if has_match '^(crates/brassclaw_(reborn|reborn_composition|reborn_cli|reborn_config|agent_loop|threads|turns|capabilities|host_runtime|secrets|safety|hooks|hooks_pg|hooks_postgres|monty_host|process_sandbox|processes|dispatcher|network|runtime_policy|authorization|trust|approvals|run_state|loop_support|common|memory|events|event_projections|event_streams|reborn_event_store)/|vendor/monty-control/|tests/monty_control/|migrations/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/reborn-tests\.yml$)'; then
             echo "has_runtime_heavy_risk=true" >> "$GITHUB_OUTPUT"
           else
             echo "has_runtime_heavy_risk=false" >> "$GITHUB_OUTPUT"
@@ -801,6 +821,18 @@ jobs:
           fi
 
           require_success "installer" "${{ needs.installer.result }}"
+
+          for flag in \
+            "${{ needs.changes.outputs.docs_only }}" \
+            "${{ needs.changes.outputs.has_reborn_tests }}" \
+            "${{ needs.changes.outputs.has_core_code }}" \
+            "${{ needs.changes.outputs.has_runtime_heavy_risk }}" \
+            "${{ needs.changes.outputs.has_engine_replay_risk }}"; do
+            if [[ "$flag" != "true" && "$flag" != "false" ]]; then
+              echo "Missing or invalid scope output" >&2
+              exit 1
+            fi
+          done
 
           if [[ "${{ needs.changes.outputs.docs_only }}" == "true" ]]; then
             echo "Docs-only change detected — Reborn test roll-up passes fast"

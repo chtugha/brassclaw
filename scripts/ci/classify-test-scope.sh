@@ -38,13 +38,13 @@ is_docs_only_path() {
 is_shared_test_path() {
   local path="$1"
   case "$path" in
-    Cargo.toml|Cargo.lock|build.rs|Dockerfile)
+    Cargo.toml|Cargo.lock|build.rs|Dockerfile|migrations/*)
       return 0
       ;;
     scripts/ci/classify-test-scope.sh|scripts/ci/test-classify-test-scope.sh|scripts/ci/package-feature-flags.sh)
       return 0
       ;;
-    .github/workflows/reborn-tests.yml|.github/workflows/reborn-integration.yml|.github/workflows/reborn-e2e.yml)
+    .github/workflows/reborn-tests.yml|.github/workflows/reborn-integration.yml|.github/workflows/reborn-e2e.yml|.github/workflows/replay-gate.yml)
       return 0
       ;;
     crates/brassclaw_common/*|crates/brassclaw_host_api/*|crates/brassclaw_host_runtime/*|crates/brassclaw_loop_support/*)
@@ -63,6 +63,14 @@ is_shared_test_path() {
       return 0
       ;;
     crates/brassclaw_prompt_envelope/*|crates/brassclaw_hooks/*|crates/brassclaw_first_party_extensions/*|crates/brassclaw_llm/*)
+      return 0
+      ;;
+    # These owners already require runtime/replay gates in reborn-tests.yml.
+    # Keep their legacy scope too; adding Reborn must not remove existing checks.
+    crates/brassclaw_process_sandbox/*|crates/brassclaw_processes/*|crates/brassclaw_dispatcher/*|crates/brassclaw_hooks_pg/*|crates/brassclaw_hooks_postgres/*)
+      return 0
+      ;;
+    tests/fixtures/llm_traces/*|tests/snapshots/*|tests/e2e_trace_*.rs|tests/support/trace_llm.rs)
       return 0
       ;;
     crates/brassclaw_embeddings/*|crates/brassclaw_safety/*|crates/brassclaw_skills/*|crates/brassclaw_oauth/*)

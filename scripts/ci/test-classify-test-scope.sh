@@ -360,3 +360,31 @@ has_core_code=false
 has_legacy_tests=false
 has_reborn_tests=false"
 done
+
+# Runtime/replay-risk paths must reach the Reborn gates as well as their
+# previously selected legacy checks. Include real owners and both rename sides.
+for path in \
+  migrations/V1__initial.sql \
+  crates/brassclaw_process_sandbox/src/lib.rs \
+  crates/brassclaw_processes/src/lib.rs \
+  crates/brassclaw_dispatcher/src/lib.rs \
+  crates/brassclaw_hooks_pg/src/lib.rs \
+  crates/brassclaw_hooks_postgres/src/lib.rs \
+  tests/fixtures/llm_traces/spot/smoke_math.json \
+  tests/snapshots/replay__single_tool_echo_v2.snap \
+  tests/e2e_trace_runtime_policy_org_ceiling_yolo.rs \
+  tests/support/trace_llm.rs \
+  .github/workflows/replay-gate.yml; do
+  assert_scope "declared runtime/replay risk reaches Reborn: $path" "$path" \
+    "docs_only=false
+has_core_code=true
+has_legacy_tests=true
+has_reborn_tests=true"
+done
+
+assert_scope "code moved to prose retains deleted runtime scope" \
+  $'crates/brassclaw_process_sandbox/src/deleted.rs\ndocs/deleted.md' \
+  "docs_only=false
+has_core_code=true
+has_legacy_tests=true
+has_reborn_tests=true"

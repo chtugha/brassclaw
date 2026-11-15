@@ -21,6 +21,84 @@ async fn start(rig: &crate::runtime::test_pg::PgRig, home: &std::path::Path) -> 
     .await
     .unwrap()
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn validator_bridge_releases_runtime_graph_and_rejects_calls_after_shutdown() {
+    use crate::validator_task_driver::{ValidatorDriverError, ValidatorTaskDriver};
+    use brassclaw_turns::run_profile::AgentLoopDriverError;
+
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
+        .await;
+    let home = tempfile::tempdir().unwrap();
+    let runtime = start(&rig, home.path()).await;
+    // Unit runtimes deliberately omit this attachment. Install the actual
+    // production-shaped edge on the real catalogue and global driver.
+    runtime
+        .installed_catalogue
+        .bind_validator_service(
+            Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
+            rig.pool.clone(),
+        )
+        .unwrap();
+    let bridge = runtime.installed_catalogue.validator_bridge().unwrap();
+    bridge.driver.notify_originals().unwrap();
+    let driver = Arc::downgrade(&runtime.global_monty_driver);
+    let factory = Arc::downgrade(&runtime.monty_test_controls.1);
+    let catalogue = Arc::downgrade(&runtime.installed_catalogue);
+    let image = Arc::downgrade(&runtime.installed_catalogue._image);
+
+    crate::runtime::test_pg::stop_worker_for_state_fixture(&runtime).await;
+    // A stopped turn worker is not a stopped global VM or permission to drop
+    // its retained driver/custody state. The runtime still owns the driver.
+    bridge.driver.notify_originals().unwrap();
+
+    runtime.shutdown().await.unwrap();
+
+    // The external bridge stays alive throughout: it must retain neither the
+    // global driver nor its factory/catalogue/native application image.
+    assert!(
+        driver.upgrade().is_none(),
+        "global driver is still retained"
+    );
+    assert!(
+        factory.upgrade().is_none(),
+        "task factory is still retained"
+    );
+    assert!(catalogue.upgrade().is_none(), "catalogue is still retained");
+    assert!(image.upgrade().is_none(), "native image is still retained");
+    assert!(matches!(
+        bridge.driver.notify_originals(),
+        Err(AgentLoopDriverError::Unavailable { .. })
+    ));
+    let before = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM brassclaw_turns", &[])
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    assert!(matches!(
+        bridge.driver.submit(rig.pool.clone(), Uuid::new_v4()).await,
+        Err(ValidatorDriverError::Drive(
+            AgentLoopDriverError::Unavailable { .. }
+        ))
+    ));
+    let after = rig
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .query_one("SELECT count(*) FROM brassclaw_turns", &[])
+        .await
+        .unwrap()
+        .get::<_, i64>(0);
+    assert_eq!(after, before, "an expired bridge must not admit work");
+}
+
 fn context(runtime: &RebornRuntime) -> PrivateExecutionContext {
     PrivateExecutionContext {
         tenant_id: runtime.thread_scope.tenant_id.clone(),
@@ -477,7 +555,7 @@ async fn review_confirmation_commit_ack_loss_reuses_original_delivery_with_one_c
         FOR EACH ROW EXECUTE FUNCTION h01_hold_confirmation();").await.unwrap();
     let bridge = crate::installed_monty_catalogue::ValidatorServiceBridge {
         driver: Arc::new(crate::validator_task_driver::ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
+            &runtime.monty_test_controls.0,
         )),
         pool: rig.pool.clone(),
     };

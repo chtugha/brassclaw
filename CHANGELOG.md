@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Global Monty lifetime**: Keep the driver owned by the runtime through turn
+  worker exit and service shutdown. Validator and private-claim registrations use
+  non-owning attachments, retain their owner for each operation and reject calls
+  after owner release or private admission closure without replacement work.
+
+- **Main CI**: Run the existing Reborn and Code Style workflows on Main pushes,
+  compare the actual push endpoints, and fail rollups on missing scope outputs
+  or required skipped checks. Connect declared migration, process and replay
+  risk paths to their existing Reborn gates; preserve manual/reusable scope.
+- **Development skill**: Require real consumers before introducing a shared
+  durable API, while keeping domain identity, settlement and trust checks separate.
+  Local helpers and security repairs do not acquire an artificial consumer quota.
+
 - **Screen notifications**: Wait for observed tool calls to finish before direct
   chat delivery. Coalesce pending heartbeats and replace them with completion
   messages while build supervision continues independently. Keep uncertain

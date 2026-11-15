@@ -13,7 +13,7 @@ use brassclaw_turns::{
     TurnRunId,
     private_work::{PrivateOriginalRef, PrivateWorkStatus},
 };
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 #[cfg(test)]
 use uuid::Uuid;
 
@@ -27,15 +27,30 @@ pub(crate) enum ValidatorDriverError {
 }
 
 pub(crate) struct ValidatorTaskDriver {
-    driver: Arc<crate::global_monty_driver::GlobalMontyDriver>,
+    // The runtime owns the global driver. Its ports/reconciler retain the
+    // catalogue, which in turn retains this bridge. A strong back-reference
+    // here would keep that entire graph alive after orderly shutdown.
+    driver: Weak<crate::global_monty_driver::GlobalMontyDriver>,
 }
 impl ValidatorTaskDriver {
-    pub(crate) fn new(driver: Arc<crate::global_monty_driver::GlobalMontyDriver>) -> Self {
-        Self { driver }
+    pub(crate) fn new(driver: &Arc<crate::global_monty_driver::GlobalMontyDriver>) -> Self {
+        Self {
+            driver: Arc::downgrade(driver),
+        }
+    }
+
+    fn live_driver(
+        &self,
+    ) -> Result<Arc<crate::global_monty_driver::GlobalMontyDriver>, AgentLoopDriverError> {
+        self.driver
+            .upgrade()
+            .ok_or_else(|| AgentLoopDriverError::Unavailable {
+                reason: "global Monty validator driver owner has been released".into(),
+            })
     }
 
     pub(crate) fn notify_originals(&self) -> Result<(), AgentLoopDriverError> {
-        self.driver.notify_private_originals()
+        self.live_driver()?.notify_private_originals()
     }
 
     #[cfg(test)]
@@ -44,13 +59,15 @@ impl ValidatorTaskDriver {
         pool: Arc<PgPool>,
         submission_id: Uuid,
     ) -> Result<crate::global_monty_driver::DrivenMontyTask, ValidatorDriverError> {
+        // Retain one owner for this whole operation, including its waits. The
+        // catalogue bridge itself must not extend the runtime's lifetime.
+        let driver = self.live_driver()?;
         let run = TurnRunId::from_uuid(submission_id);
         // Registration precedes the producer's atomic Ready publication. Late
         // callers join the running producer's same slot; disposal has no effect
         // on the Work, its native host, claim or cancellation.
-        let waiter = self.driver.private_completion_waiter(run)?;
-        let state = self
-            .driver
+        let waiter = driver.private_completion_waiter(run)?;
+        let state = driver
             .prepare_private_validator(submission_id)
             .await
             .map_err(ValidatorDriverError::Admission)?;
@@ -63,8 +80,8 @@ impl ValidatorTaskDriver {
             )));
         }
         if !waiter.has_result() {
-            let live = state.status == PrivateWorkStatus::Ready
-                || self.driver.private_completion_live(run)?;
+            let live =
+                state.status == PrivateWorkStatus::Ready || driver.private_completion_live(run)?;
             if !live {
                 return Err(ValidatorDriverError::Admission(invalid(
                     "validator original has no live completion; reconciliation required",
@@ -72,7 +89,7 @@ impl ValidatorTaskDriver {
             }
         }
         #[cfg(test)]
-        self.driver.private_consumer_waiting(run);
+        driver.private_consumer_waiting(run);
         let driven = waiter.wait().await?;
         let completion = driven.internal_completion.as_ref().ok_or_else(|| {
             ValidatorDriverError::Admission(invalid("validator native completion missing"))

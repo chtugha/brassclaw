@@ -225,6 +225,10 @@ pub struct RebornRuntime {
 
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     global_monty_owner: crate::global_monty_owner::GlobalMontyOwner,
+    // The worker may finish before VM/custody shutdown. Keep the driver alive
+    // independently until that full shutdown completes, without a bridge cycle.
+    #[cfg(all(feature = "postgres", feature = "skills-db"))]
+    global_monty_driver: Arc<crate::global_monty_driver::GlobalMontyDriver>,
     #[cfg(all(feature = "postgres", feature = "skills-db"))]
     monty_task_factory: Arc<crate::global_task_factory::OwnedGlobalTaskFactory>,
     #[cfg(all(
@@ -1684,6 +1688,10 @@ impl RebornRuntime {
             if settings_result.is_err() {
                 failures.push("monty_settings_shutdown_failed");
             }
+            // All worker, private-intent, VM and review/settings shutdown stages
+            // have been attempted before releasing the driver; failures above
+            // remain explicit and never authorize replay or VM replacement.
+            drop(self.global_monty_driver);
         }
         if failures.is_empty() {
             Ok(())
@@ -3024,6 +3032,7 @@ pub async fn build_reborn_runtime(
         monty_driver,
         monty_settings_owner,
         monty_task_factory,
+        global_monty_driver,
     ) = {
         let pool = services
             .pg_pool
@@ -3144,7 +3153,7 @@ pub async fn build_reborn_runtime(
         );
         brassclaw_turns::runner::TurnRunTransitionPort::bind_private_work_participant(
             turn_state_store.as_ref(),
-            ports.clone(),
+            ports.private_claim_participant(),
         )
         .map_err(|error| RebornRuntimeError::InvalidArgument {
             reason: error.to_string(),
@@ -3182,7 +3191,7 @@ pub async fn build_reborn_runtime(
             // owner must not silently become an inactive validation bridge.
             let pool_for_validator = Arc::clone(&pool);
             let validator_driver = std::sync::Arc::new(
-                crate::validator_task_driver::ValidatorTaskDriver::new(driver.clone()),
+                crate::validator_task_driver::ValidatorTaskDriver::new(&driver),
             );
             catalogue
                 .bind_validator_service(validator_driver, pool_for_validator)
@@ -3193,9 +3202,10 @@ pub async fn build_reborn_runtime(
         (
             owner,
             catalogue,
-            Some(driver as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
+            Some(driver.clone() as Arc<dyn brassclaw_turns::run_profile::MontyTurnDriverPort>),
             settings_owner,
             ports,
+            driver,
         )
     };
     #[cfg(not(all(feature = "postgres", feature = "skills-db")))]
@@ -3892,6 +3902,8 @@ pub async fn build_reborn_runtime(
         services,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         global_monty_owner,
+        #[cfg(all(feature = "postgres", feature = "skills-db"))]
+        global_monty_driver,
         #[cfg(all(feature = "postgres", feature = "skills-db"))]
         monty_task_factory,
         #[cfg(all(

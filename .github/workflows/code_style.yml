@@ -1,5 +1,7 @@
 name: Code Style
 on:
+  push:
+    branches: [main]
   pull_request:
   merge_group:
     branches:
@@ -11,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: code-style-${{ github.head_ref || github.ref }}
+  group: code-style-${{ github.event_name }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -26,28 +28,47 @@ jobs:
     name: Detect code changes
     runs-on: ubuntu-latest
     outputs:
-      has_code: ${{ steps.non_pr.outputs.has_code || steps.diff.outputs.has_code }}
-      has_boundary_check: ${{ steps.non_pr.outputs.has_boundary_check || steps.diff.outputs.has_boundary_check }}
-      has_reborn_cli: ${{ steps.non_pr.outputs.has_reborn_cli || steps.diff.outputs.has_reborn_cli }}
+      has_code: ${{ steps.diff.outputs.has_code }}
+      has_boundary_check: ${{ steps.diff.outputs.has_boundary_check }}
+      has_reborn_cli: ${{ steps.diff.outputs.has_reborn_cli }}
+      base_sha: ${{ steps.diff.outputs.base_sha }}
+      head_sha: ${{ steps.diff.outputs.head_sha }}
+      comparison: ${{ steps.diff.outputs.comparison }}
     steps:
-      - id: non_pr
-        if: github.event_name == 'push'
-        run: |
-          echo "has_code=true" >> "$GITHUB_OUTPUT"
-          echo "has_boundary_check=true" >> "$GITHUB_OUTPUT"
-          echo "has_reborn_cli=true" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         with:
           fetch-depth: 0
           persist-credentials: false
       - id: diff
-        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_DELETED: ${{ github.event.deleted }}
+          BASE_SHA: ${{ github.event_name == 'push' && github.event.before || (github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha) }}
           HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
         run: |
-          CHANGED_FILES="$(git diff --name-only "$BASE_SHA"..."$HEAD_SHA")"
+          # Push compares the actual endpoints; PR/merge queue keep merge-base semantics.
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            if [[ "$PUSH_DELETED" == "true" || ! "$BASE_SHA" =~ ^[0-9a-fA-F]{40}$ || ! "$HEAD_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "Invalid push comparison endpoints" >&2
+              exit 1
+            fi
+            git cat-file -e "$HEAD_SHA^{commit}"
+            if [[ "$BASE_SHA" == "0000000000000000000000000000000000000000" ]]; then
+              BASE_SHA="$(git hash-object -t tree --stdin < /dev/null)"
+            else
+              git cat-file -e "$BASE_SHA^{commit}"
+            fi
+            COMPARISON=endpoints
+            CHANGED_FILES="$(git -c core.quotepath=false diff --no-renames --name-only "$BASE_SHA" "$HEAD_SHA" --)"
+          else
+            COMPARISON=merge-base
+            CHANGED_FILES="$(git -c core.quotepath=false diff --no-renames --name-only "$BASE_SHA"..."$HEAD_SHA" --)"
+          fi
+          {
+            echo "base_sha=$BASE_SHA"
+            echo "head_sha=$HEAD_SHA"
+            echo "comparison=$COMPARISON"
+          } >> "$GITHUB_OUTPUT"
 
           if printf '%s\n' "$CHANGED_FILES" | grep -Eq '^(src/|crates/|tests/|migrations/|Cargo\.toml$|Cargo\.lock$|Dockerfile$|scripts/check_no_panics\.py$|scripts/check_gateway_boundaries\.py$|\.github/workflows/code_style\.yml$)'; then
             echo "has_code=true" >> "$GITHUB_OUTPUT"
@@ -195,7 +216,7 @@ jobs:
   no-panics:
     name: No panics in production code
     needs: changes
-    if: needs.changes.outputs.has_code == 'true' && github.event_name != 'push'
+    if: needs.changes.outputs.has_code == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -208,8 +229,12 @@ jobs:
           python-version: "3.12"
       - name: Check for .unwrap(), .expect(), assert!() in production code
         env:
-          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: python3 scripts/check_no_panics.py --base "$BASE_SHA" --head HEAD
+          BASE_SHA: ${{ needs.changes.outputs.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'push' && needs.changes.outputs.head_sha || github.sha }}
+          COMPARISON: ${{ needs.changes.outputs.comparison }}
+        run: |
+          python3 scripts/check_no_panics.py --self-test
+          python3 scripts/check_no_panics.py --base "$BASE_SHA" --head "$HEAD_SHA" --comparison "$COMPARISON"
 
   gateway-boundaries:
     name: Gateway platform/feature boundaries
@@ -245,12 +270,27 @@ jobs:
       - gateway-boundaries
     steps:
       - run: |
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes failed: ${{ needs.changes.result }}" >&2
+            exit 1
+          fi
+          for flag in \
+            "${{ needs.changes.outputs.has_code }}" \
+            "${{ needs.changes.outputs.has_boundary_check }}" \
+            "${{ needs.changes.outputs.has_reborn_cli }}"; do
+            if [[ "$flag" != "true" && "$flag" != "false" ]]; then
+              echo "Missing or invalid scope output" >&2
+              exit 1
+            fi
+          done
           if [[ "${{ needs.changes.outputs.has_code }}" == "false" ]]; then
             echo "No code changes — style checks skipped correctly"
             exit 0
           fi
 
           for job_result in \
+            "clippy-matrix=${{ needs.clippy-matrix.result }}" \
+            "no-panics=${{ needs.no-panics.result }}" \
             "format=${{ needs.format.result }}" \
             "clippy=${{ needs.clippy.result }}" \
             "deny-check=${{ needs.deny-check.result }}" \
@@ -263,8 +303,12 @@ jobs:
             fi
           done
 
+          if [[ "${{ needs.changes.outputs.has_reborn_cli }}" == "true" && "${{ needs.reborn-cli-smoke.result }}" != "success" ]]; then
+            echo "Required Reborn CLI smoke check did not succeed" >&2
+            exit 1
+          fi
+
           for job_result in \
-            "no-panics=${{ needs.no-panics.result }}" \
             "reborn-cli-smoke=${{ needs.reborn-cli-smoke.result }}" \
             "clippy-windows=${{ needs.clippy-windows.result }}"; do
             name="${job_result%%=*}"

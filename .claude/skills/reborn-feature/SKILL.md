@@ -74,6 +74,11 @@ Extend the existing implementation for a missing responsibility. Other plans
 consume its result and contribute applicable acceptance cases. Reuse qualified
 loaders, stores, supervisors, settings publishers and evidence writers; do not
 create another queue, VM, provider catalogue, approval path or workflow loop.
+Before introducing a new shared durable API, identify two real consumers requiring
+the same contract under [v3.5 consolidation](../../../path_to_v3.5.md#connection-and-shared-facility-consolidation).
+Keep distinct domain identities, settlement and trust-boundary checks separate.
+Do not turn this into a blanket two-consumer requirement for local helpers or
+security fixes, or invent consumers to satisfy it.
 
 For new Tools and changed workflow handlers, apply the
 [V35-08 semantic review](../../../path_to_v3.5.md#guidance-reconciliation-and-semantic-review)

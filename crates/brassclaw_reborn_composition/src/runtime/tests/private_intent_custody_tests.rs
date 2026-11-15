@@ -143,6 +143,12 @@ async fn intent_exchange(boundary: AckBoundary, cut: Cut) {
     if matches!(cut, Cut::BeforeStart | Cut::ClosedBeforeStart) {
         if cut == Cut::ClosedBeforeStart {
             factory.close_private_intents().await.unwrap();
+            assert!(matches!(
+                factory
+                    .private_claim_participant()
+                    .retain_reservation(&claim),
+                Err(brassclaw_turns::TurnError::Unavailable { .. })
+            ));
         } else {
             host.fence_dispatch();
         }

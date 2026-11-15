@@ -310,6 +310,15 @@ qualified evidence through its own connected publication/selection cutover. Do
 not import blocked private N/Q/R/T code or claim their prerequisites from this
 narrow first-root receipt.
 
+**Lifecycle prerequisite repaired, 2026-11-15:** the runtime explicitly owns the
+global driver through worker exit and shutdown. Non-owning validator and private
+claim registrations remove the actual strong ownership cycles without losing
+operation custody. Strict Run110, native compilation Run111 and four actual
+PG/Monty regression cases pass; see the
+[scope and preserved failure](docs/validation/2026-11-15-global-monty-lifetime.md).
+Reuse this existing lifecycle implementation. It does not qualify another
+shipped subject, complete general recovery, open authored approval or close B1-05.
+
 **Latest bounded source/runtime checkpoint — 2026-11-09:** Run-24 on `b9620a1f5`
 compiles the joint graph without warnings and preserves all 1,388 tests. The
 actual strict receipt-reader regression and both real operator HTTP/PG

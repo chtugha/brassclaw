@@ -219,8 +219,16 @@ def is_test_only_path(path: str) -> bool:
     return "tests" in parts or posix_path.name == "tests.rs"
 
 
-def changed_rust_files(base: str, head: str) -> list[pathlib.Path]:
-    output = run_git("diff", "--name-only", f"{base}...{head}", "--", "src", "crates")
+def comparison_refs(base: str, head: str, comparison: str) -> tuple[str, ...]:
+    if comparison == "endpoints":
+        return (base, head)
+    if comparison == "merge-base":
+        return (f"{base}...{head}",)
+    raise ValueError(f"Unknown comparison: {comparison}")
+
+
+def changed_rust_files(base: str, head: str, comparison: str = "merge-base") -> list[pathlib.Path]:
+    output = run_git("-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", *comparison_refs(base, head, comparison), "--", "src", "crates")
     files = []
     for line in output.splitlines():
         if line.endswith(".rs") and (line.startswith("src/") or line.startswith("crates/")):
@@ -229,8 +237,8 @@ def changed_rust_files(base: str, head: str) -> list[pathlib.Path]:
     return files
 
 
-def added_lines_for_file(base: str, head: str, path: pathlib.Path) -> set[int]:
-    diff = run_git("diff", "--unified=0", f"{base}...{head}", "--", str(path))
+def added_lines_for_file(base: str, head: str, path: pathlib.Path, comparison: str = "merge-base") -> set[int]:
+    diff = run_git("diff", "--no-renames", "--unified=0", *comparison_refs(base, head, comparison), "--", str(path))
     added: set[int] = set()
     current_line = 0
 
@@ -254,13 +262,13 @@ def added_lines_for_file(base: str, head: str, path: pathlib.Path) -> set[int]:
     return added
 
 
-def collect_violations(base: str, head: str) -> list[tuple[str, int, str]]:
+def collect_violations(base: str, head: str, comparison: str = "merge-base") -> list[tuple[str, int, str]]:
     violations: list[tuple[str, int, str]] = []
 
-    for path in changed_rust_files(base, head):
+    for path in changed_rust_files(base, head, comparison):
         if not path.exists():
             continue
-        added_lines = added_lines_for_file(base, head, path)
+        added_lines = added_lines_for_file(base, head, path, comparison)
         if not added_lines:
             continue
 
@@ -286,6 +294,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", required=False, default="origin/staging")
     parser.add_argument("--head", required=False, default="HEAD")
+    parser.add_argument("--comparison", choices=("merge-base", "endpoints"), default="merge-base",
+                        help="PR/merge queue use merge-base; main push uses exact endpoints")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
 
@@ -294,7 +304,7 @@ def main() -> int:
         result = unittest.TextTestRunner(verbosity=2).run(suite)
         return 0 if result.wasSuccessful() else 1
 
-    violations = collect_violations(args.base, args.head)
+    violations = collect_violations(args.base, args.head, args.comparison)
     if not violations:
         print("OK: No panic-inducing calls in changed production code.")
         return 0
@@ -311,6 +321,12 @@ def main() -> int:
 
 
 class CheckNoPanicsTests(unittest.TestCase):
+    def test_comparison_refs(self) -> None:
+        self.assertEqual(comparison_refs("base", "head", "merge-base"), ("base...head",))
+        self.assertEqual(comparison_refs("base", "head", "endpoints"), ("base", "head"))
+        with self.assertRaises(ValueError):
+            comparison_refs("base", "head", "unknown")
+
     def test_cfg_test_module_marks_inner_lines(self) -> None:
         lines = [
             "#[cfg(test)]\n",

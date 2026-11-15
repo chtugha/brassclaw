@@ -45,9 +45,7 @@ async fn run_q1_validation_retained_defers_when_no_revision_draft_seeded() {
     .unwrap();
     // Build bridge from the real test-path driver.
     let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
         pool: rig.pool.clone(),
     };
     let scope = test_scope();
@@ -130,9 +128,7 @@ async fn run_q1_validation_retained_defers_when_no_submission() {
     .unwrap();
     // Build bridge from the real test-path driver.
     let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
         pool: rig.pool.clone(),
     };
 
@@ -204,9 +200,7 @@ async fn run_q1_validation_retained_errors_not_defers_when_no_queue_row() {
     .unwrap();
     // Build bridge from the real test-path driver.
     let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
         pool: rig.pool.clone(),
     };
 

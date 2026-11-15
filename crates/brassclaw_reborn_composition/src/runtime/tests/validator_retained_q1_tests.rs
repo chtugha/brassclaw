@@ -236,9 +236,7 @@ async fn retained_validator_pass(case: DeliveryCase) {
 
     // Build bridge from the real test-path driver.
     let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
         pool: rig.pool.clone(),
     };
 
@@ -505,7 +503,7 @@ async fn retained_validator_pass(case: DeliveryCase) {
             // Consume the first caller's signal. The second actual submit must
             // pass its Settled-state/live-producer check before publication.
             pause.consumer_waiting.notified().await;
-            let second_driver = ValidatorTaskDriver::new(driver.clone());
+            let second_driver = ValidatorTaskDriver::new(&driver);
             let second = second_driver.submit(rig.pool.clone(), submission_id);
             let release = async {
                 pause.consumer_waiting.notified().await;
@@ -674,9 +672,7 @@ async fn run_q1_validation_retained_fails_for_empty_content() {
     .unwrap();
 
     let bridge = ValidatorServiceBridge {
-        driver: std::sync::Arc::new(ValidatorTaskDriver::new(
-            runtime.monty_test_controls.0.clone(),
-        )),
+        driver: std::sync::Arc::new(ValidatorTaskDriver::new(&runtime.monty_test_controls.0)),
         pool: rig.pool.clone(),
     };
 
