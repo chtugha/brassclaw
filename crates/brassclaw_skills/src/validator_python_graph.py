@@ -33,7 +33,7 @@ def check_review_python_graph(inputs):
             records[identity] = entry["revision"]
             indices[identity] = index
     root = subject["candidate"]["reference"]["uuid"]
-    if subject["candidate"]["reference"]["class_code"] in [1, 2, 3] and subject["format"] == "component-validator-subject/2":
+    if subject["candidate"]["reference"]["class_code"] in [1, 2, 3] and subject["format"] in ["component-validator-subject/2", "installation-validator-subject/2"]:
         root = subject["function_partner"]["component"]["reference"]["uuid"]
     if root not in records or set(records) != set(inventory["sources"]):
         raise ValueError("complete original Python graph and native inventory required")

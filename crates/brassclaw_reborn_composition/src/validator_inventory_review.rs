@@ -22,7 +22,9 @@ use brassclaw_pg::PgPool;
 use brassclaw_reborn::monty_task_host::MontyTaskHost;
 use brassclaw_skills::{
     association_contract::ComponentRevisionRef,
-    validator_components::{python_pure_structure_drafts, python_structure_drafts},
+    validator_components::{
+        function_source_drafts, python_pure_structure_drafts, python_structure_drafts,
+    },
     value_contract::{ContractLimits, strict_json},
 };
 use serde_json::{Value, json};
@@ -56,11 +58,12 @@ pub(crate) struct InventoryExecutor {
 
 #[path = "installation_inventory_observation.rs"]
 mod installation;
-pub(crate) use installation::CheckedPureSourceWorkflow;
+pub(crate) use installation::CheckedSourceWorkflow;
 #[cfg(test)]
 pub(crate) use installation::assert_original_installation_readback;
 #[cfg(test)]
 pub(crate) use installation::assert_original_pure_workflow_readback;
+pub(crate) use installation::qualify_function_workflows;
 #[cfg(test)]
 pub(crate) use installation::tests::before_cancel as installation_test_before_cancel;
 #[cfg(test)]
@@ -74,7 +77,7 @@ pub(crate) use installation::{observe_installation, qualify_pure_workflow};
 #[path = "qualified_pure_source_review.rs"]
 mod qualified_source;
 pub(crate) use qualified_source::CheckedPureSourceOriginal;
-pub(crate) use qualified_source::{QualifiedPureSourceReview, SourceReviewPreparation};
+pub(crate) use qualified_source::{QualifiedSourceReview, SourceReviewPreparation};
 
 #[path = "bootstrap_inventory_qualification.rs"]
 mod qualification;
@@ -135,6 +138,7 @@ pub(crate) fn require_inventory_binding(
 pub(crate) enum InventoryReviewProfile {
     Structure,
     Pure,
+    Function(i16),
 }
 fn require_packaged_inventory_profile(
     program: &RetainedToolProgram,
@@ -156,6 +160,9 @@ fn require_packaged_inventory_profile(
             crate::builtin_bootstrap::VALIDATOR_PURE_STRUCTURE_RECEIPT_SEED,
             native_profile,
         ),
+        InventoryReviewProfile::Function(class) => {
+            function_source_drafts(ids, class, native_profile)
+        }
     }
     .map_err(invalid)?;
     // Compare complete factory bytes, including typed native/result edges,

@@ -17,7 +17,7 @@ use crate::{
     RebornBuildError,
     bootstrap_reply_validation::invalid,
     private_work_definition::checksum,
-    validator_inventory_review::{CheckedPureSourceOriginal, QualifiedPureSourceReview},
+    validator_inventory_review::{CheckedPureSourceOriginal, QualifiedSourceReview},
 };
 
 #[derive(Serialize, Deserialize)]
@@ -237,7 +237,7 @@ impl CheckedOriginalPureCase {
     /// not repaired here and never causes replacement work or native replay.
     pub(crate) async fn read(
         tx: &Transaction<'_>,
-        source: &QualifiedPureSourceReview,
+        source: &QualifiedSourceReview,
         case_id: Uuid,
         context: &PrivateExecutionContext,
     ) -> Result<Option<Self>, RebornBuildError> {

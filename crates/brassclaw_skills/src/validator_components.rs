@@ -5,6 +5,18 @@ use crate::global_bootstrap_components::UsageComponentIds;
 use serde_json::json;
 use uuid::Uuid;
 
+#[path = "validator_coverage_contract.rs"]
+mod coverage;
+pub use coverage::{
+    FUNCTION_SOURCE_RULE_IDS, ValidatorCoverageDeclaration, ValidatorRule, ValidatorSubjectKind,
+};
+
+#[path = "validator_function_source.rs"]
+mod function_source;
+pub use function_source::{
+    FUNCTION_SOURCE_RECEIPT_SOURCE, function_source_drafts, function_source_recipe_id,
+};
+
 #[path = "validator_source_inventory.rs"]
 mod source_inventory;
 pub use source_inventory::{
@@ -35,7 +47,7 @@ pub fn review_subject_reader_draft(id: Uuid) -> Result<ComponentRevisionDraft, R
     ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{"name":"review-subject-reader",
-            "description":"Shared private parsing of complete authored single-root /1, authored function /2 and explicitly separate installation-validator-subject/1 inputs. Preserve each format's exact fields and meaning; installation subject_id is never an authored submission_id. Validate complete envelope/role/revision identities, include each selected partner once and leave comparison bases out of executable dependencies. Return original parsed objects within the invocation without source substitution or serialization copies. This is shape/data handling, not checksum/provenance authentication, prior approval, semantic review, candidate execution or Q1/Q2. Only the trusted owner supplies the original corresponding sealed subject/custody.",
+            "description":"Shared private parsing of complete authored single-root /1, authored function /2 and separate installation-validator-subject /1 and /2 inputs. Installation /2 identifies both packaged function subjects without authored changed/context roles. Preserve each format's exact fields and meaning; installation subject_id is never an authored submission_id. Validate complete envelope/role/revision identities, include each selected partner once and leave comparison bases out of executable dependencies. Return original parsed objects within the invocation without source substitution or serialization copies. This is shape/data handling, not checksum/provenance authentication, prior approval, semantic review, candidate execution or Q1/Q2. Only the trusted owner supplies the original corresponding sealed subject/custody.",
             "content":REVIEW_SUBJECT_READER_SOURCE,"includes":[],"dependency_registry":null,
             "preload":{"format":"python-preload/2","exports":{},
                 "private_functions":{"_validator_review_entry":["entry"],"_validator_review_base":["base","candidate"],"_validator_review_subject":["inputs"]},
@@ -99,7 +111,7 @@ pub fn skill_call_targets_draft(id: Uuid) -> Result<ComponentRevisionDraft, Revi
     let draft = ComponentRevisionDraft::from_json(&json!({
         "format":"component-revision/1","uuid":id,"class_code":22,
         "document":{"name":"check-review-skill-call-targets",
-            "description":"After actual graph and Skill-interface checks, compare native Host sites reachable through the declared public Skill exports and selected helpers with the exact associated callable. Reuse the pure checker private function-closure walk without invoking its pure-only rule. Source ranges are original parser facts; unused private functions are not usage roots. No additional one-call budget, argument/result compatibility engine, candidate invocation, behavior/prose interpretation, component approval or provenance claim. Native single-class joint preparation remains unsupported. This is one private incomplete own-function check, never a new combination review.",
+            "description":"After actual graph and Skill-interface checks, compare native Host sites reachable through the declared public Skill exports and selected helpers with the exact associated callable. Reuse the pure checker private function-closure walk without invoking its pure-only rule. Source ranges are original parser facts; unused private functions are not usage roots. No additional one-call budget, argument/result compatibility engine, candidate invocation, behavior/prose interpretation, component approval or provenance claim. Joint source admission requires its explicit coverage/selection successor and the qualified original-source owner; historical single-class preparation cannot stand in for it. This is one private incomplete own-function check, never a new combination review.",
             "content":SKILL_CALL_TARGETS_SOURCE,"includes":[],"dependency_registry":null,
             "input_contract":{"subject_json":{"type":"string","required":true,"checks":[]},
                 "inventory_json":{"type":"string","required":true,"checks":[]},"profile":profile,

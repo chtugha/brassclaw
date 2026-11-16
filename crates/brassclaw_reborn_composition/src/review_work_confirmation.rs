@@ -36,7 +36,7 @@ async fn prepare(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+    source: Option<&crate::validator_inventory_review::QualifiedSourceReview>,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
     #[cfg(all(test, feature = "skills-db"))]
     crate::pg_review_submission_io::projection_phase("confirmation_prepare", None);
@@ -143,7 +143,7 @@ pub(crate) async fn read_with_source(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+    source: Option<&crate::validator_inventory_review::QualifiedSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let Some(prepared) = prepare(tx, id, context, source).await? else {
         return Ok(None);
@@ -170,7 +170,7 @@ pub(crate) async fn confirm_original_with_source(
     pool: &brassclaw_pg::PgPool,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+    source: Option<&crate::validator_inventory_review::QualifiedSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let write = async {
         let mut client = crate::bootstrap_evidence::io::acquire(pool)
@@ -230,7 +230,7 @@ async fn confirm_with_source(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+    source: Option<&crate::validator_inventory_review::QualifiedSourceReview>,
 ) -> Result<Option<Value>, AgentLoopDriverError> {
     let Some(Prepared {
         delivery,

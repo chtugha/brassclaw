@@ -50,13 +50,19 @@ mod fixtures;
 #[path = "bootstrap_checker_tests.rs"]
 mod tests;
 use fixtures::Suite;
+#[path = "bootstrap_function_source_cases.rs"]
+mod function_cases;
 #[path = "bootstrap_pure_checker.rs"]
 mod pure;
+pub(crate) use function_cases::function_source_cases;
 #[path = "bootstrap_shipped_r1_policy.rs"]
 mod shipped_policy;
 pub(crate) use shipped_policy::OriginalPolicy as OriginalShippedR1Policy;
 #[path = "bootstrap_shipped_r1.rs"]
 mod shipped;
+pub(crate) use pure::{
+    CheckedFunctionCheckerClosure, qualify_function as qualify_function_checkers,
+};
 pub(crate) use pure::{CheckedPureCheckerClosure, pure_source_cases, qualify as qualify_pure};
 pub(crate) use shipped::{ShippedFunction, qualify as qualify_shipped_function};
 

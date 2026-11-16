@@ -2,7 +2,7 @@
 //! This proves preparation consistency, not approval, semantic coverage or Q1.
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde::Deserialize;
+use brassclaw_skills::validator_components::{ValidatorCoverageDeclaration, ValidatorSubjectKind};
 use serde_json::{Value, json};
 
 use super::{retained_inputs::RetainedRecipeInputs, typed_bindings::PreparedReference};
@@ -15,27 +15,11 @@ pub use subject::{
     ObservedInstallationValidatorChecks, ObservedSubjectValidatorChecks, ValidatorInputFingerprint,
 };
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Declaration {
-    format: String,
-    rules: Vec<Rule>,
-    aggregate_step: String,
-    /// Step whose result is the JSON receipt string returned by the recipe.
-    /// Must follow aggregate_step in the ordered step list.
-    receipt_step: String,
-}
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Rule {
-    rule_id: String,
-    step_id: String,
-}
-
 /// Exact route and rule-to-step selection from the checksummed Recipe revision.
 /// Required IDs are not taken from a reviewed candidate or a runtime pass JSON.
 pub struct RetainedValidatorCoverage {
     class_code: i32,
+    subject_kind: ValidatorSubjectKind,
     rules: BTreeMap<String, String>,
     aggregate_step: String,
     collection_step: String,
@@ -136,7 +120,56 @@ impl RetainedValidatorCoverage {
         inspected: &crate::executor::retained_source::InspectedRetainedProgram,
         limits: brassclaw_skills::value_contract::ContractLimits,
     ) -> Result<String, &'static str> {
-        Self::from_inputs(inspected.program().inputs())?.require_subject(subject)?;
+        Self::selection_bytes_with_qualification(subject, inspected, None, limits)
+    }
+
+    /// The pins are passive data. The owning qualification reader must verify
+    /// their original native proof under the admission transaction before use.
+    #[cfg(feature = "skills-db")]
+    pub fn qualified_source_selection_bytes(
+        subject: &brassclaw_skills::review_submission_store::RetainedValidatorSubject,
+        inspected: &crate::executor::retained_source::InspectedRetainedProgram,
+        qualification: &brassclaw_skills::review_submission_store::selection::SourceQualification,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<String, &'static str> {
+        qualification
+            .validate()
+            .map_err(|_| "invalid source qualification pins")?;
+        Self::selection_bytes_with_qualification(subject, inspected, Some(qualification), limits)
+    }
+
+    #[cfg(feature = "skills-db")]
+    fn selection_bytes_with_qualification(
+        subject: &brassclaw_skills::review_submission_store::RetainedValidatorSubject,
+        inspected: &crate::executor::retained_source::InspectedRetainedProgram,
+        qualification: Option<
+            &brassclaw_skills::review_submission_store::selection::SourceQualification,
+        >,
+        limits: brassclaw_skills::value_contract::ContractLimits,
+    ) -> Result<String, &'static str> {
+        let coverage = Self::from_inputs(inspected.program().inputs())?;
+        coverage.require_subject(subject)?;
+        let (format, scope) = match (
+            coverage.subject_kind,
+            qualification.map(|pins| pins.profile.as_str()),
+        ) {
+            (ValidatorSubjectKind::Component, None) => {
+                ("component-validator-selection/1", "preparation-only")
+            }
+            (ValidatorSubjectKind::Component, Some("pure_source_structure"))
+                if coverage.class_code == 22 =>
+            {
+                (
+                    "component-validator-selection/2",
+                    "qualified-pure-source-prerequisite",
+                )
+            }
+            (ValidatorSubjectKind::Function, Some("function_source_structure")) => (
+                "component-validator-selection/3",
+                "qualified-function-source-prerequisite",
+            ),
+            _ => return Err("source qualification profile differs from selected subject"),
+        };
         let selection = inspected
             .program()
             .inputs()
@@ -148,12 +181,16 @@ impl RetainedValidatorCoverage {
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect();
-        let value = json!({"format":"component-validator-selection/1",
+        let mut value = json!({"format":format,
             "submission_id":subject.value()["submission_id"],
             "subject_checksum":subject.value()["subject_checksum"],
             "candidate":subject.value()["candidate"]["reference"],
             "validator_selection_bytes":selection.exact_bytes(),
-            "validator_selection_checksum":checksum,"scope":"preparation-only"});
+            "validator_selection_checksum":checksum,"scope":scope});
+        if let Some(qualification) = qualification {
+            value["qualification"] = serde_json::to_value(qualification)
+                .map_err(|_| "invalid source qualification pins")?;
+        }
         brassclaw_skills::value_contract::validate_data_bounds(&value, limits)
             .map_err(|_| "validator selection exceeds owner policy")?;
         Ok(value.to_string())
@@ -161,7 +198,7 @@ impl RetainedValidatorCoverage {
 
     /// Check the complete coherent generation, including validator metadata
     /// without its expected tag. This is selection consistency, not approval
-    /// or dispatch. Each class has exactly one selected private entry point.
+    /// or dispatch. Each class/subject kind has one selected private entry point.
     pub fn validate_catalogue<'a>(
         inputs: impl IntoIterator<Item = &'a RetainedRecipeInputs>,
     ) -> Result<(), &'static str> {
@@ -178,7 +215,7 @@ impl RetainedValidatorCoverage {
                     .is_some_and(|tags| tags.contains(&json!("05:validator")));
             if declared {
                 let coverage = Self::from_inputs(inputs)?;
-                if !classes.insert(coverage.class_code) {
+                if !classes.insert((coverage.class_code, coverage.subject_kind)) {
                     return Err("ambiguous validator class route");
                 }
             }
@@ -207,12 +244,9 @@ impl RetainedValidatorCoverage {
         {
             return Err("validator entry must remain private");
         }
-        let declaration: Declaration =
-            serde_json::from_value(document["validator_coverage"].clone())
-                .map_err(|_| "invalid validator coverage declaration")?;
-        if declaration.format != "validator-coverage/1" || declaration.rules.is_empty() {
-            return Err("nonempty validator coverage required");
-        }
+        let declaration =
+            ValidatorCoverageDeclaration::from_value(&document["validator_coverage"], class_code)?;
+        let (subject_kind, declared_rules, aggregate_step, receipt_step) = declaration.into_parts();
         let order: BTreeMap<_, _> = instruction
             .ordered()
             .step_order()
@@ -222,22 +256,14 @@ impl RetainedValidatorCoverage {
             .map(|(position, step)| (step.as_str(), position))
             .collect();
         let aggregate_position = *order
-            .get(declaration.aggregate_step.as_str())
+            .get(aggregate_step.as_str())
             .ok_or("selected aggregation step required")?;
         let mut rules = BTreeMap::new();
-        let mut seen_steps = BTreeSet::new();
         let mut required = Vec::new();
-        for rule in declaration.rules {
-            if !rule_identifier(&rule.rule_id)
-                || rules
-                    .insert(rule.rule_id.clone(), rule.step_id.clone())
-                    .is_some()
-                || !seen_steps.insert(rule.step_id.clone())
-            {
-                return Err("distinct validator rule and step identities required");
-            }
+        for rule in declared_rules {
+            let (rule_id, step_id) = rule.into_parts();
             let position = *order
-                .get(rule.step_id.as_str())
+                .get(step_id.as_str())
                 .ok_or("required rule step is outside selected workflow")?;
             if position >= aggregate_position {
                 return Err("rule must precede aggregation");
@@ -245,19 +271,20 @@ impl RetainedValidatorCoverage {
             // A constant output label alone does not prove a rule actually ran.
             // These recursive contracts ensure its complete concrete result is
             // checked before the trusted execution owner counts it.
-            let component = inputs.components()[&rule.step_id];
+            let component = inputs.components()[&step_id];
             let result = &instruction.snapshot().revisions()[&component.uuid]
                 .draft()
                 .document()["result_contract"];
             if !rule_result_shape(result) {
                 return Err("rule result contract is incomplete");
             }
-            required.push(json!(rule.rule_id));
+            required.push(json!(rule_id));
+            rules.insert(rule_id, step_id);
         }
         let aggregate = inputs
             .layout()
             .steps()
-            .get(&declaration.aggregate_step)
+            .get(&aggregate_step)
             .ok_or("aggregation input layout required")?;
         let Some(PreparedReference::Constant { value }) = aggregate.get("required_rule_ids") else {
             return Err("required rules must be pinned Recipe constants");
@@ -305,7 +332,7 @@ impl RetainedValidatorCoverage {
         {
             return Err("collection must follow every required rule step");
         }
-        let component = inputs.components()[&declaration.aggregate_step];
+        let component = inputs.components()[&aggregate_step];
         let result = &instruction.snapshot().revisions()[&component.uuid]
             .draft()
             .document()["result_contract"];
@@ -330,14 +357,14 @@ impl RetainedValidatorCoverage {
         // Validate receipt_step: must be present in the ordered step list,
         // come after aggregate_step, and have a string result contract.
         let receipt_position = *order
-            .get(declaration.receipt_step.as_str())
+            .get(receipt_step.as_str())
             .ok_or("selected receipt step required")?;
         if receipt_position <= aggregate_position {
             return Err("receipt step must follow aggregation");
         }
         let receipt_component = inputs
             .components()
-            .get(declaration.receipt_step.as_str())
+            .get(receipt_step.as_str())
             .ok_or("receipt step component missing")?;
         let receipt_result = &instruction.snapshot().revisions()[&receipt_component.uuid]
             .draft()
@@ -347,10 +374,11 @@ impl RetainedValidatorCoverage {
         }
         Ok(Self {
             class_code,
+            subject_kind,
             rules,
-            aggregate_step: declaration.aggregate_step,
+            aggregate_step,
             collection_step: step_id.clone(),
-            receipt_step: declaration.receipt_step,
+            receipt_step,
             selection_checksum: instruction
                 .retained_selection()
                 .map_err(|_| "validator selection cannot be retained")?
@@ -514,8 +542,11 @@ impl RetainedValidatorCoverage {
     }
     #[cfg(feature = "skills-db")]
     fn require_subject_view(&self, subject: subject::SubjectView<'_>) -> Result<(), &'static str> {
-        if subject.is_function_review() {
+        if subject.is_function_review() && self.subject_kind != ValidatorSubjectKind::Function {
             return Err("single-class validator does not cover the complete function subject");
+        }
+        if !subject.is_function_review() && self.subject_kind == ValidatorSubjectKind::Function {
+            return Err("function validator requires the complete retained function subject");
         }
         if subject.candidate().class_code != self.class_code {
             return Err("validator route differs from retained subject class");
@@ -534,11 +565,6 @@ impl RetainedValidatorCoverage {
     }
 }
 
-fn rule_identifier(value: &str) -> bool {
-    let mut chars = value.bytes();
-    chars.next().is_some_and(|byte| byte.is_ascii_lowercase())
-        && chars.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
-}
 fn rule_result_shape(value: &Value) -> bool {
     if value["type"] != "object"
         || value["allow_extra_fields"] != false

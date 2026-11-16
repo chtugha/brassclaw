@@ -11,8 +11,7 @@ use uuid::Uuid;
 
 use crate::{
     pg_transaction_client::TransactionClient, private_work_definition::checksum,
-    pure_case_original::CheckedOriginalPureCase,
-    validator_inventory_review::QualifiedPureSourceReview,
+    pure_case_original::CheckedOriginalPureCase, validator_inventory_review::QualifiedSourceReview,
 };
 
 #[cfg(test)]
@@ -98,7 +97,7 @@ async fn prepare(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: &QualifiedPureSourceReview,
+    source: &QualifiedSourceReview,
 ) -> Result<Option<Prepared>, AgentLoopDriverError> {
     observe_read!("read_h01_delivery");
     let Some(delivery) =
@@ -253,7 +252,7 @@ pub(crate) async fn read(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: &QualifiedPureSourceReview,
+    source: &QualifiedSourceReview,
 ) -> Result<Option<SettledOriginalPureCase>, AgentLoopDriverError> {
     Ok(read_state(tx, id, context, source).await?.into_settled())
 }
@@ -263,7 +262,7 @@ pub(crate) async fn read_state(
     tx: &Transaction<'_>,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: &QualifiedPureSourceReview,
+    source: &QualifiedSourceReview,
 ) -> Result<OriginalCaseRead, AgentLoopDriverError> {
     match prepare(tx, id, context, source).await? {
         Some(prepared) => {
@@ -286,7 +285,7 @@ pub(crate) async fn settle(
     pool: &PgPool,
     id: Uuid,
     context: &PrivateExecutionContext,
-    source: &QualifiedPureSourceReview,
+    source: &QualifiedSourceReview,
     timeout: std::time::Duration,
 ) -> Result<Option<SettledOriginalPureCase>, AgentLoopDriverError> {
     let write=tokio::time::timeout(timeout,async {

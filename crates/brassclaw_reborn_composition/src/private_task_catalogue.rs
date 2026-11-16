@@ -36,7 +36,7 @@ impl brassclaw_turns::pg_turn_state_store::PgPrivateOriginalVerifier for Install
             } => {
                 let case = crate::pure_case_original::CheckedOriginalPureCase::read(
                     tx,
-                    &self.pure_source_review,
+                    &self.source_review,
                     *case_id,
                     request.context(),
                 )
@@ -1126,7 +1126,7 @@ impl InstalledMontyCatalogue {
                         Arc::new(
                             crate::validator_inventory_review::InventoryReviewSource::from_qualified(
                                 prepared,
-                                self.pure_source_review.parser().map_err(|_| failed())?,
+                                self.source_review.parser().map_err(|_| failed())?,
                                 self,
                                 host,
                                 admission,

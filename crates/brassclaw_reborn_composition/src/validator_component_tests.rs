@@ -1608,3 +1608,95 @@ async fn model_answer_projection_checks_actual_wire_profile_without_erasing_unkn
     assert_eq!(wire, original);
     assert!(model_answer_text_draft(Uuid::nil()).is_err());
 }
+
+#[test]
+fn joint_source_workflows_prepare_actual_typed_edges_for_every_primary_class() {
+    use brassclaw_engine::memory::{
+        retained_inputs::prepare_retained_inputs,
+        retained_instruction::{WorkflowClass, compile_retained_recipe},
+        retained_validator::RetainedValidatorCoverage,
+    };
+    use brassclaw_skills::{
+        component_revision::{ComponentRevisionDraft, RetainedComponentSnapshot},
+        global_bootstrap_components::{UsageComponentIds, packaged_component_id},
+        validator_components::{
+            function_source_drafts, function_source_recipe_id, source_inventory_drafts,
+        },
+    };
+    let ids = crate::source_inspection_components::usage_ids(
+        packaged_component_id("validator:inspection:tool"),
+        true,
+    );
+    let reply = UsageComponentIds {
+        recipe: Uuid::new_v4(),
+        tool: Uuid::new_v4(),
+        tool_skill: Uuid::new_v4(),
+        skill: Uuid::new_v4(),
+        python_code: Uuid::new_v4(),
+        formatter: None,
+    };
+    let inventory = source_inventory_drafts(ids, Uuid::new_v4(), reply).unwrap();
+    // This test assembles typed inputs only: the metadata below cannot register
+    // a Tool, authenticate native execution or supply an implementation artifact.
+    let metadata=ComponentRevisionDraft::from_json(&json!({"format":"component-revision/1","uuid":ids.tool,
+        "class_code":0,"document":{"capability_id":"host.source_inspection","callable":"host.source_inspection"},
+        "dependencies":[],"association":null}).to_string()).unwrap();
+    let mut original_helpers = None;
+    for class in [1, 2, 3, 22] {
+        let mut drafts = crate::builtin_bootstrap::validator_check_drafts()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        drafts.extend(inventory.clone());
+        drafts.push(metadata.clone());
+        let workflow = function_source_drafts(
+            ids,
+            class,
+            serde_json::to_value(brassclaw_engine::executor::retained_profile::profile()).unwrap(),
+        )
+        .unwrap();
+        let helpers = workflow
+            .iter()
+            .filter(|draft| draft.class_code() == 22)
+            .map(|draft| (draft.uuid(), draft.exact_bytes().to_owned()))
+            .collect::<BTreeMap<_, _>>();
+        if let Some(original) = &original_helpers {
+            assert_eq!(&helpers, original, "primary class must reuse exact helpers");
+        } else {
+            original_helpers = Some(helpers);
+        }
+        drafts.extend(workflow);
+        let all = drafts
+            .into_iter()
+            .map(|draft| (draft.uuid(), draft))
+            .collect::<BTreeMap<_, _>>();
+        let root = function_source_recipe_id(class);
+        let mut pending = vec![root];
+        let mut selected = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            if selected.insert(id) {
+                pending.extend(all[&id].dependencies());
+            }
+        }
+        let snapshot = Arc::new(
+            RetainedComponentSnapshot::new(
+                &[root],
+                selected
+                    .into_iter()
+                    .map(|id| all[&id].clone().at_version(1).unwrap())
+                    .collect(),
+            )
+            .unwrap(),
+        );
+        let instruction =
+            compile_retained_recipe(snapshot, root, "selected", WorkflowClass::Deterministic)
+                .unwrap();
+        let inputs = prepare_retained_inputs(instruction).unwrap();
+        let coverage = RetainedValidatorCoverage::from_inputs(&inputs).unwrap();
+        assert_eq!(coverage.class_code(), i32::from(class));
+        assert_eq!(coverage.aggregate_step(), "0:10");
+        assert_eq!(coverage.receipt_step(), "0:11");
+        assert_eq!(coverage.rules().len(), 5);
+        RetainedValidatorCoverage::validate_catalogue([&inputs]).unwrap();
+    }
+}

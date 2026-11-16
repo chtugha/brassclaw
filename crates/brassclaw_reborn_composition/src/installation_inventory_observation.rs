@@ -18,9 +18,10 @@ use brassclaw_skills::{
 #[cfg(test)]
 use brassclaw_turns::{TurnRunId, TurnSpawnTreeStateStore};
 use brassclaw_turns::{TurnRunRecord, TurnScope, TurnStatus};
-pub(crate) use pure_workflow::CheckedPureSourceWorkflow;
+pub(crate) use pure_workflow::CheckedSourceWorkflow;
 #[cfg(test)]
 pub(crate) use pure_workflow::assert_original_pure_workflow_readback;
+pub(crate) use pure_workflow::qualify_function_workflows;
 pub(crate) use pure_workflow::qualify_pure_workflow;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -286,14 +287,18 @@ async fn observe_installation_inner(
         io::bounded(storage.as_ref(), definitions.retain(&revisions, &draft)).await?;
     }
     let mut programs = Vec::new();
-    for profile in [
-        store::InstallationProfile::Structure,
-        store::InstallationProfile::Pure,
+    for (profile, id, review_profile) in [
+        (
+            store::InstallationProfile::Structure,
+            "validator:python-structure:recipe",
+            InventoryReviewProfile::Structure,
+        ),
+        (
+            store::InstallationProfile::Pure,
+            "validator:python-pure-structure:recipe",
+            InventoryReviewProfile::Pure,
+        ),
     ] {
-        let id = match profile {
-            store::InstallationProfile::Structure => "validator:python-structure:recipe",
-            store::InstallationProfile::Pure => "validator:python-pure-structure:recipe",
-        };
         let graph = io::bounded(
             storage.as_ref(),
             definitions.snapshot(pool.clone(), packaged_component_id(id)),
@@ -312,14 +317,7 @@ async fn observe_installation_inner(
             .map_err(invalid)?,
         );
         let (_, binding) = require_inventory_binding(&program)?;
-        require_packaged_inventory_profile(
-            &program,
-            binding,
-            match profile {
-                store::InstallationProfile::Structure => InventoryReviewProfile::Structure,
-                store::InstallationProfile::Pure => InventoryReviewProfile::Pure,
-            },
-        )?;
+        require_packaged_inventory_profile(&program, binding, review_profile)?;
         programs.push((profile, program));
     }
     if crate::shipped_validation::transferring() {
@@ -1116,6 +1114,9 @@ impl Context {
                 match self.selection.profile() {
                     store::InstallationProfile::Structure => InventoryReviewProfile::Structure,
                     store::InstallationProfile::Pure => InventoryReviewProfile::Pure,
+                    store::InstallationProfile::Function => InventoryReviewProfile::Function(
+                        i16::try_from(self.subject.candidate().class_code).map_err(invalid)?,
+                    ),
                 },
             )?;
             let tools = crate::installed_monty_catalogue::qualified_inventory_tools(

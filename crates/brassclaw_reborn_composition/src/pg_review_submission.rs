@@ -657,7 +657,7 @@ pub(crate) async fn get_with_catalogue(
         crate::pg_review_submission_io::projection_policy(io);
         let timed = tokio::time::timeout(
             io.timeout,
-            get_inner(pool, submission_id, Some(&catalogue.pure_source_review)),
+            get_inner(pool, submission_id, Some(&catalogue.source_review)),
         )
         .await;
         #[cfg(test)]
@@ -677,7 +677,7 @@ async fn get_inner(
     pool: &Arc<PgPool>,
     submission_id: &str,
     #[cfg(feature = "skills-db")] source: Option<
-        &crate::validator_inventory_review::QualifiedPureSourceReview,
+        &crate::validator_inventory_review::QualifiedSourceReview,
     >,
 ) -> Result<ComponentReviewSubmissionView, RecipeStoreError> {
     let id = identifier(submission_id)?;

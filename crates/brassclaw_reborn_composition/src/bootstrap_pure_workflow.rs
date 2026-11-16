@@ -1,17 +1,78 @@
 //! Exact W/selected source-workflow qualification. Reuses the installation
 //! observer's original native custody; no candidate export is invoked here.
 use super::*;
-use crate::bootstrap_validator_approval::CheckedPureCheckerClosure;
+use crate::bootstrap_validator_approval::{
+    CheckedFunctionCheckerClosure, CheckedPureCheckerClosure,
+};
 use brassclaw_skills::revision_store::PgComponentRevisionStore;
 
+#[path = "bootstrap_function_workflow.rs"]
+mod function;
+pub(crate) use function::qualify_function_workflows;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorkflowKind {
+    Pure,
+    Function(i16),
+}
+impl WorkflowKind {
+    fn format(self, stage: &str) -> String {
+        let owner = match self {
+            Self::Pure => "pure-checker-workflow",
+            Self::Function(_) => "function-source-workflow",
+        };
+        format!("{owner}-{stage}/1")
+    }
+    fn scope(self) -> &'static str {
+        match self {
+            Self::Pure => "installation-pure-source-workflow-only",
+            Self::Function(_) => "installation-function-source-workflow-only",
+        }
+    }
+    fn source_profile(self) -> &'static str {
+        match self {
+            Self::Pure => "pure_source_structure",
+            Self::Function(_) => "function_source_structure",
+        }
+    }
+    fn recipe(self) -> Uuid {
+        match self {
+            Self::Pure => packaged_component_id("validator:python-pure-structure:recipe"),
+            Self::Function(class) => {
+                brassclaw_skills::validator_components::function_source_recipe_id(class)
+            }
+        }
+    }
+    fn rule_count(self) -> usize {
+        match self {
+            Self::Pure => 4,
+            Self::Function(_) => 5,
+        }
+    }
+    fn claim_stage(self) -> &'static str {
+        match self {
+            Self::Pure => "pure-source-workflow-claim",
+            Self::Function(_) => "function-source-workflow-claim",
+        }
+    }
+    fn report_stage(self) -> &'static str {
+        match self {
+            Self::Pure => "pure-source-workflow-report",
+            Self::Function(_) => "function-source-workflow-report",
+        }
+    }
+}
+
 struct CheckedCase {
+    kind: WorkflowKind,
     context: Arc<Context>,
     claim: Value,
     expected_rules: Vec<Value>,
     completion: String,
     report: String,
 }
-pub(crate) struct CheckedPureSourceWorkflow {
+pub(crate) struct CheckedSourceWorkflow {
+    kind: WorkflowKind,
     deployment: Option<ShippedWorkflow>,
     cases: Vec<CheckedCase>,
     report: String,
@@ -44,10 +105,10 @@ impl CheckedCase {
         )
     }
     fn claim_id(&self) -> Uuid {
-        self.context.id("pure-source-workflow-claim")
+        self.context.id(self.kind.claim_stage())
     }
     fn report_id(&self) -> Uuid {
-        self.context.id("pure-source-workflow-report")
+        self.context.id(self.kind.report_stage())
     }
     async fn report_value(&self, tx: &Transaction<'_>) -> Result<Value, RebornBuildError> {
         let context = &self.context;
@@ -66,18 +127,34 @@ impl CheckedCase {
         let results = receipt["results"]
             .as_object()
             .ok_or_else(|| invalid("pure workflow results missing"))?;
-        if results.keys().map(String::as_str).collect::<Vec<_>>()
-            != ["0:1", "0:3", "0:4", "0:5", "0:6", "0:7", "0:8", "0:9"]
+        let result_ids = std::iter::once("0:1".to_owned())
+            .chain((3..=5 + self.kind.rule_count()).map(|index| format!("0:{index}")))
+            .collect::<std::collections::BTreeSet<_>>();
+        if results
+            .keys()
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>()
+            != result_ids
         {
             return Err(invalid("pure workflow exact result coverage differs"));
         }
         let mut sources = serde_json::Map::new();
         let subject = context.subject.value();
-        for entry in std::iter::once(&subject["candidate"]).chain(
-            subject["dependencies"]
-                .as_array()
-                .ok_or_else(|| invalid("pure workflow subject dependencies missing"))?,
-        ) {
+        for entry in std::iter::once(&subject["candidate"])
+            .chain(
+                subject
+                    .get("function_partner")
+                    .map(|partner| &partner["component"]),
+            )
+            .chain(
+                subject["dependencies"]
+                    .as_array()
+                    .ok_or_else(|| invalid("pure workflow subject dependencies missing"))?,
+            )
+        {
+            if entry["reference"]["class_code"] != 22 {
+                continue;
+            }
             sources.insert(
                 entry["reference"]["uuid"]
                     .as_str()
@@ -89,8 +166,12 @@ impl CheckedCase {
         if results["0:1"] != Value::Object(sources) || !results["0:3"].is_string() {
             return Err(invalid("pure workflow original source/inventory differs"));
         }
-        for (rule, step) in self.expected_rules.iter().zip(["0:4", "0:5", "0:6", "0:7"]) {
-            if results[step] != *rule {
+        for (rule, step) in self
+            .expected_rules
+            .iter()
+            .zip((4..4 + self.kind.rule_count()).map(|index| format!("0:{index}")))
+        {
+            if results[&step] != *rule {
                 return Err(invalid(format!(
                     "pure workflow {} differs from fixed oracle",
                     step
@@ -105,7 +186,9 @@ impl CheckedCase {
             .map(|r| json!({"rule_id":r["rule_id"],"errors":r["errors"]}))
             .collect::<Vec<_>>();
         let aggregation = json!({"pass":errors.is_empty(),"errors":errors});
-        if results["0:8"] != json!(collected) || results["0:9"] != aggregation {
+        if results.get(&format!("0:{}", 4 + self.kind.rule_count())) != Some(&json!(collected))
+            || results.get(&format!("0:{}", 5 + self.kind.rule_count())) != Some(&aggregation)
+        {
             return Err(invalid(
                 "pure workflow collect/aggregate differs from fixed oracle",
             ));
@@ -113,7 +196,7 @@ impl CheckedCase {
         // read_completed authenticates every original typed input/return digest,
         // actual native Tool journal, quiescence and closed Turn before this oracle.
         Ok(
-            json!({"format":"pure-checker-workflow-fixture-observation/1","scope":"installation-pure-source-workflow-only",
+            json!({"format":self.kind.format("fixture-observation"),"scope":self.kind.scope(),
             "claim":reference(self.claim_id(),&self.encode(self.claim_id(),false,&self.claim)),
             "source":context.subject.reference(),"recipe":revision_reference_value(context.program.inputs().instruction().recipe()),
             "variant":"selected","selection":context.selection.reference(),"executions":[reference(context.id("completed"),&completion)],
@@ -144,7 +227,36 @@ impl CheckedCase {
         Ok(())
     }
 }
-impl CheckedPureSourceWorkflow {
+impl CheckedSourceWorkflow {
+    fn require_checkers(
+        &self,
+        program: &RetainedToolProgram,
+        pure: &CheckedPureCheckerClosure,
+        function: Option<&CheckedFunctionCheckerClosure>,
+    ) -> Result<(), RebornBuildError> {
+        match self.kind {
+            WorkflowKind::Pure => pure.require_program(program),
+            WorkflowKind::Function(_) => function
+                .ok_or_else(|| invalid("qualified joint checker extension required"))?
+                .require_program(program, pure),
+        }
+    }
+    async fn checker_proofs(
+        &self,
+        tx: &Transaction<'_>,
+        pure: &CheckedPureCheckerClosure,
+        function: Option<&CheckedFunctionCheckerClosure>,
+    ) -> Result<Vec<Value>, RebornBuildError> {
+        match self.kind {
+            WorkflowKind::Pure => pure.proof_references(tx).await,
+            WorkflowKind::Function(_) => {
+                function
+                    .ok_or_else(|| invalid("qualified joint checker extension required"))?
+                    .proof_references(tx, pure)
+                    .await
+            }
+        }
+    }
     pub(crate) fn program(&self) -> Result<Arc<RetainedToolProgram>, RebornBuildError> {
         if let Some(deployment) = &self.deployment {
             return Ok(deployment.program.clone());
@@ -179,14 +291,36 @@ impl CheckedPureSourceWorkflow {
         brassclaw_skills::review_submission_store::selection::SourceQualification,
         RebornBuildError,
     > {
+        self.qualification(tx, checkers, None).await
+    }
+    pub(crate) async fn function_source_qualification(
+        &self,
+        tx: &Transaction<'_>,
+        checkers: &CheckedPureCheckerClosure,
+        function: &CheckedFunctionCheckerClosure,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::selection::SourceQualification,
+        RebornBuildError,
+    > {
+        self.qualification(tx, checkers, Some(function)).await
+    }
+    async fn qualification(
+        &self,
+        tx: &Transaction<'_>,
+        checkers: &CheckedPureCheckerClosure,
+        function: Option<&CheckedFunctionCheckerClosure>,
+    ) -> Result<
+        brassclaw_skills::review_submission_store::selection::SourceQualification,
+        RebornBuildError,
+    > {
+        let prerequisites = self
+            .verify_with_prerequisites(tx, checkers, function)
+            .await?;
         if let Some(deployment) = &self.deployment {
-            self.verify_with_prerequisites(tx, checkers).await?;
             let program = &deployment.program;
             let graph = program.inputs().instruction().snapshot();
             let recipe = &graph.revisions()[&program.inputs().instruction().recipe().uuid];
-            let mut prerequisite_proofs = checkers
-                .proof_references(tx)
-                .await?
+            let mut prerequisite_proofs = prerequisites
                 .into_iter()
                 .map(|value| serde_json::from_value(value).map_err(invalid))
                 .collect::<Result<Vec<_>, _>>()?;
@@ -198,7 +332,7 @@ impl CheckedPureSourceWorkflow {
                 },
             );
             let pins = brassclaw_skills::review_submission_store::selection::SourceQualification {
-                profile: "pure_source_structure".into(),
+                profile: self.kind.source_profile().into(),
                 workflow_proof: serde_json::from_value(deployment.transfer.reference())
                     .map_err(invalid)?,
                 prerequisite_proofs,
@@ -218,7 +352,6 @@ impl CheckedPureSourceWorkflow {
             pins.validate().map_err(invalid)?;
             return Ok(pins);
         }
-        let prerequisites = self.verify_with_prerequisites(tx, checkers).await?;
         let first = self
             .cases
             .first()
@@ -242,7 +375,7 @@ impl CheckedPureSourceWorkflow {
         );
         let qualification =
             brassclaw_skills::review_submission_store::selection::SourceQualification {
-                profile: "pure_source_structure".into(),
+                profile: self.kind.source_profile().into(),
                 workflow_proof:
                     brassclaw_skills::review_submission_store::selection::SourceProofReference {
                         id: self.report_id()?,
@@ -264,7 +397,7 @@ impl CheckedPureSourceWorkflow {
             .first()
             .ok_or_else(|| invalid("complete workflow fixture plan required"))?;
         Ok(
-            json!({"format":"pure-checker-workflow-claim/1","scope":"installation-pure-source-workflow-only",
+            json!({"format":self.kind.format("claim"),"scope":self.kind.scope(),
             "base":{"fixture_claims":self.cases.iter().map(|c|reference(c.claim_id(),&c.encode(c.claim_id(),false,&c.claim))).collect::<Vec<_>>()},
             "recipe":first.claim["recipe"],"variant":"selected","selection":first.context.selection.reference(),
             "subject_closure":first.claim["subject_closure"],"coverage":self.cases.iter().map(|c|c.claim["coverage"].clone()).collect::<Vec<_>>(),
@@ -273,7 +406,7 @@ impl CheckedPureSourceWorkflow {
     }
     fn claim_id(&self) -> Result<Uuid, RebornBuildError> {
         Ok(Uuid::new_v5(
-            &packaged_component_id("validator:python-pure-structure:recipe"),
+            &self.kind.recipe(),
             self.claim_value()?.to_string().as_bytes(),
         ))
     }
@@ -328,7 +461,7 @@ impl CheckedPureSourceWorkflow {
             })
             .collect::<Result<Vec<_>, RebornBuildError>>()?;
         Ok(
-            json!({"format":"pure-checker-workflow-report/1","scope":"installation-pure-source-workflow-only",
+            json!({"format":self.kind.format("report"),"scope":self.kind.scope(),
             "claim":reference(self.claim_id()?,&self.record(self.claim_id()?,false,claim.clone())?),
             "source":first.context.selection.reference(),"executions":self.cases.iter().map(|c|reference(c.context.id("completed"),&c.completion)).collect::<Vec<_>>(),
             "outcome":"qualified","diagnostics":[],"recipe":claim["recipe"],"variant":"selected","selection":claim["selection"],
@@ -340,7 +473,7 @@ impl CheckedPureSourceWorkflow {
         tx: &Transaction<'_>,
         checkers: &CheckedPureCheckerClosure,
     ) -> Result<(), RebornBuildError> {
-        self.verify_with_prerequisites(tx, checkers)
+        self.verify_with_prerequisites(tx, checkers, None)
             .await
             .map(|_| ())
     }
@@ -350,6 +483,7 @@ impl CheckedPureSourceWorkflow {
         &self,
         tx: &Transaction<'_>,
         checkers: &CheckedPureCheckerClosure,
+        function: Option<&CheckedFunctionCheckerClosure>,
     ) -> Result<Vec<Value>, RebornBuildError> {
         if let Some(deployment) = &self.deployment {
             io::bounded_for(
@@ -367,18 +501,33 @@ impl CheckedPureSourceWorkflow {
                 },
             )
             .await?;
-            checkers.require_program(&deployment.program)?;
-            return checkers.proof_references(tx).await;
+            self.require_checkers(&deployment.program, checkers, function)?;
+            return self.checker_proofs(tx, checkers, function).await;
         }
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("checker_prerequisites", None);
-        let prerequisites = checkers.proof_references(tx).await?;
+        let prerequisites = self.checker_proofs(tx, checkers, function).await?;
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("workflow_plan", None);
         for case in &self.cases {
-            checkers.require_program(&case.context.program)?;
+            if case.kind != self.kind {
+                return Err(invalid("workflow fixture kind differs"));
+            }
+            self.require_checkers(&case.context.program, checkers, function)?;
         }
-        let gallery = crate::bootstrap_validator_approval::pure_source_cases()?;
+        let gallery = match self.kind {
+            WorkflowKind::Pure => crate::bootstrap_validator_approval::pure_source_cases()?
+                .into_iter()
+                .map(|case| (case.root.uuid(), case.rules))
+                .collect::<Vec<_>>(),
+            WorkflowKind::Function(class) => {
+                crate::bootstrap_validator_approval::function_source_cases()?
+                    .into_iter()
+                    .filter(|case| case.primary_class == class)
+                    .map(|case| (case.candidate, case.rules))
+                    .collect()
+            }
+        };
         if gallery.len() != self.cases.len() {
             return Err(invalid("complete pure workflow gallery required"));
         }
@@ -390,8 +539,8 @@ impl CheckedPureSourceWorkflow {
                     .iter()
                     .position(|selected| std::ptr::eq(selected, case)),
             );
-            if case.context.subject.candidate().uuid != fixture.root.uuid()
-                || case.expected_rules != fixture.rules
+            if case.context.subject.candidate().uuid != fixture.0
+                || case.expected_rules != fixture.1
             {
                 return Err(invalid("pure workflow fixture subject/oracle differs"));
             }
@@ -439,7 +588,7 @@ pub(crate) async fn qualify_pure_workflow(
     checkers: &CheckedPureCheckerClosure,
     executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
     preparation: brassclaw_monty_host::utility::UtilityLimits,
-) -> Result<CheckedPureSourceWorkflow, RebornBuildError> {
+) -> Result<CheckedSourceWorkflow, RebornBuildError> {
     if let InstallationSourceObservations::Shipped {
         pool,
         storage,
@@ -453,7 +602,8 @@ pub(crate) async fn qualify_pure_workflow(
             "worker_checksum":hex::encode(parser.worker.checksum()),
         }));
         transfer.install(pool).await?;
-        return Ok(CheckedPureSourceWorkflow {
+        return Ok(CheckedSourceWorkflow {
+            kind: WorkflowKind::Pure,
             cases: Vec::new(),
             report: String::new(),
             deployment: Some(ShippedWorkflow {
@@ -648,6 +798,7 @@ pub(crate) async fn qualify_pure_workflow(
             "coverage":{"case_id":fixture.name,"rules":fixture.rules,"native_result_steps":["0:1","0:3","0:4","0:5","0:6","0:7","0:8","0:9","0:10"]},
             "profile":brassclaw_engine::executor::retained_profile::profile(),"prerequisites":prerequisites});
         let checked = CheckedCase {
+            kind: WorkflowKind::Pure,
             context,
             claim,
             expected_rules: fixture.rules,
@@ -664,11 +815,26 @@ pub(crate) async fn qualify_pure_workflow(
         .await?;
         cases.push(checked);
     }
-    let mut package = CheckedPureSourceWorkflow {
+    let package = CheckedSourceWorkflow {
+        kind: WorkflowKind::Pure,
         deployment: None,
         cases,
         report: String::new(),
     };
+    execute_workflow_package(package, executor, preparation).await
+}
+
+async fn execute_workflow_package(
+    mut package: CheckedSourceWorkflow,
+    executor: Arc<crate::global_monty_startup::ControlledExecutorConfiguration>,
+    preparation: brassclaw_monty_host::utility::UtilityLimits,
+) -> Result<CheckedSourceWorkflow, RebornBuildError> {
+    let base = package
+        .cases
+        .first()
+        .ok_or_else(|| invalid("complete workflow plan required"))?
+        .context
+        .clone();
     let claim_id = package.claim_id()?;
     io::retain_record(
         &base.pool,

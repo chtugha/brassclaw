@@ -2,7 +2,9 @@
 //! Python W sequences the checks. This owner authenticates preparation/custody;
 //! it never invokes the candidate or grants whole-class Q1, Q2 or activation.
 use super::*;
-use crate::bootstrap_validator_approval::CheckedPureCheckerClosure;
+use crate::bootstrap_validator_approval::{
+    CheckedFunctionCheckerClosure, CheckedPureCheckerClosure,
+};
 use crate::installed_monty_catalogue::{InstalledMontyCatalogue, PreparationCapture};
 use crate::pg_review_admission_source::PreparedValidatorReview;
 use crate::private_work_definition::{
@@ -28,9 +30,11 @@ use brassclaw_turns::{
 use tokio_postgres::{IsolationLevel, Transaction};
 use uuid::Uuid;
 
-pub(crate) struct QualifiedPureSourceReview {
-    workflow: CheckedPureSourceWorkflow,
+pub(crate) struct QualifiedSourceReview {
+    workflow: CheckedSourceWorkflow,
     checkers: CheckedPureCheckerClosure,
+    function_workflows: BTreeMap<i16, CheckedSourceWorkflow>,
+    function_checkers: CheckedFunctionCheckerClosure,
 }
 pub(crate) struct SourceReviewPreparation {
     catalogue: Arc<InstalledMontyCatalogue>,
@@ -41,7 +45,7 @@ pub(crate) struct SourceReviewPreparation {
 /// exact still-borrowed transaction. No UUID/global cache or public constructor.
 struct CheckedSourceQualification<'checked, 'connection> {
     tx: &'checked Transaction<'connection>,
-    owner: &'checked QualifiedPureSourceReview,
+    owner: &'checked QualifiedSourceReview,
     pins: SourceQualification,
     validator_bytes: String,
 }
@@ -49,7 +53,7 @@ impl CheckedSourceQualification<'_, '_> {
     fn require(
         &self,
         tx: &Transaction<'_>,
-        owner: &QualifiedPureSourceReview,
+        owner: &QualifiedSourceReview,
         selected: &RetainedValidatorSelection,
     ) -> Result<(), RebornBuildError> {
         if std::ptr::from_ref(self.tx).cast::<()>() != std::ptr::from_ref(tx).cast::<()>()
@@ -94,31 +98,61 @@ impl CheckedPureSourceOriginal {
         &self.confirmation
     }
 }
-impl QualifiedPureSourceReview {
+impl QualifiedSourceReview {
     #[cfg(test)]
     pub(crate) async fn assert_shipped_readback(&self, tx: &Transaction<'_>) {
-        self.check_in_transaction(tx).await.unwrap();
+        self.check_in_transaction(tx, 22, false).await.unwrap();
+        for class in [1, 2, 3, 22] {
+            self.check_in_transaction(tx, class, true).await.unwrap();
+        }
     }
     pub(crate) fn new(
-        workflow: CheckedPureSourceWorkflow,
+        workflow: CheckedSourceWorkflow,
         checkers: CheckedPureCheckerClosure,
+        function_workflows: BTreeMap<i16, CheckedSourceWorkflow>,
+        function_checkers: CheckedFunctionCheckerClosure,
     ) -> Self {
-        Self { workflow, checkers }
+        Self {
+            workflow,
+            checkers,
+            function_workflows,
+            function_checkers,
+        }
+    }
+    fn selected_workflow(
+        &self,
+        class: i16,
+        function: bool,
+    ) -> Result<&CheckedSourceWorkflow, RebornBuildError> {
+        if function {
+            self.function_workflows
+                .get(&class)
+                .ok_or_else(|| invalid("qualified function source route missing"))
+        } else if class == 22 {
+            Ok(&self.workflow)
+        } else {
+            Err(invalid("standalone Pure source class required"))
+        }
     }
     async fn check_in_transaction<'checked, 'connection>(
         &'checked self,
         tx: &'checked Transaction<'connection>,
+        class: i16,
+        function: bool,
     ) -> Result<CheckedSourceQualification<'checked, 'connection>, RebornBuildError> {
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("source_qualification", None);
-        let pins = self
-            .workflow
-            .source_qualification(tx, &self.checkers)
-            .await?;
+        let workflow = self.selected_workflow(class, function)?;
+        let pins = if function {
+            workflow
+                .function_source_qualification(tx, &self.checkers, &self.function_checkers)
+                .await?
+        } else {
+            workflow.source_qualification(tx, &self.checkers).await?
+        };
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("source_selection_bytes", None);
-        let bytes = self
-            .workflow
+        let bytes = workflow
             .program()?
             .inputs()
             .instruction()
@@ -138,7 +172,26 @@ impl QualifiedPureSourceReview {
         tx: &Transaction<'_>,
         selected: &RetainedValidatorSelection,
     ) -> Result<(), RebornBuildError> {
-        let checked = self.check_in_transaction(tx).await?;
+        let root = selected.selection()["recipe"]["uuid"]
+            .as_str()
+            .and_then(|id| Uuid::parse_str(id).ok())
+            .ok_or_else(|| invalid("original Source recipe missing"))?;
+        let snapshot = selected.snapshot();
+        let class = snapshot
+            .revisions()
+            .get(&root)
+            .and_then(|revision| revision.draft().document()["validates_class_code"].as_i64())
+            .and_then(|class| i16::try_from(class).ok())
+            .ok_or_else(|| invalid("original Source primary class missing"))?;
+        let function = match selected
+            .source_qualification()
+            .map(|pins| pins.profile.as_str())
+        {
+            Some("pure_source_structure") => false,
+            Some("function_source_structure") => true,
+            _ => return Err(invalid("original Source qualification profile unsupported")),
+        };
+        let checked = self.check_in_transaction(tx, class, function).await?;
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("source_selection_compare", None);
         checked.require(tx, self, selected)
@@ -174,7 +227,12 @@ impl QualifiedPureSourceReview {
                 .map_err(invalid)?
                 .ok_or_else(|| invalid("Source prerequisite selection missing"))?,
         );
-        if subject.candidate().class_code != 22 || selection.source_qualification().is_none() {
+        if subject.candidate().class_code != 22
+            || subject.is_function_review()
+            || selection
+                .source_qualification()
+                .is_none_or(|proof| proof.profile != "pure_source_structure")
+        {
             return Err(invalid("qualified Source prerequisite required"));
         }
         let Some(delivery) = PgMontyAdmission::read_private_delivery(tx, submission_id, context)
@@ -253,7 +311,9 @@ impl InstalledMontyCatalogue {
         draft: &ReviewSubmissionDraft,
         io: &crate::pg_review_submission_io::SubmissionIo,
     ) -> Result<Option<SourceReviewPreparation>, RebornBuildError> {
-        if draft.candidate().class_code != 22 || draft.is_function_review() {
+        if !(draft.candidate().class_code == 22
+            || (draft.is_function_review() && matches!(draft.candidate().class_code, 1..=3)))
+        {
             return Ok(None);
         }
         // Historical same-ID requests must not capture today's settings or
@@ -319,7 +379,14 @@ impl InstalledMontyCatalogue {
         io.note("source_native_inspection", "started");
         let inspected = Arc::new(
             InspectedRetainedProgram::inspect_with_limits(
-                RetainedProgram::Tools(self.pure_source_review.workflow.program()?),
+                RetainedProgram::Tools(
+                    self.source_review
+                        .selected_workflow(
+                            i16::try_from(draft.candidate().class_code).map_err(invalid)?,
+                            draft.is_function_review(),
+                        )?
+                        .program()?,
+                ),
                 &worker.path(),
                 preparation.limits(),
             )
@@ -349,9 +416,7 @@ impl InstalledMontyCatalogue {
         selected: &RetainedValidatorSelection,
     ) -> Result<(), RebornBuildError> {
         if selected.source_qualification().is_some() {
-            self.pure_source_review
-                .require_selection(tx, selected)
-                .await?;
+            self.source_review.require_selection(tx, selected).await?;
         }
         Ok(())
     }
@@ -388,7 +453,7 @@ impl InstalledMontyCatalogue {
             };
         }
         if let Some(checked) = checked {
-            checked.require(tx, &self.pure_source_review, &selected)?;
+            checked.require(tx, &self.source_review, &selected)?;
         } else {
             self.require_source_selection(tx, &selected).await?;
         }
@@ -499,9 +564,6 @@ impl SourceReviewPreparation {
                 .map_err(invalid)?
                 .ok_or_else(|| invalid("Source original subject missing"))?,
         );
-        if subject.candidate().class_code != 22 {
-            return Err(invalid("Source subject class differs"));
-        }
         if tx.query_opt("SELECT submission_id FROM reborn_component_validator_selections WHERE submission_id=$1", &[&id]).await.map_err(invalid)?.is_some() {
             // A concurrent identical submission may already have sealed Ready.
             // Reuse its original preparation; never replace it with this capture.
@@ -509,20 +571,23 @@ impl SourceReviewPreparation {
         }
         let checked = self
             .catalogue
-            .pure_source_review
-            .check_in_transaction(tx)
+            .source_review
+            .check_in_transaction(
+                tx,
+                i16::try_from(subject.candidate().class_code).map_err(invalid)?,
+                subject.is_function_review(),
+            )
             .await?;
         let coverage = RetainedValidatorCoverage::from_inputs(self.inspected.program().inputs())
             .map_err(invalid)?;
-        let mut value: Value = serde_json::from_str(
-            &RetainedValidatorCoverage::selection_bytes(&subject, &self.inspected, REVISION_LIMITS)
-                .map_err(invalid)?,
+        let value = RetainedValidatorCoverage::qualified_source_selection_bytes(
+            &subject,
+            &self.inspected,
+            &checked.pins,
+            REVISION_LIMITS,
         )
         .map_err(invalid)?;
-        value["format"] = json!("component-validator-selection/2");
-        value["scope"] = json!("qualified-pure-source-prerequisite");
-        value["qualification"] = serde_json::to_value(&checked.pins).map_err(invalid)?;
-        selection::retain_in_transaction(tx, &value.to_string(), REVISION_LIMITS)
+        selection::retain_in_transaction(tx, &value, REVISION_LIMITS)
             .await
             .map_err(invalid)?;
         let selected = Arc::new(

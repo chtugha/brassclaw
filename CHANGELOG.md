@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **B1 joint-source checkpoint — unvalidated**: Add source for joint
+  Skill/PythonCode source review: shared strict coverage metadata, four private
+  workflows, sealed installation subjects, V217 selection storage and original
+  Work/admission wiring. Reuse the existing executor and independently specified
+  checker fixtures; keep full Q1, behavioral approval and human Q2 closed.
+  Add typed-edge and native review regression cases. The first build failed;
+  its lifetime correction remains unverified, and subsequent builds were stopped
+  at the operator's request. This checkpoint is not a successful build, accepted
+  qualification or completed B1 implementation.
+
 - **CI test context and encoding deadlines**: Recognize an explicit file-level
   test guard without changing the production qualification owner or native test
   bodies. Evaluate cfg conditions conservatively; production `not(test)`/optional

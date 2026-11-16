@@ -20,7 +20,7 @@ def _validator_skill_interface_equal(left, right):
 def check_review_skill_interface(inputs):
     import json
     subject, entries = _validator_review_subject(inputs)
-    if subject["format"] != "component-validator-subject/2":
+    if subject["format"] not in ["component-validator-subject/2", "installation-validator-subject/2"]:
         raise ValueError("complete Skill/implementation function subject required")
     pair = [subject["candidate"], subject["function_partner"]["component"]]
     skill, code = None, None

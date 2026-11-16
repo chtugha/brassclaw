@@ -146,7 +146,7 @@ pub(crate) struct InstalledCatalogueStartup<'a> {
 }
 
 pub(crate) struct InstalledMontyCatalogue {
-    pub(crate) pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview,
+    pub(crate) source_review: crate::validator_inventory_review::QualifiedSourceReview,
     pub(crate) case_harness: Option<Arc<crate::pure_case_qualification::QualifiedCaseHarness>>,
     pub(crate) case_unready: Option<Arc<crate::pure_case_qualification::CaseUnavailable>>,
     initial_preparation: PreparationCapture,
@@ -987,6 +987,27 @@ impl InstalledMontyCatalogue {
             initial_preparation.limits(),
         )
         .await?;
+        let function_checkers = crate::bootstrap_validator_approval::qualify_function_checkers(
+            crate::bootstrap_validator_approval::SessionInput {
+                pool: pool.clone(),
+                worker: worker_image.clone(),
+                root: root_definition.clone(),
+                executor: startup_executor.clone(),
+                preparation: initial_preparation.clone(),
+                storage: resource_store_settings.clone(),
+                application_checksum: hex::encode(image.checksum()),
+            },
+            &pure_checkers,
+        )
+        .await?;
+        let function_workflows = crate::validator_inventory_review::qualify_function_workflows(
+            &inventory_observations,
+            &pure_checkers,
+            &function_checkers,
+            startup_executor.clone(),
+            initial_preparation.limits(),
+        )
+        .await?;
         let generation_revision = crate::bootstrap_validator_approval::qualify_shipped_function(
             crate::bootstrap_validator_approval::SessionInput {
                 pool: pool.clone(),
@@ -1124,6 +1145,11 @@ impl InstalledMontyCatalogue {
         pure_workflow
             .verify_in_transaction(&tx, &pure_checkers)
             .await?;
+        for workflow in function_workflows.values() {
+            workflow
+                .function_source_qualification(&tx, &pure_checkers, &function_checkers)
+                .await?;
+        }
         generation_revision
             .verify(&tx, &generation_candidates[1])
             .await?;
@@ -1247,9 +1273,11 @@ impl InstalledMontyCatalogue {
         let catalogue = Arc::new(Self {
             case_harness,
             case_unready,
-            pure_source_review: crate::validator_inventory_review::QualifiedPureSourceReview::new(
+            source_review: crate::validator_inventory_review::QualifiedSourceReview::new(
                 pure_workflow,
                 pure_checkers,
+                function_workflows,
+                function_checkers,
             ),
             initial_preparation,
             private_work_context: std::sync::OnceLock::new(),

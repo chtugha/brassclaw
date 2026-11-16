@@ -81,8 +81,10 @@ impl SourceQualification {
                     .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
         };
         let mut ids = std::collections::BTreeSet::new();
-        if self.profile != "pure_source_structure"
-            || self.prerequisite_proofs.is_empty()
+        if !matches!(
+            self.profile.as_str(),
+            "pure_source_structure" | "function_source_structure"
+        ) || self.prerequisite_proofs.is_empty()
             || !digest(&self.required_checks_checksum)
             || !digest(&self.worker_checksum)
             || !digest(&self.package_checksum)
@@ -120,39 +122,44 @@ async fn verify(
     let qualification_raw = raw.get("qualification").cloned();
     let value: Selection =
         serde_json::from_value(raw).map_err(|_| SubmissionStoreError::Invalid)?;
-    let qualified = match value.format.as_str() {
+    let profile = match value.format.as_str() {
         "component-validator-selection/1"
             if value.scope == "preparation-only" && !qualification_present =>
         {
-            false
+            None
         }
         "component-validator-selection/2"
             if value.scope == "qualified-pure-source-prerequisite" =>
         {
-            value
-                .qualification
-                .as_ref()
-                .ok_or(SubmissionStoreError::Invalid)?
-                .validate()?;
-            if serde_json::to_value(&value.qualification)
-                .map_err(|_| SubmissionStoreError::Invalid)?
-                != qualification_raw.ok_or(SubmissionStoreError::Invalid)?
-            {
-                return Err(SubmissionStoreError::Invalid);
-            }
-            true
+            Some("pure_source_structure")
+        }
+        "component-validator-selection/3"
+            if value.scope == "qualified-function-source-prerequisite" =>
+        {
+            Some("function_source_structure")
         }
         _ => return Err(SubmissionStoreError::Invalid),
     };
-    if qualified && value.candidate.class_code != 22 {
-        return Err(SubmissionStoreError::Invalid);
+    if let Some(profile) = profile {
+        let qualification = value
+            .qualification
+            .as_ref()
+            .ok_or(SubmissionStoreError::Invalid)?;
+        qualification.validate()?;
+        if qualification.profile != profile
+            || serde_json::to_value(qualification).map_err(|_| SubmissionStoreError::Invalid)?
+                != qualification_raw.ok_or(SubmissionStoreError::Invalid)?
+            || (profile == "pure_source_structure" && value.candidate.class_code != 22)
+        {
+            return Err(SubmissionStoreError::Invalid);
+        }
     }
     let subject = PgReviewSubmissionStore::read_in_transaction(tx, value.submission_id)
         .await?
         .ok_or(SubmissionStoreError::Invalid)?;
-    // Existing /1 preparation covers one class/root. Never retain a partial
-    // selection for a function subject with a changed or contextual partner.
-    if subject.function_partner.is_some()
+    // Historical preparations retain their original single-root scope. Only
+    // the explicit qualified successor may bind a complete function subject.
+    if subject.function_partner.is_some() != (profile == Some("function_source_structure"))
         || !matches!(
             subject.candidate.class_code,
             0 | 1 | 2 | 3 | 13 | 21 | 22 | 23
@@ -174,6 +181,9 @@ async fn verify(
         limits,
     )
     .await?;
+    if profile == Some("function_source_structure") {
+        require_function_source_coverage(&selection, &snapshot, subject.candidate.class_code)?;
+    }
     Ok(RetainedValidatorSelection {
         submission_id: value.submission_id,
         subject_checksum: value.subject_checksum,
@@ -184,6 +194,33 @@ async fn verify(
         qualification: value.qualification,
         parsing_limits: limits,
     })
+}
+
+/// Validate the new passive joint-source declaration against this exact Recipe
+/// revision. Engine separately proves its actual typed execution/observations.
+/// Historical /1 and /2 preparations are deliberately not reinterpreted here.
+pub(super) fn require_function_source_coverage(
+    selection: &serde_json::Value,
+    snapshot: &crate::component_revision::RetainedComponentSnapshot,
+    class_code: i32,
+) -> Result<(), SubmissionStoreError> {
+    let recipe_id = selection["recipe"]["uuid"]
+        .as_str()
+        .and_then(|id| Uuid::parse_str(id).ok())
+        .ok_or(SubmissionStoreError::Invalid)?;
+    let revision = snapshot
+        .revisions()
+        .get(&recipe_id)
+        .ok_or(SubmissionStoreError::Invalid)?;
+    let declaration = crate::validator_components::ValidatorCoverageDeclaration::from_value(
+        &revision.draft().document()["validator_coverage"],
+        class_code,
+    )
+    .map_err(|_| SubmissionStoreError::Invalid)?;
+    if declaration.subject_kind() != crate::validator_components::ValidatorSubjectKind::Function {
+        return Err(SubmissionStoreError::Invalid);
+    }
+    Ok(())
 }
 
 pub(super) async fn verify_program_selection(

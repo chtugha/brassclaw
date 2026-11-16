@@ -149,21 +149,19 @@ impl InstalledMontyCatalogue {
             })?;
             #[cfg(test)]
             crate::pure_case_settlement::diagnostic::note("read_case_settlement");
-            let settlement = crate::pure_case_settlement::read_state(
-                &tx,
-                id,
-                &context,
-                &self.pure_source_review,
-            )
-            .await
-            .map_err(|_| {
-                RecipeStoreError::Unavailable("original Pure case settlement invalid".into())
-            })?;
+            let settlement =
+                crate::pure_case_settlement::read_state(&tx, id, &context, &self.source_review)
+                    .await
+                    .map_err(|_| {
+                        RecipeStoreError::Unavailable(
+                            "original Pure case settlement invalid".into(),
+                        )
+                    })?;
             let pending_original = if settlement.original().is_none() {
                 #[cfg(test)]
                 crate::pure_case_settlement::diagnostic::note("read_pending_original");
                 Some(
-                    CheckedOriginalPureCase::read(&tx, &self.pure_source_review, id, &context)
+                    CheckedOriginalPureCase::read(&tx, &self.source_review, id, &context)
                         .await
                         .map_err(|_| {
                             RecipeStoreError::Unavailable(
@@ -392,7 +390,7 @@ impl InstalledMontyCatalogue {
                 .map_err(invalid)?;
             let context = self.pure_case_context(&tx, submission).await?;
             let source = self
-                .pure_source_review
+                .source_review
                 .read_positive_original(&tx, submission, &context)
                 .await?
                 .ok_or_else(|| {
@@ -448,7 +446,7 @@ impl InstalledMontyCatalogue {
                 .await
                 .map_err(invalid)?;
             let source = self
-                .pure_source_review
+                .source_review
                 .read_positive_original(&tx, submission, &context)
                 .await?
                 .ok_or_else(|| invalid("positive original Source prerequisite disappeared"))?;
@@ -590,7 +588,7 @@ impl InstalledMontyCatalogue {
         }
         let context = self.pure_case_context(&tx, submission).await?;
         let Some(case) =
-            CheckedOriginalPureCase::read(&tx, &self.pure_source_review, case_id, &context).await?
+            CheckedOriginalPureCase::read(&tx, &self.source_review, case_id, &context).await?
         else {
             tx.commit().await.map_err(invalid)?;
             client.recycle_after_commit();
@@ -656,7 +654,7 @@ impl InstalledMontyCatalogue {
         };
         let case = CheckedOriginalPureCase::read(
             tx,
-            &self.pure_source_review,
+            &self.source_review,
             *case_id,
             claim.request().context(),
         )

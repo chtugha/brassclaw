@@ -36,7 +36,7 @@ impl<'a> SubjectView<'a> {
     pub(super) fn is_function_review(self) -> bool {
         match self {
             Self::Authored(s) => s.is_function_review(),
-            Self::Installation(_) => false,
+            Self::Installation(s) => s.is_function_review(),
         }
     }
     fn id(self) -> uuid::Uuid {

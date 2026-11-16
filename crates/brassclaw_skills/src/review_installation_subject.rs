@@ -15,6 +15,9 @@ use std::sync::Arc;
 use tokio_postgres::Transaction;
 use uuid::Uuid;
 
+#[path = "review_installation_function_subject.rs"]
+mod function_subject;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InstallationRecordRef {
@@ -34,6 +37,7 @@ pub struct InstallationPackageContext {
 pub enum InstallationProfile {
     Structure,
     Pure,
+    Function,
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -95,6 +99,7 @@ pub struct RetainedInstallationValidatorSubject {
     candidate: ComponentRevisionRef,
     reference: InstallationRecordRef,
     context: InstallationPackageContext,
+    function_review: bool,
 }
 impl RetainedInstallationValidatorSubject {
     pub fn value(&self) -> &Value {
@@ -108,6 +113,9 @@ impl RetainedInstallationValidatorSubject {
     }
     pub fn package_context(&self) -> &InstallationPackageContext {
         &self.context
+    }
+    pub fn is_function_review(&self) -> bool {
+        self.function_review
     }
 }
 pub struct RetainedInstallationValidatorSelection {
@@ -211,6 +219,18 @@ pub fn pure_fixture_subject_record(
 ) -> Result<InstallationRecordDraft, Error> {
     subject_record_scoped(graph, candidate, context, limits, true)
 }
+/// Controlled shipped-function fixture data, distinct from an authored proposal.
+/// Both physical roots are subjects; no changed/context role or human action is
+/// fabricated. Composition retains responsibility for qualification/provenance.
+pub fn function_fixture_subject_record(
+    graph: &RetainedComponentSnapshot,
+    candidate: ComponentRevisionRef,
+    partner: ComponentRevisionRef,
+    context: InstallationPackageContext,
+    limits: ContractLimits,
+) -> Result<InstallationRecordDraft, Error> {
+    function_subject::record(graph, candidate, partner, context, limits)
+}
 fn subject_record_scoped(
     graph: &RetainedComponentSnapshot,
     candidate: ComponentRevisionRef,
@@ -277,23 +297,41 @@ pub fn selection_record(
     profile: InstallationProfile,
     limits: ContractLimits,
 ) -> Result<InstallationRecordDraft, Error> {
+    let function = profile == InstallationProfile::Function;
+    if subject.is_function_review() != function {
+        return Err(Error::Invalid);
+    }
     let inner = strict_json(validator_bytes, limits).map_err(|_| Error::Invalid)?;
     let refs = serde_json::from_value::<Vec<Reference>>(inner["components"].clone())
         .map_err(|_| Error::Invalid)?;
-    let identity =
-        json!({"format":"installation-validator-selection-identity/1","subject":subject.reference,
+    let identity_format = if function {
+        "installation-validator-selection-identity/2"
+    } else {
+        "installation-validator-selection-identity/1"
+    };
+    let identity = json!({"format":identity_format,"subject":subject.reference,
         "validator_checksum":checksum(validator_bytes),"profile":profile})
-        .to_string();
+    .to_string();
     let id = Uuid::new_v5(&subject.reference.id, identity.as_bytes());
     let report = SelectionRecord {
-        format: "installation-validator-selection-record/1".into(),
+        format: if function {
+            "installation-validator-selection-record/2"
+        } else {
+            "installation-validator-selection-record/1"
+        }
+        .into(),
         selection_id: id,
         subject_id: subject.reference.id,
         subject_checksum: subject.reference.checksum.clone(),
         candidate: subject.candidate.into(),
         validator_selection_bytes: validator_bytes.to_owned(),
         validator_selection_checksum: checksum(validator_bytes),
-        scope: "controlled-installation-preparation".into(),
+        scope: if function {
+            "controlled-installation-function-preparation"
+        } else {
+            "controlled-installation-preparation"
+        }
+        .into(),
         profile,
         q1_qualification: false,
         semantic_approval: false,
@@ -339,6 +377,11 @@ pub async fn read_subject_in_transaction(
     let Some((bytes, envelope)) = read_envelope(tx, id, limits).await? else {
         return Ok(None);
     };
+    if envelope.report["format"] == "installation-function-fixture-subject/1" {
+        return function_subject::read(tx, id, &bytes, &envelope, limits)
+            .await
+            .map(Some);
+    }
     let report: SubjectRecord =
         serde_json::from_value(envelope.report.clone()).map_err(|_| Error::Invalid)?;
     let pure_fixture = match (report.format.as_str(), report.package_selector.as_str()) {
@@ -379,13 +422,7 @@ pub async fn read_subject_in_transaction(
     if expected.reference.id != id || expected.bytes != bytes {
         return Err(Error::Invalid);
     }
-    let parser=tx.query_opt("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1",&[&report.package_context.parser_completion.id]).await.map_err(database)?.ok_or(Error::Invalid)?;
-    let parser_bytes: String = parser.get(0);
-    if checksum(&parser_bytes) != parser.get::<_, String>(1)
-        || checksum(&parser_bytes) != report.package_context.parser_completion.checksum
-    {
-        return Err(Error::Invalid);
-    }
+    verify_parser_context(tx, &report.package_context).await?;
     let reference = InstallationRecordRef {
         id,
         checksum: checksum(&bytes),
@@ -398,7 +435,21 @@ pub async fn read_subject_in_transaction(
         candidate,
         reference,
         context: report.package_context,
+        function_review: false,
     }))
+}
+async fn verify_parser_context(
+    tx: &Transaction<'_>,
+    context: &InstallationPackageContext,
+) -> Result<(), Error> {
+    let parser=tx.query_opt("SELECT evidence_bytes,checksum FROM reborn_component_review_evidence WHERE evidence_id=$1",&[&context.parser_completion.id]).await.map_err(database)?.ok_or(Error::Invalid)?;
+    let parser_bytes: String = parser.get(0);
+    if checksum(&parser_bytes) != parser.get::<_, String>(1)
+        || checksum(&parser_bytes) != context.parser_completion.checksum
+    {
+        return Err(Error::Invalid);
+    }
+    Ok(())
 }
 pub async fn read_selection_in_transaction(
     tx: &Transaction<'_>,
@@ -410,9 +461,21 @@ pub async fn read_selection_in_transaction(
     };
     let report: SelectionRecord =
         serde_json::from_value(envelope.report).map_err(|_| Error::Invalid)?;
-    if report.format != "installation-validator-selection-record/1"
+    let function = report.profile == InstallationProfile::Function;
+    let (format, scope) = if function {
+        (
+            "installation-validator-selection-record/2",
+            "controlled-installation-function-preparation",
+        )
+    } else {
+        (
+            "installation-validator-selection-record/1",
+            "controlled-installation-preparation",
+        )
+    };
+    if report.format != format
         || report.selection_id != id
-        || report.scope != "controlled-installation-preparation"
+        || report.scope != scope
         || report.q1_qualification
         || report.semantic_approval
         || report.catalogue_activation
@@ -435,6 +498,13 @@ pub async fn read_selection_in_transaction(
         limits,
     )
     .await?;
+    if function {
+        super::selection::require_function_source_coverage(
+            &selection,
+            &snapshot,
+            subject.candidate.class_code,
+        )?;
+    }
     let expected = selection_record(
         &subject,
         &report.validator_selection_bytes,

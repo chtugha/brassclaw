@@ -12,7 +12,7 @@ def check_review_skill_call_targets(inputs):
     subject, entries = _validator_review_subject(inputs)
     inventory = json.loads(inputs["inventory_json"])
     profile = inputs["profile"]
-    if subject["format"] != "component-validator-subject/2" or inventory["format"] != "python-source-inventory/1" or profile["format"] != "retained-python-profile/1":
+    if subject["format"] not in ["component-validator-subject/2", "installation-validator-subject/2"] or inventory["format"] != "python-source-inventory/1" or profile["format"] != "retained-python-profile/1":
         raise ValueError("original function subject/native inventory and selected profile required")
     pair = [subject["candidate"], subject["function_partner"]["component"]]
     skill, code = None, None

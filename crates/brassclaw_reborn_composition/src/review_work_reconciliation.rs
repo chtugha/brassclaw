@@ -84,7 +84,7 @@ impl ReviewWorkReconciler {
                         &self.pool,
                         id,
                         &context,
-                        &self.catalogue.pure_source_review,
+                        &self.catalogue.source_review,
                         deadline,
                     )
                     .await
@@ -182,7 +182,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
                     .await
                     .map_err(|_| unavailable())?;
                 let view =
-                    inspect_with_source(&tx, id, Some(&self.catalogue.pure_source_review)).await?;
+                    inspect_with_source(&tx, id, Some(&self.catalogue.source_review)).await?;
                 let action = match view.status {
                     ReviewWorkStatus::OriginalPreparationMissing => {
                         if view.selection_preparation_present {
@@ -268,7 +268,7 @@ impl PrivateWorkReconciliationPort for ReviewWorkReconciler {
                         &self.pool,
                         id,
                         &context,
-                        Some(&self.catalogue.pure_source_review),
+                        Some(&self.catalogue.source_review),
                     )
                     .await
                     .map(|_| ())
@@ -302,7 +302,7 @@ pub(crate) async fn inspect(
 pub(crate) async fn inspect_with_source(
     tx: &Transaction<'_>,
     id: Uuid,
-    source: Option<&crate::validator_inventory_review::QualifiedPureSourceReview>,
+    source: Option<&crate::validator_inventory_review::QualifiedSourceReview>,
 ) -> Result<ReviewWorkView, AgentLoopDriverError> {
     let row=tx.query_opt("SELECT r.subject_checksum,s.checksum,s.subject_bytes,
         q.submission_id,w.private_request_bytes,w.status,d.checksum,c.checksum,

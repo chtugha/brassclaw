@@ -29,6 +29,24 @@ pub(super) struct PackagedDefinitions {
     dependencies: BTreeMap<Uuid, BTreeSet<Uuid>>,
 }
 impl PackagedDefinitions {
+    /// Reuse exact already selected revisions. Additional consuming Recipes
+    /// must not re-resolve these prerequisites through a current catalogue head.
+    pub(super) fn from_snapshot(
+        snapshot: &brassclaw_skills::component_revision::RetainedComponentSnapshot,
+    ) -> Self {
+        Self {
+            references: snapshot
+                .revisions()
+                .iter()
+                .map(|(id, revision)| (*id, revision.reference()))
+                .collect(),
+            dependencies: snapshot
+                .revisions()
+                .iter()
+                .map(|(id, revision)| (*id, revision.draft().dependencies().clone()))
+                .collect(),
+        }
+    }
     pub(super) async fn retain(
         &mut self,
         store: &PgComponentRevisionStore,

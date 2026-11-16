@@ -163,7 +163,7 @@ async fn original_source(runtime: &RebornRuntime) -> (Uuid, Uuid) {
     assert!(
         runtime
             .installed_catalogue
-            .pure_source_review
+            .source_review
             .read_positive_original(&tx, submission, &context(runtime))
             .await
             .unwrap()
@@ -692,15 +692,11 @@ async fn native_original_pure_case_lost_settlement_ack_reuses_original_then_read
             .start()
             .await
             .unwrap();
-        let settled = crate::pure_case_settlement::read(
-            &tx,
-            id,
-            &original_context,
-            &catalogue.pure_source_review,
-        )
-        .await
-        .unwrap()
-        .expect("actual settled original remains readable");
+        let settled =
+            crate::pure_case_settlement::read(&tx, id, &original_context, &catalogue.source_review)
+                .await
+                .unwrap()
+                .expect("actual settled original remains readable");
         assert_eq!(settled.original().id(), id);
         assert_eq!(
             serde_json::from_str::<Value>(settled.observation_bytes()).unwrap(),
@@ -1227,7 +1223,7 @@ async fn native_original_pure_case_provisional_observation_cannot_settle_before_
         &rig.pool,
         id,
         &context(&runtime),
-        &runtime.installed_catalogue.pure_source_review,
+        &runtime.installed_catalogue.source_review,
         store_timeout,
     )
     .await
@@ -1269,7 +1265,7 @@ async fn native_original_pure_case_provisional_observation_cannot_settle_before_
             &rig.pool,
             id,
             &context(&runtime),
-            &runtime.installed_catalogue.pure_source_review,
+            &runtime.installed_catalogue.source_review,
             store_timeout
         )
         .await

@@ -734,3 +734,244 @@ pub(crate) async fn qualify(
         },
     })
 }
+
+/// The additional independently checked functions for joint source inspection.
+/// This is an extension of the same contained qualification owner, never a
+/// replacement or weaker interpretation of the complete historical Pure proof.
+pub(crate) struct CheckedFunctionCheckerClosure {
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
+    deployment: Option<crate::shipped_validation::Components>,
+    contexts: Vec<Arc<Context>>,
+    inherited: Vec<RecordRef>,
+}
+fn function_checker_ids() -> [Uuid; 4] {
+    [
+        "skill-interface",
+        "skill-call-targets",
+        "function-source:collect",
+        "function-source:receipt",
+    ]
+    .map(|part| packaged_component_id(&format!("validator:{part}")))
+}
+impl CheckedFunctionCheckerClosure {
+    pub(crate) fn require_program(
+        &self,
+        program: &RetainedToolProgram,
+        pure: &CheckedPureCheckerClosure,
+    ) -> Result<(), RebornBuildError> {
+        let (_, binding) = crate::validator_inventory_review::require_inventory_binding(program)?;
+        let graph = program.inputs().instruction().snapshot();
+        let mut qualified = BTreeMap::new();
+        if let Some(deployment) = &pure.deployment {
+            for reference in deployment.selected_references(program)? {
+                qualified.insert(reference.uuid, Reference::from(reference));
+            }
+        } else {
+            for context in &pure.contexts {
+                let profile = context
+                    .profile
+                    .as_ref()
+                    .ok_or_else(|| invalid("inherited checker scope missing"))?;
+                if matches!(profile.scope, Scope::Instrument) {
+                    continue;
+                }
+                for reference in profile.components(&context.claim)? {
+                    qualified.insert(reference.uuid, reference);
+                }
+            }
+        }
+        if let Some(deployment) = &self.deployment {
+            deployment.require_program(program)?;
+            for reference in deployment.selected_references(program)? {
+                qualified.insert(reference.uuid, Reference::from(reference));
+            }
+        } else {
+            for context in &self.contexts {
+                let profile = context
+                    .profile
+                    .as_ref()
+                    .ok_or_else(|| invalid("function checker scope missing"))?;
+                for reference in profile.components(&context.claim)? {
+                    qualified.insert(reference.uuid, reference);
+                }
+            }
+        }
+        for revision in graph.revisions().values() {
+            if revision.reference().class_code == 21
+                || binding.combination().contains(&revision.reference())
+            {
+                continue;
+            }
+            if qualified.get(&revision.reference().uuid)
+                != Some(&Reference::from(revision.reference()))
+            {
+                return Err(invalid(
+                    "function workflow contains an unqualified or changed checking revision",
+                ));
+            }
+        }
+        for id in function_checker_ids() {
+            if !graph.revisions().contains_key(&id) {
+                return Err(invalid("complete function checker extension required"));
+            }
+        }
+        Ok(())
+    }
+    pub(crate) async fn proof_references(
+        &self,
+        tx: &Transaction<'_>,
+        pure: &CheckedPureCheckerClosure,
+    ) -> Result<Vec<Value>, RebornBuildError> {
+        let mut inherited = pure.proof_references(tx).await?;
+        if let Some(deployment) = &self.deployment {
+            inherited.push(
+                io::bounded_for(
+                    self.storage.as_ref(),
+                    "function_checkers_shipped",
+                    deployment.id(),
+                    deployment.verify(tx),
+                )
+                .await?,
+            );
+            return Ok(inherited);
+        }
+        let original = inherited
+            .iter()
+            .cloned()
+            .map(serde_json::from_value)
+            .collect::<Result<Vec<RecordRef>, _>>()
+            .map_err(invalid)?;
+        if original != self.inherited || self.contexts.len() != function_checker_ids().len() {
+            return Err(invalid("function checker inherited qualification differs"));
+        }
+        let mut previous: Vec<(&Profile, RecordRef)> = Vec::new();
+        for (context, subject) in self.contexts.iter().zip(function_checker_ids()) {
+            let profile = context
+                .profile
+                .as_ref()
+                .ok_or_else(|| invalid("function checker profile missing"))?;
+            let mut required = self.inherited.clone();
+            required.extend(
+                previous
+                    .iter()
+                    .filter(|(profile, _)| {
+                        context
+                            .profile
+                            .as_ref()
+                            .is_some_and(|p| p.requires_subject(profile.subject))
+                    })
+                    .map(|(_, reference)| reference.clone()),
+            );
+            if profile.subject != subject
+                || context.claim.root.uuid != subject
+                || !matches!(profile.scope, Scope::Function)
+                || profile.prerequisites != required
+            {
+                return Err(invalid(
+                    "function checker exact subject/prerequisites differ",
+                ));
+            }
+            let proof = io::bounded_for(
+                self.storage.as_ref(),
+                "function_checker_original",
+                subject,
+                context.verify_final(tx),
+            )
+            .await?;
+            inherited.push(serde_json::to_value(&proof).map_err(invalid)?);
+            previous.push((profile, proof));
+        }
+        Ok(inherited)
+    }
+}
+
+pub(crate) async fn qualify_function(
+    base: SessionInput,
+    pure: &CheckedPureCheckerClosure,
+) -> Result<CheckedFunctionCheckerClosure, RebornBuildError> {
+    if crate::shipped_validation::transferring() {
+        let mut drafts = crate::builtin_bootstrap::validator_check_drafts()
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(invalid)?;
+        drafts.retain(|draft| function_checker_ids().contains(&draft.uuid()));
+        drafts.extend(
+            brassclaw_skills::validator_components::function_source_drafts(
+                crate::source_inspection_components::usage_ids(
+                    packaged_component_id("validator:inspection:tool"),
+                    true,
+                ),
+                1,
+                serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+                    .map_err(invalid)?,
+            )
+            .map_err(invalid)?
+            .into_iter()
+            .filter(|draft| function_checker_ids().contains(&draft.uuid())),
+        );
+        let deployment = crate::shipped_validation::Components::install(base.pool, drafts).await?;
+        return Ok(CheckedFunctionCheckerClosure {
+            storage: base.storage,
+            deployment: Some(deployment),
+            contexts: Vec::new(),
+            inherited: Vec::new(),
+        });
+    }
+    let identity = function_checker_ids()[0];
+    let mut client = io::bounded_for(
+        base.storage.as_ref(),
+        "function_checker_prerequisites_acquire",
+        identity,
+        io::acquire(&base.pool),
+    )
+    .await?;
+    let tx = io::bounded_for(
+        base.storage.as_ref(),
+        "function_checker_prerequisites_begin",
+        identity,
+        async {
+            client
+                .build_transaction()
+                .isolation_level(IsolationLevel::RepeatableRead)
+                .read_only(true)
+                .start()
+                .await
+                .map_err(invalid)
+        },
+    )
+    .await?;
+    // Each complete original/proof bounds its own SQL. A whole qualification
+    // gallery is not one resource-store exchange.
+    let inherited = pure
+        .proof_references(&tx)
+        .await?
+        .into_iter()
+        .map(serde_json::from_value)
+        .collect::<Result<Vec<RecordRef>, _>>()
+        .map_err(invalid)?;
+    io::bounded_for(
+        base.storage.as_ref(),
+        "function_checker_prerequisites_commit",
+        identity,
+        async { tx.commit().await.map_err(invalid) },
+    )
+    .await?;
+    client.recycle_after_commit();
+    drop(client);
+    let mut specs = cases::function_specs(&base).await?;
+    for spec in &mut specs {
+        let profile = spec
+            .profile
+            .as_mut()
+            .ok_or_else(|| invalid("function checker fixture scope missing"))?;
+        Arc::make_mut(profile).prerequisites = inherited.clone();
+    }
+    let storage = base.storage.clone();
+    let contexts = qualify_specs(base, specs).await?;
+    Ok(CheckedFunctionCheckerClosure {
+        storage,
+        deployment: None,
+        contexts,
+        inherited,
+    })
+}

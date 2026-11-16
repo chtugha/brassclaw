@@ -105,7 +105,7 @@ async fn fresh_and_repeated_start_transfer_shipped_validation_without_qualificat
             .unwrap();
         runtime
             .installed_catalogue
-            .pure_source_review
+            .source_review
             .assert_shipped_readback(&tx)
             .await;
         tx.commit().await.unwrap();

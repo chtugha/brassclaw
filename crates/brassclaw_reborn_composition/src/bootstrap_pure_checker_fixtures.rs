@@ -67,11 +67,18 @@ async fn inventory(
     subject: &Value,
 ) -> Result<(Value, (RecordRef, String)), RebornBuildError> {
     let mut sources = BTreeMap::new();
-    for entry in std::iter::once(&subject["candidate"]).chain(
-        subject["dependencies"]
-            .as_array()
-            .ok_or_else(|| invalid("fixture dependency data absent"))?,
-    ) {
+    for entry in std::iter::once(&subject["candidate"])
+        .chain(
+            subject
+                .get("function_partner")
+                .map(|partner| &partner["component"]),
+        )
+        .chain(
+            subject["dependencies"]
+                .as_array()
+                .ok_or_else(|| invalid("fixture dependency data absent"))?,
+        )
+    {
         if entry["reference"]["class_code"] == 22 {
             sources.insert(
                 entry["reference"]["uuid"]
@@ -87,9 +94,15 @@ async fn inventory(
     }
     // Stable fixture identity excludes today's preparation. The original native
     // inspector output/capture is retained as data before any checker invocation.
-    let identity=json!({"sources":sources,"worker":hex::encode(base.worker.checksum()),"application":base.application_checksum,
+    let mut identity = json!({"sources":sources,"worker":hex::encode(base.worker.checksum()),"application":base.application_checksum,
         "owner":evidence::checksum(include_str!("bootstrap_pure_checker_fixtures.rs")),
-        "gallery":evidence::checksum(include_str!("bootstrap_pure_source_cases.rs"))}).to_string();
+        "gallery":evidence::checksum(include_str!("bootstrap_pure_source_cases.rs"))});
+    if subject["format"] == "installation-validator-subject/2" {
+        identity["function_gallery"] = json!(evidence::checksum(include_str!(
+            "bootstrap_function_source_cases.rs"
+        )));
+    }
+    let identity = identity.to_string();
     let digest = evidence::checksum(&identity);
     let id = Uuid::new_v5(&encoder_id(), identity.as_bytes());
     let encode = |record: &NativeFixtureInventory| -> Result<String, RebornBuildError> {
@@ -326,6 +339,27 @@ fn witness_cases() -> Vec<Case> {
     joint["function_partner"] = json!({"role":"context","component":skill,"base_comparison":null});
     cases.push(case("joint_subject",witness_inputs("subject",&joint),json!({"format":"private-review-reader-observation/1","operation":"subject","return":{
         "native_kind":"tuple2","first_kind":"dict","second_kind":"list","subject":joint,"entries":[joint["candidate"],skill]}})));
+    let installed_joint = json!({"format":"installation-validator-subject/2","subject_id":s["subject_id"],
+        "subject_bytes":s["subject_bytes"],"subject_checksum":s["subject_checksum"],"candidate":joint["candidate"],
+        "function_partner":{"role":"subject","component":skill,"base_comparison":null},
+        "dependencies":joint["dependencies"],"base_comparison":null});
+    cases.push(case("installation_joint_subject",witness_inputs("subject",&installed_joint),json!({"format":"private-review-reader-observation/1","operation":"subject","return":{
+        "native_kind":"tuple2","first_kind":"dict","second_kind":"list","subject":installed_joint,
+        "entries":[installed_joint["candidate"],installed_joint["function_partner"]["component"]]}})));
+    let mut role_confusion = installed_joint.clone();
+    role_confusion["function_partner"]["role"] = json!("context");
+    cases.push(stop(
+        "installation_authored_role",
+        witness_inputs("subject", &role_confusion),
+        "complete function partner required",
+    ));
+    let mut base_confusion = installed_joint;
+    base_confusion["function_partner"]["base_comparison"] = skill.clone();
+    cases.push(stop(
+        "installation_partner_base",
+        witness_inputs("subject", &base_confusion),
+        "installation function subject has no authored comparison base",
+    ));
     let mut wrong_partner = joint.clone();
     wrong_partner["function_partner"]["role"] = json!("approved");
     cases.push(stop(
@@ -993,6 +1027,14 @@ pub(super) async fn specs(base: &SessionInput) -> Result<Vec<Spec>, RebornBuildE
             "rule",
         ),
     ];
+    make_specs(&all, &native_inputs, subjects)
+}
+
+fn make_specs(
+    all: &BTreeMap<Uuid, ComponentRevisionDraft>,
+    native_inputs: &[(RecordRef, String)],
+    subjects: Vec<(ComponentRevisionDraft, Scope, Uuid, Vec<Case>, &str)>,
+) -> Result<Vec<Spec>, RebornBuildError> {
     let mut result = Vec::new();
     for (root, scope, subject, values, kind) in subjects {
         let (suites, expected) = suites(&root, values, kind)?;
@@ -1032,7 +1074,7 @@ pub(super) async fn specs(base: &SessionInput) -> Result<Vec<Spec>, RebornBuildE
             drafts: selected.clone(),
             expected,
             prerequisites: vec![],
-            native_inputs: native_inputs.clone(),
+            native_inputs: native_inputs.to_vec(),
         });
         result.push(Spec {
             candidate: root.clone(),
@@ -1046,4 +1088,136 @@ pub(super) async fn specs(base: &SessionInput) -> Result<Vec<Spec>, RebornBuildE
         });
     }
     Ok(result)
+}
+
+/// Extra pure checking functions used by joint source review. This does not
+/// widen the historical complete standalone-Pure proof domain.
+pub(super) async fn function_specs(base: &SessionInput) -> Result<Vec<Spec>, RebornBuildError> {
+    let mut all = crate::builtin_bootstrap::validator_check_drafts()
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(invalid)?
+        .into_iter()
+        .map(|draft| (draft.uuid(), draft))
+        .collect::<BTreeMap<_, _>>();
+    let encoder = encoder_draft()?;
+    all.insert(encoder.uuid(), encoder);
+    let profile = serde_json::to_value(brassclaw_engine::executor::retained_profile::profile())
+        .map_err(invalid)?;
+    for draft in brassclaw_skills::validator_components::function_source_drafts(
+        crate::source_inspection_components::usage_ids(id("inspection:tool"), true),
+        1,
+        profile.clone(),
+    )
+    .map_err(invalid)?
+    .into_iter()
+    .filter(|draft| draft.class_code() == 22)
+    {
+        all.insert(draft.uuid(), draft);
+    }
+    let mut interface = Vec::new();
+    let mut targets = Vec::new();
+    let mut native_inputs = Vec::new();
+    let mut receipts = Vec::new();
+    for fixture in function_source_cases()? {
+        let subject = fixture.subject_data()?;
+        let (facts, original) = inventory(base, &subject).await?;
+        native_inputs.push(original);
+        interface.push(case(
+            &fixture.name,
+            sources_input(&subject),
+            fixture.rules[3].clone(),
+        ));
+        targets.push(case(
+            &fixture.name,
+            json!({"subject_json":subject.to_string(),"inventory_json":facts.to_string(),
+            "profile":profile,"graph":fixture.rules[2],"interface":fixture.rules[3]}),
+            fixture.rules[4].clone(),
+        ));
+        let mut sources = serde_json::Map::new();
+        for entry in std::iter::once(&subject["candidate"])
+            .chain(std::iter::once(&subject["function_partner"]["component"]))
+            .chain(
+                subject["dependencies"]
+                    .as_array()
+                    .ok_or_else(|| invalid("function fixture dependencies missing"))?,
+            )
+        {
+            if entry["reference"]["class_code"] == 22 {
+                sources.insert(
+                    entry["reference"]["uuid"]
+                        .as_str()
+                        .ok_or_else(|| invalid("function fixture identity missing"))?
+                        .into(),
+                    entry["revision"]["document"]["content"].clone(),
+                );
+            }
+        }
+        let mut checks = fixture.rules.clone();
+        checks.sort_by(|left, right| left["rule_id"].as_str().cmp(&right["rule_id"].as_str()));
+        let errors = checks
+            .iter()
+            .filter(|rule| rule["ok"] == false)
+            .map(|rule| json!({"rule_id":rule["rule_id"],"errors":rule["errors"]}))
+            .collect::<Vec<_>>();
+        let input = json!({"sources":sources,"inventory_json":facts.to_string(),"definitions":fixture.rules[0],
+            "contracts":fixture.rules[1],"graph":fixture.rules[2],"interface":fixture.rules[3],"targets":fixture.rules[4],
+            "checks":checks,"aggregation":{"pass":errors.is_empty(),"errors":errors}});
+        let expected = json!({"format":"validator-step-results/1","results":{"0:1":input["sources"],"0:3":input["inventory_json"],
+            "0:4":input["definitions"],"0:5":input["contracts"],"0:6":input["graph"],"0:7":input["interface"],"0:8":input["targets"],
+            "0:9":input["checks"],"0:10":input["aggregation"]}});
+        receipts.push(case(&fixture.name, input, expected));
+    }
+    let required = brassclaw_skills::validator_components::FUNCTION_SOURCE_RULE_IDS;
+    let mut input = serde_json::Map::new();
+    for name in required {
+        input.insert(name.into(), rule(name, &[]));
+    }
+    let mut checks = input.values().cloned().collect::<Vec<_>>();
+    checks.sort_by(|left, right| left["rule_id"].as_str().cmp(&right["rule_id"].as_str()));
+    let mut wrong = Value::Object(input.clone());
+    wrong["skill_interface"]["rule_id"] = json!("foreign");
+    let mut negative = Value::Object(input.clone());
+    negative["skill_call_targets"] = rule("skill_call_targets", &["observed failure"]);
+    let mut negative_checks = checks.clone();
+    let target = negative_checks
+        .iter_mut()
+        .find(|check| check["rule_id"] == "skill_call_targets")
+        .ok_or_else(|| invalid("function collector oracle missing"))?;
+    *target = rule("skill_call_targets", &["observed failure"]);
+    let subjects = vec![
+        (
+            all[&id("skill-interface")].clone(),
+            Scope::Function,
+            id("skill-interface"),
+            interface,
+            "rule",
+        ),
+        (
+            all[&id("skill-call-targets")].clone(),
+            Scope::Function,
+            id("skill-call-targets"),
+            targets,
+            "rule",
+        ),
+        (
+            all[&id("function-source:collect")].clone(),
+            Scope::Function,
+            id("function-source:collect"),
+            vec![
+                case("complete", Value::Object(input), json!(checks)),
+                case("negative_preserved", negative, json!(negative_checks)),
+                stop("foreign", wrong, "validator_rule_identity_invalid"),
+            ],
+            "checks",
+        ),
+        (
+            all[&id("function-source:receipt")].clone(),
+            Scope::Function,
+            id("function-source:receipt"),
+            receipts,
+            "text",
+        ),
+    ];
+    make_specs(&all, &native_inputs, subjects)
 }

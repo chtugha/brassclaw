@@ -147,6 +147,29 @@ impl Components {
         }
         Ok(())
     }
+
+    /// Select exact already transferred prerequisites used by a different
+    /// consuming workflow. This does not assert that the workflow is complete
+    /// or qualified; its owning checked closure must establish full coverage.
+    pub(super) fn selected_references(
+        &self,
+        program: &brassclaw_engine::memory::retained_tools::RetainedToolProgram,
+    ) -> Result<Vec<brassclaw_skills::association_contract::ComponentRevisionRef>, RebornBuildError>
+    {
+        let graph = program.inputs().instruction().snapshot().revisions();
+        let mut selected = Vec::new();
+        for reference in &self.references {
+            if let Some(revision) = graph.get(&reference.uuid) {
+                if revision.reference() != *reference {
+                    return Err(invalid(
+                        "selected prerequisite differs from shipped validation",
+                    ));
+                }
+                selected.push(*reference);
+            }
+        }
+        Ok(selected)
+    }
 }
 
 impl Transfer {

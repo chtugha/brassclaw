@@ -40,10 +40,12 @@ def _validator_review_subject(inputs):
     if type(subject) is not dict:
         raise ValueError("complete retained validator subject required")
     kind = subject.get("format")
-    if kind == "installation-validator-subject/1":
+    if kind in ["installation-validator-subject/1", "installation-validator-subject/2"]:
         fields = {"format", "subject_id", "subject_bytes", "subject_checksum", "candidate", "dependencies", "base_comparison"}
         if subject.get("base_comparison") is not None:
             raise ValueError("installation subject has no authored comparison base")
+        if kind == "installation-validator-subject/2":
+            fields.add("function_partner")
     elif kind == "component-validator-subject/2":
         fields.add("function_partner")
     elif kind != "component-validator-subject/1":
@@ -54,9 +56,10 @@ def _validator_review_subject(inputs):
     _validator_review_entry(candidate)
     _validator_review_base(subject["base_comparison"], candidate)
     entries = [candidate]
-    if kind == "component-validator-subject/2":
+    if kind in ["component-validator-subject/2", "installation-validator-subject/2"]:
         partner = subject["function_partner"]
-        if type(partner) is not dict or set(partner) != {"role", "component", "base_comparison"} or partner["role"] not in ["changed", "context"]:
+        roles = ["subject"] if kind == "installation-validator-subject/2" else ["changed", "context"]
+        if type(partner) is not dict or set(partner) != {"role", "component", "base_comparison"} or partner["role"] not in roles:
             raise ValueError("complete function partner required")
         other = partner["component"]
         _validator_review_entry(other)
@@ -76,6 +79,8 @@ def _validator_review_subject(inputs):
             raise ValueError("function partner differs from Skill association")
         if partner["role"] == "context" and partner["base_comparison"] is not None:
             raise ValueError("unchanged context is not a changed review root")
+        if kind == "installation-validator-subject/2" and partner["base_comparison"] is not None:
+            raise ValueError("installation function subject has no authored comparison base")
         _validator_review_base(partner["base_comparison"], other)
         entries.append(other)
     entries.extend(subject["dependencies"])

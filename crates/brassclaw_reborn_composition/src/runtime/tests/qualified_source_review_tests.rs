@@ -126,7 +126,7 @@ async fn read_positive(
             .unwrap();
         let checked = runtime
             .installed_catalogue
-            .pure_source_review
+            .source_review
             .read_positive_original(&tx, id, &context)
             .await
             .unwrap();
@@ -161,7 +161,7 @@ async fn read_positive(
                 brassclaw_host_api::UserId::new("i01-foreign-source-actor").unwrap(),
             ));
             assert!(
-                matches!(runtime.installed_catalogue.pure_source_review.read_positive_original(&tx,id,&foreign).await,
+                matches!(runtime.installed_catalogue.source_review.read_positive_original(&tx,id,&foreign).await,
                 Err(crate::RebornBuildError::InvalidConfig { reason }) if reason=="agent loop driver failed: private_delivery_original_invalid")
             );
         }
@@ -1218,4 +1218,142 @@ mod legacy_fixture;
 mod delivery_snapshot_locks {
     use super::*;
     include!("qualified_source_snapshot_lock_tests.rs");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_qualified_joint_source_reaches_existing_worker_without_pure_approval() {
+    let rig = crate::runtime::test_pg::pg_rig().await;
+    let _db = rig.lock_db().await;
+    let home = tempfile::tempdir().unwrap();
+    let (runtime, frame) = start(&rig, home.path()).await;
+    let store = PgComponentRevisionStore::new(rig.pool.clone());
+    let fixtures = crate::bootstrap_validator_approval::function_source_cases().unwrap();
+    for (index, fixture) in fixtures
+        .into_iter()
+        .filter(|fixture| {
+            fixture.name.ends_with("-valid") || fixture.name.ends_with("-foreign_host")
+        })
+        .enumerate()
+    {
+        let candidate = fixture
+            .drafts
+            .iter()
+            .find(|draft| draft.uuid() == fixture.candidate)
+            .unwrap();
+        let partner = fixture
+            .drafts
+            .iter()
+            .find(|draft| draft.uuid() == fixture.partner)
+            .unwrap();
+        let mut dependencies = Vec::new();
+        for draft in fixture
+            .drafts
+            .iter()
+            .filter(|draft| ![fixture.candidate, fixture.partner].contains(&draft.uuid()))
+        {
+            let reference = store.stage(draft, 0).await.unwrap();
+            dependencies.push(json!({"uuid":reference.uuid,"class_code":reference.class_code,"version":reference.version,"checksum":hex::encode(reference.checksum)}));
+        }
+        // Both partner roles use original persisted revisions. Context stays
+        // unchanged and is never turned into a second approval candidate.
+        let function_partner = if (index / 2) % 2 == 0 {
+            json!({"role":"changed","candidate_bytes":partner.exact_bytes(),"base":null,"expected_previous_version":0})
+        } else {
+            let reference = store.stage(partner, 0).await.unwrap();
+            json!({"role":"context","reference":{"uuid":reference.uuid,"class_code":reference.class_code,"version":reference.version,"checksum":hex::encode(reference.checksum)}})
+        };
+        let id = Uuid::new_v4();
+        let mut review = OriginalReview::new(&runtime, &frame, id);
+        let request: SubmitComponentReviewRequest =
+            serde_json::from_value(json!({"submission_id":id,
+            "candidate_bytes":candidate.exact_bytes(),"expected_previous_version":0,"base":null,
+            "dependencies":dependencies,"function_partner":function_partner}))
+            .unwrap();
+        let receipt = submit(&runtime, &frame, request.clone()).await.unwrap();
+        assert!(!receipt.catalogue_activated);
+        let confirmation = review.confirmation(&runtime).await;
+        let positive = fixture.name.ends_with("-valid");
+        assert_eq!(
+            confirmation["checks_succeeded"], positive,
+            "{}",
+            fixture.name
+        );
+        assert_eq!(confirmation["q1_qualified"], false);
+        assert_eq!(confirmation["human_q2"], false);
+        assert_eq!(confirmation["activation"], false);
+        let original = selection_bytes(&runtime, &frame, id).await;
+        let wire: Value = serde_json::from_str(&original).unwrap();
+        assert_eq!(wire["format"], "component-validator-selection/3");
+        assert_eq!(wire["scope"], "qualified-function-source-prerequisite");
+        assert_eq!(
+            wire["qualification"]["profile"],
+            "function_source_structure"
+        );
+        let selection: Value =
+            serde_json::from_str(wire["validator_selection_bytes"].as_str().unwrap()).unwrap();
+        assert!(
+            !selection
+                .to_string()
+                .contains(&candidate.uuid().to_string())
+        );
+        assert!(!selection.to_string().contains(&partner.uuid().to_string()));
+        runtime
+            .installed_catalogue
+            .read_source_submission(id)
+            .await
+            .unwrap();
+        // Same-ID retries resolve the actual original, preserving its parser
+        // result and attempt count instead of re-running either partner.
+        submit(&runtime, &frame, request).await.unwrap();
+        assert_eq!(selection_bytes(&runtime, &frame, id).await, original);
+        let mut client = rig.pool.get().await.unwrap();
+        let tx = client
+            .build_transaction()
+            .isolation_level(tokio_postgres::IsolationLevel::RepeatableRead)
+            .read_only(true)
+            .start()
+            .await
+            .unwrap();
+        let saved = selection::read_preparation_in_transaction(&tx, id, REVISION_LIMITS)
+            .await
+            .unwrap()
+            .unwrap();
+        runtime
+            .installed_catalogue
+            .source_review
+            .require_selection(&tx, &saved)
+            .await
+            .unwrap();
+        let context = brassclaw_turns::private_work::PrivateExecutionContext {
+            tenant_id: runtime.thread_scope.tenant_id.clone(),
+            agent_id: Some(runtime.thread_scope.agent_id.clone()),
+            project_id: runtime.thread_scope.project_id.clone(),
+            actor: Some(brassclaw_turns::TurnActor::new(
+                runtime.actor_user_id.clone(),
+            )),
+        };
+        assert!(
+            runtime
+                .installed_catalogue
+                .source_review
+                .read_positive_original(&tx, id, &context)
+                .await
+                .is_err(),
+            "joint source must never mint a standalone Pure-Case prerequisite"
+        );
+        let rows = tx
+            .query(
+                "SELECT phase,attempt_count FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
+                &[&id],
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].get::<_, String>(0), "answered");
+        assert_eq!(rows[0].get::<_, i16>(1), 1);
+        let approvals:i64=tx.query_one("SELECT count(*) FROM reborn_pure_component_approvals WHERE root_id=$1 OR root_id=$2",&[&fixture.candidate,&fixture.partner]).await.unwrap().get(0);
+        assert_eq!(approvals, 0);
+        tx.commit().await.unwrap();
+    }
+    runtime.shutdown().await.unwrap();
 }
