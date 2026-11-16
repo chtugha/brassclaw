@@ -72,7 +72,7 @@ establish those acceptance gates or cross-platform runtime support.
 | Modal `memory_mib` | Reserved RAM in MiB. |
 | Modal `memory_limit_mib` | Hard RAM ceiling, at least the reservation; exceeding it may terminate the worker. |
 | Modal `jobs` | Concurrent Cargo jobs, separate from the CPU reservation/limit. More jobs do not guarantee more usable parallel work. |
-| Modal `timeout_secs` | Provider-enforced Function lifetime, default 1800 seconds (30 minutes). Valid provider range: 1–86400 seconds. No derived Cargo timer or completion-time subtraction. |
+| Modal `timeout_secs` | Provider-enforced Function lifetime, default 5400 seconds (90 minutes), increased by the operator on 2026-11-16. Valid provider range: 1–86400 seconds. No derived Cargo timer or completion-time subtraction. New calls use the setting; already admitted calls retain their original limit. |
 | Modal `shutdown_grace_secs` | Cleanup grace for a still-running compiler after an actual worker error/interruption, independent of the provider lifetime and native test deadlines. |
 | Modal `nonpreemptible` | Existing explicit interruption/cost tradeoff; the qualified profile retains `true`. |
 
@@ -133,7 +133,9 @@ current worker and is ACTIVE for `apple-cli-build/1`. The ordinary activated
 post-check completed without a qualification bypass, reused all 1,095 Cargo
 artifacts and returned byte-identical CLI/worker/pgvector files. Its four automatic
 and three explicit live observations used the drained transport successfully.
-The 30-minute provider limit is in both actual job requests. Toolchain/SDK are
+The historical 30-minute provider limit is in both actual activation requests;
+the later operator update raises the default for new calls to 90 minutes without
+rewriting those receipts or restarting admitted work. Toolchain/SDK are
 unchanged; native test mode and Linux qualification are not activated by this
 update. See the [exact activation evidence](validation/2026-11-16-modal-worker-activation.md).
 

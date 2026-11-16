@@ -1,6 +1,9 @@
 # Modal build lifetime and remote observation — 2026-11-16
 
-The operator-selected provider Function limit is 1800 seconds (30 minutes).
+The original monitoring qualification used 1800 seconds (30 minutes).
+The operator subsequently raised the default for new calls to 5400 seconds
+(90 minutes); historical requests retain their recorded limits. See the current
+[build environment settings](../build-environments.md#settings-and-commands).
 `timeout_secs` remains the compatible configuration/CLI/request name, but is no
 longer used to construct a Cargo deadline. The worker's threading.Timer and
 120-second deduction are removed. Source preparation, the main compilation and

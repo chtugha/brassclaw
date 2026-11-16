@@ -764,7 +764,7 @@ def main(argv=None):
     execute.add_argument("--memory-mib", type=int, help="Reserved RAM; also sets limit unless --memory-limit-mib is given")
     execute.add_argument("--memory-limit-mib", type=int, help="Hard RAM ceiling in MiB")
     execute.add_argument("--jobs", type=int)
-    execute.add_argument("--timeout-secs", type=int, help="Modal provider Function limit in seconds (default 1800); no derived Cargo timer")
+    execute.add_argument("--timeout-secs", type=int, help="Modal provider Function limit in seconds (default from build-environments.toml); no derived Cargo timer")
     execute.add_argument("--shutdown-grace-secs", type=int)
     execute.add_argument("--nonpreemptible", action=argparse.BooleanOptionalAction, default=None)
     execute.add_argument("cargo", nargs=argparse.REMAINDER)

@@ -66,7 +66,7 @@ class SettingsTests(unittest.TestCase):
         defaults = build_settings.modal_resources(arguments())
         burst = build_settings.modal_resources(arguments(cpu_limit=16, jobs=16))
         self.assertEqual((defaults["cpu"], defaults["cpu_limit"], defaults["jobs"]), (8, 8, 8))
-        self.assertEqual(defaults["timeout_secs"], 1800)
+        self.assertEqual(defaults["timeout_secs"], 5400)
         self.assertEqual((burst["cpu"], burst["cpu_limit"], burst["jobs"]), (8, 16, 16))
 
     def test_explicit_old_shorthand_overrides_both_request_and_limit(self):
@@ -96,7 +96,7 @@ class SettingsTests(unittest.TestCase):
                 build_settings.modal_resources(arguments(**value))
 
     def test_provider_limit_and_interruption_grace_are_independent(self):
-        for timeout in (1, 1800, 86400):
+        for timeout in (1, 1800, 5400, 86400):
             value = build_settings.modal_resources(arguments(timeout_secs=timeout, shutdown_grace_secs=120))
             self.assertEqual((value["timeout_secs"], value["shutdown_grace_secs"]), (timeout, 120))
 
@@ -679,7 +679,7 @@ class ControllerTests(SourceFixture):
         self.assertEqual(resources["cpu"], (8, 16))
         self.assertEqual(resources["memory"], (32768, 32768))
         self.assertEqual((resources["max_containers"], resources["min_containers"]), (1, 0))
-        self.assertEqual(resources["timeout"], 1800)
+        self.assertEqual(resources["timeout"], 5400)
         self.assertEqual(submitted["jobs"], 16)
         self.assertEqual(submitted["lock_scope"], "modal")
         self.assertEqual(submitted["manifest_sha256"], __import__("hashlib").sha256(manifest_bytes).hexdigest())

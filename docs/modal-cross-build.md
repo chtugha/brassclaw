@@ -94,7 +94,7 @@ Apple target has target-prefixed CC/CXX/AR/RANLIB/linker settings.
 ```
 python scripts/modal_build.py --environment brassclaw --platform apple run \
   --qualification --confirmed-modal --estimated-local-secs 1800 \
-  --cpu 8 --memory-mib 32768 --jobs 8 --timeout-secs 1800 \
+  --cpu 8 --memory-mib 32768 --jobs 8 --timeout-secs 5400 \
   --shutdown-grace-secs 30 --nonpreemptible -- \
   cargo build --locked -p brassclaw_reborn_cli --bin brassclaw-reborn \
   --target aarch64-apple-darwin
@@ -255,7 +255,7 @@ fail until actually packaged. Downloads remain in the original job directory,
 reuse matching bytes, recover missing copies and preserve conflicting published
 files/symlinks. They never replace the native Cargo target.
 
-The provider Function limit defaults to 1800 seconds (30 minutes), covering
+The provider Function limit defaults to 5400 seconds (90 minutes), covering
 source preparation, product/test compilation and the normal worker phase. The
 worker has no additional Cargo deadline and deducts no 120-second reserve.
 The controller observes the original container's actual processes and bounded

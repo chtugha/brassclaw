@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   branch names, preserving exact tips and all worktree files. Keep Main and eight
   genuinely dependent branch names active. Add the audited V3.51 multiplatform
   roadmap as future work, after the current CI and unnecessary-code repairs.
-- **Modal build supervision**: Set the provider Function limit to 30 minutes and
+- **Modal build supervision**: Set the provider Function limit to 90 minutes and
   remove the separate Cargo watchdog and deducted completion reserve. Observe
   the original remote process tree and bounded Cargo logs without stopping work;
   retain independent Screen notifications, communication and test deadlines.
@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   current immutable worker on both targets while preserving historical collection.
   Refresh and activate the actual Apple image, verify the ordinary cached path,
   and drain both authenticated exec pipes to fix the SDK's short-output race.
+  New calls use the increased limit; historical 30-minute requests remain
+  unchanged. All 68 local settings/controller checks pass for the new default.
 - **Shipped component startup**: Inherit validation completed before provisioning
   instead of repeating Q1/behavior workflows, creating model fixtures or opening
   installed review requests on fresh startup and restart. Bind transfer records
