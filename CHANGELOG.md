@@ -20,6 +20,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Child cancellation regression**: Check the supervisor's terminal resource-limit
   outcome, including when child Python catches cancellation. Verify that no
   successful child result or second resume can escape the cancellation boundary.
+- **Historical validator evidence**: Refuse the retired structural checker's
+  unperformed Q1, behavior and approval identities, including reuse under a new
+  approval ID. Preserve the immutable records for inspection; canonical shipped
+  validation-transfer identities remain separate.
+- **Native approval custody**: Require the existing native qualification owner's
+  opaque publication object for production Pure-approval writes, retaining its
+  verified database and original parser policy. Raw declarations remain unable
+  to create a qualified decision or open authored approval.
+- **Seed cleanup errors**: Report invalid canonical metadata and serialization
+  failures through startup errors instead of panicking. Reject malformed catalogue
+  child arrays instead of treating them as empty; preserve transactional archival.
 
 - **CI cache and storage checks**: Preserve normal trusted Main compilation caches,
   including partial dependency progress after a failed job. Keep pull requests

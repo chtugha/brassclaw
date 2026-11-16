@@ -483,6 +483,17 @@ storing records alone does not activate or publish anything.
 
 - [ ] **B1-06 — Repair the writer, routes and persistence contract.**
 
+**Bounded native writer repair accepted, 2026-11-16:** production persistence now
+requires the existing native owner's opaque, pool/policy-bound publication
+object, constructed after verified original native close and retained stages.
+Raw declaration persistence is test-only. Retired structural identities are
+refused alongside L013 identities without rewriting audit history. Both strict
+graphs and five actual source/PostgreSQL/native cases pass; see
+[the exact receipt](docs/validation/2026-11-16-b1-native-publication-and-seed-errors.md).
+This closes the controlled native write-entry repair only. The authored guard,
+trusted general behavior/full-Q1/exact-view Q2, coordinated own approvals and
+publication gates below remain open; no universal applicability is inferred.
+
 **Scoped repair accepted, 2026-11-13:** package tip `d41db6c37`, integrated final
 tree `3cd63dfc3`, preserves the authored-path guard, strict evidence formats and
 inactive Q1 subject-binding infrastructure, repairs the revision fixture and

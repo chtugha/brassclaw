@@ -6,6 +6,64 @@ async fn native_boot_retires_only_exact_untouched_seeds_and_preserves_originals(
     let booted = crate::booted_db::run_migrations_and_return_booted_db(rig.pool.clone())
         .await
         .unwrap();
+    // Invalid canonical constructors fail before any retirement transaction;
+    // error handling must never turn malformed metadata into an empty match.
+    struct SerializationFailure;
+    impl serde::Serialize for SerializationFailure {
+        fn serialize<S: serde::Serializer>(&self, _: S) -> Result<S::Ok, S::Error> {
+            Err(serde::ser::Error::custom(
+                "injected constructor serialization failure",
+            ))
+        }
+    }
+    scope(async {
+        expect("reborn_tools", &SerializationFailure);
+        assert_eq!(
+            retire(&rig.pool).await.unwrap_err(),
+            "canonical seed definition could not be serialized"
+        );
+    })
+    .await;
+    scope(async {
+        expect("reborn_tools", &json!([]));
+        assert_eq!(
+            retire(&rig.pool).await.unwrap_err(),
+            "canonical seed definition has invalid scope or name"
+        );
+    })
+    .await;
+    scope(async {
+        expect(
+            "reborn_extension_catalogues",
+            &json!({"tenant_id":"test", "user_id":"test",
+            "agent_id":"test", "project_id":"test", "name":"test", "child_component_ids":null}),
+        );
+        children("test", "test", &[Uuid::new_v4()]);
+        assert_eq!(
+            retire(&rig.pool).await.unwrap_err(),
+            "canonical seed catalogue children are not an array"
+        );
+    })
+    .await;
+    assert_eq!(
+        retire(&rig.pool).await.unwrap_err(),
+        "seed cleanup requires the canonical boot scope"
+    );
+    assert!(!canonical_matches(
+        "reborn_tools",
+        &json!({"class_code":0,"validation_status":"pending"}),
+        &json!([])
+    ));
+    assert!(!canonical_matches(
+        "reborn_extension_catalogues",
+        &json!({"class_code":23,"validation_status":"pending","child_component_ids":null}),
+        &json!({"child_component_ids":[]})
+    ));
+    assert!(!canonical_matches(
+        "reborn_extension_catalogues",
+        &json!({"class_code":23,"validation_status":"pending","child_component_ids":[]}),
+        &json!({"child_component_ids":null})
+    ));
     let tenant = "retire-seed-test";
     crate::component_boot::initialize_runtime_components(&booted, tenant)
         .await

@@ -12,6 +12,7 @@ use uuid::Uuid;
 struct Package {
     definitions: BTreeMap<(String, String), Value>,
     conflict: bool,
+    invalid: Option<&'static str>,
 }
 tokio::task_local! { static PACKAGE: RefCell<Package>; }
 
@@ -21,7 +22,25 @@ pub(crate) async fn scope<T>(work: impl Future<Output = T>) -> T {
 
 /// Only canonical constructors call this inside shared component boot.
 pub(crate) fn expect(table: &str, definition: &impl Serialize) {
-    let value = serde_json::to_value(definition).expect("seed definitions serialize");
+    let value = match serde_json::to_value(definition) {
+        Ok(value) => value,
+        Err(_) => {
+            let _ = PACKAGE.try_with(|p| {
+                p.borrow_mut().invalid = Some("canonical seed definition could not be serialized");
+            });
+            return;
+        }
+    };
+    if !value.is_object()
+        || ["tenant_id", "user_id", "agent_id", "project_id", "name"]
+            .iter()
+            .any(|key| value.get(*key).and_then(Value::as_str).is_none())
+    {
+        let _ = PACKAGE.try_with(|p| {
+            p.borrow_mut().invalid = Some("canonical seed definition has invalid scope or name");
+        });
+        return;
+    }
     let key = format!(
         "{}",
         json!([
@@ -49,14 +68,20 @@ pub(crate) fn expect(table: &str, definition: &impl Serialize) {
 /// because the existing append SQL does not preserve array ordering.
 pub(crate) fn children(tenant: &str, name: &str, ids: &[Uuid]) {
     let _ = PACKAGE.try_with(|state| {
-        for ((table, _), value) in &mut state.borrow_mut().definitions {
+        let mut state = state.borrow_mut();
+        let mut invalid = false;
+        for ((table, _), value) in &mut state.definitions {
             if table == "reborn_extension_catalogues"
                 && value["tenant_id"] == tenant
                 && value["name"] == name
             {
-                let array = value["child_component_ids"]
-                    .as_array_mut()
-                    .expect("catalogue children");
+                let Some(array) = value
+                    .get_mut("child_component_ids")
+                    .and_then(Value::as_array_mut)
+                else {
+                    invalid = true;
+                    continue;
+                };
                 for id in ids {
                     let id = json!(id);
                     if !array.contains(&id) {
@@ -64,6 +89,9 @@ pub(crate) fn children(tenant: &str, name: &str, ids: &[Uuid]) {
                     }
                 }
             }
+        }
+        if invalid {
+            state.invalid = Some("canonical seed catalogue children are not an array");
         }
     });
 }
@@ -90,18 +118,23 @@ const GENERATED: &[&str] = &[
 ];
 
 fn canonical_matches(table: &str, actual: &Value, expected: &Value) -> bool {
+    let Some(expected_object) = expected.as_object() else {
+        return false;
+    };
     if !matches!(
         actual["validation_status"].as_str(),
         Some("validated" | "pending")
     ) {
         return false;
     }
-    let mut defaults = json!({
+    let Value::Object(mut defaults) = json!({
         "dependency_registry":null,"prior_knowledge_content":null,"override_prompt_creation":false,
         "similarity_parent_id":null,"replaces_id":null,"parent_version":null,
         "content_checksum":null,"review_feedback":null,"review_attempts":0,"rejected_at":null,
         "validation_errors":[],"queue_code":null
-    });
+    }) else {
+        return false;
+    };
     let class = match actual["class_code"].as_i64() {
         Some(c) => c,
         None => return false,
@@ -122,25 +155,29 @@ fn canonical_matches(table: &str, actual: &Value, expected: &Value) -> bool {
     if class != expected_class {
         return false;
     }
-    defaults["class_code"] = json!(class);
+    defaults.insert("class_code".into(), json!(class));
     if matches!(class, 1..=3 | 10 | 50) {
-        defaults.as_object_mut().unwrap().extend(json!({
+        let Value::Object(skill_defaults) = json!({
             "compatibility":"","license":"","allowed_tools":[],"version":"0.0.0",
             "keywords":[],"exclude_keywords":[],"patterns":[],"tags":[],"max_context_tokens":2500,
             "setup_marker":null,"required_binaries":[],"required_env":[],"required_config":[]
-        }).as_object().unwrap().clone());
+        }) else {
+            return false;
+        };
+        defaults.extend(skill_defaults);
     }
     if class == 21 {
-        defaults["status"] = json!("active");
+        defaults.insert("status".into(), json!("active"));
     }
     if class == 16 {
-        defaults.as_object_mut().unwrap().extend(json!({"preconditions":null,"error_handling":null,
-            "timeout_secs":60,"param_schema":null,"param_template":null,"override_prompt_creation":true}).as_object().unwrap().clone());
+        let Value::Object(action_defaults) = json!({"preconditions":null,"error_handling":null,
+            "timeout_secs":60,"param_schema":null,"param_template":null,"override_prompt_creation":true})
+        else {
+            return false;
+        };
+        defaults.extend(action_defaults);
     }
-    defaults
-        .as_object_mut()
-        .unwrap()
-        .extend(expected.as_object().unwrap().clone());
+    defaults.extend(expected_object.clone());
     let Some(actual) = actual.as_object() else {
         return false;
     };
@@ -152,8 +189,13 @@ fn canonical_matches(table: &str, actual: &Value, expected: &Value) -> bool {
             return false;
         };
         if field == "child_component_ids" {
-            let mut a = value.as_array().cloned().unwrap_or_default();
-            let mut b = expected.as_array().cloned().unwrap_or_default();
+            let (Some(actual_children), Some(expected_children)) =
+                (value.as_array(), expected.as_array())
+            else {
+                return false;
+            };
+            let mut a = actual_children.clone();
+            let mut b = expected_children.clone();
             a.sort_by_key(Value::to_string);
             b.sort_by_key(Value::to_string);
             if a != b {
@@ -163,20 +205,21 @@ fn canonical_matches(table: &str, actual: &Value, expected: &Value) -> bool {
             return false;
         }
     }
-    expected
-        .as_object()
-        .unwrap()
-        .keys()
-        .all(|k| actual.contains_key(k))
+    expected_object.keys().all(|k| actual.contains_key(k))
 }
 
 /// A single transaction archives before removal; any failure rolls back all
 /// retirements. Queue-key, queue-row and component locks match author/Q2 order.
 pub(crate) async fn retire(pool: &PgPool) -> Result<u64, String> {
-    let (definitions, conflict) = PACKAGE.with(|p| {
-        let p = p.borrow();
-        (p.definitions.clone(), p.conflict)
-    });
+    let (definitions, conflict, invalid) = PACKAGE
+        .try_with(|p| {
+            let p = p.borrow();
+            (p.definitions.clone(), p.conflict, p.invalid)
+        })
+        .map_err(|_| "seed cleanup requires the canonical boot scope".to_owned())?;
+    if let Some(reason) = invalid {
+        return Err(reason.into());
+    }
     if conflict {
         return Err("conflicting canonical seed definitions in cleanup".into());
     }
@@ -227,11 +270,17 @@ async fn retire_one(
     id: Uuid,
     expected: &Value,
 ) -> Result<bool, String> {
+    let scope_field = |name| {
+        expected
+            .get(name)
+            .and_then(Value::as_str)
+            .ok_or_else(|| "canonical seed definition has invalid scope".to_owned())
+    };
     let scope = ComponentScope {
-        tenant_id: expected["tenant_id"].as_str().unwrap().into(),
-        user_id: expected["user_id"].as_str().unwrap().into(),
-        agent_id: expected["agent_id"].as_str().unwrap().into(),
-        project_id: expected["project_id"].as_str().unwrap().into(),
+        tenant_id: scope_field("tenant_id")?.into(),
+        user_id: scope_field("user_id")?.into(),
+        agent_id: scope_field("agent_id")?.into(),
+        project_id: scope_field("project_id")?.into(),
     };
     crate::validation_queue::ValidationQueueStore::lock_queue_key(tx, &scope, id)
         .await

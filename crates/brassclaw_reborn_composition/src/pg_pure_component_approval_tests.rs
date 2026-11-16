@@ -55,6 +55,47 @@ fn retired_l013_identities_cannot_be_reused_as_approval_or_evidence() {
     require_nonretired_pure_references(root, [Uuid::new_v4()]).unwrap();
 }
 
+#[test]
+fn retired_structural_stages_cannot_be_borrowed_for_a_new_decision() {
+    let root = Uuid::parse_str("12345678-1234-5678-1234-567812345678").unwrap();
+    // Independent UUIDv5 golden values from historical producer e4552e558:
+    // all eight class domains, each Q1, behavior and approval identity.
+    for id in [
+        "0f17c813-9d93-57b7-b7a3-a06aa8e38597",
+        "c6e2987d-4540-588b-acc5-c39e8d797ea1",
+        "3be8044f-3d4e-59ad-84e4-b7b99a063b83",
+        "978117cf-beed-54a1-89cd-02b76cf0e08f",
+        "2726fd87-123c-5fb9-aa30-3fd3bdefe90a",
+        "e804cd87-8d6d-5de5-8e39-ae280a85afd8",
+        "423d64bd-079f-5c61-89ca-9cd73eabbb50",
+        "0d4036c4-d920-50eb-8a5b-185b9c837192",
+        "30e76220-5cc5-5819-94ef-048ac21063e1",
+        "99cd8908-d2a7-5d68-994d-2cdc121fe781",
+        "8e2a08cd-3d42-55dd-8a01-40919998df97",
+        "f47afe5e-68d0-5b21-9d91-7870d1fb6fb8",
+        "9797a67c-3d7b-54e5-8e43-10e0927986b8",
+        "ab634bd5-f110-5495-9940-42856e38270e",
+        "3e801391-7e11-56d6-9989-3ae0e69dbcfa",
+        "7e5deb85-18a3-52fc-b182-d29c09471ef3",
+        "481c9296-c5a4-5d38-89ab-07a93253dcfe",
+        "d67ac2b8-74ff-53f3-ba5d-88795acc846d",
+        "4f23e97c-ccf4-5fc0-a3e8-fb6b041be17d",
+        "edc5f72f-b915-57f0-8d4c-aa44127444f6",
+        "c2d874bc-c523-5c00-a9c9-09f282363897",
+        "3af18c9d-1f90-5c1f-ac0b-cf26946ee12e",
+        "6a4011be-4b22-547f-8914-69cef4671fd0",
+        "944ca4c7-49a5-5019-8efd-3675222386e7",
+    ] {
+        let id = Uuid::parse_str(id).unwrap();
+        assert!(matches!(
+            require_nonretired_pure_references(root, [Uuid::new_v4(), id]),
+            Err(PureApprovalError::Invalid(reason)) if reason.contains("retired structural")
+        ));
+        require_nonretired_pure_references(Uuid::new_v4(), [id]).unwrap();
+    }
+    require_nonretired_pure_references(root, [Uuid::new_v4()]).unwrap();
+}
+
 #[tokio::test]
 async fn retired_l013_history_survives_boot_without_becoming_a_decision() {
     let rig = crate::runtime::test_pg::pg_rig().await;

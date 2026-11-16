@@ -172,6 +172,7 @@ async fn verify(pool: &PgPool, proof: &CheckedStructuralHelpers) {
     proof.verify_in_transaction(&tx).await.unwrap();
     tx.commit().await.unwrap();
 }
+#[cfg(test)]
 async fn retain_and_reject_fabricated_legacy(context: &Context) {
     // Deliberate historical audit fixture, not a behavioral oracle. It claims
     // the exact current root yet contains only the old unperformed check list.
@@ -196,9 +197,44 @@ async fn retain_and_reject_fabricated_legacy(context: &Context) {
     }
     let bytes=json!({"format":"pure-component-approval/1","approval_id":approval,"root":component,"components":[component],"validation_mode":"system_seed","q1_ref":q1,"q2_ref":null,"behavioral_refs":[behavior]}).to_string();
     let declaration = PureComponentApprovalDeclaration::from_json(&bytes, REVISION_LIMITS).unwrap();
-    crate::pg_pure_component_approval::record_pure_component_approval(&context.pool, &declaration)
+    assert!(matches!(
+        crate::pg_pure_component_approval::record_pure_component_approval(&context.pool, &declaration).await,
+        Err(crate::pg_pure_component_approval::PureApprovalError::Invalid(reason))
+            if reason.contains("retired structural")
+    ));
+    // Preserve a deliberately invalid historical row through raw audit storage;
+    // a positive production writer must never manufacture this fixture.
+    let root = declaration.root();
+    let version = i64::try_from(root.version).unwrap();
+    let checksum = hex::encode(root.checksum);
+    context.pool.get().await.unwrap().execute(
+        "INSERT INTO reborn_pure_component_approvals
+         (approval_id,root_id,root_version,root_checksum,validation_mode,q1_ref,q2_ref,approval_bytes,checksum)
+         VALUES($1,$2,$3,$4,'system_seed',$5,NULL,$6,$7)",
+        &[&approval,&root.uuid,&version,&checksum,&q1,&bytes,&evidence::checksum(&bytes)],
+    ).await.unwrap();
+    context
+        .pool
+        .get()
+        .await
+        .unwrap()
+        .execute(
+            "INSERT INTO reborn_pure_component_approval_closure
+         (approval_id,component_id,component_version,component_checksum) VALUES($1,$2,$3,$4)",
+            &[&approval, &root.uuid, &version, &checksum],
+        )
         .await
         .unwrap();
+    assert!(matches!(
+        crate::pg_pure_component_approval::resolve_existing_pure_component_approval(&context.pool, &bytes).await,
+        Err(crate::pg_pure_component_approval::PureApprovalError::Invalid(reason))
+            if reason.contains("retired structural")
+    ));
+    assert!(matches!(
+        crate::pg_pure_component_approval::read_pure_component_approval_root(&context.pool, approval).await,
+        Err(crate::pg_pure_component_approval::PureApprovalError::Invalid(reason))
+            if reason.contains("retired structural")
+    ));
     let mut client = context.pool.get().await.unwrap();
     let tx = client
         .build_transaction()

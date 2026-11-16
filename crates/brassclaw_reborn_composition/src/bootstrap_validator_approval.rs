@@ -247,6 +247,29 @@ struct Context {
     programs: BTreeMap<String, Arc<RetainedToolProgram>>,
     record_policy: Option<shipped_policy::OriginalPolicy>,
 }
+
+/// Publication of this owner's actually verified native qualification only.
+/// No public constructor, Clone or deserializer can turn evidence-shaped data
+/// into this boundary. It carries its own pool and original parser policy;
+/// neither a caller-selected database nor a changed current policy can replace
+/// that context. This is not component activation or a Tool permission.
+pub(crate) struct NativeApprovalPublication<'a> {
+    pool: &'a PgPool,
+    declaration: PureComponentApprovalDeclaration,
+    policy: Option<&'a OriginalShippedR1Policy>,
+}
+impl NativeApprovalPublication<'_> {
+    pub(crate) fn parts(
+        &self,
+    ) -> (
+        &PgPool,
+        &PureComponentApprovalDeclaration,
+        Option<&OriginalShippedR1Policy>,
+    ) {
+        (self.pool, &self.declaration, self.policy)
+    }
+}
+
 impl Context {
     fn record_limits(&self) -> ContractLimits {
         self.record_policy
@@ -1566,32 +1589,31 @@ async fn qualify_specs_traced(
         let declaration =
             PureComponentApprovalDeclaration::from_json(&approval, context.record_limits())
                 .map_err(invalid)?;
+        // Sole production constructor: qualified_traced has verified the exact
+        // original graph/source and every native close, its read transaction
+        // committed, both stage records were retained, and instrument-only
+        // profiles returned above. Serialization alone never creates this proof.
+        let publication = NativeApprovalPublication {
+            pool: context.pool.as_ref(),
+            declaration,
+            policy: context.record_policy.as_ref(),
+        };
         let write = io::bounded_for(
             storage.as_ref(),
             "checker_approval_write",
             context.claim.root.uuid,
             async {
-                match &context.record_policy {
-                    Some(policy) => {
-                        crate::pg_pure_component_approval::record_original_shipped_approval(
-                            &pool,
-                            &declaration,
-                            policy,
-                        )
-                        .await
-                        .map_err(|error| {
+                crate::pg_pure_component_approval::record_qualified_shipped_approval(&publication)
+                    .await
+                    .map_err(|error| {
+                        if context.record_policy.is_some() {
                             RebornBuildError::OriginalShippedPure {
                                 source: Box::new(error),
                             }
-                        })
-                    }
-                    None => crate::pg_pure_component_approval::record_pure_component_approval(
-                        &pool,
-                        &declaration,
-                    )
-                    .await
-                    .map_err(invalid),
-                }
+                        } else {
+                            invalid(error)
+                        }
+                    })
             },
         )
         .await;

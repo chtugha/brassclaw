@@ -12,7 +12,9 @@
 //! remain separate work; storing a record activates nothing and grants no Tool
 //! permission.
 //!
-//! No public success-write API: only `record_pure_component_approval` may insert.
+//! No public success-write API. Production persistence requires the native
+//! qualification owner's opaque `NativeApprovalPublication`; raw declarations
+//! exercise mechanical storage checks only in the test configuration.
 //!
 //! ## Evidence format support
 //!
@@ -126,6 +128,12 @@ fn db(error: tokio_postgres::Error) -> PureApprovalError {
 // involved. New qualification must use the actual native owner's exact source,
 // artifacts and execution; merely passing this rejection is not qualification.
 const RETIRED_L013_NAMESPACE: Uuid = Uuid::from_u128(0x6c01_3101_9e2f_4a88_b003_1f9a_2c7b_4d5e);
+// Historical producer e4552e558 used these exact class/PC identity domains
+// without executing its listed checks. This is a rejection inventory, not
+// today's validator class catalogue or a source of trusted seed provenance.
+const RETIRED_STRUCTURAL_NAMESPACE: Uuid =
+    Uuid::from_u128(0xb8a7_3c5f_1d92_4e6a_9f30_2c84_e7d1_5b02);
+const RETIRED_STRUCTURAL_CLASSES: &[i16] = &[0, 1, 2, 3, 13, 21, 22, 23];
 const RETIRED_L013_PURE_NAMES: &[&str] = &[
     "pc-exec-grep-invert",
     "pc-filter-entries-by-type",
@@ -167,10 +175,27 @@ fn require_nonretired_pure_references(
             ["q1", "behavior", "approval"].map(|stage| Uuid::new_v5(&identity, stage.as_bytes()))
         })
         .collect();
-    if references.into_iter().any(|id| retired.contains(&id)) {
-        return Err(invalid(
-            "retired L013 placeholder records are audit data, not qualified pure approval",
-        ));
+    let structural: BTreeSet<_> = RETIRED_STRUCTURAL_CLASSES
+        .iter()
+        .flat_map(|class| {
+            let identity = Uuid::new_v5(
+                &RETIRED_STRUCTURAL_NAMESPACE,
+                format!("validator:class-{class}:{root}").as_bytes(),
+            );
+            ["q1", "behavior", "approval"].map(|stage| Uuid::new_v5(&identity, stage.as_bytes()))
+        })
+        .collect();
+    for id in references {
+        if retired.contains(&id) {
+            return Err(invalid(
+                "retired L013 placeholder records are audit data, not qualified pure approval",
+            ));
+        }
+        if structural.contains(&id) {
+            return Err(invalid(
+                "retired structural placeholder records are audit data, not qualified pure approval",
+            ));
+        }
     }
     Ok(())
 }
@@ -218,6 +243,7 @@ enum EvidenceFormat {
 /// - These mechanical checks do not authenticate a behavioral execution or
 ///   human interaction by themselves. Only the internal owning producer writes;
 ///   public declarations cannot create approval or select provenance.
+#[cfg(test)]
 pub(crate) async fn record_pure_component_approval(
     pool: &PgPool,
     declaration: &PureComponentApprovalDeclaration,
@@ -225,16 +251,16 @@ pub(crate) async fn record_pure_component_approval(
     record_approval(pool, declaration, None).await
 }
 
-/// Mechanical persistence for the closed installation owner only. This parser
-/// policy grants no qualification: the owning caller must first verify the
-/// actual source, all observations, original native close and whole custody
-/// graph. Authored production remains closed in the common writer below.
-pub(crate) async fn record_original_shipped_approval(
-    pool: &PgPool,
-    declaration: &PureComponentApprovalDeclaration,
-    policy: &crate::bootstrap_validator_approval::OriginalShippedR1Policy,
+/// The existing native owner constructs this token only after successful
+/// original qualification and stage retention. Raw caller JSON cannot choose
+/// its pool, qualification context or captured record policy. The common writer
+/// still verifies every record and complete closure; authored production stays
+/// closed until its separately qualified producers are connected.
+pub(crate) async fn record_qualified_shipped_approval(
+    publication: &crate::bootstrap_validator_approval::NativeApprovalPublication<'_>,
 ) -> Result<Uuid, PureApprovalError> {
-    record_approval(pool, declaration, Some(policy)).await
+    let (pool, declaration, policy) = publication.parts();
+    record_approval(pool, declaration, policy).await
 }
 async fn record_approval(
     pool: &PgPool,
