@@ -699,8 +699,10 @@ pub(super) async fn assert_global_snapshot_submission(
         .0
         .private_completion_waiter(TurnRunId::from_uuid(id))
         .unwrap();
-    // Lose this public call's actual reservation COMMIT acknowledgement.
-    // Retry must recover the same stored definition/run, without new capture.
+    // Lose this public call's actual reservation COMMIT acknowledgement. Its
+    // bounded readback must resolve the same prepared original and wake its
+    // dispatcher. Admission/execution is asynchronous; subsequent retries
+    // cannot recapture or replay it.
     {
         use crate::prefix_job_definitions::Store;
         transport.arm(1).unwrap();
@@ -713,12 +715,10 @@ pub(super) async fn assert_global_snapshot_submission(
                 caller.clone(),
             )
             .await;
-        assert!(matches!(
-            reserved,
-            Err(RebornRuntimeError::PrefixJob(
-                brassclaw_product_workflow::InterceptorConfigServiceError::Unavailable
-            ))
-        ));
+        assert_eq!(
+            reserved.expect("lost-ACK readback resolves the original job"),
+            id
+        );
         assert_eq!(
             transport.cut_count(),
             1,
@@ -743,27 +743,19 @@ pub(super) async fn assert_global_snapshot_submission(
             ));
         }
         let client = pool.get().await.unwrap();
+        // The reservation transaction retained exactly one original Work.
+        // The wake above is not a synchronous Monty admission acknowledgement;
+        // verify the single actual admission after its correlated completion.
         assert_eq!(
             client
                 .query_one(
-                    "SELECT count(*) FROM brassclaw_monty_task_admissions WHERE run_id=$1",
+                    "SELECT count(*) FROM brassclaw_turns WHERE work_id=$1",
                     &[&id]
                 )
                 .await
                 .unwrap()
                 .get::<_, i64>(0),
-            0
-        );
-        assert_eq!(
-            client
-                .query_one(
-                    "SELECT count(*) FROM brassclaw_monty_tool_invocations WHERE run_id=$1",
-                    &[&id]
-                )
-                .await
-                .unwrap()
-                .get::<_, i64>(0),
-            0
+            1
         );
     }
     assert_eq!(

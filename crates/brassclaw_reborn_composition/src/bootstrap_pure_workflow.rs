@@ -17,6 +17,7 @@ pub(crate) struct CheckedPureSourceWorkflow {
     report: String,
 }
 struct ShippedWorkflow {
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     program: Arc<RetainedToolProgram>,
     parser: Arc<QualifiedSourceInventoryUsage>,
     transfer: crate::shipped_validation::Transfer,
@@ -351,11 +352,19 @@ impl CheckedPureSourceWorkflow {
         checkers: &CheckedPureCheckerClosure,
     ) -> Result<Vec<Value>, RebornBuildError> {
         if let Some(deployment) = &self.deployment {
-            deployment.transfer.require(tx).await?;
-            deployment.parser.proof.verify_in_transaction(tx).await?;
-            crate::shipped_validation::verify_instruction(
-                tx,
-                deployment.program.inputs().instruction(),
+            io::bounded_for(
+                deployment.storage.as_ref(),
+                "pure_workflow_shipped_original",
+                deployment.transfer.id(),
+                async {
+                    deployment.transfer.require(tx).await?;
+                    deployment.parser.proof.verify_in_transaction(tx).await?;
+                    crate::shipped_validation::verify_instruction(
+                        tx,
+                        deployment.program.inputs().instruction(),
+                    )
+                    .await
+                },
             )
             .await?;
             checkers.require_program(&deployment.program)?;
@@ -386,23 +395,42 @@ impl CheckedPureSourceWorkflow {
             {
                 return Err(invalid("pure workflow fixture subject/oracle differs"));
             }
-            case.verify(tx, &prerequisites).await?;
+            io::bounded_for(
+                case.context.storage.as_ref(),
+                "pure_workflow_original_case",
+                case.context.subject.candidate().uuid,
+                case.verify(tx, &prerequisites),
+            )
+            .await?;
         }
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("workflow_report", None);
+        let first = self
+            .cases
+            .first()
+            .ok_or_else(|| invalid("qualified W missing"))?;
         let claim_id = self.claim_id()?;
-        let claim = evidence::read_evidence(tx, claim_id)
-            .await?
-            .ok_or_else(|| invalid("whole workflow original claim missing"))?;
-        let report = evidence::read_evidence(tx, self.report_id()?)
-            .await?
-            .ok_or_else(|| invalid("whole workflow original report missing"))?;
-        if claim != self.record(claim_id, false, self.claim_value()?)?
-            || report != self.report
-            || report != self.record(self.report_id()?, true, self.report_value()?)?
-        {
-            return Err(invalid("whole workflow original qualification differs"));
-        }
+        io::bounded_for(
+            first.context.storage.as_ref(),
+            "pure_workflow_original_report",
+            claim_id,
+            async {
+                let claim = evidence::read_evidence(tx, claim_id)
+                    .await?
+                    .ok_or_else(|| invalid("whole workflow original claim missing"))?;
+                let report = evidence::read_evidence(tx, self.report_id()?)
+                    .await?
+                    .ok_or_else(|| invalid("whole workflow original report missing"))?;
+                if claim != self.record(claim_id, false, self.claim_value()?)?
+                    || report != self.report
+                    || report != self.record(self.report_id()?, true, self.report_value()?)?
+                {
+                    return Err(invalid("whole workflow original qualification differs"));
+                }
+                Ok(())
+            },
+        )
+        .await?;
         Ok(prerequisites)
     }
 }
@@ -414,6 +442,7 @@ pub(crate) async fn qualify_pure_workflow(
 ) -> Result<CheckedPureSourceWorkflow, RebornBuildError> {
     if let InstallationSourceObservations::Shipped {
         pool,
+        storage,
         program,
         parser,
     } = observations
@@ -428,6 +457,7 @@ pub(crate) async fn qualify_pure_workflow(
             cases: Vec::new(),
             report: String::new(),
             deployment: Some(ShippedWorkflow {
+                storage: storage.clone(),
                 program: program.clone(),
                 parser: parser.clone(),
                 transfer,
@@ -447,28 +477,50 @@ pub(crate) async fn qualify_pure_workflow(
     checkers.require_program(&base.program)?;
     // Complete the owner's two-phase custody before acquiring W's RR client.
     base.parser.proof.verify(&base.pool).await?;
-    let prerequisites = io::bounded_for(
+    // Keep one coherent RR snapshot, but bound its independent complete
+    // original checks individually. Their combined gallery is not one store
+    // exchange and must not inherit a single resource-store I/O deadline.
+    let identity = base.program.inputs().instruction().recipe().uuid;
+    let mut client = io::bounded_for(
         base.storage.as_ref(),
-        "pure_workflow_prerequisites",
-        base.program.inputs().instruction().recipe().uuid,
+        "pure_workflow_snapshot_acquire",
+        identity,
+        io::acquire(&base.pool),
+    )
+    .await?;
+    let tx = io::bounded_for(
+        base.storage.as_ref(),
+        "pure_workflow_snapshot_begin",
+        identity,
         async {
-            let mut client = io::acquire(&base.pool).await?;
-            let tx = client
+            client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
                 .read_only(true)
                 .start()
                 .await
-                .map_err(invalid)?;
-            observations.verify_in_transaction(&tx).await?;
-            let proofs = checkers.proof_references(&tx).await?;
-            base.parser.proof.verify_in_transaction(&tx).await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(proofs)
+                .map_err(invalid)
         },
     )
     .await?;
+    observations.verify_in_transaction(&tx).await?;
+    let prerequisites = checkers.proof_references(&tx).await?;
+    io::bounded_for(
+        base.storage.as_ref(),
+        "pure_workflow_parser_original",
+        identity,
+        base.parser.proof.verify_in_transaction(&tx),
+    )
+    .await?;
+    io::bounded_for(
+        base.storage.as_ref(),
+        "pure_workflow_snapshot_commit",
+        identity,
+        async { tx.commit().await.map_err(invalid) },
+    )
+    .await?;
+    client.recycle_after_commit();
+    drop(client);
     let revisions = PgComponentRevisionStore::new(base.pool.clone());
     let mut cases = Vec::new();
     for fixture in crate::bootstrap_validator_approval::pure_source_cases()? {

@@ -51,6 +51,7 @@ use uuid::Uuid;
 
 use crate::{
     RebornBuildError,
+    bootstrap_evidence::io,
     global_recipe_ports::{MontyIntentSelection, MontyTaskCatalogue, SelectedMontyRecipe},
     global_task_factory::MontyCatalogueProvider,
     monty_kernel::{MontyKernelSnapshot, PgSelectedToolPolicy},
@@ -1068,70 +1069,65 @@ impl InstalledMontyCatalogue {
             .to_string();
         let generation = id(&hex::encode(Sha256::digest(generation_bytes.as_bytes())));
         let checksum = hex::encode(Sha256::digest(generation_bytes.as_bytes()));
-        let mut client = crate::bootstrap_evidence::io::EvidenceClient::from_client(
-            pool.get()
-                .await
-                .map_err(|_| invalid("installation catalogue database unavailable"))?,
-        );
-        let tx = client
-            .build_transaction()
-            .isolation_level(IsolationLevel::RepeatableRead)
-            .start()
-            .await
-            .map_err(|_| invalid("installation catalogue transaction failed"))?;
-        tx.execute("INSERT INTO brassclaw_monty_boot_catalogues(catalogue_id,catalogue_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(catalogue_id) DO NOTHING",
-            &[&generation, &generation_bytes, &checksum]).await.map_err(|_| invalid("installation catalogue retention failed"))?;
-        let actual = tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&generation])
-            .await.map_err(|_| invalid("installation catalogue read failed"))?;
+        let mut client = io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_catalogue_acquire",
+            generation,
+            io::acquire(&pool),
+        )
+        .await?;
+        let tx = io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_catalogue_begin",
+            generation,
+            async {
+                client
+                    .build_transaction()
+                    .isolation_level(IsolationLevel::RepeatableRead)
+                    .start()
+                    .await
+                    .map_err(|_| invalid("installation catalogue transaction failed"))
+            },
+        )
+        .await?;
+        let actual = io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_catalogue_retain",
+            generation,
+            async {
+                tx.execute("INSERT INTO brassclaw_monty_boot_catalogues(catalogue_id,catalogue_bytes,checksum) VALUES($1,$2,$3) ON CONFLICT(catalogue_id) DO NOTHING",
+                    &[&generation, &generation_bytes, &checksum]).await.map_err(|_| invalid("installation catalogue retention failed"))?;
+                tx.query_one("SELECT catalogue_bytes,checksum FROM brassclaw_monty_boot_catalogues WHERE catalogue_id=$1", &[&generation])
+                    .await.map_err(|_| invalid("installation catalogue read failed"))
+            },
+        )
+        .await?;
         if actual.get::<_, String>(0) != generation_bytes || actual.get::<_, String>(1) != checksum
         {
             return Err(invalid("installation catalogue integrity failed"));
         }
         if let Some(approval) = &public_reply_approval {
-            approval.verify_in_transaction(&tx).await?;
+            io::bounded_for(
+                resource_store_settings.as_ref(),
+                "boot_reply_original",
+                generation,
+                approval.verify_in_transaction(&tx),
+            )
+            .await?;
         }
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_inventory_originals",
-            generation,
-            inventory_observations.verify_in_transaction(&tx),
-        )
-        .await?;
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_structural_checkers",
-            generation,
-            structural_helpers.verify_in_transaction(&tx),
-        )
-        .await?;
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_pure_checkers",
-            generation,
-            pure_checkers.verify_in_transaction(&tx),
-        )
-        .await?;
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_pure_workflow",
-            generation,
-            pure_workflow.verify_in_transaction(&tx, &pure_checkers),
-        )
-        .await?;
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_shipped_generation_revision",
-            generation,
-            generation_revision.verify(&tx, &generation_candidates[1]),
-        )
-        .await?;
-        crate::bootstrap_evidence::io::bounded_for(
-            resource_store_settings.as_ref(),
-            "boot_shipped_history_formatter",
-            generation,
-            history_formatter.verify(&tx, &history),
-        )
-        .await?;
+        // Each reader bounds its complete originals, including transferred
+        // definitions. Do not wrap their whole galleries in one store timeout.
+        // Every check still reads this same final publication snapshot.
+        inventory_observations.verify_in_transaction(&tx).await?;
+        structural_helpers.verify_in_transaction(&tx).await?;
+        pure_checkers.verify_in_transaction(&tx).await?;
+        pure_workflow
+            .verify_in_transaction(&tx, &pure_checkers)
+            .await?;
+        generation_revision
+            .verify(&tx, &generation_candidates[1])
+            .await?;
+        history_formatter.verify(&tx, &history).await?;
         if let Some(harness) = &case_harness {
             crate::bootstrap_evidence::io::bounded_for(
                 resource_store_settings.as_ref(),
@@ -1153,34 +1149,66 @@ impl InstalledMontyCatalogue {
                 .values()
                 .map(|r| r.reference())
                 .collect();
-            PgComponentRevisionStore::read_exact_in_transaction(
-                &tx,
-                &[instruction.recipe().uuid],
-                &refs,
-                brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+            io::bounded_for(
+                resource_store_settings.as_ref(),
+                "boot_recipe_original",
+                instruction.recipe().uuid,
+                async {
+                    PgComponentRevisionStore::read_exact_in_transaction(
+                        &tx,
+                        &[instruction.recipe().uuid],
+                        &refs,
+                        brassclaw_skills::revision_store::SnapshotReadLimits::legacy_graph(),
+                    )
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+                },
             )
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
+            .await?;
         }
-        seed_retained_recipe_intents_in_transaction(
-            &tx,
-            scope,
-            reply.program().inputs().instruction(),
+        io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_reply_intents",
+            reply.program().inputs().instruction().recipe().uuid,
+            async {
+                seed_retained_recipe_intents_in_transaction(
+                    &tx,
+                    scope,
+                    reply.program().inputs().instruction(),
+                )
+                .await
+                .map_err(|e| invalid(e.to_string()))
+            },
         )
-        .await
-        .map_err(|e| invalid(e.to_string()))?;
+        .await?;
         if public_reply_approval.is_some() {
-            crate::mcp_command_qualification::verify_routing_metadata(
-                &tx,
-                scope,
-                &[reply.program().inputs().instruction()],
+            io::bounded_for(
+                resource_store_settings.as_ref(),
+                "boot_reply_routing",
+                reply.program().inputs().instruction().recipe().uuid,
+                async {
+                    crate::mcp_command_qualification::verify_routing_metadata(
+                        &tx,
+                        scope,
+                        &[reply.program().inputs().instruction()],
+                    )
+                    .await
+                    .map_err(|e| invalid(e.to_string()))
+                },
             )
-            .await
-            .map_err(|e| invalid(e.to_string()))?;
+            .await?;
         }
-        tx.commit()
-            .await
-            .map_err(|_| invalid("installation catalogue commit failed"))?;
+        io::bounded_for(
+            resource_store_settings.as_ref(),
+            "boot_catalogue_commit",
+            generation,
+            async {
+                tx.commit()
+                    .await
+                    .map_err(|_| invalid("installation catalogue commit failed"))
+            },
+        )
+        .await?;
         client.recycle_after_commit();
         drop(client);
         // Discovery uses exactly this qualified normal-chat catalogue, never

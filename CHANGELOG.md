@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Bootstrap original verification**: Bound each complete original and metadata
+  exchange with the acknowledged ResourceStore deadline while retaining one
+  coherent PostgreSQL snapshot. Preserve exact integrity checks and uncertain
+  connection custody. Correct development qualification fixtures, lost-ACK
+  assertions and private Prefix status checks. Nine focused native regressions
+  and the complete deployment/model-original case pass; strict full-feature
+  CLI/Composition Clippy passes. Independent CI runner/spawn findings remain open.
 - **Run/REPL PostgreSQL transition**: Preserve the resolved services input,
   including policy, host mounts, OAuth and technical requirements, when changing
   storage. Let Composition perform the first application migration; retain

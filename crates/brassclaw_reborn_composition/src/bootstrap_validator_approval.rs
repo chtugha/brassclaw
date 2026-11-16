@@ -882,6 +882,7 @@ impl Context {
 }
 
 pub(crate) struct CheckedStructuralHelpers {
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     deployment: Option<crate::shipped_validation::Components>,
     contexts: Vec<Arc<Context>>,
 }
@@ -897,7 +898,14 @@ impl CheckedStructuralHelpers {
         tx: &Transaction<'_>,
     ) -> Result<RecordRef, RebornBuildError> {
         if let Some(deployment) = &self.deployment {
-            return serde_json::from_value(deployment.verify(tx).await?).map_err(invalid);
+            let value = io::bounded_for(
+                self.storage.as_ref(),
+                "structural_shipped_original",
+                deployment.id(),
+                deployment.verify(tx),
+            )
+            .await?;
+            return serde_json::from_value(value).map_err(invalid);
         }
         let expected = std::iter::once(fixtures::receipt_id())
             .chain(
@@ -920,13 +928,32 @@ impl CheckedStructuralHelpers {
                 "all eight structural helpers and their receipt prerequisite required",
             ));
         }
-        evidence::require_coherent(tx).await?;
+        let first = self
+            .contexts
+            .first()
+            .ok_or_else(|| invalid("structural receipt prerequisite missing"))?;
+        io::bounded_for(
+            first.storage.as_ref(),
+            "structural_original_snapshot",
+            first.claim.root.uuid,
+            evidence::require_coherent(tx),
+        )
+        .await?;
         let mut support = None;
         for context in &self.contexts {
             if context.claim.support != support {
                 return Err(invalid("checker receipt prerequisite differs"));
             }
-            let proof = context.verify_approval(tx).await?;
+            // Each complete immutable original is one metadata operation.
+            // A gallery-wide timeout would charge all independent checks to
+            // the budget intended for one operation on this same snapshot.
+            let proof = io::bounded_for(
+                context.storage.as_ref(),
+                "structural_original_approval",
+                context.claim.root.uuid,
+                context.verify_approval(tx),
+            )
+            .await?;
             if support.is_none() {
                 support = Some(proof);
             }
@@ -960,6 +987,7 @@ pub(crate) async fn qualify(
         );
         let deployment = crate::shipped_validation::Components::install(pool, drafts).await?;
         return Ok(CheckedStructuralHelpers {
+            storage,
             contexts: Vec::new(),
             deployment: Some(deployment),
         });
@@ -989,6 +1017,7 @@ pub(crate) async fn qualify(
         })
         .collect::<Result<Vec<_>, RebornBuildError>>()?;
     Ok(CheckedStructuralHelpers {
+        storage: storage.clone(),
         deployment: None,
         contexts: qualify_specs(
             SessionInput {

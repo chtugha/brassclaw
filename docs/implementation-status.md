@@ -11,11 +11,15 @@ all-targets CLI/Composition Clippy passes without warnings; see the
 [exact source, artifacts and limits](validation/2026-11-16-unnecessary-cli-transition.md).
 Both updated Composition Input contracts also pass on the shared native harness,
 including LocalSafe without host-home. L-01/L-02/L-03 are complete. Separate
-native Composition regressions remain separate. Their aggregate I/O timeout and
-development-subject fixture failures remain visible; the
-[connected repair plan](plans/subplan_step_ci_prerequisite_io_of_bob1.md) is still
-in progress and is not accepted by this checkpoint. It requires one RR snapshot,
-independently bounded complete originals and existing custody.
+native Composition regressions now have their own scoped acceptance. The
+[connected repair](plans/subplan_step_ci_prerequisite_io_of_bob1.md) retains one
+RR snapshot and existing custody, independently bounding complete originals with
+the acknowledged policy. Nine focused native cases and the full deployment case
+with real pinned model originals/oracle pass; the unchanged Input and held-ACK
+cases remain applicable. Strict all-targets CLI/Composition lint also passes.
+See [actual artifacts, results and preserved failures](validation/2026-11-16-bootstrap-io-originals.md).
+The independent GitHub utility-spawn failure and compilation-charging package
+timer remain open; this is not acceptance of the complete CI workflow.
 No full CI/platform support, authored approval or Bob completion is claimed.
 
 ## 2026-11-15 — Child control CI regression

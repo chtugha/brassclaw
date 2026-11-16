@@ -575,8 +575,18 @@ async fn native_component_deployment_preserves_recipes_and_pins_review_subjects(
         let (status, job) = at(&app, "GET", &job_path, None, true).await;
         assert_eq!(status, StatusCode::OK, "{job}");
         assert_eq!(job["job_id"], prefix_job_id.to_string());
-        assert_eq!(job["run_status"], "Completed");
-        assert!(!job["thread_id"].as_str().unwrap().is_empty());
+        assert_eq!(job["format"], "prefix-job-detail/2", "{job}");
+        assert_eq!(job["work_id"], prefix_job_id.to_string());
+        assert_eq!(job["work_status"], "settled");
+        assert_eq!(job["delivery_pending"], false);
+        let delivery = job["delivery_checksum"]
+            .as_str()
+            .expect("settled source job has native post-Factory delivery acknowledgement");
+        let _: [u8; 32] = hex::decode(delivery)
+            .expect("delivery checksum is hexadecimal")
+            .try_into()
+            .expect("delivery checksum is SHA-256");
+        assert!(job.get("thread_id").is_none() && job.get("run_status").is_none());
         assert_eq!(job["admission_phase"], "settled");
         assert_eq!(job["answered_tool_calls"], 5);
         assert_eq!(job["pending_tool_calls"], 0);
@@ -1773,8 +1783,25 @@ async fn exercise_prefix_model_records(
     let after = at(app, "GET", "/api/webchat/v2/llm/providers", None, true)
         .await
         .1;
+    // Each provider read stamps its live native-auth observation. This is not
+    // a persisted configuration edit. Validate both timestamps and compare
+    // every other field, including native-auth state and all role references.
+    let configuration_view = |mut view: Value| {
+        for provider in view["providers"].as_array_mut().unwrap() {
+            if let Some(auth) = provider.get_mut("native_auth") {
+                let observed_at = auth
+                    .get_mut("observed_at")
+                    .expect("native-auth status includes its observation timestamp");
+                chrono::DateTime::parse_from_rfc3339(observed_at.as_str().unwrap())
+                    .expect("native-auth observation timestamp is RFC 3339");
+                *observed_at = Value::Null;
+            }
+        }
+        view
+    };
     assert_eq!(
-        before, after,
+        configuration_view(before.clone()),
+        configuration_view(after),
         "inactive model capture must not edit providers or role selections"
     );
     let passive_provider = json!({"mutation_id":Uuid::new_v4(),"id":"prefix-passive-provider",

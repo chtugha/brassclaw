@@ -82,6 +82,10 @@ pub(super) struct Components {
 }
 
 impl Components {
+    pub(super) fn id(&self) -> Uuid {
+        self.transfer.id()
+    }
+
     pub(super) async fn install(
         pool: std::sync::Arc<PgPool>,
         drafts: Vec<brassclaw_skills::component_revision::ComponentRevisionDraft>,

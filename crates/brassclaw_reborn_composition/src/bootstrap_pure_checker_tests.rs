@@ -350,11 +350,13 @@ async fn native_pure_checker_subjects_keep_private_tuple_returns_and_original_ty
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(crate::build_reborn_runtime(
-        crate::RebornRuntimeInput::from_services(
+    // This development fixture inspects the actual qualification subjects.
+    // Normal installation transfers shipped validation without creating them.
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(crate::RebornRuntimeInput::from_services(
             rig.build_input("pure-checker-native", home.path())
                 .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
-        ),
+        )),
     ))
     .await
     .unwrap();

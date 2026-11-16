@@ -409,6 +409,7 @@ fn history_specs(root: ComponentRevisionDraft) -> Result<Vec<Spec>, RebornBuildE
 /// Opaque installation evidence. This does not extend the ordinary selection
 /// reader's independent-Pure coverage; that remains the connected B2 owner.
 pub(crate) struct CheckedShippedFunction {
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     deployment: Option<crate::shipped_validation::Components>,
     kind: ShippedFunction,
     contexts: Vec<Arc<Context>>,
@@ -424,10 +425,22 @@ impl CheckedShippedFunction {
                 return Err(invalid("shipped function requires retained program"));
             };
             deployment.require_program(program)?;
-            deployment.verify(tx).await?;
+            io::bounded_for(
+                self.storage.as_ref(),
+                "shipped_function_transferred_original",
+                deployment.id(),
+                deployment.verify(tx),
+            )
+            .await?;
             return Ok(());
         }
-        evidence::require_coherent(tx).await?;
+        io::bounded_for(
+            self.storage.as_ref(),
+            "shipped_function_original_snapshot",
+            self.kind.root_id(),
+            evidence::require_coherent(tx),
+        )
+        .await?;
         if self.contexts.len() != 2 {
             return Err(invalid("shipped R1 instrument/root pair missing"));
         }
@@ -441,7 +454,13 @@ impl CheckedShippedFunction {
             .profile
             .as_ref()
             .ok_or_else(|| invalid("shipped function scope missing"))?;
-        let prerequisite = instrument.verify_final(tx).await?;
+        let prerequisite = io::bounded_for(
+            self.storage.as_ref(),
+            "shipped_function_instrument_original",
+            instrument.claim.root.uuid,
+            instrument.verify_final(tx),
+        )
+        .await?;
         if instrument.claim.root.uuid != self.kind.instrument_id()
             || instrument_profile.approves_function()
             || !instrument_profile.is_shipped()
@@ -466,7 +485,13 @@ impl CheckedShippedFunction {
         {
             return Err(invalid("consumer differs from qualified own root"));
         }
-        function.verify_approval(tx).await?;
+        io::bounded_for(
+            self.storage.as_ref(),
+            "shipped_function_original_approval",
+            function.claim.root.uuid,
+            function.verify_approval(tx),
+        )
+        .await?;
         Ok(())
     }
 }
@@ -506,6 +531,7 @@ pub(crate) async fn qualify(
         let deployment =
             crate::shipped_validation::Components::install(base.pool, vec![root]).await?;
         return Ok(CheckedShippedFunction {
+            storage: base.storage.clone(),
             kind,
             contexts: Vec::new(),
             deployment: Some(deployment),
@@ -516,6 +542,7 @@ pub(crate) async fn qualify(
         ShippedFunction::History => history_specs(root)?,
     };
     Ok(CheckedShippedFunction {
+        storage: base.storage.clone(),
         deployment: None,
         kind,
         contexts: qualify_specs(base, subjects).await?,

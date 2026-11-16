@@ -480,6 +480,7 @@ fn witness_draft() -> Result<ComponentRevisionDraft, RebornBuildError> {
 }
 
 pub(crate) struct CheckedPureCheckerClosure {
+    storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
     deployment: Option<crate::shipped_validation::Components>,
     contexts: Vec<Arc<Context>>,
     structural: CheckedStructuralHelpers,
@@ -534,9 +535,27 @@ impl CheckedPureCheckerClosure {
     ) -> Result<Vec<Value>, RebornBuildError> {
         if let Some(deployment) = &self.deployment {
             self.structural.verify_in_transaction(tx).await?;
-            return Ok(vec![deployment.verify(tx).await?]);
+            return Ok(vec![
+                io::bounded_for(
+                    self.storage.as_ref(),
+                    "pure_shipped_original",
+                    deployment.id(),
+                    deployment.verify(tx),
+                )
+                .await?,
+            ]);
         }
-        evidence::require_coherent(tx).await?;
+        let first = self
+            .contexts
+            .first()
+            .ok_or_else(|| invalid("complete own pure checker closure required"))?;
+        io::bounded_for(
+            first.storage.as_ref(),
+            "pure_original_snapshot",
+            first.claim.root.uuid,
+            evidence::require_coherent(tx),
+        )
+        .await?;
         #[cfg(all(test, feature = "skills-db"))]
         crate::pg_review_submission_io::projection_phase("structural_prerequisites", None);
         let original = self.structural.verify_with_receipt(tx).await?;
@@ -598,7 +617,14 @@ impl CheckedPureCheckerClosure {
             if required != profile.prerequisites {
                 return Err(invalid("pure exact prerequisite evidence differs"));
             }
-            previous.push((profile, context.verify_final(tx).await?));
+            let proof = io::bounded_for(
+                context.storage.as_ref(),
+                "pure_original_qualification",
+                context.claim.root.uuid,
+                context.verify_final(tx),
+            )
+            .await?;
+            previous.push((profile, proof));
         }
         previous
             .into_iter()
@@ -645,9 +671,11 @@ pub(crate) async fn qualify(
         );
         let deployment = crate::shipped_validation::Components::install(base.pool, drafts).await?;
         return Ok(CheckedPureCheckerClosure {
+            storage: base.storage.clone(),
             contexts: Vec::new(),
             deployment: Some(deployment),
             structural: CheckedStructuralHelpers {
+                storage: prerequisites.storage.clone(),
                 contexts: Vec::new(),
                 deployment: prerequisites.deployment.clone(),
             },
@@ -655,26 +683,38 @@ pub(crate) async fn qualify(
     }
     // E01 remains an actual prerequisite. Source presence or a caller flag cannot
     // manufacture its checked completion.
-    let receipt = io::bounded_for(
+    let mut client = io::bounded_for(
         base.storage.as_ref(),
-        "pure_checker_prerequisites",
+        "pure_checker_prerequisites_acquire",
+        fixtures::receipt_id(),
+        io::acquire(&base.pool),
+    )
+    .await?;
+    let tx = io::bounded_for(
+        base.storage.as_ref(),
+        "pure_checker_prerequisites_begin",
         fixtures::receipt_id(),
         async {
-            let mut client = io::acquire(&base.pool).await?;
-            let tx = client
+            client
                 .build_transaction()
                 .isolation_level(IsolationLevel::RepeatableRead)
                 .read_only(true)
                 .start()
                 .await
-                .map_err(invalid)?;
-            let receipt = prerequisites.verify_with_receipt(&tx).await?;
-            tx.commit().await.map_err(invalid)?;
-            client.recycle_after_commit();
-            Ok(receipt)
+                .map_err(invalid)
         },
     )
     .await?;
+    let receipt = prerequisites.verify_with_receipt(&tx).await?;
+    io::bounded_for(
+        base.storage.as_ref(),
+        "pure_checker_prerequisites_commit",
+        fixtures::receipt_id(),
+        async { tx.commit().await.map_err(invalid) },
+    )
+    .await?;
+    client.recycle_after_commit();
+    drop(client);
     let mut specs = cases::specs(&base).await?;
     for spec in &mut specs {
         let profile = spec
@@ -684,9 +724,11 @@ pub(crate) async fn qualify(
         Arc::make_mut(profile).prerequisites.push(receipt.clone());
     }
     Ok(CheckedPureCheckerClosure {
+        storage: base.storage.clone(),
         deployment: None,
         contexts: qualify_specs(base, specs).await?,
         structural: CheckedStructuralHelpers {
+            storage: prerequisites.storage.clone(),
             deployment: None,
             contexts: prerequisites.contexts.clone(),
         },

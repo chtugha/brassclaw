@@ -135,6 +135,7 @@ struct Completed {
 pub(crate) enum InstallationSourceObservations {
     Shipped {
         pool: Arc<PgPool>,
+        storage: Arc<dyn brassclaw_resources::PgResourceStoreSettingsSource>,
         program: Arc<RetainedToolProgram>,
         parser: Arc<QualifiedSourceInventoryUsage>,
     },
@@ -169,11 +170,25 @@ impl InstallationSourceObservations {
     ) -> Result<(), RebornBuildError> {
         match self {
             Self::Shipped {
-                program, parser, ..
+                program,
+                parser,
+                storage,
+                ..
             } => {
-                parser.proof.verify_in_transaction(tx).await?;
-                crate::shipped_validation::verify_instruction(tx, program.inputs().instruction())
-                    .await?;
+                io::bounded_for(
+                    storage.as_ref(),
+                    "installation_shipped_original",
+                    program.inputs().instruction().recipe().uuid,
+                    async {
+                        parser.proof.verify_in_transaction(tx).await?;
+                        crate::shipped_validation::verify_instruction(
+                            tx,
+                            program.inputs().instruction(),
+                        )
+                        .await
+                    },
+                )
+                .await?;
             }
             Self::ObservedPositive(profiles) | Self::CompletedNegative(profiles) => {
                 if profiles.len() != 2 {
@@ -187,11 +202,14 @@ impl InstallationSourceObservations {
                     if profile.context.selection.profile() != expected {
                         return Err(invalid("installation checking profiles differ"));
                     }
-                    let read = profile
-                        .context
-                        .read_completed(tx)
-                        .await?
-                        .ok_or_else(|| invalid("installation completion missing"))?;
+                    let read = io::bounded_for(
+                        profile.context.storage.as_ref(),
+                        "installation_original_profile",
+                        profile.context.subject.candidate().uuid,
+                        profile.context.read_completed(tx),
+                    )
+                    .await?
+                    .ok_or_else(|| invalid("installation completion missing"))?;
                     if read.0 != profile.completion_bytes {
                         return Err(invalid("installation original completion changed"));
                     }
@@ -327,6 +345,7 @@ async fn observe_installation_inner(
             .1;
         return Ok(InstallationSourceObservations::Shipped {
             pool,
+            storage,
             program,
             parser,
         });

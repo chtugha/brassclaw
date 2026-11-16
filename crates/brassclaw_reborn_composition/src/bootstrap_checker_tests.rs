@@ -274,11 +274,13 @@ async fn native_structural_checker_exports_keep_originals_after_pruning_smaller_
     rig.configure_runtime_memory(brassclaw_product_workflow::MontyMemoryMode::Manual)
         .await;
     let home = tempfile::tempdir().unwrap();
-    let runtime = Box::pin(crate::build_reborn_runtime(
-        crate::RebornRuntimeInput::from_services(
+    // This fixture inspects original native qualification after pruning.
+    // Ordinary installation intentionally transfers validation instead.
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(crate::RebornRuntimeInput::from_services(
             rig.build_input("structural-checker-native", home.path())
                 .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
-        ),
+        )),
     ))
     .await
     .unwrap();
@@ -567,9 +569,11 @@ async fn native_structural_checker_intent_ack_loss_stays_unexecuted_and_unresolv
         )
     };
     assert!(
-        Box::pin(crate::build_reborn_runtime(input()))
-            .await
-            .is_err()
+        Box::pin(crate::shipped_validation::qualify_package(
+            crate::build_reborn_runtime(input())
+        ))
+        .await
+        .is_err()
     );
     assert_eq!(
         transport.cut_count(),
@@ -583,9 +587,11 @@ async fn native_structural_checker_intent_ack_loss_stays_unexecuted_and_unresolv
         "an unacknowledged new intent cannot execute an export"
     );
     assert!(
-        Box::pin(crate::build_reborn_runtime(input()))
-            .await
-            .is_err()
+        Box::pin(crate::shipped_validation::qualify_package(
+            crate::build_reborn_runtime(input())
+        ))
+        .await
+        .is_err()
     );
     assert_eq!(
         before,
@@ -629,7 +635,13 @@ async fn ack_case(approval: bool) {
         )
         .with_runtime_policy(crate::local_dev_runtime_policy().unwrap()),
     );
-    let runtime = Box::pin(crate::build_reborn_runtime(input)).await.unwrap();
+    // This fixture deliberately qualifies original shipped checks and cuts
+    // their real commit ACK. Ordinary startup only transfers shipped validation.
+    let runtime = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(input),
+    ))
+    .await
+    .unwrap();
     assert_eq!(
         transport.cut_count(),
         1,
@@ -665,14 +677,22 @@ async fn fault_case(fault: Fault) {
         )
     };
     let first = FAULT
-        .scope(fault, Box::pin(crate::build_reborn_runtime(input())))
+        .scope(
+            fault,
+            Box::pin(crate::shipped_validation::qualify_package(
+                crate::build_reborn_runtime(input()),
+            )),
+        )
         .await;
     assert!(
         first.is_err(),
         "actual worker/cancellation fault must prevent readiness"
     );
     let before = counters(&rig.pool).await;
-    let second = Box::pin(crate::build_reborn_runtime(input())).await;
+    let second = Box::pin(crate::shipped_validation::qualify_package(
+        crate::build_reborn_runtime(input()),
+    ))
+    .await;
     assert!(
         second.is_err(),
         "incomplete original is unresolved, never rerun"
