@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Monty CI admission regression**: Park actual unresolved host calls before
+  admitting further tasks in the standalone test. Preserve outstanding original
+  calls and reject duplicate runs without fabricating host results. All 32 native
+  Linux process-host tests pass. Remove three redundant Monty manifest homepages
+  reported by Cargo 1.100; retain repository metadata without suppressing warnings.
+- **Prepared branch inventory**: Archive and deactivate 51 reviewed obsolete local
+  branch names, preserving exact tips and all worktree files. Keep Main and eight
+  genuinely dependent branch names active. Add the audited V3.51 multiplatform
+  roadmap as future work, after the current CI and unnecessary-code repairs.
 - **Modal build supervision**: Set the provider Function limit to 30 minutes and
   remove the separate Cargo watchdog and deducted completion reserve. Observe
   the original remote process tree and bounded Cargo logs without stopping work;

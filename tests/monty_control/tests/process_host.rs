@@ -1358,7 +1358,11 @@ async fn worker_admits_strict_private_input_without_chat_fields_and_keeps_chat_v
         .admitted_task
         .expect("actual private worker admission");
     let Some(ProcessBoundary::HostCall {
-        name, args, kwargs, ..
+        key: private_key,
+        name,
+        args,
+        kwargs,
+        ..
     }) = admitted.boundary
     else {
         panic!("actual private root must reach its selected host port")
@@ -1394,6 +1398,17 @@ async fn worker_admits_strict_private_input_without_chat_fields_and_keeps_chat_v
     assert_eq!(duplicate.task_accounting.len(), 1);
     assert_eq!(duplicate.task_accounting[0].task, original);
     assert!(duplicate.work_waits.contains(&ready.work_waits[1]));
+    // A real unresolved host call must become a pending future before another
+    // worker's admission may resume. Defer runs no host operation and supplies
+    // no successful result; all original host keys remain outstanding.
+    let deferred = process
+        .exchange(WorkerCommand::Defer { key: private_key })
+        .await
+        .unwrap();
+    assert_eq!(deferred.root, root);
+    assert_eq!(deferred.task_accounting.len(), 1);
+    assert!(deferred.outstanding.contains(&private_key));
+    let mut pending = vec![private_key];
     for (index, current) in [(1, false), (2, true)] {
         let mut input = task();
         input["run_id"] = json!(format!("chat-after-private-{index}"));
@@ -1408,7 +1423,10 @@ async fn worker_admits_strict_private_input_without_chat_fields_and_keeps_chat_v
             .await
             .unwrap();
         let task = admitted.admitted_task.unwrap();
-        let Some(ProcessBoundary::HostCall { name, args, .. }) = admitted.boundary else {
+        let Some(ProcessBoundary::HostCall {
+            key, name, args, ..
+        }) = admitted.boundary
+        else {
             panic!("actual chat root must reach its original intent port")
         };
         assert_eq!(name, "resolve_intent");
@@ -1417,6 +1435,14 @@ async fn worker_admits_strict_private_input_without_chat_fields_and_keeps_chat_v
             vec![json!(task.to_string()), input["user_input"].clone()]
         );
         assert_eq!(admitted.root, root);
+        pending.push(key);
+        let deferred = process
+            .exchange(WorkerCommand::Defer { key })
+            .await
+            .unwrap();
+        assert_eq!(deferred.root, root);
+        assert_eq!(deferred.task_accounting.len(), index + 1);
+        assert!(pending.iter().all(|key| deferred.outstanding.contains(key)));
     }
     assert_eq!(process.process_id(), pid);
     // No Recipe/host result or durable completion is fabricated. These actual
