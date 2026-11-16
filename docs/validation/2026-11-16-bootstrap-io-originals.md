@@ -25,7 +25,8 @@ The two Input and held-intent custody cases previously passed and remain
 applicable; their unchanged paths were not replayed. Thus thirteen distinct
 native paths have scoped evidence, not a claim that all crate tests, platforms,
 authored approval or Bob plans are complete. The independent GitHub spawn/timer
-findings remain open. The chronological entries below preserve the real failed
+findings now have their separate [accepted repair](2026-11-16-executable-start-custody.md).
+The chronological entries below preserve the real failed
 attempts and intermediate pending states; this final status supersedes them.
 
 The native Composition r3 acceptance batch used build
@@ -62,6 +63,34 @@ persisted original Work before asynchronous admission. Its later correlated
 completion, exact admission, Tool-call and non-replay assertions remain.
 
 ## Strict source check
+
+### CI test-context follow-up
+
+The old GitHub job `133238938090` on `3a670a5ac` misclassified the `ack_case`
+helper because its test-only parent declaration lives in another source file.
+An exploratory byte-identical move to `bootstrap_checker/tests.rs` passes strict
+Composition lint, job `481c16f4-e871-439d-bbab-03416cf202d1`, manifest
+`9543b2203051023b944b3886feae973525845b70e787b8f03247f4718662c0a3`.
+That layout is **superseded**, not final-source acceptance: changing the owner
+path would also change a qualification factory fingerprint.
+
+The final source keeps `bootstrap_validator_approval.rs` and its module path
+byte-identical to Main. The original 722-line test file differs only by the
+leading `#![cfg(test)]` and blank line. The parent's existing cfg already implies
+that condition; native bodies, assertions, module/test identities and production
+qualification inputs remain unchanged. Existing native behavior evidence is
+therefore reused; no new qualification is claimed from the redundant gate.
+The actual file parses/formats successfully.
+
+The existing panic guard now handles an explicit inner test cfg, conservatively
+evaluates cfg predicates with `test` disabled, and no longer exempts production
+`not(test)`, optional-test cfg or a module name alone. Unsupported syntax remains
+scanned. All eleven actual guard self-tests and the affected Main endpoint diff
+pass. The actual helper file is checked to retain every previous byte after its
+two-line guard. No safety comment, allowlist or warning suppression is added.
+See [the bounded implementation](../plans/subplan_step_ci_test_context_of_bob1.md).
+The exploratory Screen's exit/final IPC/socket are verified independently; its
+compiled snapshot is not mislabeled as the final source.
 
 Job `cfd0f7c3-8b09-4607-a91e-cd83e9638264` passes in environment `brassclaw`,
 image `im-vQVW6Uxx7d4t1xtksm5dhN`, actual native Linux Rust 1.100.0:

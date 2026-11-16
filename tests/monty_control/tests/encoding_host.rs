@@ -6,7 +6,7 @@ use brassclaw_monty_host::{
 };
 use serde_json::{Value, json};
 use std::{
-    io::Write,
+    io::{ErrorKind, Write},
     path::PathBuf,
     process::{Command, Stdio},
     time::Duration,
@@ -124,6 +124,19 @@ async fn contained_model_encoding_matches_offline_oracle_and_rejects_bad_input()
     .await
     .unwrap_err();
     assert_eq!(timeout.kind, ProcessFailure::Deadline);
-    // Containment is attempted on timeout; no successful result is manufactured.
-    assert!(timeout.exit_status.is_some() || timeout.reap_error.is_some());
+    if let Some(cause) = &timeout.spawn_error {
+        // The shared deadline can expire before exec succeeds. There is no
+        // child to kill/reap; retain the actual pre-exec cause instead.
+        assert!(matches!(
+            cause.kind(),
+            ErrorKind::TimedOut | ErrorKind::ExecutableFileBusy
+        ));
+        assert!(timeout.exit_status.is_none());
+        assert!(timeout.containment_error.is_none());
+        assert!(timeout.reap_error.is_none());
+    } else {
+        // Once a worker has started, timeout must retain its actual exit or
+        // unresolved reap error. Neither phase may manufacture a model result.
+        assert!(timeout.exit_status.is_some() || timeout.reap_error.is_some());
+    }
 }

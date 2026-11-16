@@ -220,6 +220,18 @@ that merely needs review, repair or validation. Preserve dependency-blocked work
 with exact owner/caller evidence; do not hide missing support behind stubs or
 claim blocked code is accepted. Afterwards the user's B1 -> B2 -> B3 order remains.
 
+**Operator clarification — 2026-11-16:** keep one implementation agent. Do not
+reactivate package agents; compilation and result review are the bottleneck.
+Distribute independent required builds/checks across simultaneous Screen/Modal
+jobs instead. Each mutable remote source/cache/target has its own serialized
+ownership and lock; jobs with different owned environments may overlap with
+each other and with local work. Keep immutable admitted inputs and actual
+artifact/result attribution separate. Do not duplicate the same running build
+or submit dependent runtime acceptance before its required implementation and
+artifacts exist. This supersedes the historical one-remote-job restriction
+below, not the locks within one mutable environment or the Screen monitoring,
+resource, source-review and acceptance requirements.
+
 Stop previously commissioned source work before taking it over. Preserve all
 private commits and uncommitted files, current shared inputs and source evidence.
 Use real connected review and scoped acceptance; merge only accepted source and

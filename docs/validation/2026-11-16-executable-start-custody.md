@@ -94,3 +94,35 @@ output. The old unquoted splitting and SC2086 suppression are removed.
 passes. Other jobs and application/test/communication deadlines are unchanged.
 The next actual GitHub result remains required; push and syntax acceptance are
 not a passing workflow receipt.
+
+## Actual GitHub follow-up and Encoding fixture
+
+On `f45f4058f`, GitHub Code Style run `43858647179` passes, including actual
+default/all-feature Clippy, formatting, architecture and panic guards. Test run
+`43858647105` is separate: Monty-host job `133269819494` passes all 22 library
+cases (including all six real executable-write cases) and 15 actor cases, then
+fails the Encoding fixture's old assumption that every deadline has a child to
+reap. This failure is preserved; the whole workflow is not called successful.
+
+The one-nanosecond fixture budget may expire before exec. Its corrected assertion
+requires the actual TimedOut/ExecutableFileBusy start cause and absent child
+cleanup in that phase. After successful start it still requires actual exit or
+unresolved reap evidence. The request/result checks and real oracle comparison
+remain unchanged; there is no product timeout relaxation or fabricated status.
+
+Job `0690369b-628e-43de-a8fa-53bebdec3bca`, manifest
+`7cdf116acee9edb919cba5ea5ff323a4960e7104f6c303b68a4c2d4ec067a3b1`,
+builds the actual root-package Encoding target and normal worker with native
+Linux Rust 1.100.0. Cargo JSON, source/package/ELF identities, shared libraries,
+the existing CPU oracle environment and all six original asset hashes are checked.
+No model weights, provider configuration or database is used. Its exact one
+registered case executes as UID 65534: **1 passed, 0 failed, 0 ignored**, exit 0.
+Test executable SHA-256:
+`d8250d842421f1a6b09741103d7c1a531b513f62a4e9566ac354e9fafb4c6991`;
+normal worker:
+`0caff5c00d6e362f57b3cecff058afbbf7735e2ed9d7efaa9a427383888f6337`.
+Actual logs, oracle provenance, artifact identities and completion remain in
+`target/validation/ci-encoding-deadline-20261116-r1/`.
+Screen `ci-encoding-deadline-20261116-r1` exits 0; final IPC is accepted and
+received, and the original socket is absent. This proves the selected regression,
+not full CI or the remaining Bob approval/publication gates.

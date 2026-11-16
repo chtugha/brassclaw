@@ -10,7 +10,12 @@ strict Monty-host all-target lint passes. The package job removes its unmeasured
 28-minute Cargo/30-minute job timers, preserves the hosted provider boundary and
 uses Cargo.lock plus checked Bash-array feature arguments without suppression.
 See [the exact source/platform receipts](validation/2026-11-16-executable-start-custody.md).
-The next full GitHub workflow is still unverified. This scope does not complete
+GitHub Code Style `43858647179` passes on `f45f4058f`. The separate Tests run
+finds the Encoding fixture's pre-exec cleanup assumption; the corrected actual
+Encoding/oracle case now passes with its exact worker and model originals.
+The panic guard also receives conservative cfg handling and an explicit test-file
+gate, preserving production qualification-owner bytes. See the linked receipts.
+The complete successor GitHub workflow is still unverified. This scope does not complete
 authored approval, the held capture/flow packages or the Bob plans.
 
 ## 2026-11-16 — Run/REPL transition and independent CI acceptance

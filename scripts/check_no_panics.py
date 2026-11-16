@@ -17,9 +17,12 @@ TEST_ATTR_PATTERN = re.compile(
     r"|tokio::test(?:\s*\([^]]*\))?"
     r"|rstest(?:\s*\([^]]*\))?"
     r"|test_case(?:\s*\([^]]*\))?"
-    r"|cfg\s*\([^]]*\btest\b[^]]*\)"
     r")\s*\]"
 )
+CFG_ATTR_PATTERN = re.compile(
+    r"^\s*#\s*(!?)\s*\[\s*cfg\s*\((.*)\)\s*\]\s*(?://.*)?$"
+)
+CFG_TOKEN_PATTERN = re.compile(r'[A-Za-z_][A-Za-z0-9_]*|"(?:[^"\\]|\\.)*"|[(),=]')
 ITEM_PATTERN = re.compile(
     r"^\s*"
     r"(?:(?:pub(?:\([^)]*\))?|crate)\s+)?"
@@ -156,14 +159,87 @@ def sanitize_line(line: str, state: LexerState) -> str:
     return "".join(out)
 
 
+def requires_test_configuration(predicate: str) -> bool:
+    """Prove a cfg predicate cannot be true with Rust's `test` flag unset.
+
+    Other configuration options are unknown, not disabled. Abstract boolean
+    sets deliberately overapproximate them, so unsupported syntax or correlated
+    options can only lose an exemption, never conceal production code.
+    """
+    tokens = []
+    end = 0
+    for match in CFG_TOKEN_PATTERN.finditer(predicate):
+        if predicate[end:match.start()].strip():
+            return False
+        tokens.append(match.group())
+        end = match.end()
+    if predicate[end:].strip():
+        return False
+    position = 0
+
+    def take() -> str:
+        nonlocal position
+        if position == len(tokens):
+            raise ValueError("incomplete cfg predicate")
+        token = tokens[position]
+        position += 1
+        return token
+
+    def parse() -> set[bool]:
+        name = take()
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None:
+            raise ValueError("cfg option required")
+        following = tokens[position] if position < len(tokens) else None
+        if following == "=":
+            take()
+            if not take().startswith('"'):
+                raise ValueError("cfg option string required")
+            return {False, True}
+        if following != "(":
+            if name in {"test", "false"}:
+                return {False}
+            return {True} if name == "true" else {False, True}
+        if name not in {"all", "any", "not"}:
+            raise ValueError("unsupported cfg predicate")
+        take()
+        children = []
+        if position < len(tokens) and tokens[position] != ")":
+            while True:
+                children.append(parse())
+                if position == len(tokens) or tokens[position] != ",":
+                    break
+                take()
+                if position < len(tokens) and tokens[position] == ")":
+                    if name == "not":
+                        raise ValueError("not accepts one predicate without a list")
+                    break
+        if take() != ")":
+            raise ValueError("unclosed cfg predicate")
+        if name == "not":
+            if len(children) != 1:
+                raise ValueError("not requires one predicate")
+            return {not value for value in children[0]}
+        if name == "all":
+            can_be_true = all(True in child for child in children)
+            can_be_false = any(False in child for child in children)
+        else:
+            can_be_true = any(True in child for child in children)
+            can_be_false = all(False in child for child in children)
+        return {value for value, possible in ((True, can_be_true), (False, can_be_false)) if possible}
+
+    try:
+        values = parse()
+    except (ValueError, RecursionError):
+        return False
+    return position == len(tokens) and values == {False}
+
+
 def is_test_item(line: str, pending_test_attr: bool) -> tuple[bool, bool]:
     match = ITEM_PATTERN.match(line)
     if not match:
         return False, False
 
-    kind, name = match.groups()
-    named_tests_module = kind == "mod" and name == "tests"
-    return True, pending_test_attr or named_tests_module
+    return True, pending_test_attr
 
 
 def line_test_contexts(lines: list[str]) -> list[bool]:
@@ -172,11 +248,23 @@ def line_test_contexts(lines: list[str]) -> list[bool]:
     block_stack: list[bool] = []
     pending_test_attr = False
     pending_block_context: bool | None = None
+    file_test_context = False
 
     for idx, raw in enumerate(lines):
         code = sanitize_line(raw, lexer)
         stripped = code.strip()
-        current_context = block_stack[-1] if block_stack else False
+        # Read actual attribute strings only when the Rust lexer confirms this
+        # is code, not a lookalike inside a comment or source-text literal.
+        cfg = CFG_ATTR_PATTERN.match(raw) if stripped.startswith("#") else None
+        if cfg and requires_test_configuration(cfg.group(2)):
+            if cfg.group(1):
+                if block_stack:
+                    block_stack[-1] = True
+                else:
+                    file_test_context = True
+            else:
+                pending_test_attr = True
+        current_context = file_test_context or (block_stack[-1] if block_stack else False)
 
         if TEST_ATTR_PATTERN.match(stripped):
             pending_test_attr = True
@@ -196,7 +284,7 @@ def line_test_contexts(lines: list[str]) -> list[bool]:
                     block_stack.append(pending_block_context)
                     pending_block_context = None
                 else:
-                    block_stack.append(block_stack[-1] if block_stack else False)
+                    block_stack.append(block_stack[-1] if block_stack else file_test_context)
             elif ch == "}" and block_stack:
                 block_stack.pop()
 
@@ -429,7 +517,7 @@ class CheckNoPanicsTests(unittest.TestCase):
         self.assertTrue(contexts[2], "fn with 'static should be test context")
         self.assertTrue(contexts[7], "later helper should still be test context")
 
-    def test_named_tests_module_marks_context(self) -> None:
+    def test_module_name_does_not_hide_production_calls(self) -> None:
         lines = [
             "mod tests {\n",
             "    fn helper() {\n",
@@ -440,7 +528,58 @@ class CheckNoPanicsTests(unittest.TestCase):
 
         contexts = line_test_contexts(lines)
 
-        self.assertTrue(all(contexts))
+        self.assertFalse(any(contexts))
+
+    def test_cfg_requires_test_instead_of_merely_mentioning_it(self) -> None:
+        for predicate in [
+            "test", "all(test, unix)", 'all(feature = "db", test,)',
+            "not(not(test))", "any(all(test, unix), all(test, windows))",
+            "all(test, any(unix, windows))", "false", "any()",
+        ]:
+            with self.subTest(predicate=predicate):
+                self.assertTrue(requires_test_configuration(predicate))
+        for predicate in [
+            "not(test)", "any(test, unix)", 'any(test, feature = "db")',
+            'feature = "test"', 'target_os = "test"', "all()", "true",
+            "not(all(test, unix))", "unix", "test = \"yes\"",
+            "", "all(test", "test, unix", "not(test, unix)",
+            "not(test,)", "unknown(test)", 'all(test, feature = r#"db"#)',
+        ]:
+            with self.subTest(predicate=predicate):
+                self.assertFalse(requires_test_configuration(predicate))
+
+    def test_production_cfg_does_not_exempt_next_item(self) -> None:
+        for predicate in ["not(test)", "any(test, unix)", 'feature = "test"']:
+            with self.subTest(predicate=predicate):
+                contexts = line_test_contexts([
+                    f"#[cfg({predicate})]\n", "fn production() {\n",
+                    '    value.unwrap();\n', "}\n",
+                ])
+                self.assertFalse(any(contexts))
+
+    def test_inner_test_guard_covers_helpers_and_nested_items(self) -> None:
+        lines = [
+            "#![cfg(test)]\n", "use super::*;\n", "async fn helper() {\n",
+            "    value.unwrap();\n", "}\n", "mod nested {\n",
+            "    fn helper() { assert!(true); }\n", "}\n",
+        ]
+        self.assertTrue(all(line_test_contexts(lines)))
+        nested = line_test_contexts([
+            "mod fixtures {\n", "    #![cfg(all(test, unix))]\n",
+            "    fn helper() { value.unwrap(); }\n", "}\n",
+            "fn production() { value.unwrap(); }\n",
+        ])
+        self.assertTrue(nested[2])
+        self.assertFalse(nested[4])
+
+    def test_inner_production_cfg_and_literal_attributes_stay_scanned(self) -> None:
+        lines = [
+            "#![cfg(not(test))]\n", "fn production() { value.unwrap(); }\n",
+            'const TEXT: &str = r#"\n', "#![cfg(test)]\n", '"#;\n',
+            "/*\n", "#![cfg(test)]\n", "*/\n",
+            "fn also_production() { value.unwrap(); }\n",
+        ]
+        self.assertFalse(any(line_test_contexts(lines)))
 
 
 if __name__ == "__main__":

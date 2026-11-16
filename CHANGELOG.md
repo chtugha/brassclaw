@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **CI test context and encoding deadlines**: Recognize an explicit file-level
+  test guard without changing the production qualification owner or native test
+  bodies. Evaluate cfg conditions conservatively; production `not(test)`/optional
+  test configurations and unguarded modules named `tests` stay checked. Eleven
+  guard cases pass. Correct the Encoding test's pre-exec timeout assertions while
+  preserving post-start cleanup requirements; its actual worker/offline-oracle
+  regression passes.
 - **Native executable start and CI deadlines**: Wait for OS executable-write
   contention only before exec succeeds, within the accepted startup/response
   deadline. Share that deadline with Boot/IPC, reject late ready responses and

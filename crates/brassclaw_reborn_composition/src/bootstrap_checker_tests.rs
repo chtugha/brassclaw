@@ -1,3 +1,5 @@
+#![cfg(test)]
+
 //! Native acceptance source. These cases must run in Root's coherent batch;
 //! no source-only result is a behavioral qualification receipt.
 use super::*;
