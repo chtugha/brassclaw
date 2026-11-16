@@ -54,8 +54,10 @@ for index in "${!test_names[@]}"; do
   selected=true
   test_name="${test_names[$index]}"
   echo "::group::cargo test --test ${test_name}"
-  timeout --signal=INT --kill-after=30s 12m \
-    cargo test --test "${test_name}" -- --nocapture
+  # Compilation shares the enclosing workflow job's provider limit. It must
+  # not consume an arbitrary per-target test deadline before any test starts.
+  # Actual test/runtime deadlines remain in their owning cases.
+  cargo test --test "${test_name}" -- --nocapture
   echo "::endgroup::"
 done
 

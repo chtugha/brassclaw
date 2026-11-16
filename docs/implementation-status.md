@@ -1,3 +1,23 @@
+## 2026-11-16 — Run/REPL transition and independent CI acceptance
+
+The Run helper preserves the resolved services input when replacing LocalDev
+storage with PostgreSQL, including Full/confirmed host-home mounts and OAuth/
+technical requirements. The factory owns the first application migration;
+Serve's pre-runtime ACL migration stays in place. Actual negative startup paths
+stop only their owned database and report unresolved ordered-stop failures.
+All 72 native Linux CLI smoke cases and two selected CLI unit cases pass on one
+compiled program without replaying successful cases. Updated full-feature
+all-targets CLI/Composition Clippy passes without warnings; see the
+[exact source, artifacts and limits](validation/2026-11-16-unnecessary-cli-transition.md).
+Both updated Composition Input contracts also pass on the shared native harness,
+including LocalSafe without host-home. L-01/L-02/L-03 are complete. Separate
+native Composition regressions remain separate. Their aggregate I/O timeout and
+development-subject fixture failures remain visible; the
+[connected repair plan](plans/subplan_step_ci_prerequisite_io_of_bob1.md) is still
+in progress and is not accepted by this checkpoint. It requires one RR snapshot,
+independently bounded complete originals and existing custody.
+No full CI/platform support, authored approval or Bob completion is claimed.
+
 ## 2026-11-15 — Child control CI regression
 
 The actual Contained jobs pass both association-review cases on macOS and Linux.

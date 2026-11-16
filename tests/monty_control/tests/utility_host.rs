@@ -22,6 +22,30 @@ fn evaluate(source: &str, inputs: BTreeMap<String, serde_json::Value>) -> Utilit
 }
 
 #[tokio::test]
+async fn missing_utility_executable_retains_os_error_without_exposing_private_input() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing-worker");
+    let failure = execute(
+        &missing,
+        evaluate("private_candidate_source", BTreeMap::new()),
+        limits(),
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(failure.kind, ProcessFailure::Spawn);
+    assert_eq!(
+        failure.spawn_error.as_ref().unwrap().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    assert!(std::error::Error::source(&failure).is_some());
+    let public = format!("{failure} {failure:?}");
+    assert!(public.contains("NotFound"));
+    assert!(!public.contains("private_candidate_source"));
+    assert!(!public.contains(missing.to_string_lossy().as_ref()));
+    assert!(failure.exit_status.is_none());
+}
+
+#[tokio::test]
 async fn contained_structure_observes_real_syntax_without_running_it_or_approving_it() {
     let source = "import os\nimport json\n# host.fake_comment()\nliteral = 'host.fake_literal() __execute_action__ eval(1)'\nvalue = host.json(operation='parse', data=inputs['text'])\nreceiver = host\nlegacy = __execute_action__\nreader = open\nresult = value\nraise RuntimeError('inspection must not run')";
     let output = execute(

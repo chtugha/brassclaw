@@ -224,6 +224,20 @@ This is single-controller-machine coordination. The local OS lock is not a
 distributed lock for independent submitting machines; do not introduce a second
 controller host writing the same Volume under this contract.
 
+The operator's subsequent 2026-11-16 parallel-validation instruction also permits
+explicit, fixed qualification packages on independent Volumes/caches. These
+scoped controllers keep a separate exclusive lock for each owned Volume through
+source capture, execution and collection; no two compilers or source writers
+share a target. Execution-only cases may share the same verified immutable
+artifact/source while that owner continues to exclude source/cache mutation.
+The ordinary controller above retains its existing global lock and grammar;
+these bounded qualification jobs do not activate a generic Linux/test mode.
+Each package remains supervised by its own Screen and exact original job records.
+Environment `brassclaw` now permits four CPU tasks concurrently (previously one);
+its GPU limit remains one. Actual container/process observations prove parallel
+execution after that change. Function capacity alone did not override the old
+environment cap. See the [qualification subplan](plans/subplan_step_parallel_validation_of_bob1.md).
+
 Each result retains its own exact command, source manifest, image, resources and
 artifact identities. Native tests use their existing database/runtime locks;
 supported remote execution needs equivalent fixture custody and compatible

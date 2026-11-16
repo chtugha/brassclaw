@@ -77,9 +77,30 @@ pub(crate) fn execute(
         // owner identity from the caller). This is permanently a no-op for
         // the run path — trigger poller authentication is the responsibility
         // of the operator-seeded trigger access store, not the runtime build.
-        let runtime_input =
-            with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
-        let runtime = std::sync::Arc::new(build_reborn_runtime(runtime_input).await?);
+        let startup = async {
+            let runtime_input =
+                with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
+            build_reborn_runtime(runtime_input).await.map_err(anyhow::Error::from)
+        }.await;
+        let runtime = match startup {
+            Ok(runtime) => std::sync::Arc::new(runtime),
+            Err(error) => {
+                // The failed construction scope released its service inputs.
+                // Stop only a server this invocation owns; no Drop fallback.
+                #[cfg(feature = "postgres")]
+                if let Some(pg) = managed_pg
+                    && let Err(shutdown) = pg.shutdown().await
+                {
+                    // Keep an unacknowledged cluster for explicit recovery;
+                    // returning its error must not trigger immediate Drop stop.
+                    std::mem::forget(pg);
+                    return Err(error.context(format!(
+                        "embedded Postgres cleanup after runtime startup failure also failed; owned instance requires recovery: {shutdown}"
+                    )));
+                }
+                return Err(error);
+            }
+        };
         #[cfg(feature = "skills-db")]
         let mcp_listener = {
             let started = async {
@@ -111,10 +132,11 @@ pub(crate) fn execute(
                         tracing::error!(%error, "runtime shutdown after MCP startup failure failed");
                     }
                     #[cfg(feature = "postgres")]
-                    if let Some(pg) = &managed_pg
+                    if let Some(pg) = managed_pg
                         && let Err(error) = pg.shutdown().await
                     {
-                        tracing::error!(%error, "Postgres shutdown after MCP startup failure failed");
+                        std::mem::forget(pg);
+                        tracing::error!(%error, "Postgres shutdown after MCP startup failure failed; owned instance requires recovery, no forced stop attempted");
                     }
                     return Err(error);
                 }
@@ -143,7 +165,15 @@ pub(crate) fn execute(
         };
         #[cfg(feature = "postgres")]
         let postgres_shutdown = if let Some(pg) = managed_pg {
-            pg.shutdown().await.context("embedded Postgres shutdown failed (run path)")
+            match pg.shutdown().await {
+                Ok(()) => Ok(()),
+                Err(error) => {
+                    std::mem::forget(pg);
+                    Err(anyhow::Error::from(error).context(
+                        "embedded Postgres shutdown failed (run path); owned instance requires recovery, no forced stop attempted"
+                    ))
+                }
+            }
         } else { Ok(()) };
         if let Err(error) = &runtime_shutdown {
             tracing::error!(%error, "runtime shutdown failed (run path)");
@@ -188,19 +218,27 @@ async fn with_run_local_trigger_fire_access_checker(
 /// user identity is present). That responsibility belongs to the `serve` path.
 #[cfg(feature = "postgres")]
 async fn start_postgres_for_run(
-    input: RebornRuntimeInput,
+    mut input: RebornRuntimeInput,
     boot_config: &RebornBootConfig,
 ) -> anyhow::Result<(
     RebornRuntimeInput,
     Option<brassclaw_embedded_postgres::ManagedPostgres>,
 )> {
     use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
-    use brassclaw_pg::migrations;
     use brassclaw_pg::pool::build_pool;
-    use brassclaw_reborn_composition::local_dev_runtime_policy;
     // SecretMaterial is secrecy::SecretString — use directly to avoid
     // depending on brassclaw_secrets as a direct CLI dep.
     use secrecy::SecretString as SecretMaterial;
+
+    // Fail before acquiring a server when no resolved service contract exists.
+    // The storage change must preserve the CLI's actual policy and host mounts.
+    let services = input
+        .services
+        .take()
+        .context("run Postgres transition requires an existing services input")?;
+    services
+        .runtime_policy()
+        .context("run Postgres transition requires an already resolved runtime policy")?;
 
     // If the operator supplied an external PG URL, use it directly.
     let (pg_url, managed_pg) = if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
@@ -214,38 +252,37 @@ async fn start_postgres_for_run(
         (url, Some(managed))
     };
 
-    let pool = build_pool(&pg_url)
-        .map_err(|e| anyhow::anyhow!("failed to build Postgres connection pool: {e}"))?;
-
-    migrations::run_migrations(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("Postgres schema migrations failed: {e}"))?;
-
-    // Carry the owner_id from the existing local-dev input so the runtime's
-    // actor identity is preserved.
-    let owner_id = input
-        .services
-        .as_ref()
-        .map(|s| s.owner_id().to_string())
-        .unwrap_or_else(|| "reborn-cli".to_string());
-
-    let reborn_home = boot_config.home().path().to_path_buf();
-    let runtime_policy = local_dev_runtime_policy()
-        .map_err(|e| anyhow::anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
-    let pg_input = RebornBuildInput::postgres_with_reborn_home(
-        owner_id,
-        pool,
-        SecretMaterial::from(pg_url),
-        reborn_home,
-    )
-    .with_tenant_id(input.identity.tenant_id.clone())
-    .with_runtime_policy(runtime_policy);
-
-    // Replace the local-dev build input with the Postgres-backed one while
-    // preserving every other runtime-level setting on `input`.
-    let mut upgraded = input;
-    upgraded.services = Some(pg_input);
-    Ok((upgraded, managed_pg))
+    // Keep fallible pool/input preparation in this scope so its handles are
+    // released before an owned server is stopped after an error.
+    let upgraded = build_pool(&pg_url)
+        .map_err(|e| anyhow::anyhow!("failed to build Postgres connection pool: {e}"))
+        .and_then(|pool| {
+            services
+                .into_postgres_with_reborn_home(
+                    pool,
+                    SecretMaterial::from(pg_url),
+                    boot_config.home().path().to_path_buf(),
+                )
+                .map(|services| services.with_tenant_id(input.identity.tenant_id.clone()))
+                .context("failed to retain the resolved services input during Postgres transition")
+        });
+    match upgraded {
+        Ok(services) => {
+            input.services = Some(services);
+            Ok((input, managed_pg))
+        }
+        Err(error) => {
+            if let Some(pg) = managed_pg
+                && let Err(shutdown) = pg.shutdown().await
+            {
+                std::mem::forget(pg);
+                return Err(error.context(format!(
+                    "embedded Postgres cleanup after input transition failure also failed; owned instance requires recovery: {shutdown}"
+                )));
+            }
+            Err(error)
+        }
+    }
 }
 
 fn print_runtime_banner(config: &RebornBootConfig) {
@@ -890,6 +927,97 @@ mod tests {
             EnvGuard::clear("BRASSCLAW_TRIGGER_POLLER_ENABLED"),
             EnvGuard::clear("BRASSCLAW_TRIGGER_POLLER_INTERVAL_SECS"),
         )
+    }
+
+    #[cfg(feature = "postgres")]
+    #[tokio::test]
+    async fn run_postgres_transition_rejects_missing_contract_before_server_start() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let home = temp.path().join("reborn-home");
+        let config = RebornBootConfig::resolve_from_env_parts(
+            Some(home.clone().into_os_string()),
+            None,
+            None,
+        )
+        .expect("boot config");
+        for missing_services in [true, false] {
+            let mut input = brassclaw_reborn_composition::RebornRuntimeInput::from_services(
+                brassclaw_reborn_composition::RebornBuildInput::local_dev(
+                    "owner",
+                    temp.path().join("local"),
+                ),
+            );
+            if missing_services {
+                input.services = None;
+            }
+            let error = super::start_postgres_for_run(input, &config)
+                .await
+                .err()
+                .expect("an existing service contract and policy are mandatory");
+            assert!(
+                error.to_string().contains(if missing_services {
+                    "existing services input"
+                } else {
+                    "already resolved runtime policy"
+                }),
+                "{error:#}"
+            );
+            assert!(
+                !home.join("postgres").exists(),
+                "invalid input must not start a server"
+            );
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn run_postgres_transition_failure_closes_owned_server() {
+        let _lock = lock_trigger_env();
+        let _external = EnvGuard::clear("BRASSCLAW_PG_URL");
+        let _database = EnvGuard::clear("DATABASE_URL");
+        let _listen = EnvGuard::set("BRASSCLAW_EMBEDDED_PG_LISTEN_ADDRESSES", "127.0.0.1");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("own unused port");
+        let address = listener.local_addr().expect("reserved address");
+        drop(listener);
+        let _port = EnvGuard::set("BRASSCLAW_EMBEDDED_PG_PORT", &address.port().to_string());
+        let temp = tempfile::tempdir().expect("tempdir");
+        let home = temp.path().join("reborn-home");
+        let config = RebornBootConfig::resolve_from_env_parts(
+            Some(home.clone().into_os_string()),
+            None,
+            None,
+        )
+        .expect("boot config");
+        let input = brassclaw_reborn_composition::RebornRuntimeInput::from_services(
+            brassclaw_reborn_composition::RebornBuildInput::disabled("owner").with_runtime_policy(
+                brassclaw_reborn_composition::local_dev_runtime_policy().expect("resolved policy"),
+            ),
+        );
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+        let error = runtime
+            .block_on(super::start_postgres_for_run(input, &config))
+            .err()
+            .expect("disabled storage cannot be replaced after startup");
+        assert!(
+            format!("{error:#}").contains("requires an existing LocalDev input"),
+            "{error:#}"
+        );
+        let data = home.join("postgres/data");
+        assert!(
+            data.join("PG_VERSION").exists(),
+            "real owned server must have been initialized"
+        );
+        assert!(
+            !data.join("postmaster.pid").exists(),
+            "owned server must have stopped"
+        );
+        assert!(
+            std::net::TcpStream::connect(address).is_err(),
+            "owned PG port must be closed"
+        );
     }
 
     #[test]

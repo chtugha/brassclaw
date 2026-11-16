@@ -289,6 +289,8 @@ struct Reply {
 /// Reaping proves utility-worker termination, not component approval or effects.
 pub struct UtilityError {
     pub kind: ProcessFailure,
+    /// Actual OS spawn failure, retained independently of private utility data.
+    pub spawn_error: Option<io::Error>,
     pub request: Box<UtilityRequest>,
     pub diagnostic: Option<String>,
     pub stdout: String,
@@ -300,15 +302,38 @@ impl fmt::Debug for UtilityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UtilityError")
             .field("kind", &self.kind)
+            .field(
+                "spawn_error_kind",
+                &self.spawn_error.as_ref().map(io::Error::kind),
+            )
+            .field(
+                "spawn_os_error",
+                &self.spawn_error.as_ref().and_then(io::Error::raw_os_error),
+            )
             .finish_non_exhaustive()
     }
 }
 impl fmt::Display for UtilityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Monty utility failed: {:?}", self.kind)
+        write!(f, "Monty utility failed: {:?}", self.kind)?;
+        if let Some(error) = &self.spawn_error {
+            write!(
+                f,
+                " ({:?}, OS code {:?})",
+                error.kind(),
+                error.raw_os_error()
+            )?;
+        }
+        Ok(())
     }
 }
-impl std::error::Error for UtilityError {}
+impl std::error::Error for UtilityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.spawn_error
+            .as_ref()
+            .map(|error| error as &dyn std::error::Error)
+    }
+}
 
 /// One contained operation. A successful result requires both its actual reply
 /// and successful OS exit. No parser or evaluator runs in the application.
@@ -319,6 +344,7 @@ pub async fn execute(
 ) -> Result<UtilityOutput, UtilityError> {
     let mut error = UtilityError {
         kind: ProcessFailure::InvalidLimits,
+        spawn_error: None,
         request: Box::new(request),
         diagnostic: None,
         stdout: String::new(),
@@ -375,8 +401,9 @@ pub async fn execute(
         .spawn()
     {
         Ok(child) => child,
-        Err(_) => {
+        Err(source) => {
             error.kind = ProcessFailure::Spawn;
+            error.spawn_error = Some(source);
             return Err(error);
         }
     };

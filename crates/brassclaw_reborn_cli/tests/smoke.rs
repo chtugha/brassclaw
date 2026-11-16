@@ -32,6 +32,9 @@ fn free_pg_port() -> u16 {
 /// Presentation-only commands use this boundary without starting PostgreSQL.
 fn isolated_command(workspace: &Path) -> Command {
     std::fs::write(workspace.join(".env"), "").expect("empty isolated dotenv file");
+    // Explicit HOME overrides below use this real directory. Full/confirmed
+    // LocalYolo preserve their host mount through the Postgres transition.
+    std::fs::create_dir_all(workspace.join("home")).expect("owned CLI home fixture");
     // env_clear must not redirect retained native-image copies out of the
     // fixture's owned tree and onto the platform's default temporary volume.
     let process_temp = workspace.join("process-temp");
@@ -49,6 +52,8 @@ fn isolated_command(workspace: &Path) -> Command {
 
 fn isolated_no_llm_command(workspace: &Path, reborn_home: &Path) -> Command {
     let mut command = isolated_command(workspace);
+    std::fs::create_dir_all(workspace.join("isolated-home"))
+        .expect("owned no-model CLI home fixture");
     command
         .env("HOME", workspace.join("isolated-home"))
         // Give each parallel binary invocation its own embedded-Postgres port
@@ -942,17 +947,65 @@ fn repl_help_mentions_composed_runtime() {
 
 #[test]
 fn repl_exit_command_exits_cleanly_without_touching_v1_state() {
+    assert_repl_exit_closes_owned_postgres(false);
+}
+
+#[test]
+fn repl_confirmed_host_access_exits_cleanly_and_closes_owned_postgres() {
+    assert_repl_exit_closes_owned_postgres(true);
+}
+
+#[test]
+fn repl_invalid_host_home_rejects_and_closes_owned_postgres() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    let reborn_home = temp.path().join("reborn-home");
+    let invalid_home = temp.path().join("not-a-home-directory");
+    std::fs::write(&invalid_home, "owned regular file").expect("invalid home fixture");
+    let pg_port = free_pg_port();
+    let output = isolated_command(temp.path())
+        .arg("repl")
+        .env("BRASSCLAW_REBORN_HOME", &reborn_home)
+        .env("HOME", &invalid_home)
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", pg_port.to_string())
+        .stdin(Stdio::null())
+        .output()
+        .expect("actual CLI rejects the invalid host mount");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(stderr.contains("host home root"), "{stderr}");
+    assert!(
+        !stderr.contains("brassclaw-reborn: runtime started"),
+        "{stderr}"
+    );
+    assert!(
+        output.stdout.is_empty(),
+        "startup failure must not post a reply"
+    );
+    assert!(
+        reborn_home.join("postgres/data/PG_VERSION").exists(),
+        "the failure must occur after real PostgreSQL initialization: {stderr}"
+    );
+    assert_owned_postgres_stopped(&reborn_home, pg_port, &stderr);
+}
+
+fn assert_repl_exit_closes_owned_postgres(confirm_host_access: bool) {
     let temp = tempfile::tempdir().expect("tempdir");
     let reborn_home = temp.path().join("reborn-home");
     let home_dir = temp.path().join("home");
     let v1_base_dir = temp.path().join("v1-state");
+    std::fs::create_dir_all(&home_dir).expect("existing confirmed host-home root");
+    let pg_port = free_pg_port();
 
-    let mut child = isolated_command(temp.path())
-        .arg("repl")
+    let mut command = isolated_command(temp.path());
+    command.arg("repl");
+    if confirm_host_access {
+        command.arg("--confirm-host-access");
+    }
+    let mut child = command
         .env("BRASSCLAW_REBORN_HOME", &reborn_home)
         .env("HOME", &home_dir)
         .env("BRASSCLAW_BASE_DIR", &v1_base_dir)
-        .env("BRASSCLAW_EMBEDDED_PG_PORT", free_pg_port().to_string())
+        .env("BRASSCLAW_EMBEDDED_PG_PORT", pg_port.to_string())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -987,6 +1040,22 @@ fn repl_exit_command_exits_cleanly_without_touching_v1_state() {
     assert!(
         !v1_base_dir.exists(),
         "repl should not create explicit v1 base directories"
+    );
+    assert_owned_postgres_stopped(&reborn_home, pg_port, &stderr);
+}
+
+fn assert_owned_postgres_stopped(reborn_home: &Path, pg_port: u16, stderr: &str) {
+    assert!(
+        !reborn_home.join("postgres/data/postmaster.pid").exists(),
+        "owned PostgreSQL must have stopped: {stderr}"
+    );
+    assert!(
+        std::net::TcpStream::connect(("127.0.0.1", pg_port)).is_err(),
+        "owned PostgreSQL port must be closed: {stderr}"
+    );
+    assert!(
+        !stderr.contains("ManagedPostgres dropped without calling shutdown"),
+        "CLI must complete ordered shutdown: {stderr}"
     );
 }
 

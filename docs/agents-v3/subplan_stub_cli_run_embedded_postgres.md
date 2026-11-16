@@ -48,21 +48,43 @@ no-op stub comment.
 
 ### Step R.1 — Implement `start_postgres_for_run` in `runtime/mod.rs`
 
-Add a new `#[cfg(feature = "postgres")]` function that mirrors `serve.rs`'s
-`start_postgres_and_upgrade_input`:
+The original PG connection is implemented. L-01/L-02 repair its transition in place:
+`RebornBuildInput::into_postgres_with_reborn_home` in Composition `src/input.rs`
+changes only LocalDev storage, preserving the resolved policy, both mount overrides
+and all service extras. Missing services/policy fail before server acquisition;
+failed pool/input preparation stops only the server owned by this call.
+
+The CLI does not run the general migrations itself. `build_reborn_runtime` calls
+`build_reborn_services`, whose Postgres branch owns the general application-schema
+runner before the first schema consumer. Serve retains its earlier migration for
+the ACL seed that precedes runtime construction. The current run transition is:
 
 ```rust
 #[cfg(feature = "postgres")]
 async fn start_postgres_for_run(
-    input: RebornRuntimeInput,
-    boot_config: &brassclaw_reborn_config::RebornBootConfig,
-) -> anyhow::Result<(RebornRuntimeInput, Option<brassclaw_embedded_postgres::ManagedPostgres>)> {
+    mut input: RebornRuntimeInput,
+    boot_config: &RebornBootConfig,
+) -> anyhow::Result<(
+    RebornRuntimeInput,
+    Option<brassclaw_embedded_postgres::ManagedPostgres>,
+)> {
     use brassclaw_embedded_postgres::{EmbeddedPostgresConfig, ManagedPostgres};
-    use brassclaw_pg::migrations;
     use brassclaw_pg::pool::build_pool;
-    use brassclaw_reborn_composition::local_dev_runtime_policy;
+    // SecretMaterial is secrecy::SecretString — use directly to avoid
+    // depending on brassclaw_secrets as a direct CLI dep.
     use secrecy::SecretString as SecretMaterial;
 
+    // Fail before acquiring a server when no resolved service contract exists.
+    // The storage change must preserve the CLI's actual policy and host mounts.
+    let services = input
+        .services
+        .take()
+        .context("run Postgres transition requires an existing services input")?;
+    services
+        .runtime_policy()
+        .context("run Postgres transition requires an already resolved runtime policy")?;
+
+    // If the operator supplied an external PG URL, use it directly.
     let (pg_url, managed_pg) = if let Ok(url) = std::env::var("BRASSCLAW_PG_URL") {
         (url, None)
     } else {
@@ -74,33 +96,37 @@ async fn start_postgres_for_run(
         (url, Some(managed))
     };
 
-    let pool = build_pool(&pg_url)
-        .map_err(|e| anyhow::anyhow!("failed to build Postgres connection pool: {e}"))?;
-
-    migrations::run_migrations(&pool)
-        .await
-        .map_err(|e| anyhow::anyhow!("Postgres schema migrations failed: {e}"))?;
-
-    let owner_id = input
-        .services
-        .as_ref()
-        .map(|s| s.owner_id().to_string())
-        .unwrap_or_else(|| "reborn-cli".to_string());
-
-    let reborn_home = boot_config.home().path().to_path_buf();
-    let runtime_policy = local_dev_runtime_policy()
-        .map_err(|e| anyhow::anyhow!("failed to resolve local-dev runtime policy: {e}"))?;
-    let pg_input = brassclaw_reborn_composition::RebornBuildInput::postgres_with_reborn_home(
-        owner_id,
-        pool,
-        SecretMaterial::from(pg_url),
-        reborn_home,
-    )
-    .with_runtime_policy(runtime_policy);
-
-    let mut upgraded = input;
-    upgraded.services = Some(pg_input);
-    Ok((upgraded, managed_pg))
+    // Keep fallible pool/input preparation in this scope so its handles are
+    // released before an owned server is stopped after an error.
+    let upgraded = build_pool(&pg_url)
+        .map_err(|e| anyhow::anyhow!("failed to build Postgres connection pool: {e}"))
+        .and_then(|pool| {
+            services
+                .into_postgres_with_reborn_home(
+                    pool,
+                    SecretMaterial::from(pg_url),
+                    boot_config.home().path().to_path_buf(),
+                )
+                .map(|services| services.with_tenant_id(input.identity.tenant_id.clone()))
+                .context("failed to retain the resolved services input during Postgres transition")
+        });
+    match upgraded {
+        Ok(services) => {
+            input.services = Some(services);
+            Ok((input, managed_pg))
+        }
+        Err(error) => {
+            if let Some(pg) = managed_pg
+                && let Err(shutdown) = pg.shutdown().await
+            {
+                std::mem::forget(pg);
+                return Err(error.context(format!(
+                    "embedded Postgres cleanup after input transition failure also failed; owned instance requires recovery: {shutdown}"
+                )));
+            }
+            Err(error)
+        }
+    }
 }
 ```
 
@@ -108,33 +134,20 @@ async fn start_postgres_for_run(
 
 In `execute()`, inside the `rt.block_on(async move { ... })`:
 
-```rust
-// Before (stub):
-let runtime_input =
-    with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
-let runtime = build_reborn_runtime(runtime_input).await?;
+The implemented order is: acquire the PG input, then call `build_reborn_runtime`
+(which owns application-schema migration through `build_reborn_services`). The
+fallible input handoff and runtime construction are scoped together. Construction
+failure explicitly shuts down only the `ManagedPostgres` owned by this invocation,
+retaining both the primary error and any cleanup failure. No immediate-Drop path
+is used as normal error handling.
 
-// After:
-#[cfg(feature = "postgres")]
-let (runtime_input, managed_pg) =
-    start_postgres_for_run(runtime_input, &boot_config).await?;
-#[cfg(not(feature = "postgres"))]
-let managed_pg: Option<brassclaw_embedded_postgres::ManagedPostgres> = None;
+The current implementation in `crates/brassclaw_reborn_cli/src/runtime/mod.rs`
+is authoritative. Successful startup drains the instance MCP listener and runtime
+before stopping owned PostgreSQL, and reports shutdown failures as errors; do not
+restore the historical `runtime.shutdown().await?`/debug-only PG cleanup example.
+See `docs/plans/subplan_step_l01_startup_cleanup_of_bob1.md` for the exact adjacent
+failure case and its native acceptance.
 
-let runtime_input =
-    with_run_local_trigger_fire_access_checker(runtime_input, &boot_config).await?;
-let runtime = build_reborn_runtime(runtime_input).await?;
-
-// ... existing run/repl logic ...
-
-runtime.shutdown().await?;
-// Shut down the embedded Postgres only after the runtime pool is dropped.
-if let Some(pg) = managed_pg
-    && let Err(error) = pg.shutdown().await
-{
-    tracing::debug!(%error, "embedded Postgres shutdown failed (run path)");
-}
-```
 
 ### Step R.3 — No-op the `with_run_local_trigger_fire_access_checker` stub
 

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Run/REPL PostgreSQL transition**: Preserve the resolved services input,
+  including policy, host mounts, OAuth and technical requirements, when changing
+  storage. Let Composition perform the first application migration; retain
+  Serve's earlier ACL prerequisite. Shut down owned PostgreSQL after actual
+  transition/runtime startup errors and report unresolved stop failures without
+  forcing a stop. All 72 native Linux CLI smoke cases and two selected unit cases
+  pass, reusing the same compiled program for the remaining cases.
+- **Utility diagnostics and CI launcher**: Retain actual OS spawn diagnostics
+  without exposing private utility payloads; all fourteen native utility-host
+  cases pass. Correct Composition's module formatting and remove the CI
+  partition timer that charged compilation to a test deadline. Preserve actual
+  test commands, test/runtime deadlines and the enclosing workflow limit.
 - **Monty CI admission regression**: Park actual unresolved host calls before
   admitting further tasks in the standalone test. Preserve outstanding original
   calls and reject duplicate runs without fabricating host results. All 32 native

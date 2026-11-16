@@ -369,6 +369,41 @@ impl RebornBuildInput {
         )
     }
 
+    /// Change an already resolved local input's persistence without rebuilding
+    /// its authority, filesystem mounts, authentication or technical requirements.
+    /// Existing PostgreSQL inputs (including their master-key choice) and
+    /// disabled inputs must not be silently replaced by this transition.
+    #[cfg(feature = "postgres")]
+    pub fn into_postgres_with_reborn_home(
+        mut self,
+        pool: deadpool_postgres::Pool,
+        url: brassclaw_secrets::SecretMaterial,
+        reborn_home: PathBuf,
+    ) -> Result<Self, crate::RebornBuildError> {
+        if self.runtime_policy.is_none() {
+            return Err(crate::RebornBuildError::MissingRuntimePolicy);
+        }
+        let RebornStorageInput::LocalDev {
+            workspace_root,
+            host_home_root,
+            ..
+        } = &mut self.storage
+        else {
+            return Err(crate::RebornBuildError::InvalidConfig {
+                reason: "Postgres storage transition requires an existing LocalDev input".into(),
+            });
+        };
+        self.storage = RebornStorageInput::Postgres {
+            pool,
+            url,
+            secret_master_key: None,
+            reborn_home,
+            workspace_root: workspace_root.take(),
+            host_home_root: host_home_root.take(),
+        };
+        Ok(self)
+    }
+
     pub fn with_required_runtime_backends(
         mut self,
         backends: impl IntoIterator<Item = brassclaw_host_api::RuntimeKind>,
@@ -536,5 +571,141 @@ mod tests {
             RebornBuildInput::disabled("test-owner").with_product_auth_ports(product_auth.clone());
 
         assert!(input.product_auth_ports.is_some());
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn postgres_transition_preserves_resolved_local_contract() {
+        use crate::{RebornLocalRuntimeProfileOptions, local_runtime_build_input_for_profile};
+        use brassclaw_host_api::{RuntimeKind, runtime_policy::RuntimeProfile};
+
+        // Building a real lazy pool exercises the data transition only. No
+        // connection or database behavior is claimed by this test.
+        let pool = brassclaw_pg::pool::build_pool("postgresql://unused@127.0.0.1:1/unused")
+            .expect("unconnected pool");
+        for profile in [
+            RuntimeProfile::Full,
+            RuntimeProfile::LocalYolo,
+            RuntimeProfile::LocalSafe,
+        ] {
+            let root = PathBuf::from("explicit-local-root");
+            let workspace = root.join("chosen-workspace");
+            let home = root.join("confirmed-home");
+            let oauth = OAuthClientConfig::new(
+                "explicit-client",
+                "http://localhost:8123/oauth/callback",
+                Some(SecretString::from("explicit-secret")),
+            )
+            .expect("OAuth metadata")
+            .with_hosted_domain_hint("example.test");
+            let mut input = local_runtime_build_input_for_profile(
+                profile,
+                "original-owner",
+                root,
+                RebornLocalRuntimeProfileOptions {
+                    confirm_host_access: profile == RuntimeProfile::LocalYolo,
+                },
+            )
+            .expect("resolved policy")
+            .with_local_dev_workspace_root(workspace.clone())
+            .with_tenant_id("original-tenant")
+            .with_google_oauth_backend(oauth)
+            .with_required_runtime_backends([RuntimeKind::Mcp, RuntimeKind::FirstParty])
+            .require_runtime_http_egress();
+            if profile != RuntimeProfile::LocalSafe {
+                input = input.with_local_dev_confirmed_host_home_root(home.clone());
+            }
+            let policy = input.runtime_policy.clone();
+            let reborn_home = PathBuf::from("explicit-reborn-home");
+            let input = input
+                .into_postgres_with_reborn_home(
+                    pool.clone(),
+                    SecretString::from("postgresql://unused@127.0.0.1:1/unused"),
+                    reborn_home.clone(),
+                )
+                .expect("storage transition");
+            assert_eq!(input.runtime_policy, policy);
+            assert_eq!(input.owner_id, "original-owner");
+            assert_eq!(input.tenant_id.as_deref(), Some("original-tenant"));
+            assert_eq!(
+                input.required_runtime_backends,
+                [RuntimeKind::Mcp, RuntimeKind::FirstParty]
+            );
+            assert!(input.require_runtime_http_egress);
+            assert_eq!(input.oauth_provider_configs.len(), 1);
+            let retained = &input.oauth_provider_configs[0];
+            assert_eq!(
+                retained.spec.provider_id,
+                google_provider_spec().provider_id
+            );
+            assert_eq!(retained.client.client_id.as_str(), "explicit-client");
+            assert_eq!(
+                retained.client.redirect_uri.as_str(),
+                "http://localhost:8123/oauth/callback"
+            );
+            assert_eq!(
+                retained.client.hosted_domain_hint.as_deref(),
+                Some("example.test")
+            );
+            assert!(retained.client.client_secret.is_some());
+            let RebornStorageInput::Postgres {
+                workspace_root,
+                host_home_root,
+                reborn_home: actual_home,
+                secret_master_key,
+                ..
+            } = &input.storage
+            else {
+                panic!("actual Postgres input required")
+            };
+            assert_eq!(workspace_root.as_ref(), Some(&workspace));
+            assert_eq!(
+                host_home_root.as_ref(),
+                (profile != RuntimeProfile::LocalSafe).then_some(&home)
+            );
+            assert_eq!(actual_home, &reborn_home);
+            assert!(secret_master_key.is_none());
+            let input = input.with_tenant_id("cli-runtime-tenant");
+            assert_eq!(input.tenant_id.as_deref(), Some("cli-runtime-tenant"));
+            assert_eq!(input.owner_id, "original-owner");
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    #[test]
+    fn postgres_transition_rejects_missing_policy_and_nonlocal_storage() {
+        let url = "postgresql://unused@127.0.0.1:1/unused";
+        let pool = brassclaw_pg::pool::build_pool(url).expect("unconnected pool");
+        let missing = RebornBuildInput::local_dev("owner", PathBuf::from("local"))
+            .into_postgres_with_reborn_home(
+                pool.clone(),
+                SecretString::from(url),
+                PathBuf::from("pg"),
+            );
+        assert!(matches!(
+            missing,
+            Err(crate::RebornBuildError::MissingRuntimePolicy)
+        ));
+        let policy = crate::local_dev_runtime_policy().expect("resolved policy");
+        for input in [
+            RebornBuildInput::disabled("owner").with_runtime_policy(policy.clone()),
+            RebornBuildInput::postgres(
+                "owner",
+                pool.clone(),
+                SecretString::from(url),
+                SecretString::from("existing-master-key"),
+                PathBuf::from("existing-home"),
+            )
+            .with_runtime_policy(policy.clone()),
+        ] {
+            assert!(matches!(
+                input.into_postgres_with_reborn_home(
+                    pool.clone(),
+                    SecretString::from(url),
+                    PathBuf::from("replacement")
+                ),
+                Err(crate::RebornBuildError::InvalidConfig { .. })
+            ));
+        }
     }
 }

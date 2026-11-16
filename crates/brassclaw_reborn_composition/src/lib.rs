@@ -257,12 +257,12 @@ mod runtime_input;
 pub mod secrets_master;
 #[cfg(feature = "postgres")]
 pub mod seed_builtin_host;
+#[cfg(feature = "postgres")]
+pub(crate) mod seed_review_cleanup;
 #[cfg(all(feature = "postgres", feature = "root-llm-provider"))]
 pub(crate) mod sempai_proposal_sink;
 #[cfg(feature = "postgres")]
 pub(crate) mod system_seed;
-#[cfg(feature = "postgres")]
-pub(crate) mod seed_review_cleanup;
 #[cfg(all(feature = "root-llm-provider", feature = "skills-db"))]
 mod task_memory_embeddings;
 #[cfg(feature = "skills-db")]
@@ -1160,8 +1160,6 @@ mod bootstrap_encoding_validation;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_evidence;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
-mod shipped_validation;
-#[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_free_workflow_approval;
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod bootstrap_generation_approval;
@@ -1193,6 +1191,8 @@ mod pg_transaction_client;
 mod prefix_bootstrap_setup;
 #[cfg(feature = "skills-db")]
 mod public_recipe_population;
+#[cfg(all(feature = "postgres", feature = "skills-db"))]
+mod shipped_validation;
 
 #[cfg(all(feature = "postgres", feature = "skills-db"))]
 mod global_task_factory;

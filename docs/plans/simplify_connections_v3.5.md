@@ -55,8 +55,8 @@ review reconciliation work. Do not overwrite or certify those changes implicitly
 
 | Area | Existing built-in facility | Conversion instruction and current limitation |
 | --- | --- | --- |
-| PostgreSQL | [brassclaw_pg pool](../../crates/brassclaw_pg/src/pool.rs), `deadpool_postgres`, `tokio_postgres`, rustls | Make this infrastructure own the common parsed connection/TLS/pool policy. The current builder is not yet sufficient to replace every other builder unchanged. |
-| Event-store connections | [Event-store construction](../../crates/brassclaw_reborn_event_store/src/lib.rs) | Prefer its existing `SharedPool` configuration when using the same database. Its standalone path separately parses hosts and enforces TLS: consolidate that policy without weakening it. |
+| PostgreSQL | [Shared connection policy](../../crates/brassclaw_pg/src/connection.rs), [brassclaw_pg pool](../../crates/brassclaw_pg/src/pool.rs), `deadpool_postgres`, `tokio_postgres`, rustls | Common parsed connection/TLS/pool code already exists. Complete caller adoption, aggregate capacity and lifetime acceptance remain separate open work. |
+| Event-store connections | [Event-store construction](../../crates/brassclaw_reborn_event_store/src/lib.rs) | Standalone `postgres_backed::build_pool` already delegates to the shared pool builder. Prefer existing `SharedPool` for the same database and a compatible ownership contract; this does not certify every caller or deployment. |
 | Adapter authentication/admission | [NativeProductAdapterRunner](../../crates/brassclaw_product_adapters/src/runner.rs) and adapter auth/egress contracts | Delegate common verification, bounded admission and acknowledgement classification; keep each external protocol's signature, payload and response rules. Inventory feature-gated and non-webhook paths before claiming universal coverage. |
 | Inbound actions | [Product workflow](../../crates/brassclaw_product_workflow/src/lib.rs), [IdempotencyLedger](../../crates/brassclaw_product_workflow/src/ledger.rs), [durable ledger](../../crates/brassclaw_product_workflow_storage/src/lib.rs) | Reuse binding, staging, deduplication and submission. Inbound delivery deduplication is not proof that downstream Tool effects are deduplicated. |
 | Turn ownership | [TurnStateStore](../../crates/brassclaw_turns/src/store.rs) and [Postgres turn store](../../crates/brassclaw_turns/src/pg_turn_state_store.rs) | Reuse supported durable run, claim, cancellation and checkpoint contracts. Inspect actual continuation support; a stored record does not reconstruct a lost VM. |
@@ -68,20 +68,22 @@ review reconciliation work. Do not overwrite or certify those changes implicitly
 | Provider/MCP integration | [MCP provider gateway](../../crates/brassclaw_reborn_composition/src/mcp_provider_gateway.rs) | Reuse ordinary chat ingress and existing provider execution. Retain the specific request-scoped connection and advertisement lifecycle required by v3. |
 | Review reconciliation | [Review delivery](../../crates/brassclaw_reborn_composition/src/completed_turn_review/delivery.rs) and [native reconciliation contract](../reborn/post-turn-review-reconciliation.md) | Extract genuinely common custody/accounting primitives only after tracing evidence and release predicates. Unknown provider spend, lost native owners and conflicting records remain unresolved. |
 
-### Confirmed connection-policy divergence
+### Historical connection-policy divergence — shared mechanism now implemented
 
-The general Postgres builder classifies local URLs using URL host inspection,
-uses `NoTls` for loopback, and supplies a rustls connector for remote connections.
-The standalone event-store builder uses parsed Postgres configuration, examines
-host lists/addresses and Unix sockets, honors explicit local TLS, rejects remote
-`sslmode=disable`, and upgrades remote `Prefer` to `Require`. They also differ in
+Before consolidation, the general Postgres builder classified local URLs using URL host inspection,
+used `NoTls` for loopback, and supplied a rustls connector for remote connections.
+The standalone event-store builder used parsed Postgres configuration, examined
+host lists/addresses and Unix sockets, honored explicit local TLS, rejected remote
+`sslmode=disable`, and upgraded remote `Prefer` to `Require`. They also differed in
 pool construction and certificate-root fallback.
 
-Consolidation must first give the shared builder an explicit, reviewed contract
-covering these cases. Merely routing the event store through today's general
-builder could remove protections. Preserve mandatory remote TLS and certificate
-validation; explicitly review certificate-root fallback and ambiguous/local-host
-classification rather than blindly adopting either implementation.
+The former warning against delegating to an incomplete general builder described
+that historical divergence, not a remaining prerequisite. The event store now
+delegates to the common parsed connection contract in `brassclaw_pg::connection`
+and `brassclaw_pg::pool`. This establishes shared mechanics, not full acceptance
+of all callers or deployments. Mandatory remote TLS, certificate validation and
+the existing protocol checks remain required; Phase B retains caller, capacity
+and lifecycle acceptance.
 
 Other duplicated mechanisms are **audit candidates**, not findings established
 by their similar names. An inbound fingerprint, a Tool invocation identity and a
@@ -143,10 +145,13 @@ remove a check because its name resembles a check elsewhere.
 
 ### Phase B — consolidate PostgreSQL connection policy and lifecycle
 
-- [ ] Consolidate parsing, endpoint classification, TLS mode enforcement,
-  certificate validation, root loading, pool bounds and redacted errors in
-  `brassclaw_pg` or its existing neutral infrastructure boundary. Inspect current
-  driver configuration semantics before changing it; do not invent options.
+- [x] Shared parsing, endpoint classification, TLS mode enforcement,
+  certificate/root handling and pool construction exist in `brassclaw_pg::connection`
+  and `brassclaw_pg::pool`; the standalone event store delegates to them.
+- [ ] Complete remaining caller adoption and acceptance of the shared contract,
+  including pool bounds and redacted errors. Inspect actual driver semantics
+  before changing callers; shared code alone does not prove their full lifecycle
+  or deployment support. Do not repeat the completed parser/TLS consolidation.
 - [ ] Cover URL and keyword forms, Unix sockets, hostaddr, multiple/mixed hosts,
   query-specified hosts, explicit loopback TLS and remote TLS rejection. Treat
   ambiguous endpoints conservatively. Preserve stricter existing guarantees.
