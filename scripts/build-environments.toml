@@ -14,7 +14,10 @@ cpu_limit = 8.0
 memory_mib = 32768
 memory_limit_mib = 32768
 jobs = 8
-timeout_secs = 900
+# Modal's provider-enforced Function limit (30 minutes), not a Cargo timer.
+# No time is subtracted for source preparation or completion receipts.
+timeout_secs = 1800
+# Cleanup grace after an actual interruption/error, independent of that limit.
 shutdown_grace_secs = 30
 nonpreemptible = true
 

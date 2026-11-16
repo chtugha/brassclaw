@@ -72,8 +72,8 @@ establish those acceptance gates or cross-platform runtime support.
 | Modal `memory_mib` | Reserved RAM in MiB. |
 | Modal `memory_limit_mib` | Hard RAM ceiling, at least the reservation; exceeding it may terminate the worker. |
 | Modal `jobs` | Concurrent Cargo jobs, separate from the CPU reservation/limit. More jobs do not guarantee more usable parallel work. |
-| Modal `timeout_secs` | Function deadline; must preserve the existing shutdown/receipt margin. |
-| Modal `shutdown_grace_secs` | Cargo termination grace before forced termination. |
+| Modal `timeout_secs` | Provider-enforced Function lifetime, default 1800 seconds (30 minutes). Valid provider range: 1–86400 seconds. No derived Cargo timer or completion-time subtraction. |
+| Modal `shutdown_grace_secs` | Cleanup grace for a still-running compiler after an actual worker error/interruption, independent of the provider lifetime and native test deadlines. |
 | Modal `nonpreemptible` | Existing explicit interruption/cost tradeoff; the qualified profile retains `true`. |
 
 Inspect settings without Cargo, cloud access or spending:
@@ -82,6 +82,60 @@ Inspect settings without Cargo, cloud access or spending:
 python scripts/local_build.py --show-settings
 python scripts/modal_build.py --platform apple settings
 ```
+
+Long builds still run through the existing `screen-startscript.sh` and
+`screen-build-helper.sh`. Keep the normal 180-second heartbeat. A missing
+confirmed heartbeat for five minutes requires inspection under the development
+policy; it is not permission to restart or kill the build. Screen's heartbeat
+only reports a live local command, not remote progress.
+
+During an outstanding Function call, the controller samples the original App's
+remote Cargo/descendant process states, CPU ticks and bounded Cargo log tail
+roughly every 60 seconds. It records `remote-observation.json` and immutable
+individual samples in `remote-observations/` under the original local job.
+Communication errors are recorded explicitly and do not stop or replay work.
+The same read-only inspection is available while the build holds its lock:
+
+```sh
+python scripts/modal_build.py inspect-running <original-job-uuid>
+```
+
+Use the Python interpreter containing the installed Modal SDK. This diagnostic
+lists only containers of the original App/environment, checks the original job
+request and worker-recorded process/birth identity inside that container, and reads the Linux build worker's `/proc` and
+at most 16 KiB of its Cargo log. It starts no Function, Cargo command or new
+container, and does not change build state. An empty sample can mean preparation,
+exit or a process race; unchanged counters do not alone prove a hang. Container
+listing and inspection have separate 30-second communication timeouts. Those do
+not cancel Cargo. Listing uses the SDK CLI; execution uses
+`modal_container_probe.py`, a version-checked Modal 1.6.3 adapter to the same
+authenticated command router. Its PIPE readers await stdout, stderr and exit
+together. The SDK CLI's background output printer can otherwise lose a short
+command's output after acknowledging exit. The adapter uses no PTY, arbitrary
+command, new container or bypass of the normal server access checks. A future
+SDK version must qualify this narrow bridge before its version gate is updated.
+
+The worker has no clock-based Cargo watchdog or 120-second completion reserve.
+Modal alone enforces its configured Function lifetime, covering preparation and
+all compilation phases. Forced provider termination may prevent a durable worker
+receipt; it must never be reported as an acknowledged compiler result. A terminal
+SDK error without that receipt remains unresolved and blocks new remote work
+until the original is reconciled. No automatic build retry is enabled.
+
+The updated worker must actually be installed in the immutable compiler image
+before new builds use this behavior. Source synchronization cannot replace its
+`/opt/brassclaw` copy; existing worker/image identity gates reject stale images.
+Historical collection remains supported for the exact prior worker identities,
+without granting them new-run or activation authority.
+
+**Live update — 2026-11-16:** image `im-qm70mVr4NTtFZgxk748qWZ` contains the
+current worker and is ACTIVE for `apple-cli-build/1`. The ordinary activated
+post-check completed without a qualification bypass, reused all 1,095 Cargo
+artifacts and returned byte-identical CLI/worker/pgvector files. Its four automatic
+and three explicit live observations used the drained transport successfully.
+The 30-minute provider limit is in both actual job requests. Toolchain/SDK are
+unchanged; native test mode and Linux qualification are not activated by this
+update. See the [exact activation evidence](validation/2026-11-16-modal-worker-activation.md).
 
 Local example with an independent job count:
 
@@ -261,8 +315,8 @@ stays unresolved; it never establishes a failed compilation or verified local
 collection. Terminal FunctionTimeoutError/RemoteError results leave the run polling
 loop; ordinary Python poll TimeoutError continues polling. Status checks the
 original durable worker completion before classifying a terminal SDK result as
-failed: a valid completion uses the same collector even if the function failed
-after persisting it. Confirmed absent receipts permit terminal failure; Volume
+settled: a valid completion uses the same collector even if the function failed
+after persisting it. An absent receipt leaves the build unresolved; Volume
 transport failures leave collection unconfirmed. The terminal receipt records
 the SDK exception and can coexist with a reconciled successful worker result.
 Local state becomes
@@ -284,7 +338,8 @@ selected by `modal.linux.compiler`, independently of the workspace MSRV.
 Apple CLI builds support dev/test/release profiles and export the actual current
 Cargo product artifact. The bounded Composition libtest path adds the normal
 `monty_worker` executable, keeping `deps/<harness>` adjacent to that companion.
-Both build phases use the remaining original deadline. PostgreSQL archives are
+Both build phases run under the same provider Function lifetime, without a
+second Cargo timer or a deducted completion reserve. PostgreSQL archives are
 embedded by the existing crate; current Cargo build-script messages select the
 verified pgvector archive. No empty archive, unresolved external dylib or guessed
 cache neighbor qualifies a runtime package. Native Cargo caches are never replaced.

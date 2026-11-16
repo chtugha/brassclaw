@@ -76,7 +76,7 @@ class WorkerTests(SourceFixture):
     def test_complete_package_keeps_offline_and_frozen_for_companion(self):
         self.exercise_invocation(packaged=True, main_flags=("--offline", "--frozen"))
 
-    def exercise_invocation(self, packaged=False, companion_code=0, main_flags=()):
+    def exercise_invocation(self, packaged=False, companion_code=0, main_flags=(), started_monotonic=None):
         # Synthetic Popen/stdout/header IO boundary, not a Rust build or native
         # executable qualification. Source archives/materialization remain real.
         package = self.root / "crates" / worker.TEST_PACKAGE
@@ -144,13 +144,13 @@ class WorkerTests(SourceFixture):
             lines = ["non-JSON build output\n", json.dumps(artifact) + "\n", *[json.dumps(item) + "\n" for item in extra],
                      json.dumps({"reason": "build-finished", "success": code == 0}) + "\n"]
             logged.extend(lines)
-            return SimpleNamespace(stdout=iter(lines), wait=lambda **kw: code, poll=lambda: code)
+            return SimpleNamespace(pid=99999999, stdout=iter(lines), wait=lambda **kw: code, poll=lambda: code)
         commits = []
         with patch.object(worker.subprocess, "Popen", side_effect=popen) as execute, \
                 patch.object(worker, "update_cache", side_effect=lambda src, dest, manifest: shutil.copytree(src, dest)), \
                 patch.object(worker.os, "sync"), \
                 patch.object(worker.subprocess, "check_output", return_value="fixture:\n\t/usr/lib/libSystem.B.dylib (compatibility version 1.0)\n"):
-            result = worker.run_build(storage, request, lambda: commits.append(True))
+            result = worker.run_build(storage, request, lambda: commits.append(True), started_monotonic=started_monotonic)
         self.assertEqual(execute.call_count, 2 if packaged else 1)
         self.assertEqual(result["command"], command)
         self.assertEqual(result["original_command"], original)
@@ -168,25 +168,26 @@ class WorkerTests(SourceFixture):
             self.assertEqual(worker.run_build(storage, request, lambda: None), result)
             execute.assert_not_called()
 
-    def test_source_preparation_consumes_the_same_deadline_before_any_cargo_start(self):
-        self.exercise_preparation_deadline()
+    def test_elapsed_function_preflight_never_creates_an_additional_cargo_timer(self):
+        # The provider enforces its own limit. Even an old/small request value
+        # must not become a second worker timer or a companion-build cutoff.
+        with patch.object(worker.time, "monotonic", return_value=4000), \
+                patch.object(worker.os, "killpg") as stop:
+            self.exercise_invocation(packaged=True, started_monotonic=0)
+        stop.assert_not_called()
 
-    def test_function_preflight_before_worker_consumes_the_original_deadline(self):
-        self.exercise_preparation_deadline(outer=True)
-
-    def exercise_preparation_deadline(self, outer=False):
-        storage, _, checksum = self.records()
-        request = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe", "command": ["cargo", "build", "--locked",
-                   "-p", "brassclaw_reborn_cli", "--bin", "brassclaw-reborn", "--target", worker.APPLE_TARGET],
-                   "image_id": "im-fixture", "manifest_sha256": checksum, "target_triple": worker.APPLE_TARGET,
-                   "jobs": 1, "timeout_secs": 300, "shutdown_grace_secs": 1}
-        request["command"] = worker.validate_command(request["command"], worker.APPLE_TARGET)
-        with patch.object(worker.time, "monotonic", side_effect=[181] if outer else [0, 181]), \
-                patch.object(worker, "update_cache", side_effect=lambda src, dest, manifest: shutil.copytree(src, dest)), \
-                patch.object(worker.os, "sync"), patch.object(worker.subprocess, "Popen") as cargo:
-            with self.assertRaisesRegex(TimeoutError, "Source preparation exhausted"):
-                worker.run_build(storage, request, lambda: None, **({"started_monotonic": 0} if outer else {}))
-            cargo.assert_not_called()
+    def test_slow_source_preparation_does_not_withhold_main_or_companion_build(self):
+        clock = [0]
+        materialize = worker.materialize
+        def slow_preparation(*args):
+            result = materialize(*args)
+            clock[0] = 4000
+            return result
+        with patch.object(worker.time, "monotonic", side_effect=lambda: clock[0]), \
+                patch.object(worker, "materialize", side_effect=slow_preparation), \
+                patch.object(worker.os, "killpg") as stop:
+            self.exercise_invocation(packaged=True)
+        stop.assert_not_called()
 
     def test_target_and_host_override_arguments_are_rejected(self):
         worker.validate_command(["cargo", "build", "--locked", "--target=aarch64-apple-darwin"], "aarch64-apple-darwin")
@@ -379,6 +380,123 @@ class ArtifactBoundaryTests(unittest.TestCase):
                 worker.collect_product_artifact([{**message, **change}], self.finished, self.cache, job, product)
 
 
+
+
+class LiveInspectionTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.storage = Path(temporary.name).resolve()
+        self.request = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe", "image_id": "im-fixture",
+                        "manifest_sha256": "a" * 64, "command": ["cargo", "clippy", "--locked"],
+                        "target_triple": "x86_64-unknown-linux-gnu"}
+        self.job = self.storage / "cache/jobs" / self.request["job_id"]
+        self.job.mkdir(parents=True)
+        (self.job / "request.json").write_bytes(worker.encoded(self.request))
+        self.repository = self.storage / "cache/images/im-fixture/repository"
+        self.repository.mkdir(parents=True)
+        self.proc = self.storage / "proc"
+        self.proc.mkdir()
+
+    def marker(self, pid=10, start_ticks=41, command=None):
+        (self.job / "cargo-process.json").write_bytes(worker.encoded(
+            {"pid": pid, "start_ticks": start_ticks, "command": command or self.request["command"]}))
+
+    def process(self, pid, parent, name, command=(), cwd=None):
+        path = self.proc / str(pid)
+        path.mkdir()
+        fields = ["0"] * 20
+        fields[0], fields[1], fields[11], fields[12], fields[19] = "S", str(parent), "13", "7", "41"
+        (path / "stat").write_text(f"{pid} ({name}) " + " ".join(fields))
+        (path / "cmdline").write_bytes(b"\0".join(os.fsencode(arg) for arg in command) + b"\0")
+        (path / "cwd").symlink_to(cwd or self.repository, target_is_directory=True)
+        return path
+
+    def inspect(self):
+        return worker.inspect_build(self.storage, self.request, proc_root=self.proc)
+
+    def test_matches_worker_pid_birth_and_descendants_even_after_clippy_exec(self):
+        self.marker()
+        self.process(10, 1, "cargo-clippy", ["/toolchain/bin/cargo-clippy", "clippy", "--locked"])
+        self.process(11, 10, "rustc")
+        self.process(12, 11, "linker (test)")
+        other = self.storage / "other"
+        other.mkdir()
+        self.process(20, 1, "cargo", self.request["command"], other)
+        self.process(21, 1, "cargo", ["cargo", "build", "--locked"])
+        (self.job / "cargo.log").write_bytes(b"old log\n" + b"a" * 20000)
+        with patch.object(worker.subprocess, "Popen") as execute, patch.object(worker.os, "killpg") as stop:
+            result = self.inspect()
+        self.assertTrue(result["cargo_observed"])
+        self.assertEqual([p["pid"] for p in result["processes"]], [10, 11, 12])
+        self.assertEqual(result["processes"][0]["cpu_ticks"], 20)
+        self.assertEqual(result["processes"][2]["name"], "linker (test)")
+        self.assertEqual(result["cargo_log"]["size_bytes"], 20008)
+        self.assertEqual(result["cargo_log"]["tail"], "a" * 16384)
+        self.assertNotIn("command", result["processes"][0])
+        execute.assert_not_called()
+        stop.assert_not_called()
+
+    def test_no_process_or_log_is_an_observation_not_a_failed_or_completed_build(self):
+        result = self.inspect()
+        self.assertFalse(result["cargo_observed"])
+        self.assertIsNone(result["cargo_log"])
+        self.assertNotIn("returncode", result)
+        self.assertFalse((self.job / "completed.json").exists())
+
+    def test_mismatched_original_is_rejected_before_reading_processes(self):
+        (self.job / "request.json").write_bytes(worker.encoded({**self.request, "image_id": "im-other"}))
+        with self.assertRaisesRegex(ValueError, "differs from original"):
+            self.inspect()
+
+    def test_log_symlink_and_fifo_are_refused_without_reading_or_blocking(self):
+        log = self.job / "cargo.log"
+        log.symlink_to(self.job / "request.json")
+        with self.assertRaisesRegex(ValueError, "symlink"):
+            self.inspect()
+        log.unlink()
+        os.mkfifo(log)
+        with self.assertRaisesRegex(ValueError, "regular Cargo log"):
+            self.inspect()
+
+    def test_reused_pid_is_not_attributed_to_original_cargo(self):
+        self.process(10, 1, "cargo", self.request["command"])
+        self.marker(start_ticks=40)
+        self.assertFalse(self.inspect()["cargo_observed"])
+
+    def test_invalid_process_record_never_attributes_an_unrelated_process(self):
+        self.process(10, 1, "cargo", self.request["command"])
+        for command in (["cargo", "build", "--locked"], ["bash", "-c", "anything"]):
+            self.marker(command=command)
+            with self.subTest(command=command), self.assertRaisesRegex(ValueError, "differs from admitted"):
+                self.inspect()
+
+    def test_json_records_cannot_block_inspection_or_hide_duplicates_or_oversize(self):
+        marker = self.job / "cargo-process.json"
+        os.mkfifo(marker)
+        with self.assertRaisesRegex(ValueError, "regular JSON records"):
+            self.inspect()
+        marker.unlink()
+        marker.write_bytes(b" " * (worker.INSPECTION_RECORD_LIMIT_BYTES + 1))
+        with self.assertRaisesRegex(ValueError, "diagnostic size limit"):
+            self.inspect()
+        marker.write_text('{"pid":10,"pid":11,"start_ticks":41,"command":["cargo","clippy","--locked"]}')
+        with self.assertRaisesRegex(ValueError, "Duplicate JSON key"):
+            self.inspect()
+
+    def test_missing_birth_identity_is_not_a_live_process_claim(self):
+        self.marker(start_ticks=None)
+        self.process(10, 1, "cargo")
+        self.assertFalse(self.inspect()["cargo_observed"])
+
+    def test_companion_process_is_accepted_only_under_the_same_packaged_request(self):
+        command = worker.validate_command(["cargo", "build", "--locked", "-p", "brassclaw_reborn_cli",
+                                          "--bin", "brassclaw-reborn", "--target", worker.APPLE_TARGET])
+        self.request.update(runtime_package=1, target_triple=worker.APPLE_TARGET, command=command)
+        (self.job / "request.json").write_bytes(worker.encoded(self.request))
+        self.marker(command=worker.worker_command(self.request["target_triple"], self.request["command"]))
+        self.process(10, 1, "cargo")
+        self.assertTrue(self.inspect()["cargo_observed"])
 
 
 if __name__ == "__main__":

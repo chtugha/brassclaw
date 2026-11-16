@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Modal build supervision**: Set the provider Function limit to 30 minutes and
+  remove the separate Cargo watchdog and deducted completion reserve. Observe
+  the original remote process tree and bounded Cargo logs without stopping work;
+  retain independent Screen notifications, communication and test deadlines.
+  Missing worker completion stays unresolved and blocks replay. Require the
+  current immutable worker on both targets while preserving historical collection.
+  Refresh and activate the actual Apple image, verify the ordinary cached path,
+  and drain both authenticated exec pipes to fix the SDK's short-output race.
 - **Shipped component startup**: Inherit validation completed before provisioning
   instead of repeating Q1/behavior workflows, creating model fixtures or opening
   installed review requests on fresh startup and restart. Bind transfer records

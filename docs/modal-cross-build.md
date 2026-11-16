@@ -94,7 +94,7 @@ Apple target has target-prefixed CC/CXX/AR/RANLIB/linker settings.
 ```
 python scripts/modal_build.py --environment brassclaw --platform apple run \
   --qualification --confirmed-modal --estimated-local-secs 1800 \
-  --cpu 8 --memory-mib 32768 --jobs 8 --timeout-secs 900 \
+  --cpu 8 --memory-mib 32768 --jobs 8 --timeout-secs 1800 \
   --shutdown-grace-secs 30 --nonpreemptible -- \
   cargo build --locked -p brassclaw_reborn_cli --bin brassclaw-reborn \
   --target aarch64-apple-darwin
@@ -255,13 +255,29 @@ fail until actually packaged. Downloads remain in the original job directory,
 reuse matching bytes, recover missing copies and preserve conflicting published
 files/symlinks. They never replace the native Cargo target.
 
-The complete deadline starts at function entry, including source preparation,
-product/test compilation and the normal worker phase; the existing 120-second
-shutdown/receipt reserve remains. Source preparation cannot create a fresh full
-Cargo timeout. Local native cases use the collected program directly with
+The provider Function limit defaults to 1800 seconds (30 minutes), covering
+source preparation, product/test compilation and the normal worker phase. The
+worker has no additional Cargo deadline and deducts no 120-second reserve.
+The controller observes the original container's actual processes and bounded
+Cargo log approximately every 60 seconds; `inspect-running <job>` provides the
+same read-only diagnostic without taking the build's lock. Screen retains its
+180-second heartbeat and five-minute missing-heartbeat investigation rule.
+Communication timeouts never stop or resubmit Cargo. A provider timeout without
+an original durable worker receipt remains unresolved. See
+[the monitoring and settings contract](build-environments.md#settings-and-commands).
+Local native cases retain their separate explicit test deadlines and use the collected program directly with
 `run --native-test <exact-name> --test-timeout-secs <existing-deadline>` or
 `accept-native <job> --test <exact-name> --test-timeout-secs <deadline>`.
 No automatic test replay or local Cargo rebuild is introduced.
+
+**Activated worker successor — 2026-11-16:** the current worker is installed in
+`im-qm70mVr4NTtFZgxk748qWZ` and ACTIVE for ordinary Apple CLI builds. The real
+qualification and subsequent activated frozen/cache-reuse build passed with
+unchanged toolchain/SDK. Live inspection now drains both exec output pipes through
+the version-checked `modal_container_probe.py` adapter; it retains the SDK's
+authenticated access checks and does not use a PTY. The prior CLI exec output
+race and all original failed observations remain recorded. See
+[the exact live activation record](validation/2026-11-16-modal-worker-activation.md).
 
 This source is **not** the worker contained in the historical image receipts
 above. Exact current worker/image preparation and native acceptance are required

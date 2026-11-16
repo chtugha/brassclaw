@@ -2,7 +2,9 @@
 
 import argparse
 import ast
-from contextlib import nullcontext
+import asyncio
+from contextlib import nullcontext, redirect_stdout, redirect_stderr
+import io
 import json
 import hashlib
 import os
@@ -18,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 import build_settings
 import local_build
 import modal_build
+import modal_container_probe as probe
 import modal_source_sync as sync
 from modal_build_worker import encoded
 from test_modal_source_sync import SourceFixture
@@ -63,6 +66,7 @@ class SettingsTests(unittest.TestCase):
         defaults = build_settings.modal_resources(arguments())
         burst = build_settings.modal_resources(arguments(cpu_limit=16, jobs=16))
         self.assertEqual((defaults["cpu"], defaults["cpu_limit"], defaults["jobs"]), (8, 8, 8))
+        self.assertEqual(defaults["timeout_secs"], 1800)
         self.assertEqual((burst["cpu"], burst["cpu_limit"], burst["jobs"]), (8, 16, 16))
 
     def test_explicit_old_shorthand_overrides_both_request_and_limit(self):
@@ -86,10 +90,34 @@ class SettingsTests(unittest.TestCase):
     def test_invalid_resources_fail_before_any_cloud_access(self):
         for value in (dict(cpu=float("nan")), dict(cpu=float("inf")), dict(cpu=-1),
                       dict(cpu=16, cpu_limit=8), dict(memory_mib=65536, memory_limit_mib=32768),
-                      dict(jobs=0), dict(jobs=True), dict(timeout_secs=179),
-                      dict(shutdown_grace_secs=120)):
+                      dict(jobs=0), dict(jobs=True), dict(timeout_secs=0), dict(timeout_secs=True),
+                      dict(timeout_secs=86401), dict(shutdown_grace_secs=0)):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 build_settings.modal_resources(arguments(**value))
+
+    def test_provider_limit_and_interruption_grace_are_independent(self):
+        for timeout in (1, 1800, 86400):
+            value = build_settings.modal_resources(arguments(timeout_secs=timeout, shutdown_grace_secs=120))
+            self.assertEqual((value["timeout_secs"], value["shutdown_grace_secs"]), (timeout, 120))
+
+    def test_both_platforms_reject_prior_timer_images_before_sync_or_submission(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            records = Path(tmp)
+            for platform, mode in (("apple", modal_build.APPLE_BUILD_MODE), ("linux", "linux-compile/1")):
+                prepared = {"rust_version": modal_build.compiler_version(platform), "environment": "brassclaw",
+                            "worker_identity": modal_build.PRE_OBSERVATION_WORKER_IDENTITY,
+                            "supported_modes": [mode]}
+                (records / f"image-{platform}.json").write_bytes(encoded(prepared))
+                command = arguments().cargo if platform == "apple" else ["cargo", "clippy", "--locked"]
+                with self.subTest(platform=platform), \
+                        patch.object(modal_build, "records_root", return_value=records), \
+                        patch.object(modal_build, "assert_remote_settled"), \
+                        patch.object(modal_build, "sync_source") as sync_source, \
+                        patch.object(modal_build, "modal_lock") as lock:
+                    with self.assertRaisesRegex(ValueError, "exact worker/image"):
+                        modal_build.run(arguments(platform=platform, cargo=command))
+                    sync_source.assert_not_called()
+                    lock.assert_not_called()
 
     def test_unknown_and_invalid_local_settings_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -315,6 +343,136 @@ class LocalRunnerTests(unittest.TestCase):
                 local_build.run_local(command, "inherit")
 
 
+class DrainedProbeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_exit_acknowledgement_cannot_finish_before_both_output_pipes(self):
+        exited, stdout_ready, stderr_ready = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        async def wait():
+            exited.set()
+            return 0
+        async def read_stdout():
+            await stdout_ready.wait()
+            return '{"observed":true}\n'
+        async def read_stderr():
+            await stderr_ready.wait()
+            return 'retained diagnostic\n'
+        process = SimpleNamespace(wait=wait, stdout=SimpleNamespace(read=read_stdout),
+                                  stderr=SimpleNamespace(read=read_stderr))
+        drained = asyncio.create_task(probe.drain_process(process))
+        await exited.wait()
+        self.assertFalse(drained.done(), "process exit must not discard delayed stdout")
+        stdout_ready.set()
+        await asyncio.sleep(0)
+        self.assertFalse(drained.done(), "stdout alone must not discard delayed stderr")
+        stderr_ready.set()
+        self.assertEqual(await drained, ('{"observed":true}\n', 'retained diagnostic\n', 0))
+
+    async def test_remote_failure_preserves_stderr_and_nonzero_exit(self):
+        async def value(result):
+            return result
+        process = SimpleNamespace(wait=lambda: value(17), stdout=SimpleNamespace(read=lambda: value('')),
+                                  stderr=SimpleNamespace(read=lambda: value('inspection failed')))
+        self.assertEqual(await probe.drain_process(process), ('', 'inspection failed', 17))
+
+
+class ProbeBoundaryTests(unittest.TestCase):
+    def test_unknown_sdk_or_noncanonical_target_is_rejected_before_access(self):
+        request = {'job_id': '736e8ba8-ad53-4d53-9011-c1c9b67083fe', 'environment': 'brassclaw'}
+        with patch.object(probe, 'version', return_value='1.6.4'):
+            with self.assertRaisesRegex(RuntimeError, 'validated SDK'):
+                probe.inspect_container('ta-original', request)
+        for target, original in [('ta-original;exec', request),
+                                 ('ta-original', {**request, 'environment': 'main'}),
+                                 ('ta-original', {**request, 'job_id': request['job_id'].upper()})]:
+            with self.subTest(target=target, original=original), self.assertRaises(ValueError):
+                probe.inspect_container(target, original)
+
+    def test_helper_propagates_actual_exit_and_both_drained_streams(self):
+        output, errors = io.StringIO(), io.StringIO()
+        with patch.object(sys, 'argv', ['modal_container_probe.py', 'ta-original', '{}']), \
+                patch.object(probe, 'inspect_container', return_value=('data', 'diagnostic', 17)), \
+                redirect_stdout(output), redirect_stderr(errors):
+            self.assertEqual(probe.main(), 17)
+        self.assertEqual((output.getvalue(), errors.getvalue()), ('data', 'diagnostic'))
+
+
+class RemoteObservationTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.directory = Path(temporary.name)
+        self.original = {"job_id": "736e8ba8-ad53-4d53-9011-c1c9b67083fe", "image_id": "im-original",
+                         "manifest_sha256": "a" * 64, "environment": "brassclaw"}
+        self.state = {"job_id": self.original["job_id"], "app_id": "ap-original", "state": "running"}
+        self.sample = {key: self.original[key] for key in ("job_id", "image_id", "manifest_sha256")}
+
+    def responses(self, containers=None, sample=None):
+        containers = [{"container_id": "ta-original", "app_id": "ap-original"}] if containers is None else containers
+        return [SimpleNamespace(stdout=json.dumps(containers)),
+                SimpleNamespace(stdout=json.dumps(self.sample if sample is None else sample))]
+
+    def test_real_cli_grammar_is_read_only_scoped_and_has_communication_timeouts(self):
+        with patch.object(modal_build.subprocess, "run", side_effect=self.responses()) as execute:
+            observed = modal_build.observe_remote(self.state, self.original)
+        listed, inspected = execute.call_args_list
+        self.assertEqual(listed.args[0], [sys.executable, "-m", "modal", "container", "list",
+                                       "--app-id", "ap-original", "--env", "brassclaw", "--json"])
+        self.assertEqual(inspected.args[0][:3], [sys.executable, str(Path(modal_build.__file__).with_name("modal_container_probe.py")), "ta-original"])
+        self.assertEqual(json.loads(inspected.args[0][-1]), self.original)
+        for call in execute.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], 30)
+            self.assertTrue(call.kwargs["check"])
+            self.assertNotIn("shell", call.kwargs)
+        self.assertEqual(observed["containers"][0]["container_id"], "ta-original")
+
+    def test_empty_container_list_never_claims_completion(self):
+        with patch.object(modal_build.subprocess, "run", side_effect=self.responses(containers=[])) as execute:
+            observed = modal_build.observe_remote(self.state, self.original)
+        self.assertEqual(execute.call_count, 1)
+        self.assertEqual(observed["containers"], [])
+        self.assertNotIn("returncode", observed)
+
+    def test_foreign_ambiguous_or_malformed_container_is_rejected_before_exec(self):
+        bad = [[{"container_id": "ta-foreign", "app_id": "ap-foreign"}],
+               [{"container_id": "ta-a", "app_id": "ap-original"}] * 2,
+               [{"container_id": "ta-bad;touch", "app_id": "ap-original"}], {}]
+        for containers in bad:
+            with self.subTest(containers=containers), \
+                    patch.object(modal_build.subprocess, "run", side_effect=self.responses(containers=containers)) as execute:
+                with self.assertRaises(ValueError):
+                    modal_build.observe_remote(self.state, self.original)
+                self.assertEqual(execute.call_count, 1)
+
+    def test_foreign_observation_is_not_accepted(self):
+        with patch.object(modal_build.subprocess, "run", side_effect=self.responses(sample={**self.sample, "job_id": "wrong"})):
+            with self.assertRaisesRegex(ValueError, "differs from original job"):
+                modal_build.observe_remote(self.state, self.original)
+
+    def test_inspection_error_is_recorded_without_changing_the_job_or_starting_work(self):
+        before = dict(self.state)
+        errors = [subprocess.TimeoutExpired("read-only CLI", 30),
+                  subprocess.CalledProcessError(1, "read-only CLI", stderr="container no longer exists"),
+                  ValueError("wrong worker protocol")]
+        for error in errors:
+            with self.subTest(error=error), patch.object(modal_build, "observe_remote", side_effect=error):
+                self.assertFalse(modal_build.record_remote_observation(self.directory, self.state, self.original))
+        self.assertEqual(self.state, before)
+        self.assertEqual(len(list((self.directory / "remote-observations").glob("*.json"))), 3)
+        self.assertFalse((self.directory / "completed.json").exists())
+        self.assertIn("error", json.loads((self.directory / "remote-observation.json").read_bytes()))
+
+    def test_manual_inspection_uses_original_app_without_acquiring_the_running_build_lock(self):
+        directory = self.directory / "jobs" / self.original["job_id"]
+        directory.mkdir(parents=True)
+        (directory / "state.json").write_bytes(encoded(self.state))
+        (directory / "request.json").write_bytes(encoded(self.original))
+        with patch.object(modal_build, "records_root", return_value=self.directory), \
+                patch.object(modal_build, "modal_lock") as lock, \
+                patch.object(modal_build, "record_remote_observation", return_value=True) as observe:
+            self.assertEqual(modal_build.inspect_running(SimpleNamespace(job_id=self.original["job_id"])), 0)
+        lock.assert_not_called()
+        observe.assert_called_once_with(directory, self.state, self.original)
+
+
 class ControllerTests(SourceFixture):
     def setUp(self):
         super().setUp()
@@ -365,7 +523,14 @@ class ControllerTests(SourceFixture):
     def test_run_builtin_poll_timeout_continues_to_result(self):
         self._run_transport(poll_once=True)
 
-    def _run_transport(self, fail_download=False, test_mode=False, terminal_error=None, poll_once=False):
+    def test_observation_failure_does_not_interrupt_or_repeat_the_original_build(self):
+        self._run_transport(poll_once=True, observation_ok=False)
+
+    def test_remote_observations_follow_the_sixty_second_cadence_without_replay(self):
+        self._run_transport(poll_times=3, clock_values=[0, 1, 1, 30, 62, 62])
+
+    def _run_transport(self, fail_download=False, test_mode=False, terminal_error=None, poll_once=False,
+                       observation_ok=True, poll_times=0, clock_values=None):
         # Mock SDK transport only. This does not execute/qualify a remote worker.
         (self.root / "scripts").mkdir()
         (self.root / "scripts/modal_build_worker.py").write_text("# fixture identity\n")
@@ -428,11 +593,11 @@ class ControllerTests(SourceFixture):
                         remote_files[prefix + "/cargo.log"] = b"SDK fixture; no Cargo executed\n"
                         def get(**kwargs):
                             gets.append(kwargs)
-                            if len(gets) > 2:
+                            if len(gets) > max(poll_times, int(poll_once)) + 1:
                                 raise AssertionError("Terminal result was polled repeatedly")
                             if terminal_error is not None:
                                 raise terminal_error
-                            if poll_once and len(gets) == 1:
+                            if len(gets) <= max(poll_times, int(poll_once)):
                                 raise TimeoutError("ordinary empty poll")
                             return result
                         return SimpleNamespace(object_id="fc-test", get=get)
@@ -467,6 +632,8 @@ class ControllerTests(SourceFixture):
                 patch.object(modal_build, "records_root", return_value=records), \
                 patch.object(modal_build, "rust_version", return_value="1.96.0"), \
                 patch.object(modal_build, "sync_source", side_effect=check_sync_lock) as upload, \
+                patch.object(modal_build, "record_remote_observation", return_value=observation_ok) as observations, \
+                (patch.object(modal_build.time, "monotonic", side_effect=clock_values) if clock_values else nullcontext()), \
                 sync.cargo_lock():
             if terminal_error is not None:
                 with self.assertRaises(type(terminal_error)):
@@ -499,6 +666,10 @@ class ControllerTests(SourceFixture):
                 self.assertEqual(spawns, [submitted["job_id"]])
         if poll_once:
             self.assertEqual(len(gets), 2)
+            self.assertEqual(observations.call_count, 1)
+        if clock_values:
+            self.assertEqual(observations.call_count, 2)
+            self.assertEqual(len(spawns), 1)
         if test_mode:
             self.assertEqual(submitted["command"][-1], "--message-format=json")
             self.assertEqual(submitted["original_command"][-1], "--message-format=json-render-diagnostics")
@@ -508,6 +679,7 @@ class ControllerTests(SourceFixture):
         self.assertEqual(resources["cpu"], (8, 16))
         self.assertEqual(resources["memory"], (32768, 32768))
         self.assertEqual((resources["max_containers"], resources["min_containers"]), (1, 0))
+        self.assertEqual(resources["timeout"], 1800)
         self.assertEqual(submitted["jobs"], 16)
         self.assertEqual(submitted["lock_scope"], "modal")
         self.assertEqual(submitted["manifest_sha256"], __import__("hashlib").sha256(manifest_bytes).hexdigest())
@@ -545,6 +717,8 @@ class CollectionBoundaryTests(unittest.TestCase):
         propagated = [*baseline[:3], "--frozen", *baseline[3:]]
         cases = ((current, current, propagated, True),
                  (current, current, baseline, False),
+                 (modal_build.PRE_OBSERVATION_WORKER_IDENTITY, modal_build.PRE_OBSERVATION_WORKER_IDENTITY, propagated, True),
+                 (modal_build.PRE_OBSERVATION_WORKER_IDENTITY, modal_build.PRE_OBSERVATION_WORKER_IDENTITY, baseline, False),
                  (legacy, legacy, baseline, True),
                  (legacy, legacy, propagated, False),
                  (unknown, unknown, baseline, False),
@@ -692,12 +866,20 @@ class CollectionBoundaryTests(unittest.TestCase):
         self.assertEqual(reads, [])
         self.assertFalse((directory / "terminal.json").exists())
 
-    def test_terminal_sdk_error_with_confirmed_missing_receipt_is_failed_without_collection(self):
+    def test_terminal_sdk_error_without_worker_receipt_stays_unresolved_and_blocks_replay(self):
         directory, state, reads, selected, invoke = self.status_fixture("running", call_error=SDKFunctionTimeoutError("terminal"))
         del self.files["completed.json"]
         invoke()
         recovered = json.loads((directory / "state.json").read_bytes())
-        self.assertEqual(recovered["state"], "failed")
+        self.assertEqual(recovered["state"], "unresolved")
+        # Discover the actual persisted fixture state through the same owner as
+        # admission, rather than simulating a lock or a terminal classification.
+        target = self.directory / "target"
+        target.mkdir(exist_ok=True)
+        (target / "modal-build").symlink_to(self.directory, target_is_directory=True)
+        with patch.dict(os.environ, {"CARGO_TARGET_DIR": str(target)}):
+            with self.assertRaisesRegex(RuntimeError, "Unsettled remote build"):
+                sync.assert_remote_settled()
         self.assertNotIn("collection", recovered)
         self.assertFalse((directory / "completed.json").exists())
         self.assertFalse((directory / "brassclaw-reborn").exists())

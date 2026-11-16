@@ -14,7 +14,6 @@ import subprocess
 import tarfile
 import tempfile
 import time
-import threading
 import struct
 import stat
 import tomllib
@@ -32,16 +31,17 @@ def digest_file(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def load_record(path):
-    def unique(pairs):
-        result = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError("Duplicate JSON key")
-            result[key] = value
-        return result
+def _unique_json_object(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON key")
+        result[key] = value
+    return result
 
-    return json.loads(Path(path).read_bytes(), object_pairs_hook=unique)
+
+def load_record(path):
+    return json.loads(Path(path).read_bytes(), object_pairs_hook=_unique_json_object)
 
 
 APPLE_TARGET = "aarch64-apple-darwin"
@@ -514,6 +514,113 @@ def update_cache(staging, destination, manifest):
     verify_tree(destination, manifest["files"])
 
 
+# Diagnostics are bounded independently of source/compilation limits. Metadata
+# beyond this size is an inspection error; only the log is explicitly a tail.
+INSPECTION_RECORD_LIMIT_BYTES = 1024 * 1024
+INSPECTION_LOG_TAIL_BYTES = 16 * 1024
+
+
+def _inspection_record(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError("Inspection requires regular JSON records")
+        contents = stream.read(INSPECTION_RECORD_LIMIT_BYTES + 1)
+    if len(contents) > INSPECTION_RECORD_LIMIT_BYTES:
+        raise ValueError("Inspection JSON record exceeds diagnostic size limit")
+    return json.loads(contents, object_pairs_hook=_unique_json_object)
+
+
+def _process_sample(path):
+    # Linux stat's comm may contain spaces or parentheses. Fields after its
+    # final ')' start at field 3; CPU and birth ticks are fields 14/15 and 22.
+    raw = (path / "stat").read_text()
+    name, separator, fields = raw.partition("(")[2].rpartition(")")
+    fields = fields.split()
+    if not separator or len(fields) < 20:
+        raise ValueError("Malformed Linux process stat")
+    return {"pid": int(path.name), "name": name, "state": fields[0],
+            "parent_pid": int(fields[1]), "cpu_ticks": int(fields[11]) + int(fields[12]),
+            "start_ticks": int(fields[19])}
+
+
+def inspect_build(storage, request, *, proc_root=Path("/proc")):
+    """Read-only live observation, never a completion receipt or progress claim.
+
+    Match the worker's Popen PID and Linux birth identity to this immutable
+    request. This also tracks cargo-clippy's exec transitions. Include
+    descendants and bounded logs without reading environment or process argv.
+    """
+    storage = Path(storage).resolve(strict=True)
+    job = storage / "cache/jobs" / str(uuid.UUID(request["job_id"]))
+    if job.resolve(strict=True) != job or (job / "request.json").is_symlink():
+        raise ValueError("Inspection requires the canonical original job")
+    if _inspection_record(job / "request.json") != request:
+        raise ValueError("Inspection request differs from original job")
+    if not re.fullmatch("[a-zA-Z0-9_-]+", request["image_id"]):
+        raise ValueError("Invalid image cache identity")
+    command = validate_command(request["command"], request.get("target_triple"))
+    if command != request["command"]:
+        raise ValueError("Inspection command differs from admitted command")
+    commands = [command]
+    if request.get("runtime_package") == 1 and request.get("target_triple") == APPLE_TARGET:
+        commands.append(worker_command(request["target_triple"], request.get("original_command", command)))
+    selected_process = job / "cargo-process.json"
+    selected = None
+    if selected_process.is_symlink():
+        raise ValueError("Inspection refuses a symlink process record")
+    try:
+        selected = _inspection_record(selected_process)
+        if (not isinstance(selected, dict) or set(selected) != {"command", "pid", "start_ticks"}
+                or selected.get("command") not in commands
+                or type(selected.get("pid")) is not int or selected["pid"] <= 0
+                or (selected["start_ticks"] is not None
+                    and (type(selected["start_ticks"]) is not int or selected["start_ticks"] < 0))):
+            raise ValueError("Process record differs from admitted Cargo commands")
+    except FileNotFoundError:
+        pass  # No Cargo process has been published yet during preparation.
+    samples = {}
+    for path in proc_root.iterdir():
+        if not path.name.isdecimal():
+            continue
+        try:
+            sample = _process_sample(path)
+            samples[sample["pid"]] = sample
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+    roots = set()
+    if selected is not None:
+        sample = samples.get(selected["pid"])
+        if sample is not None and sample["start_ticks"] == selected["start_ticks"]:
+            roots.add(selected["pid"])
+    selected = set(roots)
+    while True:
+        descendants = {pid for pid, sample in samples.items() if sample["parent_pid"] in selected}
+        if descendants <= selected:
+            break
+        selected |= descendants
+    log = job / "cargo.log"
+    log_sample = None
+    if log.is_symlink():
+        raise ValueError("Inspection refuses a symlink Cargo log")
+    try:
+        descriptor = os.open(log, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            info = os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ValueError("Inspection requires a regular Cargo log")
+            stream.seek(max(0, info.st_size - INSPECTION_LOG_TAIL_BYTES))
+            tail = stream.read(INSPECTION_LOG_TAIL_BYTES).decode("utf-8", errors="replace")
+        log_sample = {"size_bytes": info.st_size, "mtime_ns": info.st_mtime_ns, "tail": tail}
+    except FileNotFoundError:
+        pass  # Source preparation can precede creation of cargo.log.
+    return {"job_id": request["job_id"], "image_id": request["image_id"],
+            "manifest_sha256": request["manifest_sha256"], "observed_at": time.time(),
+            "cargo_observed": bool(roots), "processes": [samples[pid] for pid in sorted(selected)],
+            "cargo_log": log_sample,
+            "scope": "live sample only; absence may mean preparation, exit or a sampling race"}
+
+
 def run_build(storage, request, commit, *, started_monotonic=None):
     command = request["command"]
     target = request.get("target_triple")
@@ -521,12 +628,10 @@ def run_build(storage, request, commit, *, started_monotonic=None):
     if command != normalized:
         raise ValueError("Admitted command differs from normalized original")
     mode = command_mode(command, target)
-    if (mode == APPLE_TEST_MODE or request.get("runtime_package") == 1) and (
-            request.get("mode") != mode or request.get("worker_identity") != worker_identity()):
-        raise ValueError("Test mode requires the exact prepared immutable worker")
+    if request.get("mode") != mode or request.get("worker_identity") != worker_identity():
+        raise ValueError("Build mode requires the exact prepared immutable worker")
     started = time.time()
     started_monotonic = time.monotonic() if started_monotonic is None else started_monotonic
-    deadline = started_monotonic + request["timeout_secs"]
     job_id = str(uuid.UUID(request["job_id"]))
     if not re.fullmatch("[a-zA-Z0-9_-]+", request["image_id"]):
         raise ValueError("Invalid image cache identity")
@@ -547,7 +652,6 @@ def run_build(storage, request, commit, *, started_monotonic=None):
     commit()
     cache = storage / "cache/images" / request["image_id"]
     child = None
-    watchdog = None
     try:
         with tempfile.TemporaryDirectory(prefix="brassclaw-build-") as temporary:
             staged = Path(temporary) / "source"
@@ -563,47 +667,38 @@ def run_build(storage, request, commit, *, started_monotonic=None):
         if subject is not None and subject["contract"] != request.get("test_subject"):
             raise ValueError("Materialized test subject differs from admission")
         def execute(selected_command):
-            nonlocal child, watchdog
-            remaining = deadline - time.monotonic() - 120
-            if remaining <= 0:
-                raise TimeoutError("Source preparation exhausted the build deadline before Cargo; no compilation started")
+            nonlocal child
             messages, finished = [], []
             with (job / "cargo.log").open("a") as log:
                 log.write("Command: " + json.dumps(selected_command) + "\n")
+                log.flush()
                 child = subprocess.Popen(selected_command, cwd=cache / "repository",
                                          env=environment, stdout=subprocess.PIPE,
                                          stderr=subprocess.STDOUT, text=True, start_new_session=True)
-                executed_child = child
-                def stop_cargo():
-                    if executed_child.poll() is None:
-                        try:
-                            os.killpg(executed_child.pid, signal.SIGTERM)
-                            executed_child.wait(timeout=request["shutdown_grace_secs"])
-                        except subprocess.TimeoutExpired:
-                            os.killpg(executed_child.pid, signal.SIGKILL)
-                        except ProcessLookupError:
-                            pass
-                watchdog = threading.Timer(remaining, stop_cargo)
-                watchdog.start()
+                # Capture the actual process identity, not its display name or
+                # argv (cargo-clippy may exec another program under this PID).
                 try:
-                    for line in child.stdout:
-                        log.write(line)
-                        log.flush()
-                        print(line, end="", flush=True)
-                        if line.startswith("{"):
-                            try:
-                                message = json.loads(line)
-                            except json.JSONDecodeError:
-                                continue  # Preserve build-script/proc-macro output in the log.
-                            if isinstance(message, dict):
-                                if message.get("reason") == "build-finished":
-                                    finished.append(message)
-                                else:
-                                    messages.append(message)
-                    return child.wait(), messages, finished
-                finally:
-                    watchdog.cancel()
-                    watchdog.join()
+                    birth = _process_sample(Path("/proc") / str(child.pid))["start_ticks"]
+                except (FileNotFoundError, ProcessLookupError):
+                    birth = None  # A very short-lived compiler may already be gone.
+                marker = job / "cargo-process.json.tmp"
+                marker.write_bytes(encoded({"pid": child.pid, "start_ticks": birth, "command": selected_command}))
+                marker.replace(job / "cargo-process.json")
+                for line in child.stdout:
+                    log.write(line)
+                    log.flush()
+                    print(line, end="", flush=True)
+                    if line.startswith("{"):
+                        try:
+                            message = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue  # Preserve build-script/proc-macro output in the log.
+                        if isinstance(message, dict):
+                            if message.get("reason") == "build-finished":
+                                finished.append(message)
+                            else:
+                                messages.append(message)
+                return child.wait(), messages, finished
         packaged = request.get("runtime_package") == 1 and target == APPLE_TARGET
         code, messages, finished = execute(command)
         result = {"job_id": job_id, "manifest_sha256": request["manifest_sha256"],
@@ -654,8 +749,6 @@ def run_build(storage, request, commit, *, started_monotonic=None):
         commit()
         return result
     finally:
-        if watchdog is not None:
-            watchdog.cancel()
         if child is not None and child.poll() is None:
             try:
                 os.killpg(child.pid, signal.SIGTERM)

@@ -68,6 +68,8 @@ def modal_resources(args):
             raise ValueError(f"{key} must be a positive integer")
     if settings["cpu_limit"] < settings["cpu"] or settings["memory_limit_mib"] < settings["memory_mib"]:
         raise ValueError("Resource limits cannot be below reservations")
-    if settings["timeout_secs"] < 180 or settings["shutdown_grace_secs"] >= 120:
-        raise ValueError("Reserve at least 120 seconds for shutdown and durable receipts")
+    # Modal Functions accept 1 second through 24 hours. This is only the
+    # provider limit; neither Cargo nor cleanup receives a derived deadline.
+    if settings["timeout_secs"] > 24 * 60 * 60:
+        raise ValueError("Modal Function timeout cannot exceed the provider's 24-hour limit")
     return settings

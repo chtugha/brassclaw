@@ -20,6 +20,7 @@ import re
 import shutil
 import signal
 import sys
+import time
 import tomllib
 import uuid
 
@@ -35,6 +36,18 @@ LEGACY_COMPANION_WORKER_IDENTITY = {
     'modal_build_worker.py': '43569e338199699eb47542e83d1b34eef0c8ccd22d1145ddac6dd1dcdd880ee9',
     'modal_source_sync.py': 'c53d9cc3738689a878c43410219704c3c48b7f48d0c275126ba0edf4fe3a55ea',
 }
+# Exact pre-observation worker at 3fa98f706131f28567fe15924f80b972cc0c6217.
+# It already propagated network flags. Accept only its historical collection;
+# it cannot authorize a new run of the current no-Cargo-timer protocol.
+PRE_OBSERVATION_WORKER_IDENTITY = {
+    'modal_build_worker.py': 'b0e4b66c2dc0a63a4cee4943cfc86945324cbac49e57a6f4549a2230e4b5d277',
+    'modal_source_sync.py': 'c53d9cc3738689a878c43410219704c3c48b7f48d0c275126ba0edf4fe3a55ea',
+}
+
+# Observation cadence is independent of the 180-second Screen heartbeat and
+# the provider's Function lifetime. Communication timeouts never stop Cargo.
+REMOTE_OBSERVATION_INTERVAL_SECS = 60
+REMOTE_INSPECTION_TIMEOUT_SECS = 30
 
 
 def records_root():
@@ -43,12 +56,81 @@ def records_root():
 
 def write_record(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(".tmp")
-    with temporary.open("wb") as stream:
-        stream.write(encoded(value))
-        stream.flush()
-        os.fsync(stream.fileno())
-    temporary.replace(path)
+    descriptor, name = tempfile.mkstemp(prefix="." + path.name + "-", dir=path.parent)
+    temporary = Path(name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(encoded(value))
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def observe_remote(state, original):
+    """Inspect the existing App/container, without submitting or stopping work."""
+    app_id = state.get("app_id", "")
+    if (not isinstance(app_id, str) or re.fullmatch(r"ap-[A-Za-z0-9_-]+", app_id) is None
+            or original.get("environment") != "brassclaw"
+            or state.get("job_id") != original.get("job_id")):
+        raise ValueError("Remote inspection requires the original job/App/environment")
+    cli = [sys.executable, "-m", "modal", "container"]
+    listed = subprocess.run([*cli, "list", "--app-id", app_id, "--env", original["environment"], "--json"],
+                            capture_output=True, text=True, check=True,
+                            timeout=REMOTE_INSPECTION_TIMEOUT_SECS)
+    containers = json.loads(listed.stdout)
+    if not isinstance(containers, list) or len(containers) > 1:
+        raise ValueError("Expected at most one container for the original single-container App")
+    samples = []
+    for container in containers:
+        identifier = container.get("container_id") if isinstance(container, dict) else None
+        if (not isinstance(identifier, str) or re.fullmatch(r"ta-[A-Za-z0-9_-]+", identifier) is None
+                or container.get("app_id") != app_id):
+            raise ValueError("Container listing differs from original App")
+        # The CLI's exec output races with process exit in SDK 1.6.3. This
+        # authenticated PIPE adapter drains both streams before returning.
+        inspected = subprocess.run([sys.executable, str(Path(__file__).with_name("modal_container_probe.py")), identifier,
+                                    json.dumps(original)],
+                                   capture_output=True, text=True, check=True,
+                                   timeout=REMOTE_INSPECTION_TIMEOUT_SECS)
+        sample = json.loads(inspected.stdout)
+        if not isinstance(sample, dict) or any(sample.get(key) != original[key]
+                for key in ("job_id", "image_id", "manifest_sha256")):
+            raise ValueError("Remote observation differs from original job")
+        samples.append({"container_id": identifier, **sample})
+    return {"job_id": original["job_id"], "app_id": app_id, "observed_at": time.time(),
+            "containers": samples, "scope": "read-only live observation; not completion or proof of progress"}
+
+
+def record_remote_observation(directory, state, original):
+    try:
+        observation = observe_remote(state, original)
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError) as error:
+        # Inability to inspect is explicit evidence, never an excuse to kill,
+        # classify, or replay the admitted build. Keep polling its original call.
+        observation = {"job_id": original["job_id"], "app_id": state.get("app_id"),
+                       "observed_at": time.time(), "error": type(error).__name__, "message": str(error)}
+        if isinstance(error, subprocess.CalledProcessError):
+            observation["stderr"] = (error.stderr or "")[-16384:]
+    # Manual and automatic observations can overlap. Separate historical files
+    # and unique atomic staging avoid interleaved JSON or shared-temp races.
+    write_record(directory / "remote-observations" / (str(uuid.uuid4()) + ".json"), observation)
+    write_record(directory / "remote-observation.json", observation)
+    print("Remote observation: " + json.dumps(observation), flush=True)
+    return "error" not in observation
+
+
+def inspect_running(args):
+    # No modal_lock: the build's controller holds it until completion. This
+    # separate diagnostic reads original custody and cannot mutate the cache.
+    job_id = str(uuid.UUID(args.job_id))
+    directory = records_root() / "jobs" / job_id
+    state = json.loads((directory / "state.json").read_bytes())
+    original = json.loads((directory / "request.json").read_bytes())
+    if state.get("job_id") != job_id or original.get("job_id") != job_id:
+        raise ValueError("Local state/request differs from inspected job UUID")
+    return 0 if record_remote_observation(directory, state, original) else 1
 
 
 def rust_version():
@@ -70,6 +152,16 @@ def compiler_version(platform, config=None):
     if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
         raise ValueError("Select an exact Linux compiler in build-environments.toml; the MSRV is not a compiler selection")
     return version
+
+
+def require_prepared_image(platform, mode, environment, config=None):
+    prepared = json.loads((records_root() / f"image-{platform}.json").read_bytes())
+    if (prepared.get("worker_identity") != worker_identity()
+            or mode not in prepared.get("supported_modes", [])
+            or prepared.get("rust_version") != compiler_version(platform, config)
+            or prepared.get("environment") != environment):
+        raise ValueError("Builds require preparation of this exact worker/image; old timer workers are inapplicable")
+    return prepared
 
 
 def setup(args):
@@ -132,13 +224,7 @@ def run(args):
     # repository source cannot upgrade it. Old product image receipts retain
     # their product scope; they cannot authorize this new test protocol.
     assert_remote_settled()
-    if args.platform == "apple":
-        prepared = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
-        if (prepared.get("worker_identity") != worker_identity()
-                or mode not in prepared.get("supported_modes", [])
-                or prepared.get("rust_version") != compiler_version(args.platform)
-                or prepared.get("environment") != args.environment):
-            raise ValueError("Runtime packages require preparation of this exact worker/image; old product images are inapplicable")
+    require_prepared_image(args.platform, mode, args.environment, args.config)
     if not args.qualification:
         require_activation(args.platform, mode)
     import modal
@@ -147,17 +233,13 @@ def run(args):
     # Local Cargo has a separate lock and never writes this host's remote cache.
     with modal_lock():
         assert_remote_settled()
+        prepared = require_prepared_image(args.platform, mode, args.environment, args.config)
         sync_source(args.environment, args.volume)
         jobs = records_root() / "jobs"
         volume = modal.Volume.from_name(args.volume, environment_name=args.environment)
         manifest_bytes = b"".join(volume.read_file(MANIFEST_PATH))
         manifest = json.loads(manifest_bytes)
         verify_source(ROOT, manifest)
-        prepared = json.loads((records_root() / f"image-{args.platform}.json").read_bytes())
-        if prepared["rust_version"] != compiler_version(args.platform, args.config):
-            raise ValueError("Prepared image Rust version differs from the selected compiler")
-        if prepared["environment"] != args.environment:
-            raise ValueError("Prepared image environment differs")
         # Named images are lazy and cannot be hydrated on demand. Use the
         # immutable ID returned by the actual successful image build.
         image = modal.Image.from_id(prepared["image_id"])
@@ -175,6 +257,7 @@ def run(args):
                    "nonpreemptible": args.nonpreemptible,
                    "allow_parallel_hosts": True, "lock_scope": "modal",
                    "target_triple": target, "volume": args.volume, "environment": args.environment,
+                   "worker_identity": worker_identity(), "mode": mode,
                    "estimated_local_secs": args.estimated_local_secs}
         if args.platform == "apple":
             if prepared.get("worker_identity") != worker_identity() or mode not in prepared.get("supported_modes", []):
@@ -243,6 +326,7 @@ def run(args):
                 call = compile_source.spawn(request)
                 state.update(state="running", function_call_id=call.object_id)
                 write_record(directory / "state.json", state)
+                next_observation = time.monotonic()
                 while True:
                     try:
                         result = call.get(timeout=5)
@@ -252,7 +336,9 @@ def run(args):
                         # Leave run; status reconciles any durable worker receipt.
                         raise
                     except TimeoutError:
-                        continue
+                        if time.monotonic() >= next_observation:
+                            record_remote_observation(directory, state, request)
+                            next_observation = time.monotonic() + REMOTE_OBSERVATION_INTERVAL_SECS
                 # Remote termination and verified local collection are distinct.
                 state.update(state="collection_pending", remote_state="completed")
                 write_record(directory / "state.json", state)
@@ -366,7 +452,7 @@ def collect_result(volume, directory, original, result):
         package = result.get("runtime_package", {})
         roles = [artifact.get("role") for artifact in result["artifacts"].values()]
         identity = original.get("worker_identity")
-        if identity == worker_identity():
+        if identity in (worker_identity(), PRE_OBSERVATION_WORKER_IDENTITY):
             expected_companion = worker_command(original["target_triple"],
                                                 original.get("original_command", original["command"]))
         elif identity == LEGACY_COMPANION_WORKER_IDENTITY:
@@ -450,7 +536,7 @@ def status(args):
                         f'/cache/jobs/{original["job_id"]}/completed.json')))
                 except FileNotFoundError:
                     if not result_expired:
-                        state.update(state="failed", reason="terminal remote result without a worker completion receipt")
+                        state.update(state="unresolved", reason="terminal remote result without a worker completion receipt; inspect original job")
                     write_record(path, state)
                     print(json.dumps(state, indent=2))
                     return
@@ -470,8 +556,9 @@ def require_activation(platform, mode=None):
         raise ValueError("Modal is DEACTIVATED; only an explicitly authorized --qualification run is allowed")
     record = json.loads(path.read_bytes())
     image = json.loads((records_root() / f"image-{platform}.json").read_bytes())
-    if platform == "apple" and (image.get("worker_identity") != worker_identity()
-            or (mode or APPLE_BUILD_MODE) not in image.get("supported_modes", [])):
+    selected_mode = mode or (APPLE_BUILD_MODE if platform == "apple" else "linux-compile/1")
+    if (image.get("worker_identity") != worker_identity()
+            or selected_mode not in image.get("supported_modes", [])):
         raise ValueError("Modal is DEACTIVATED for this worker protocol; preserve the historical image/activation receipts")
     if (not record.get("active") or record.get("image_id") != image["image_id"]
             or (platform == "apple" and record.get("mode", APPLE_BUILD_MODE) != (mode or APPLE_BUILD_MODE))
@@ -677,12 +764,14 @@ def main(argv=None):
     execute.add_argument("--memory-mib", type=int, help="Reserved RAM; also sets limit unless --memory-limit-mib is given")
     execute.add_argument("--memory-limit-mib", type=int, help="Hard RAM ceiling in MiB")
     execute.add_argument("--jobs", type=int)
-    execute.add_argument("--timeout-secs", type=int)
+    execute.add_argument("--timeout-secs", type=int, help="Modal provider Function limit in seconds (default 1800); no derived Cargo timer")
     execute.add_argument("--shutdown-grace-secs", type=int)
     execute.add_argument("--nonpreemptible", action=argparse.BooleanOptionalAction, default=None)
     execute.add_argument("cargo", nargs=argparse.REMAINDER)
     inspect = commands.add_parser("status")
     inspect.add_argument("job_id")
+    live = commands.add_parser("inspect-running", help="Read the original remote process tree and bounded Cargo log without taking the build lock")
+    live.add_argument("job_id")
     commands.add_parser("settings", help="Show resolved target settings without cloud access or compilation")
     for action in ["activation-status", "activate", "deactivate", "accept-native"]:
         control = commands.add_parser(action)
@@ -710,6 +799,8 @@ def main(argv=None):
         accept_native(args)
     elif args.action == "status":
         status(args)
+    elif args.action == "inspect-running":
+        raise SystemExit(inspect_running(args))
     else:
         activation(args)
 
