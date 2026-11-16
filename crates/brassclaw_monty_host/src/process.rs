@@ -957,6 +957,7 @@ pub enum ProcessFailure {
 /// diagnostics, and never replay a retained command merely because IPC failed.
 pub struct ProcessError {
     pub kind: ProcessFailure,
+    pub spawn_error: Option<io::Error>,
     pub command: Option<Box<WorkerCommand>>,
     pub snapshot: Option<Box<ProcessSnapshot>>,
     pub diagnostic: Option<String>,
@@ -969,6 +970,7 @@ impl ProcessError {
     pub(crate) fn new(kind: ProcessFailure) -> Self {
         Self {
             kind,
+            spawn_error: None,
             command: None,
             snapshot: None,
             diagnostic: None,
@@ -983,15 +985,37 @@ impl fmt::Debug for ProcessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ProcessError")
             .field("kind", &self.kind)
+            .field(
+                "spawn_error",
+                &self
+                    .spawn_error
+                    .as_ref()
+                    .map(|cause| (cause.kind(), cause.raw_os_error())),
+            )
             .finish_non_exhaustive()
     }
 }
 impl fmt::Display for ProcessError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Monty worker failed: {:?}", self.kind)
+        write!(f, "Monty worker failed: {:?}", self.kind)?;
+        if let Some(cause) = &self.spawn_error {
+            write!(
+                f,
+                " ({:?}, OS code {:?})",
+                cause.kind(),
+                cause.raw_os_error()
+            )?;
+        }
+        Ok(())
     }
 }
-impl std::error::Error for ProcessError {}
+impl std::error::Error for ProcessError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.spawn_error
+            .as_ref()
+            .map(|cause| cause as &(dyn std::error::Error + 'static))
+    }
+}
 
 /// A single privately spawned worker. Mutable access serializes IPC only; the
 /// Python root owns its concurrent task coroutines and all Recipe sequencing.
@@ -1029,9 +1053,13 @@ impl GlobalProcess {
         if !executable.is_absolute() {
             return Err(ProcessError::new(ProcessFailure::InvalidExecutable));
         }
+        let deadline = tokio::time::Instant::now()
+            .checked_add(limits.response_timeout.min(boot.startup_timeout))
+            .ok_or_else(|| ProcessError::new(ProcessFailure::InvalidLimits))?;
         // Spawn a known executable directly, never a shell or caller-authored
         // command. Preserve allocator stderr diagnostics outside framed stdout.
-        let mut child = Command::new(executable)
+        let mut command = Command::new(executable);
+        command
             // No provider keys, claim tokens or ambient executable/library
             // search configuration belong in this interpreter's environment.
             .env_clear()
@@ -1040,9 +1068,18 @@ impl GlobalProcess {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|_| ProcessError::new(ProcessFailure::Spawn))?;
+            .kill_on_drop(true);
+        let mut child = crate::executable_start::start(&mut command, deadline)
+            .await
+            .map_err(|failure| {
+                let mut error = ProcessError::new(if failure.deadline_elapsed {
+                    ProcessFailure::Deadline
+                } else {
+                    ProcessFailure::Spawn
+                });
+                error.spawn_error = Some(failure.cause);
+                error
+            })?;
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let workers = boot.bounds.workers;
@@ -1075,7 +1112,14 @@ impl GlobalProcess {
             pool_enabled,
         };
         let expected_frame = process.frame;
-        let snapshot = match process.exchange(WorkerCommand::Boot { boot }).await {
+        let snapshot = match process
+            .exchange_before(
+                WorkerCommand::Boot { boot },
+                limits.max_frame_bytes,
+                Some(deadline),
+            )
+            .await
+        {
             Ok(snapshot) => snapshot,
             Err(mut error) => {
                 if error.exit_status.is_none() {
@@ -1181,6 +1225,15 @@ impl GlobalProcess {
         command: WorkerCommand,
         max_frame_bytes: usize,
     ) -> Result<ProcessSnapshot, ProcessError> {
+        self.exchange_before(command, max_frame_bytes, None).await
+    }
+
+    async fn exchange_before(
+        &mut self,
+        command: WorkerCommand,
+        max_frame_bytes: usize,
+        deadline_cap: Option<tokio::time::Instant>,
+    ) -> Result<ProcessSnapshot, ProcessError> {
         if self.terminal {
             let mut error = ProcessError::new(ProcessFailure::Terminal);
             error.command = Some(Box::new(command));
@@ -1234,6 +1287,10 @@ impl GlobalProcess {
             WorkerCommand::Boot { boot } => self.limits.response_timeout.min(boot.startup_timeout),
             _ => self.limits.response_timeout,
         };
+        let deadline = tokio::time::Instant::now()
+            .checked_add(timeout)
+            .ok_or_else(|| ProcessError::new(ProcessFailure::InvalidLimits))?;
+        let deadline = deadline_cap.map_or(deadline, |cap| cap.min(deadline));
         // Dropping this future after writing any bytes kills the worker. Its
         // partially advanced VM cannot accept a later request as a fresh call.
         let mut guard = ExchangeGuard {
@@ -1242,6 +1299,9 @@ impl GlobalProcess {
             request: Some(request),
         };
         let operation = async {
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ProcessFailure::Deadline);
+            }
             let stdin = guard.owner.stdin.as_mut().ok_or(ProcessFailure::Terminal)?;
             stdin
                 .write_all(&frame_length.to_be_bytes())
@@ -1269,9 +1329,14 @@ impl GlobalProcess {
                 .read_exact(&mut bytes)
                 .await
                 .map_err(|_| ProcessFailure::Transport)?;
-            serde_json::from_slice::<Reply>(&bytes).map_err(|_| ProcessFailure::Protocol)
+            let reply =
+                serde_json::from_slice::<Reply>(&bytes).map_err(|_| ProcessFailure::Protocol)?;
+            if tokio::time::Instant::now() >= deadline {
+                return Err(ProcessFailure::Deadline);
+            }
+            Ok(reply)
         };
-        let reply = match tokio::time::timeout(timeout, operation).await {
+        let reply = match tokio::time::timeout_at(deadline, operation).await {
             Ok(Ok(reply))
                 if reply.protocol == PROTOCOL
                     && reply.sequence == sequence

@@ -22,6 +22,27 @@ use support::{SOURCE, boot, limits, task, worker};
 
 const POOL_ROOT: &str = include_str!("support/worker_pool.py");
 
+#[tokio::test]
+async fn missing_global_worker_keeps_actual_spawn_cause_and_redacts_private_boot() {
+    let directory = tempfile::tempdir().unwrap();
+    let missing = directory.path().join("missing-worker");
+    let result = GlobalProcess::start(&missing, boot("private_root_source"), limits()).await;
+    let Err(error) = result else {
+        panic!("a missing worker cannot become ready");
+    };
+    assert_eq!(error.kind, ProcessFailure::Spawn);
+    assert_eq!(
+        error.spawn_error.as_ref().unwrap().kind(),
+        std::io::ErrorKind::NotFound
+    );
+    assert!(std::error::Error::source(&error).is_some());
+    assert!(error.exit_status.is_none());
+    let public = format!("{error} {error:?}");
+    assert!(public.contains("NotFound"));
+    assert!(!public.contains("private_root_source"));
+    assert!(!public.contains(missing.to_string_lossy().as_ref()));
+}
+
 async fn pool_progress(
     process: &mut GlobalProcess,
     mut state: brassclaw_monty_host::process::ProcessSnapshot,

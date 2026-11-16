@@ -7,13 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Native executable start and CI deadlines**: Wait for OS executable-write
+  contention only before exec succeeds, within the accepted startup/response
+  deadline. Share that deadline with Boot/IPC, reject late ready responses and
+  retain real spawn diagnostics without exposing private data. Six native-kernel,
+  fourteen utility and thirty-three process-host cases pass; strict host lint
+  passes. Remove the package Cargo/job watchdogs and honor Cargo.lock; pass
+  feature arguments as a Bash array instead of suppressing the shell warning.
 - **Bootstrap original verification**: Bound each complete original and metadata
   exchange with the acknowledged ResourceStore deadline while retaining one
   coherent PostgreSQL snapshot. Preserve exact integrity checks and uncertain
   connection custody. Correct development qualification fixtures, lost-ACK
   assertions and private Prefix status checks. Nine focused native regressions
   and the complete deployment/model-original case pass; strict full-feature
-  CLI/Composition Clippy passes. Independent CI runner/spawn findings remain open.
+  CLI/Composition Clippy passes. The separate runner/spawn repair is described above;
+  complete GitHub workflow acceptance remains separate.
 - **Run/REPL PostgreSQL transition**: Preserve the resolved services input,
   including policy, host mounts, OAuth and technical requirements, when changing
   storage. Let Composition perform the first application migration; retain

@@ -1,3 +1,18 @@
+## 2026-11-16 — Native executable start and package CI runner
+
+One private Monty start boundary waits only on pre-exec executable-write
+contention, using the existing accepted absolute deadline. Utility IPC and
+global Boot share that deadline; explicit before-send/after-decode checks prevent
+a ready future from bypassing it. Started workers/operations are not retried.
+Actual OS causes remain available with redacted public formatting. Six real
+kernel cases, fourteen utility and thirty-three process-host cases pass; final
+strict Monty-host all-target lint passes. The package job removes its unmeasured
+28-minute Cargo/30-minute job timers, preserves the hosted provider boundary and
+uses Cargo.lock plus checked Bash-array feature arguments without suppression.
+See [the exact source/platform receipts](validation/2026-11-16-executable-start-custody.md).
+The next full GitHub workflow is still unverified. This scope does not complete
+authored approval, the held capture/flow packages or the Bob plans.
+
 ## 2026-11-16 — Run/REPL transition and independent CI acceptance
 
 The Run helper preserves the resolved services input when replacing LocalDev
@@ -19,7 +34,7 @@ with real pinned model originals/oracle pass; the unchanged Input and held-ACK
 cases remain applicable. Strict all-targets CLI/Composition lint also passes.
 See [actual artifacts, results and preserved failures](validation/2026-11-16-bootstrap-io-originals.md).
 The independent GitHub utility-spawn failure and compilation-charging package
-timer remain open; this is not acceptance of the complete CI workflow.
+timer now have their own scoped repair above; full CI acceptance remains separate.
 No full CI/platform support, authored approval or Bob completion is claimed.
 
 ## 2026-11-15 — Child control CI regression

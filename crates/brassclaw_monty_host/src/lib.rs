@@ -21,6 +21,7 @@ use std::{
 use brassclaw_resources::{MontyTaskBudgetError, MontyTaskClock, SharedMontyTaskBudget};
 mod admission_capacity;
 mod artifact_cache;
+mod executable_start;
 pub mod global;
 pub mod heap;
 mod private_task_input;

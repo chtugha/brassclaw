@@ -498,7 +498,8 @@ jobs:
     if: needs.changes.outputs.docs_only != 'true' && needs.changes.outputs.has_reborn_tests == 'true'
     # Match the release ABI: the retained PostgreSQL archive needs libxml2.so.2.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    # Use the hosted runner's provider limit. Compilation and the complete
+    # required suite must not share another unmeasured Cargo/job watchdog.
     env:
       ANTHROPIC_API_KEY: ""
       LLM_BACKEND: ""
@@ -562,7 +563,11 @@ jobs:
 
       - name: Run crate tests
         run: |
-          feature_flags="$(scripts/ci/package-feature-flags.sh "${{ matrix.package }}")"
+          feature_flags=()
+          feature_flag_text="$(scripts/ci/package-feature-flags.sh "${{ matrix.package }}")"
+          if [ -n "$feature_flag_text" ]; then
+            read -r -a feature_flags <<< "$feature_flag_text"
+          fi
 
           # CLI smoke cases each own an entire PostgreSQL/Monty instance.
           # Serialize those cases on the shared runner instead of saturating
@@ -571,9 +576,7 @@ jobs:
             export RUST_TEST_THREADS=1
           fi
 
-          # shellcheck disable=SC2086 # feature_flags intentionally expands to zero or more Cargo args.
-          timeout --signal=INT --kill-after=30s 28m \
-            cargo test -p "${{ matrix.package }}" ${feature_flags} --all-targets -- --nocapture
+          cargo test --locked -p "${{ matrix.package }}" "${feature_flags[@]}" --all-targets -- --nocapture
 
 
       - name: Verify all retained Hugging Face oracle cases

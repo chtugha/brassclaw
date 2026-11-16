@@ -389,7 +389,11 @@ pub async fn execute(
             return Err(error);
         }
     };
-    let mut child = match Command::new(executable)
+    let Some(deadline) = tokio::time::Instant::now().checked_add(limits.response_timeout) else {
+        return Err(error);
+    };
+    let mut command = Command::new(executable);
+    command
         .env_clear()
         .arg(limits.hard_memory_bytes.to_string())
         .arg(limits.max_frame_bytes.to_string())
@@ -397,17 +401,25 @@ pub async fn execute(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .kill_on_drop(true)
-        .spawn()
-    {
+        .kill_on_drop(true);
+    let mut child = match crate::executable_start::start(&mut command, deadline).await {
         Ok(child) => child,
-        Err(source) => {
-            error.kind = ProcessFailure::Spawn;
-            error.spawn_error = Some(source);
+        Err(failure) => {
+            error.kind = if failure.deadline_elapsed {
+                ProcessFailure::Deadline
+            } else {
+                ProcessFailure::Spawn
+            };
+            error.spawn_error = Some(failure.cause);
             return Err(error);
         }
     };
     let operation = async {
+        // Tokio's Timeout polls its inner future first. Never send a request
+        // after the shared start/response deadline has already elapsed.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(ProcessFailure::Deadline);
+        }
         let mut input = child.stdin.take().ok_or(ProcessFailure::Transport)?;
         input
             .write_all(&frame_length.to_be_bytes())
@@ -450,9 +462,12 @@ pub async fn execute(
             return Err(ProcessFailure::Protocol);
         }
         let status = child.wait().await.map_err(|_| ProcessFailure::Transport)?;
+        if tokio::time::Instant::now() >= deadline {
+            return Err(ProcessFailure::Deadline);
+        }
         Ok((reply, status))
     };
-    match tokio::time::timeout(limits.response_timeout, operation).await {
+    match tokio::time::timeout_at(deadline, operation).await {
         Ok(Ok((reply, status))) => {
             error.exit_status = Some(status);
             error.diagnostic = reply.diagnostic;
