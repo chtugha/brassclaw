@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Paused Markdown architecture audit**: Preserve the current inventory and
+  serial v3/v3.5 review in [the audit report](docs/update_architecture_v3_at_bob1.md):
+  1,050 of the original 1,104 Markdown files assessed against criteria a–f,
+  54 still open, with 138 findings, correction proposals and review hashes.
+  The audit remains paused; no proposed correction or archive move is applied.
+  This documentation checkpoint does not establish runtime qualification.
+
 - **B1 joint-source checkpoint — unvalidated**: Add source for joint
   Skill/PythonCode source review: shared strict coverage metadata, four private
   workflows, sealed installation subjects, V217 selection storage and original
