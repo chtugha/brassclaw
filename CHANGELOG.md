@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cases pass. Correct Composition's module formatting and remove the CI
   partition timer that charged compilation to a test deadline. Preserve actual
   test commands, test/runtime deadlines and the enclosing workflow limit.
+- **CLI test boundaries**: Keep the unchanged runtime test module in an explicitly
+  test-only source file. Real fixture port reservation no longer appears as
+  product HTTP ingress; the architecture rule and production code stay intact.
 - **Monty CI admission regression**: Park actual unresolved host calls before
   admitting further tasks in the standalone test. Preserve outstanding original
   calls and reject duplicate runs without fabricating host results. All 32 native

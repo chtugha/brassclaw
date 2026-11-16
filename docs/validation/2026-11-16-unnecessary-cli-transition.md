@@ -116,3 +116,23 @@ their actual failures remain retained and are repaired under
 These six passing CLI cases establish neither full CI nor macOS/Windows runtime
 acceptance, general Linux-mode activation, full authored approval or completed
 Bob plans. No unchanged successful case needs replay merely for documentation.
+
+## GitHub and test-source layout follow-up
+
+On Main `985f94d93`, GitHub job `133156451673` independently passes both 99-case
+CLI unit targets, five Extension cases, eight PostgreSQL lifecycle cases and all
+72 smoke cases. Its next architecture step rejects the port-reservation fixture
+inside inline `runtime::tests`. The test is genuinely test-exclusive; it does
+not make the product an HTTP listener. Its subsequent file extraction uses the
+existing supported `#![cfg(test)]` source boundary without changing any scanner
+rule/allowlist or production statement. Rewrapping and Rustfmt-normalizing the
+original/extracted module produces identical bytes, including raw-string fixture
+contents and all test names/assertions. The exact architecture regression now
+passes locally. The new layout's strict all-targets CLI/Composition lint with
+`postgres,skills-db` and `-D warnings` passes in job
+`87c8b6c5-87bf-40d0-8aed-71688e425e89`, manifest
+`d4bc57113fa0655765f827acfa121db9f53d3e61dbf8bb7c356a246adbd8dc87`.
+Request/source/log/completion are retained in `target/validation/ci-clippy-modal-20261116-r5/`.
+The architecture and strict-lint Screens both ended with exit 0, no signal/error,
+accepted final delivery, actual chat receipt and confirmed socket absence. See the
+[same owning subplan](../plans/subplan_step_l01_startup_cleanup_of_bob1.md).
