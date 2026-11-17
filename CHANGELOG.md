@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Repair queue and Tier 2 architecture overrides**: Record the user-mandated
+  German and English replacement rules in `AGENTS.md`, with precedence over
+  conflicting earlier architecture instructions until manually removed by a
+  human/user. The specified failures must first be transferred successfully
+  to the repair queue before the associated user query is declared No-Match
+  and passed to Tier 2. This records policy only; it does not implement or
+  validate runtime routing.
+
 - **Paused Markdown architecture audit**: Preserve the current inventory and
   serial v3/v3.5 review in [the audit report](docs/update_architecture_v3_at_bob1.md):
   1,050 of the original 1,104 Markdown files assessed against criteria a–f,

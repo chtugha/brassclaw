@@ -1,5 +1,33 @@
 # Agent Rules
 
+## Verbindlicher Architektur-Override: Reparatur-Queue und Tier 2
+
+Diese Regel gilt für alle aktuellen und zukünftigen Chats. Sie ist ein ausdrücklich vom Nutzer angeordneter Architektur-Override (forced architectural override) und hat Vorrang vor entgegenstehenden bisherigen Architekturvorgaben in den Agenten- und Projektdokumenten. Sie bleibt gültig, bis sie manuell durch einen Menschen beziehungsweise Nutzer entfernt wird.
+
+Überall, wo der folgende Text vorkommt, ist er durch den unten angegebenen neuen Text zu ersetzen.
+
+Bisheriger Text:
+
+> Nur echtes No-Match erreicht Tier 2. Fehler einer aktiven Auswahl, Mehrdeutigkeit, Matching-/DB-Fehler und begonnene Recipe-Ausführungsfehler sind verschiedene Ergebnisse; niemals als Tier 2 replizieren.
+
+Neuer Text:
+
+> Nur echtes No-Match erreicht zunächst Tier 2. Fehler einer aktiven Auswahl, Mehrdeutigkeit, Matching-/DB-Fehler und begonnene Recipe-Ausführungsfehler sind verschiedene Ergebnisse; niemals direkt als Tier 2 replizieren. Fehler einer aktiven Auswahl, Mehrdeutigkeit, Matching-/DB-Fehler und begonnene Recipe-Ausführungsfehler müssen zuerst erfolgreich an die reparatur-queue abgegeben werden, dann wird die dazugehörige user-query als No-Match deklariert und an Tier2 übergeben.
+
+## Verbindlicher Architektur-Override: Englische Routing-Regel und Repair Queue
+
+Diese Regel gilt für alle aktuellen und zukünftigen Chats. Sie ist ein ausdrücklich vom Nutzer angeordneter Architektur-Override (forced architectural override) und hat Vorrang vor entgegenstehenden bisherigen Architekturvorgaben in den Agenten- und Projektdokumenten. Sie bleibt gültig, bis sie manuell durch einen Menschen beziehungsweise Nutzer entfernt wird.
+
+Überall, wo der folgende Text vorkommt, ist er durch den unten angegebenen neuen Text zu ersetzen.
+
+Bisheriger Text:
+
+> Only an actual No-Match enters Tier 2. Matching/DB/assembly errors and begun Recipe failures must remain distinct; never replay a failed recipe as Tier 2.
+
+Neuer Text:
+
+> Only an actual No-Match enters initially Tier 2. Matching/DB/assembly errors and begun Recipe failures must remain distinct; never replay a failed recipe as Tier 2. Matching/DB/assembly errors and begun Recipe failures must be transferred sucessfully into the repair queue prior declaring the user-query a No-Match and run it through Tier2.
+
 > **Current status — 2026-10-23:** use [the combined implementation and ownership
 > index](docs/implementation-status.md) for implemented boundaries, applicable validation and remaining
 > work. Earlier dated source observations below are historical where superseded;
